@@ -1,0 +1,12 @@
+# All text is stored and checked out with LF line endings on every platform.
+# Fixtures record source locations as line and column, and golden files are
+# compared byte for byte, so a CRLF checkout on Windows would break both.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.tgz binary
+*.resource binary

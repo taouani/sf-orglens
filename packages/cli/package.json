@@ -1,0 +1,32 @@
+{
+  "name": "sf-orglens",
+  "version": "0.0.0",
+  "description": "OrgLens command line: local-first impact analysis for Salesforce orgs and repositories.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taouani/sf-orglens.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "orglens": "./dist/bin.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo"
+  ],
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@sf-orglens/engine": "workspace:*",
+    "commander": "15.1.0"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@sf-orglens/engine",
+  "version": "0.0.0",
+  "description": "The OrgLens engine: sources, extraction, store and deterministic analysis engines behind one public API.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taouani/sf-orglens.git",
+    "directory": "packages/engine"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@sf-orglens/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo"
+  ],
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    }
+  }
+}

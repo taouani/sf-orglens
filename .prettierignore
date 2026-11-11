@@ -1,0 +1,9 @@
+dist
+coverage
+pnpm-lock.yaml
+LICENSE
+# Golden files are compared byte for byte and are written by the tests.
+**/test/golden/**
+# Research notes and exported plans are kept as written.
+docs/research/**
+docs/plans/re-architecture-plan.md
