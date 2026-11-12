@@ -1,17 +1,31 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFolders } from '../src/sources/folder.ts';
-import { checkedOut, commitOf, differencesFromCommit, readCommit, readCommitFile } from '../src/sources/git.ts';
+import {
+  checkedOut,
+  commitOf,
+  differencesFromCommit,
+  gitEnvironment,
+  parseGitVersion,
+  readCommit,
+  readCommitFile,
+} from '../src/sources/git.ts';
 import type { SourceTree } from '../src/sources/tree.ts';
-import { createRepo, type TestRepo } from './helpers/git-repo.ts';
+import { withEnvironment, withoutGit as withoutGitIn } from './helpers/environment.ts';
+import { createRepo, folderFingerprint, testGitEnvironment, type TestRepo } from './helpers/git-repo.ts';
 import { tempDirs } from './helpers/store.ts';
 
 const temp = tempDirs();
 afterEach(temp.cleanUp);
 
 const text = (content: Uint8Array): string => new TextDecoder().decode(content);
+
+/** What `readCommitFile` gave: the text of a file, or what it says instead. */
+const fileText = (content: Uint8Array | 'link' | null): string | null =>
+  content instanceof Uint8Array ? text(content) : content;
 
 /** The details of the engine error `run` throws. */
 function failure(run: () => unknown): { code: string; reason: unknown } {
@@ -120,7 +134,7 @@ describe('reading a commit', () => {
 
     expect(commitOf(below, 'main')).toBe(commit);
     expect(readCommit(below, commit, ['app']).tree.files).toEqual(['app/A.cls']);
-    expect(text(readCommitFile(below, commit, 'sfdx-project.json') ?? new Uint8Array())).toBe('{}\n');
+    expect(fileText(readCommitFile(below, commit, 'sfdx-project.json'))).toBe('{}\n');
     expect(readCommitFile(below, commit, 'app/Top.cls')).toBeNull();
   });
 
@@ -136,7 +150,90 @@ describe('reading a commit', () => {
     const reading = readCommit(repo.dir, commit, ['app']);
     expect(reading.tree.files).toEqual(['app/classes/A.cls', 'app/classes/B.cls']);
     expect(reading.skipped).toEqual(['app/classes/link.cls', 'app/vendor']);
-    expect(readCommitFile(repo.dir, commit, 'app/classes/link.cls')).toBeNull();
+    // A link is told apart from nothing, so that whoever asked can say that a link was not followed.
+    expect(readCommitFile(repo.dir, commit, 'app/classes/link.cls')).toBe('link');
+    expect(readCommitFile(repo.dir, commit, 'app/vendor')).toBe('link');
+  });
+
+  it('does not take a file for a folder, or a link or a submodule', () => {
+    const { repo } = repoWithOneCommit();
+    const target = repo.git('rev-parse', 'HEAD:README.md');
+    repo.git('update-index', '--add', '--cacheinfo', `120000,${target},linked`);
+    repo.git('update-index', '--add', '--cacheinfo', `160000,${repo.git('rev-parse', 'HEAD')},vendor`);
+    repo.git('commit', '--quiet', '-m', 'A link and a submodule');
+    const commit = repo.git('rev-parse', 'HEAD');
+
+    const reading = readCommit(repo.dir, commit, ['README.md', 'linked', 'vendor', 'app']);
+    expect(reading.tree.files).toEqual(['app/classes/A.cls', 'app/classes/B.cls']);
+    // The file is not there as a folder. The link and the submodule are there and are not read.
+    expect(reading.missing).toEqual(['README.md']);
+    expect(reading.skipped).toEqual(['linked', 'vendor']);
+  });
+
+  it('leaves out a file whose name is not UTF-8, and says so, where two such names would become one', (context) => {
+    const repo = createRepo(temp.next());
+    repo.write('app/classes/A.cls', 'class A {}\n');
+    // Only Linux keeps a name that is not text. The two names differ in one byte that is not UTF-8.
+    const names = [
+      Buffer.from('app/classes/latin\xe9.cls', 'latin1'),
+      Buffer.from('app/classes/latin\xe8.cls', 'latin1'),
+    ];
+    try {
+      for (const name of names) writeFileSync(Buffer.concat([Buffer.from(`${repo.dir}/`), name]), 'x\n');
+    } catch {
+      context.skip();
+    }
+    if (readFolders(repo.dir, ['app']).undecodable.length !== 2) context.skip();
+    const commit = repo.commit();
+
+    const reading = readCommit(repo.dir, commit, ['app']);
+    expect(reading.tree.files).toEqual(['app/classes/A.cls']);
+    expect(reading.undecodable).toEqual(['app/classes/latin\ufffd.cls', 'app/classes/latin\ufffd.cls']);
+    // The same from disk, and the comparison with the commit does not call the two sides equal.
+    const disk = readFolders(repo.dir, ['app']);
+    expect(disk.tree.files).toEqual(['app/classes/A.cls']);
+    expect(disk.undecodable).toEqual(reading.undecodable);
+    expect(differencesFromCommit(repo.dir, commit, ['app'], () => true, disk.tree).paths).toEqual(reading.undecodable);
+  });
+
+  it('fetches nothing in a partial clone, and says that a file of the commit is not there', () => {
+    const origin = createRepo(temp.next());
+    origin.write('app/classes/A.cls', 'class A {}\n');
+    origin.commit();
+    origin.git('config', 'uploadpack.allowFilter', 'true');
+    const dir = temp.next();
+    const cloned = spawnSync(
+      'git',
+      ['clone', '--quiet', '--no-checkout', '--filter=blob:none', pathToFileURL(origin.dir).href, dir],
+      { env: testGitEnvironment(), encoding: 'utf8' },
+    );
+    expect(cloned.status, cloned.stderr).toBe(0);
+    const before = folderFingerprint(join(dir, '.git'));
+
+    const commit = commitOf(dir, 'HEAD');
+    expect(failure(() => readCommit(dir, commit, ['app']))).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'OBJECT_MISSING',
+    });
+    expect(failure(() => readCommitFile(dir, commit, 'app/classes/A.cls'))).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'OBJECT_MISSING',
+    });
+    // Which files the commit has is known without their content, so the folders can still be compared with it.
+    const onDiskOnly: SourceTree = { files: [], read: () => new Uint8Array() };
+    expect(differencesFromCommit(dir, commit, ['app'], () => true, onDiskOnly).paths).toEqual(['app/classes/A.cls']);
+    expect(folderFingerprint(join(dir, '.git'))).toBe(before);
+  });
+
+  it('reads the object a commit names, not one a replacement points to', () => {
+    const { repo, commit } = repoWithOneCommit();
+    const original = repo.git('rev-parse', `${commit}:app/classes/A.cls`);
+    repo.git('replace', original, repo.git('rev-parse', `${commit}:app/classes/B.cls`));
+    // Git itself now shows the content of B for A. The reading does not.
+    expect(repo.git('cat-file', 'blob', original)).toBe('class B {}');
+    expect(text(readCommit(repo.dir, commit, ['app']).tree.read('app/classes/A.cls'))).toBe('class A {}\n');
+    expect(fileText(readCommitFile(repo.dir, commit, 'app/classes/A.cls'))).toBe('class A {}\n');
+    expect(differencesFromCommit(repo.dir, commit, ['app'], () => true, onDisk(repo)).paths).toEqual([]);
   });
 
   it('reports a folder the commit does not have', () => {
@@ -151,7 +248,7 @@ describe('reading a commit', () => {
 
   it('reads one file of a commit, and gives null for a folder or for nothing', () => {
     const { repo, commit } = repoWithOneCommit();
-    expect(text(readCommitFile(repo.dir, commit, 'README.md') ?? new Uint8Array())).toBe('# readme\n');
+    expect(fileText(readCommitFile(repo.dir, commit, 'README.md'))).toBe('# readme\n');
     expect(readCommitFile(repo.dir, commit, 'app')).toBeNull();
     expect(readCommitFile(repo.dir, commit, 'nowhere.txt')).toBeNull();
   });
@@ -172,19 +269,140 @@ describe('the commit that is checked out', () => {
   it('names none in a repository that has none', () => {
     const repo = createRepo(temp.next());
     repo.write('app/A.cls', 'a\n');
-    expect(checkedOut(repo.dir)).toEqual({ commit: null });
+    expect(checkedOut(repo.dir)).toEqual({ commit: null, why: 'NO_COMMIT' });
   });
 
-  it('gives null for a folder that is not in a repository', () => {
+  it('says that a folder is not in a repository', () => {
     const dir = temp.next();
     mkdirSync(join(dir, 'app'));
-    expect(checkedOut(dir)).toBeNull();
+    expect(checkedOut(dir)).toEqual({ commit: null, why: 'NOT_A_REPOSITORY' });
+  });
+
+  it('says that Git refuses a repository of another user', (context) => {
+    const { repo } = repoWithOneCommit();
+    // Git has this switch for its own tests. A setting of the machine that trusts every folder overrules it.
+    const refused = withEnvironment({ GIT_TEST_ASSUME_DIFFERENT_OWNER: '1' }, () => {
+      const probe = spawnSync('git', ['rev-parse', '--git-dir'], { cwd: repo.dir, encoding: 'utf8' });
+      if (!probe.stderr.includes('dubious ownership')) return null;
+      return {
+        fromDisk: checkedOut(repo.dir),
+        byName: failure(() => commitOf(repo.dir, 'main')),
+      };
+    });
+    if (refused === null) context.skip();
+    expect(refused).toEqual({
+      fromDisk: { commit: null, why: 'NOT_TRUSTED' },
+      byName: { code: 'SOURCE_READ_FAILED', reason: 'GIT_FAILED' },
+    });
+  });
+});
+
+describe('without a git program', () => {
+  const withoutGit = <T>(work: () => T): T => withoutGitIn(temp.next(), work);
+
+  it('still answers what is checked out: nothing that Git could tell', () => {
+    const { repo } = repoWithOneCommit();
+    expect(withoutGit(() => checkedOut(repo.dir))).toEqual({ commit: null, why: 'GIT_NOT_INSTALLED' });
+  });
+
+  it('says that Git is needed to read a commit', () => {
+    const { repo, commit } = repoWithOneCommit();
+    const notInstalled = { code: 'SOURCE_READ_FAILED', reason: 'GIT_NOT_INSTALLED' };
+    expect(withoutGit(() => failure(() => commitOf(repo.dir, 'main')))).toEqual(notInstalled);
+    expect(withoutGit(() => failure(() => readCommit(repo.dir, commit, ['app'])))).toEqual(notInstalled);
+    expect(withoutGit(() => failure(() => readCommitFile(repo.dir, commit, 'README.md')))).toEqual(notInstalled);
+  });
+});
+
+describe('the environment Git is started with', () => {
+  it('reads the repository of the folder, whatever repository the environment points at', () => {
+    const { repo, commit } = repoWithOneCommit();
+    const other = createRepo(temp.next());
+    other.write('app/classes/Other.cls', 'class Other {}\n');
+    const otherCommit = other.commit();
+    expect(otherCommit).not.toBe(commit);
+
+    // What Git hands to a hook it runs for the other repository, and more of the kind.
+    const pointingElsewhere = {
+      GIT_DIR: join(other.dir, '.git'),
+      GIT_WORK_TREE: other.dir,
+      GIT_INDEX_FILE: join(other.dir, '.git', 'index'),
+      GIT_OBJECT_DIRECTORY: join(other.dir, '.git', 'objects'),
+      GIT_COMMON_DIR: join(other.dir, '.git'),
+      GIT_PREFIX: 'app/',
+      GIT_NAMESPACE: 'elsewhere',
+    };
+    withEnvironment(pointingElsewhere, () => {
+      expect(commitOf(repo.dir, 'main')).toBe(commit);
+      expect(checkedOut(repo.dir)).toEqual({ commit });
+      expect(readCommit(repo.dir, commit, ['app']).tree.files).toEqual(['app/classes/A.cls', 'app/classes/B.cls']);
+      expect(fileText(readCommitFile(repo.dir, commit, 'README.md'))).toBe('# readme\n');
+      expect(differencesFromCommit(repo.dir, commit, ['app'], () => true, onDisk(repo)).paths).toEqual([]);
+    });
+  });
+
+  it('reads a path as it is written, whatever the environment says about paths', () => {
+    const repo = createRepo(temp.next());
+    repo.write('app/classes/A.cls', 'class A {}\n');
+    // A folder whose name is also a pattern that matches the other folder.
+    repo.write('a[pq]p/classes/Pattern.cls', 'class Pattern {}\n');
+    const commit = repo.commit();
+    for (const name of ['GIT_ICASE_PATHSPECS', 'GIT_GLOB_PATHSPECS', 'GIT_NOGLOB_PATHSPECS']) {
+      withEnvironment({ [name]: '1' }, () => {
+        expect(readCommit(repo.dir, commit, ['a[pq]p']).tree.files, name).toEqual(['a[pq]p/classes/Pattern.cls']);
+        expect(readCommit(repo.dir, commit, ['APP']).missing, name).toEqual(['APP']);
+      });
+    }
+    // A folder name that Git would otherwise read as an instruction is a name.
+    expect(readCommit(repo.dir, commit, [':(glob)**']).missing).toEqual([':(glob)**']);
+    expect(readCommit(repo.dir, commit, ['a[pq]p']).tree.files).toEqual(['a[pq]p/classes/Pattern.cls']);
+  });
+
+  it('removes what belongs to one repository and sets what keeps Git from asking, locking, replacing and fetching', () => {
+    const made = gitEnvironment({
+      PATH: '/usr/bin',
+      HOME: '/home/someone',
+      GIT_DIR: '/elsewhere/.git',
+      git_work_tree: '/elsewhere',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_PARAMETERS: "'core.fsmonitor=evil'",
+      GIT_ALLOW_PROTOCOL: 'file:ssh',
+      GIT_NO_REPLACE_OBJECTS: '0',
+      GIT_SSH_COMMAND: 'kept',
+    });
+    expect(made).toEqual({
+      PATH: '/usr/bin',
+      HOME: '/home/someone',
+      GIT_SSH_COMMAND: 'kept',
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_OPTIONAL_LOCKS: '0',
+      GIT_NO_REPLACE_OBJECTS: '1',
+      GIT_NO_LAZY_FETCH: '1',
+      GIT_LITERAL_PATHSPECS: '1',
+      LC_ALL: 'C',
+    });
+  });
+
+  it('removes every variable Git itself calls local to a repository', () => {
+    const local = spawnSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8', env: testGitEnvironment() });
+    const names = local.stdout.split('\n').filter((name) => name !== '');
+    expect(names).toContain('GIT_DIR');
+    const made = gitEnvironment(Object.fromEntries(names.map((name) => [name, 'x'])));
+    // The one it sets itself is on Git's list too.
+    expect(Object.keys(made).filter((name) => names.includes(name))).toEqual(['GIT_NO_REPLACE_OBJECTS']);
+  });
+
+  it('reads the version of Git', () => {
+    expect(parseGitVersion('git version 2.43.0\n')).toEqual([2, 43]);
+    expect(parseGitVersion('git version 2.47.1.windows.2\n')).toEqual([2, 47]);
+    expect(parseGitVersion('git version 2.39.5 (Apple Git-154)\n')).toEqual([2, 39]);
+    expect(parseGitVersion('something else')).toBeNull();
   });
 });
 
 describe('comparing files on disk with a commit', () => {
   const all = (): boolean => true;
-  const same = { paths: [], onlyLineEndings: false };
+  const same = { paths: [], onlyLineEndings: false, holds: expect.any(Function) as unknown };
 
   it('finds no difference when the folders hold exactly what the commit holds', () => {
     const { repo, commit } = repoWithOneCommit();
@@ -248,7 +466,7 @@ describe('comparing files on disk with a commit', () => {
   ])('sees %s', (_name, change, path) => {
     const { repo, commit } = repoWithOneCommit();
     change(repo);
-    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toEqual({
+    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toMatchObject({
       paths: [path],
       onlyLineEndings: false,
     });
@@ -273,13 +491,13 @@ describe('comparing files on disk with a commit', () => {
     expect(readFileSync(join(repo.dir, 'app', 'classes', 'A.cls'), 'utf8')).toBe('class A {}\r\n');
     // Git itself calls this working tree clean.
     expect(repo.git('-c', 'core.autocrlf=true', 'status', '--porcelain')).toBe('');
-    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toEqual({
+    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toMatchObject({
       paths: ['app/classes/A.cls'],
       onlyLineEndings: true,
     });
 
     repo.write('app/classes/B.cls', 'class B { }\r\n');
-    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toEqual({
+    expect(differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo))).toMatchObject({
       paths: ['app/classes/A.cls', 'app/classes/B.cls'],
       onlyLineEndings: false,
     });
@@ -295,17 +513,21 @@ describe('comparing files on disk with a commit', () => {
         return tree.read(path);
       },
     };
-    expect(differencesFromCommit(repo.dir, commit, ['app'], all, unreadable)).toEqual({
+    expect(differencesFromCommit(repo.dir, commit, ['app'], all, unreadable)).toMatchObject({
       paths: ['app/classes/B.cls'],
       onlyLineEndings: false,
     });
   });
 
   it('works in a repository that names its objects with SHA-256', ({ skip }) => {
-    const dir = temp.next();
-    // Older versions of Git cannot create such a repository.
-    if (spawnSync('git', ['init', '--quiet', '--object-format=sha256', dir]).status !== 0) skip();
-    const repo = createRepo(dir);
+    let repo: TestRepo;
+    try {
+      repo = createRepo(temp.next(), { sha256: true });
+    } catch {
+      // Older versions of Git cannot create such a repository.
+      skip();
+      return;
+    }
     repo.write('app/classes/A.cls', 'class A {}\n');
     const commit = repo.commit();
     expect(commit).toHaveLength(64);
@@ -315,13 +537,25 @@ describe('comparing files on disk with a commit', () => {
     expect(text(readCommit(repo.dir, commit, ['app']).tree.read('app/classes/A.cls'))).toBe('class A {}\n');
   });
 
-  it('leaves the repository as it was', () => {
+  it('tells for a content read later whether it is the content of the commit', () => {
     const { repo, commit } = repoWithOneCommit();
-    const before = repo.git('status', '--porcelain=v2', '--branch');
+    const { holds } = differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo));
+    const bytes = (content: string): Uint8Array => new TextEncoder().encode(content);
+    expect(holds('app/classes/A.cls', bytes('class A {}\n'))).toBe(true);
+    expect(holds('app/classes/A.cls', bytes('class A { }\n'))).toBe(false);
+    expect(holds('app/classes/A.cls', bytes('class B {}\n'))).toBe(false);
+    expect(holds('app/classes/New.cls', bytes('class A {}\n'))).toBe(false);
+  });
+
+  it('leaves the repository as it was, down to every file of it', () => {
+    const { repo, commit } = repoWithOneCommit();
+    repo.write('app/classes/A.cls', 'changed, so that Git would have an index to refresh\n');
+    const before = folderFingerprint(join(repo.dir, '.git'));
     checkedOut(repo.dir);
+    commitOf(repo.dir, 'main');
     differencesFromCommit(repo.dir, commit, ['app'], all, onDisk(repo));
     readCommit(repo.dir, commit, ['app']).tree.read('app/classes/A.cls');
-    expect(repo.git('status', '--porcelain=v2', '--branch')).toBe(before);
-    expect(repo.git('stash', 'list')).toBe('');
+    readCommitFile(repo.dir, commit, 'README.md');
+    expect(folderFingerprint(join(repo.dir, '.git'))).toBe(before);
   });
 });

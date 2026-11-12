@@ -65,9 +65,22 @@ export function insertSnapshot(store: Store, snapshot: NewSnapshot): number {
   ).lastInsertRowid;
 }
 
-/** Sets how a snapshot ended. */
-export function finishSnapshot(store: Store, id: number, status: SnapshotStatus, finishedAt: string): void {
-  store.run('UPDATE snapshot SET status = ?, finished_at = ? WHERE id = ?', status, finishedAt, id);
+/**
+ * Sets how a snapshot ended, and the commit it holds. Whether it holds
+ * exactly one commit is known only once its files are stored.
+ */
+export function finishSnapshot(
+  store: Store,
+  id: number,
+  end: { readonly status: SnapshotStatus; readonly finishedAt: string; readonly gitCommit: string | null },
+): void {
+  store.run(
+    'UPDATE snapshot SET status = ?, finished_at = ?, git_commit = ? WHERE id = ?',
+    end.status,
+    end.finishedAt,
+    end.gitCommit,
+    id,
+  );
 }
 
 /** Adds one file to a snapshot. The path is the one inside the source, with forward slashes. */

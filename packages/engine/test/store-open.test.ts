@@ -552,6 +552,33 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       store.close();
     });
 
+    it('does not wait with a checkpoint for a connection that still reads the log', () => {
+      const path = newFile();
+      const store = openStore({ path, driver, busyTimeoutMs: 5000 });
+      store.write(() =>
+        store.run(`INSERT INTO source (name, kind, created_at) VALUES ('prod', 'org', '2026-01-01T00:00:00.000Z')`),
+      );
+      // Another connection in the middle of reading: it holds on to the log as it is now.
+      const reader = driver.open(path, { readOnly: true, busyTimeoutMs: 0 });
+      reader.exec('BEGIN');
+      reader.prepare('SELECT COUNT(*) AS n FROM source').get();
+      store.write(() =>
+        store.run(`INSERT INTO source (name, kind, created_at) VALUES ('uat', 'org', '2026-01-01T00:00:00.000Z')`),
+      );
+
+      const started = Date.now();
+      expect(store.checkpoint()).toBe(false);
+      expect(Date.now() - started).toBeLessThan(2000);
+      // The store waits for other connections as before: the timeout it was opened with is back.
+      expect(store.get('PRAGMA busy_timeout')).toEqual({ timeout: 5000 });
+
+      reader.exec('COMMIT');
+      reader.close();
+      expect(store.checkpoint()).toBe(true);
+      expect(statSync(`${path}-wal`).size).toBe(0);
+      store.close();
+    });
+
     it('refuses an asynchronous function, and keeps nothing it wrote', () => {
       const store = openStore({ path: newFile(), driver });
       const error = thrownBy(() =>

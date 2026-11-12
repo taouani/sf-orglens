@@ -15,7 +15,7 @@ import { FORCEIGNORE_FILE, ignoreFileCandidates, ignoreRules } from './forceigno
 import { checkedOut, commitOf, differencesFromCommit, readCommit, readCommitFile } from './git.ts';
 import { packageDirectories, PROJECT_FILE } from './project.ts';
 import { resolveComponents, type ResolvedComponent } from './resolve.ts';
-import { filterTree, pathDetails, type SourceIssue, type SourceTree } from './tree.ts';
+import { byCodeUnit, filterTree, pathDetails, systemCode, type SourceIssue, type SourceTree } from './tree.ts';
 
 export interface LocalReading {
   /** The folders that were read, relative to the repository. */
@@ -26,6 +26,13 @@ export interface LocalReading {
    * Git could not tell.
    */
   readonly commit: string | null;
+  /**
+   * For folders read from disk that name a commit: whether a content is
+   * what the commit holds at a path. The files are read once more when they
+   * are stored, and what is stored must pass this for the commit to stand.
+   * `null` in every other case.
+   */
+  readonly holds: ((path: string, content: Uint8Array) => boolean) | null;
   readonly components: readonly ResolvedComponent[];
   /** The files of the components, by their path in the repository. */
   readonly tree: SourceTree;
@@ -34,7 +41,20 @@ export interface LocalReading {
 
 const APEX_FILE = /\.(?:cls|trigger)$/;
 
+/** At most this many components are listed in the details of the issue about components that are defined twice. */
+const COMPONENTS_PER_ISSUE = 50;
+
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
+
+/** Why a snapshot of the folders names no commit, for each answer Git can give. */
+const NO_COMMIT_BECAUSE = {
+  NO_COMMIT: 'the repository has no commit yet.',
+  NOT_A_REPOSITORY: 'the folder is not in a Git repository.',
+  NOT_TRUSTED:
+    'Git refuses the repository, because it belongs to another user. Git accepts it once it is listed in its setting "safe.directory".',
+  GIT_NOT_INSTALLED: 'no "git" program was found.',
+  GIT_FAILED: 'Git could not say which commit is checked out. "git rev-parse HEAD" in the repository says why.',
+} as const;
 
 /** Reads the folders of a Git source. `workspaceRoot` is what the `repo` of the source is relative to. */
 export async function readLocalSource(workspaceRoot: string, source: GitSource): Promise<LocalReading> {
@@ -48,20 +68,45 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
   const issues: SourceIssue[] = [];
   const fromCommit = source.ref === null ? null : commitOf(repoDir, source.ref);
 
-  /** One file of the source that is read before the tree is: the project file, a `.forceignore`. */
-  const readOne = (path: string): Uint8Array | null => {
-    if (fromCommit !== null) return readCommitFile(repoDir, fromCommit, path);
-    const onDisk = join(repoDir, ...path.split('/'));
-    return lstatSync(onDisk, { throwIfNoEntry: false })?.isFile() === true ? readFileSync(onDisk) : null;
+  /**
+   * One file of the source that decides what is read: the project file, a
+   * `.forceignore`. Each is read once, so that what was applied is what is
+   * compared with the commit later. `'link'` is a symbolic link, which is
+   * not followed.
+   */
+  const deciding = new Map<string, Uint8Array | 'link' | null>();
+  const readOne = (path: string): Uint8Array | 'link' | null => {
+    let content = deciding.get(path);
+    if (content !== undefined) return content;
+    if (fromCommit !== null) {
+      content = readCommitFile(repoDir, fromCommit, path);
+    } else {
+      const onDisk = join(repoDir, ...path.split('/'));
+      try {
+        const stat = lstatSync(onDisk, { throwIfNoEntry: false });
+        content = stat?.isSymbolicLink() === true ? 'link' : stat?.isFile() === true ? readFileSync(onDisk) : null;
+      } catch (error) {
+        // The message of the system names the file by its path on this machine, so only its code is kept.
+        const code = systemCode(error);
+        throw new EngineError('SOURCE_READ_FAILED', `${path} could not be read${code === null ? '' : ` (${code})`}.`, {
+          hint: 'The file decides what the source holds, so nothing is read without it.',
+          details: { reason: 'FILE_UNREADABLE', source: source.name, repo: repoDir, path, code },
+        });
+      }
+    }
+    deciding.set(path, content);
+    return content;
   };
 
   let dirs = source.paths;
   if (dirs === null) {
     const project = readOne(PROJECT_FILE);
-    if (project === null) {
+    if (project === null || project === 'link') {
       throw new EngineError(
         'SOURCE_READ_FAILED',
-        `The repository of the source "${source.name}" has no ${PROJECT_FILE}.`,
+        project === null
+          ? `The repository of the source "${source.name}" has no ${PROJECT_FILE}.`
+          : `The ${PROJECT_FILE} of the source "${source.name}" is a symbolic link, and OrgLens follows no links.`,
         {
           hint: 'Name the folders of the source with "paths" in orglens.toml.',
           details: { reason: 'PROJECT_FILE_MISSING', source: source.name, repo: repoDir },
@@ -70,31 +115,47 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
     }
     dirs = packageDirectories(project);
   }
+  const declared = new Set(dirs);
 
   const reading = fromCommit === null ? readFolders(repoDir, dirs) : readCommit(repoDir, fromCommit, dirs);
   const below = (dir: string, path: string): boolean => path.startsWith(`${dir}/`);
-  const { missing } = reading;
-  if (missing.length === dirs.length) {
+  // A folder that is a link, a submodule or a file is not a folder that can be read, whatever is there.
+  const notFolders = [...reading.missing, ...reading.skipped.filter((path) => declared.has(path))].sort(byCodeUnit);
+  const notRead = new Set([...notFolders, ...reading.unreadable.map(({ path }) => path)]);
+  if (dirs.every((dir) => notRead.has(dir))) {
     throw new EngineError(
       'SOURCE_READ_FAILED',
-      `None of the folders of the source "${source.name}" exists${fromCommit === null ? '' : ' in the commit'}: ${dirs.join(', ')}.`,
-      { details: { reason: 'FOLDERS_MISSING', source: source.name, repo: repoDir, folders: [...dirs] } },
+      `None of the folders of the source "${source.name}" could be read${fromCommit === null ? '' : ' from the commit'}: ${dirs.join(', ')}.`,
+      {
+        hint: 'Each must exist and be a folder. Links and submodules are not followed.',
+        details: { reason: 'FOLDERS_MISSING', source: source.name, repo: repoDir, folders: [...dirs] },
+      },
     );
   }
-  if (missing.length > 0) {
+  if (notFolders.length > 0) {
     issues.push({
       severity: 'error',
       code: 'FOLDER_MISSING',
-      message: `${plural(missing.length, 'folder of the source does', 'folders of the source do')} not exist: ${missing.join(', ')}.`,
-      details: pathDetails(missing),
+      message: `${plural(notFolders.length, 'folder of the source does not exist, or is', 'folders of the source do not exist, or are')} a link, a submodule or a file: ${notFolders.join(', ')}.`,
+      details: pathDetails(notFolders),
     });
   }
-  if (reading.skipped.length > 0) {
+  if (reading.unreadable.length > 0) {
+    const paths = reading.unreadable.map(({ path }) => path);
+    const reasons = [...new Set(reading.unreadable.map(({ reason }) => reason ?? 'unknown'))].sort(byCodeUnit);
     issues.push({
-      severity: 'warning',
-      code: 'LINK_SKIPPED',
-      message: `${plural(reading.skipped.length, 'entry is', 'entries are')} not read, because they are symbolic links, submodules or special files.`,
-      details: pathDetails(reading.skipped),
+      severity: 'error',
+      code: 'FOLDER_UNREADABLE',
+      message: `${plural(paths.length, 'folder', 'folders')} could not be listed (${reasons.join(', ')}), and nothing below ${paths.length === 1 ? 'it' : 'them'} is in the snapshot.`,
+      details: { ...pathDetails(paths), reasons },
+    });
+  }
+  if (reading.undecodable.length > 0) {
+    issues.push({
+      severity: 'error',
+      code: 'NAME_NOT_UTF8',
+      message: `${plural(reading.undecodable.length, 'entry has a name that is not UTF-8 and is', 'entries have a name that is not UTF-8 and are')} not in the snapshot.`,
+      details: pathDetails(reading.undecodable),
     });
   }
 
@@ -105,7 +166,7 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
       let rule = rules.get(candidate);
       if (rule === undefined) {
         const content = readOne(candidate);
-        if (content === null) continue;
+        if (content === null || content === 'link') continue;
         rules.set(candidate, (rule = ignoreRules(candidate, content)));
       }
       return { dir, rule };
@@ -113,6 +174,20 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
     return { dir, rule: (): boolean => false };
   });
   const excluded = (path: string): boolean => excludes.some(({ dir, rule }) => below(dir, path) && rule(path));
+
+  const links = [...deciding].filter(([, content]) => content === 'link').map(([path]) => path);
+  const skipped = [...reading.skipped, ...links].sort(byCodeUnit);
+  if (skipped.length > 0) {
+    issues.push({
+      severity: 'warning',
+      code: 'LINK_SKIPPED',
+      message:
+        `${plural(skipped.length, 'entry is', 'entries are')} not read. Symbolic links, submodules, other repositories inside the source and special files are left out.` +
+        (links.length > 0 ? ` That includes ${links.join(', ')}, so its rules are not applied.` : ''),
+      details: pathDetails(skipped),
+    });
+  }
+
   const ignored = reading.tree.files.filter(excluded);
   if (ignored.length > 0) {
     issues.push({
@@ -131,6 +206,23 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
       code: 'RESOLVE_FAILED',
       message: `${problem.at} could not be read as metadata: ${problem.message}`,
       details: { at: problem.at },
+    });
+  }
+  if (resolution.duplicates.length > 0) {
+    const count = resolution.duplicates.length;
+    const first = resolution.duplicates[0];
+    // A warning, not an error: nothing is missing from the snapshot. Repositories that hold several packages
+    // have such components on purpose.
+    issues.push({
+      severity: 'warning',
+      code: 'COMPONENT_DEFINED_TWICE',
+      message: `${plural(count, 'component is', 'components are')} defined in more than one place. The files of every definition are in the snapshot, and which definition counts is not known. The first: ${first?.type ?? ''} ${first?.fullName ?? ''} in ${(first?.paths ?? []).join(' and ')}.`,
+      details: {
+        count,
+        components: resolution.duplicates
+          .slice(0, COMPONENTS_PER_ISSUE)
+          .map(({ type, fullName, paths }) => ({ type, fullName, paths: [...paths] })),
+      },
     });
   }
   const apex = resolution.unresolved.filter((path) => APEX_FILE.test(path));
@@ -153,19 +245,15 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
   }
 
   let commit = fromCommit;
+  let holds: LocalReading['holds'] = null;
   if (fromCommit === null) {
     const head = checkedOut(repoDir);
-    if (head === null) {
+    if (head.commit === null) {
       issues.push({
         severity: 'info',
         code: 'COMMIT_UNKNOWN',
-        message: 'The snapshot names no commit: the folder is not in a Git repository, or Git is not installed.',
-      });
-    } else if (head.commit === null) {
-      issues.push({
-        severity: 'info',
-        code: 'COMMIT_UNKNOWN',
-        message: 'The snapshot names no commit: the repository has no commit yet.',
+        message: `The snapshot names no commit: ${NO_COMMIT_BECAUSE[head.why]}`,
+        details: { reason: head.why },
       });
     } else {
       // The project file and every place a `.forceignore` can be at decide what is read, so they count as well.
@@ -173,10 +261,10 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
         ...(source.paths === null ? [PROJECT_FILE] : []),
         ...dirs.flatMap(ignoreFileCandidates),
       ]);
-      const deciding = new Map<string, Uint8Array>();
+      const applied = new Map<string, Uint8Array>();
       for (const path of candidates) {
         const content = readOne(path);
-        if (content !== null) deciding.set(path, content);
+        if (content !== null && content !== 'link') applied.set(path, content);
       }
       const difference = differencesFromCommit(
         repoDir,
@@ -184,12 +272,13 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
         [...dirs, ...candidates],
         (path) => candidates.has(path) || !excluded(path),
         {
-          files: [...new Set([...considered.files, ...deciding.keys()])],
-          read: (path) => deciding.get(path) ?? considered.read(path),
+          files: [...new Set([...considered.files, ...applied.keys()])],
+          read: (path) => applied.get(path) ?? considered.read(path),
         },
       );
       if (difference.paths.length === 0) {
         commit = head.commit;
+        holds = difference.holds;
       } else {
         const count = difference.paths.length;
         issues.push({
@@ -208,6 +297,7 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
   return {
     dirs,
     commit,
+    holds,
     components: resolution.components,
     tree: filterTree(considered, (path) => owned.has(path)),
     issues,

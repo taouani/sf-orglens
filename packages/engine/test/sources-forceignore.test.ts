@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ForceIgnore } from '@salesforce/source-deploy-retrieve';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,6 +16,13 @@ describe('.forceignore', () => {
   it('starts from the same default rules as the Salesforce library', () => {
     const library = new ForceIgnore() as unknown as { DEFAULT_IGNORE: string[] };
     expect(DEFAULT_RULES).toEqual(library.DEFAULT_IGNORE);
+  });
+
+  it('evaluates the rules with the very copy of the "ignore" package the Salesforce library uses', () => {
+    // The two would drift apart silently if an upgrade of one of them brought another version of the package.
+    const engine = createRequire(new URL('../src/sources/forceignore.ts', import.meta.url));
+    const library = createRequire(engine.resolve('@salesforce/source-deploy-retrieve'));
+    expect(realpathSync(engine.resolve('ignore'))).toBe(realpathSync(library.resolve('ignore')));
   });
 
   it('looks for the file in the folder first, then in every folder above it up to the root of the source', () => {

@@ -1,11 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { chmodSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { GitSource } from '../src/core/config/config.ts';
 import { readLocalSource, type LocalReading } from '../src/sources/local.ts';
-import { createRepo, PROJECT_JSON, projectFiles, type TestRepo } from './helpers/git-repo.ts';
-import { tempDirs } from './helpers/store.ts';
+import { withEnvironment, withoutGit } from './helpers/environment.ts';
+import { createRepo, folderFingerprint, PROJECT_JSON, projectFiles, type TestRepo } from './helpers/git-repo.ts';
+import { canLoseAccess, tempDirs } from './helpers/store.ts';
 
 const temp = tempDirs();
 afterEach(temp.cleanUp);
@@ -46,6 +48,25 @@ async function failure(run: () => Promise<unknown>): Promise<{ code: string; rea
     return { code: code ?? String(error), reason: details?.reason };
   }
   return { code: 'did not throw', reason: undefined };
+}
+
+/** The message of what `run` throws. */
+async function messageOf(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (error) {
+    return (error as Error).message;
+  }
+  return 'did not throw';
+}
+
+/** Adds a symbolic link to the index of a repository, so that the next commit holds one. Needs no right to create links. */
+function stageLink(repo: TestRepo, path: string, target: string): void {
+  // The content of a link is the path it points to. It is stored through a file that is removed again.
+  repo.write('.link-target', target);
+  const object = repo.git('hash-object', '-w', '--no-filters', '.link-target');
+  rmSync(join(repo.dir, '.link-target'));
+  repo.git('update-index', '--add', '--cacheinfo', `120000,${object},${path}`);
 }
 
 const COMPONENTS = ['ApexClass:Greeter', 'CustomField:Parcel__c.Weight__c', 'CustomObject:Parcel__c'];
@@ -170,6 +191,7 @@ describe('reading a Git source', () => {
         severity: 'info',
         code: 'COMMIT_UNKNOWN',
         message: 'The snapshot names no commit: the repository has no commit yet.',
+        details: { reason: 'NO_COMMIT' },
       },
     ]);
   });
@@ -180,7 +202,78 @@ describe('reading a Git source', () => {
     const reading = await readLocalSource(repo.dir, source());
     expect(reading.commit).toBeNull();
     expect(names(reading)).toEqual(COMPONENTS);
-    expect(codes(reading)).toEqual(['info COMMIT_UNKNOWN']);
+    expect(reading.issues).toEqual([
+      {
+        severity: 'info',
+        code: 'COMMIT_UNKNOWN',
+        message: 'The snapshot names no commit: the folder is not in a Git repository.',
+        details: { reason: 'NOT_A_REPOSITORY' },
+      },
+    ]);
+  });
+
+  it('reads the folders without a git program, and names no commit', async () => {
+    const { repo } = projectRepo();
+    const reading = await withoutGit(temp.next(), () => readLocalSource(repo.dir, source()));
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.tree.files).toHaveLength(4);
+    expect(reading.commit).toBeNull();
+    expect(reading.issues).toEqual([
+      {
+        severity: 'info',
+        code: 'COMMIT_UNKNOWN',
+        message: 'The snapshot names no commit: no "git" program was found.',
+        details: { reason: 'GIT_NOT_INSTALLED' },
+      },
+    ]);
+    // A commit cannot be read without Git, and the error says that.
+    expect(
+      await withoutGit(temp.next(), () => failure(() => readLocalSource(repo.dir, source({ ref: 'main' })))),
+    ).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'GIT_NOT_INSTALLED',
+    });
+  });
+
+  it('says why no commit is named when Git refuses a repository of another user', async (context) => {
+    const { repo } = projectRepo();
+    const reading = await withEnvironment({ GIT_TEST_ASSUME_DIFFERENT_OWNER: '1' }, () => {
+      // Git has this switch for its own tests. A setting of the machine that trusts every folder overrules it.
+      const probe = spawnSync('git', ['rev-parse', '--git-dir'], { cwd: repo.dir, encoding: 'utf8' });
+      return probe.stderr.includes('dubious ownership') ? readLocalSource(repo.dir, source()) : null;
+    });
+    if (reading === null) {
+      context.skip();
+      return;
+    }
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.commit).toBeNull();
+    expect(reading.issues).toMatchObject([{ code: 'COMMIT_UNKNOWN', details: { reason: 'NOT_TRUSTED' } }]);
+    expect(reading.issues[0]?.message).toContain('safe.directory');
+    // Nothing of this machine is in what will be stored.
+    expect(JSON.stringify(reading.issues)).not.toContain(repo.dir);
+  });
+
+  it('reads its own repository when the environment points Git at another one', async () => {
+    const { repo, commit } = projectRepo();
+    const other = createRepo(temp.next());
+    other.write('sfdx-project.json', PROJECT_JSON);
+    other.write('force-app/main/default/classes/Other.cls', 'public class Other {}\n');
+    other.write('force-app/main/default/classes/Other.cls-meta.xml', '<ApexClass/>\n');
+    other.commit();
+
+    // This is what a program inherits that Git starts as a hook of the other repository.
+    const inherited = {
+      GIT_DIR: join(other.dir, '.git'),
+      GIT_WORK_TREE: other.dir,
+      GIT_INDEX_FILE: join(other.dir, '.git', 'index'),
+    };
+    for (const ref of [null, 'main']) {
+      const reading = await withEnvironment(inherited, () => readLocalSource(repo.dir, source({ ref })));
+      expect(names(reading), String(ref)).toEqual(COMPONENTS);
+      expect(reading.commit, String(ref)).toBe(commit);
+      expect(reading.issues, String(ref)).toEqual([]);
+    }
   });
 
   it('finds the repository relative to the workspace, and the folders from "paths" before the project file', async () => {
@@ -259,7 +352,45 @@ describe('reading a Git source', () => {
     ]);
     // The two files of the class, and the .forceignore itself: with the file come the default rules, and they
     // exclude every file whose name starts with a dot.
-    expect(reading.issues.map((issue) => [issue.code, issue.details?.['count']])).toEqual([['FILES_IGNORED', 3]]);
+    // The object and its field are in both folders. An object may be, a field is one definition too many.
+    expect(reading.issues.map((issue) => [issue.severity, issue.code, issue.details?.['count']])).toEqual([
+      ['info', 'FILES_IGNORED', 3],
+      ['warning', 'COMPONENT_DEFINED_TWICE', 1],
+    ]);
+    expect(reading.issues[1]?.details?.['components']).toEqual([
+      {
+        type: 'CustomField',
+        fullName: 'Parcel__c.Weight__c',
+        paths: [
+          'one/main/objects/Parcel__c/fields/Weight__c.field-meta.xml',
+          'two/main/objects/Parcel__c/fields/Weight__c.field-meta.xml',
+        ],
+      },
+    ]);
+    expect(reading.issues[1]?.message).toContain('CustomField Parcel__c.Weight__c');
+  });
+
+  it('does not look for a .forceignore above the folder that "repo" names', async () => {
+    const repo = createRepo(temp.next());
+    for (const [path, content] of Object.entries({
+      ...Object.fromEntries(Object.entries(projectFiles()).map(([path, content]) => [`salesforce/${path}`, content])),
+      'salesforce/sfdx-project.json': PROJECT_JSON,
+      // At the top of the repository, above the source. The Salesforce CLI would apply it. OrgLens does not.
+      '.forceignore': '**/classes/**\n',
+    })) {
+      repo.write(path, content);
+    }
+    const commit = repo.commit();
+    for (const ref of [null, 'main']) {
+      const reading = await readLocalSource(repo.dir, source({ repo: 'salesforce', ref }));
+      expect(names(reading)).toEqual(COMPONENTS);
+      expect(reading.commit).toBe(commit);
+      expect(reading.issues).toEqual([]);
+    }
+    // The same file inside the source is applied.
+    repo.write('salesforce/.forceignore', '**/classes/**\n');
+    const inside = await readLocalSource(repo.dir, source({ repo: 'salesforce' }));
+    expect(names(inside)).toEqual(COMPONENTS.filter((name) => !name.startsWith('ApexClass')));
   });
 
   it('reports files that are no metadata, and counts an Apex file without a component as an error', async () => {
@@ -281,6 +412,213 @@ describe('reading a Git source', () => {
         },
       },
       { severity: 'warning', code: 'FILES_NOT_METADATA', details: { count: 1, paths: ['force-app/README.md'] } },
+    ]);
+  });
+
+  it('loses one file, not the package directory, to a -meta.xml file without its class', async () => {
+    const orphan = 'force-app/main/default/classes/Orphan.cls-meta.xml';
+    const { repo, commit } = projectRepo({ [orphan]: '<ApexClass/>\n' });
+    for (const ref of [null, 'main']) {
+      const reading = await readLocalSource(repo.dir, source({ ref }));
+      expect(names(reading)).toEqual(COMPONENTS);
+      expect(reading.tree.files).toHaveLength(4);
+      expect(reading.commit).toBe(commit);
+      // One issue, about the one file. Nothing claims that the classes beside it have no -meta.xml file.
+      expect(reading.issues).toMatchObject([{ severity: 'error', code: 'RESOLVE_FAILED', details: { at: orphan } }]);
+      expect(reading.issues).toHaveLength(1);
+    }
+  });
+
+  it('does not take a link, a submodule or a file for a folder of the source', async () => {
+    const { repo } = projectRepo({ 'plain-file': 'not a folder\n' });
+    stageLink(repo, 'linked', 'force-app');
+    repo.git('update-index', '--add', '--cacheinfo', `160000,${repo.git('rev-parse', 'HEAD')},vendor`);
+    repo.git('commit', '--quiet', '-m', 'A link and a submodule');
+
+    const reading = await readLocalSource(
+      repo.dir,
+      source({ ref: 'main', paths: ['force-app', 'linked', 'vendor', 'plain-file'] }),
+    );
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.issues).toMatchObject([
+      { severity: 'error', code: 'FOLDER_MISSING', details: { count: 3, paths: ['linked', 'plain-file', 'vendor'] } },
+      { severity: 'warning', code: 'LINK_SKIPPED', details: { count: 2, paths: ['linked', 'vendor'] } },
+    ]);
+    // With no folder left to read, there is no snapshot to take: not an empty one that calls itself complete.
+    for (const paths of [['linked'], ['vendor'], ['plain-file'], ['linked', 'vendor', 'plain-file', 'nowhere']]) {
+      expect(await failure(() => readLocalSource(repo.dir, source({ ref: 'main', paths })))).toEqual({
+        code: 'SOURCE_READ_FAILED',
+        reason: 'FOLDERS_MISSING',
+      });
+    }
+    expect(await failure(() => readLocalSource(repo.dir, source({ paths: ['plain-file'] })))).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'FOLDERS_MISSING',
+    });
+  });
+
+  it('does not take a folder on disk that is a link for a folder of the source', async (context) => {
+    const { repo } = projectRepo();
+    try {
+      symlinkSync(join(repo.dir, 'force-app'), join(repo.dir, 'linked'), 'dir');
+    } catch {
+      // Windows lets only some users create links.
+      context.skip();
+    }
+    const reading = await readLocalSource(repo.dir, source({ paths: ['force-app', 'linked'] }));
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.issues).toMatchObject([
+      { severity: 'error', code: 'FOLDER_MISSING', details: { count: 1, paths: ['linked'] } },
+      { severity: 'warning', code: 'LINK_SKIPPED', details: { count: 1, paths: ['linked'] } },
+    ]);
+    expect(reading.issues).toHaveLength(2);
+    expect(await failure(() => readLocalSource(repo.dir, source({ paths: ['linked'] })))).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'FOLDERS_MISSING',
+    });
+  });
+
+  it('does not follow a .forceignore or a project file that is a link, and says so', async () => {
+    const { repo } = projectRepo({ 'shared.ignore': '**/classes/**\n', 'real-project.json': PROJECT_JSON });
+    stageLink(repo, '.forceignore', 'shared.ignore');
+    repo.git('commit', '--quiet', '-m', 'A linked .forceignore');
+    const reading = await readLocalSource(repo.dir, source({ ref: 'main' }));
+    // The rules of the link are not applied: the class is read. The issue names the file, so this is no surprise.
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.issues).toMatchObject([
+      { severity: 'warning', code: 'LINK_SKIPPED', details: { count: 1, paths: ['.forceignore'] } },
+    ]);
+    expect(reading.issues[0]?.message).toContain('.forceignore, so its rules are not applied');
+
+    repo.git('rm', '--quiet', '--cached', 'sfdx-project.json');
+    stageLink(repo, 'sfdx-project.json', 'real-project.json');
+    repo.git('commit', '--quiet', '-m', 'A linked project file');
+    const run = (): Promise<unknown> => readLocalSource(repo.dir, source({ ref: 'main' }));
+    expect(await failure(run)).toEqual({ code: 'SOURCE_READ_FAILED', reason: 'PROJECT_FILE_MISSING' });
+    expect(await messageOf(run)).toContain('is a symbolic link');
+  });
+
+  it('does the same for links on disk', async (context) => {
+    const { repo } = projectRepo({ 'shared.ignore': '**/classes/**\n' });
+    try {
+      symlinkSync(join(repo.dir, 'shared.ignore'), join(repo.dir, '.forceignore'));
+    } catch {
+      context.skip();
+    }
+    const reading = await readLocalSource(repo.dir, source());
+    expect(names(reading)).toEqual(COMPONENTS);
+    expect(reading.issues).toMatchObject([
+      { severity: 'warning', code: 'LINK_SKIPPED', details: { count: 1, paths: ['.forceignore'] } },
+    ]);
+    // The link is not in the commit, and it is treated on disk as it would be in one: no file is there.
+    expect(reading.commit).not.toBeNull();
+  });
+
+  it('reports files whose name is not UTF-8 as missing, and does not let two of them become one', async (context) => {
+    const { repo } = projectRepo();
+    const classes = `${repo.dir}/force-app/main/default/classes/`;
+    try {
+      // Only Linux keeps such names. The two classes differ in one byte that is not UTF-8.
+      for (const name of ['latin\xe9.cls', 'latin\xe8.cls']) {
+        writeFileSync(Buffer.concat([Buffer.from(classes), Buffer.from(name, 'latin1')]), 'public class X {}\n');
+        writeFileSync(
+          Buffer.concat([Buffer.from(classes), Buffer.from(`${name}-meta.xml`, 'latin1')]),
+          '<ApexClass/>\n',
+        );
+      }
+    } catch {
+      context.skip();
+    }
+    const commit = repo.commit('Names that are not text');
+    const fromCommit = await readLocalSource(repo.dir, source({ ref: 'main' }));
+    if (!fromCommit.issues.some((issue) => issue.code === 'NAME_NOT_UTF8')) context.skip();
+
+    expect(names(fromCommit)).toEqual(COMPONENTS);
+    expect(fromCommit.commit).toBe(commit);
+    expect(fromCommit.issues).toMatchObject([{ severity: 'error', code: 'NAME_NOT_UTF8', details: { count: 4 } }]);
+    // From disk the same four are missing, so the folders do not hold the commit.
+    const fromDisk = await readLocalSource(repo.dir, source());
+    expect(names(fromDisk)).toEqual(COMPONENTS);
+    expect(fromDisk.commit).toBeNull();
+    expect(fromDisk.issues).toMatchObject([
+      { severity: 'error', code: 'NAME_NOT_UTF8', details: { count: 4 } },
+      { severity: 'info', code: 'WORKING_TREE_MODIFIED', details: { count: 4 } },
+    ]);
+  });
+
+  it('leaves out a repository inside a package directory, from disk as from a commit', async () => {
+    const { repo } = projectRepo();
+    const inner = createRepo(join(repo.dir, 'force-app', 'vendor'));
+    inner.write('classes/Vendored.cls', 'public class Vendored {}\n');
+    inner.write('classes/Vendored.cls-meta.xml', '<ApexClass/>\n');
+    inner.commit();
+    // Git records a repository inside a repository as a submodule would be: by its commit, without its files.
+    const commit = repo.commit('With a repository inside');
+
+    const fromDisk = await readLocalSource(repo.dir, source());
+    const fromCommit = await readLocalSource(repo.dir, source({ ref: 'main' }));
+    for (const reading of [fromDisk, fromCommit]) {
+      expect(names(reading)).toEqual(COMPONENTS);
+      expect(reading.commit).toBe(commit);
+      expect(reading.issues).toMatchObject([
+        { severity: 'warning', code: 'LINK_SKIPPED', details: { count: 1, paths: ['force-app/vendor'] } },
+      ]);
+    }
+    expect(hashes(fromDisk)).toEqual(hashes(fromCommit));
+  });
+
+  it.runIf(canLoseAccess)('reads the rest when a folder may not be listed, and says which one', async () => {
+    const { repo } = projectRepo();
+    const classes = join(repo.dir, 'force-app', 'main', 'default', 'classes');
+    chmodSync(classes, 0o000);
+    try {
+      const reading = await readLocalSource(repo.dir, source());
+      expect(names(reading)).toEqual(COMPONENTS.filter((name) => !name.startsWith('ApexClass')));
+      expect(reading.commit).toBeNull();
+      expect(reading.issues).toMatchObject([
+        {
+          severity: 'error',
+          code: 'FOLDER_UNREADABLE',
+          details: { count: 1, paths: ['force-app/main/default/classes'], reasons: ['EACCES'] },
+        },
+        { severity: 'info', code: 'WORKING_TREE_MODIFIED' },
+      ]);
+      expect(JSON.stringify(reading.issues)).not.toContain(repo.dir);
+
+      chmodSync(join(repo.dir, 'force-app'), 0o000);
+      expect(await failure(() => readLocalSource(repo.dir, source()))).toEqual({
+        code: 'SOURCE_READ_FAILED',
+        reason: 'FOLDERS_MISSING',
+      });
+    } finally {
+      chmodSync(join(repo.dir, 'force-app'), 0o755);
+      chmodSync(classes, 0o755);
+    }
+  });
+
+  it.runIf(canLoseAccess)(
+    'fails as a source that cannot be read when a file that decides the reading may not be read',
+    async () => {
+      for (const path of ['sfdx-project.json', '.forceignore']) {
+        const { repo } = projectRepo({ '.forceignore': '**/classes/**\n' });
+        chmodSync(join(repo.dir, path), 0o000);
+        const run = (): Promise<unknown> => readLocalSource(repo.dir, source());
+        expect(await failure(run), path).toEqual({ code: 'SOURCE_READ_FAILED', reason: 'FILE_UNREADABLE' });
+        // The message names the file inside the source, not by its path on this machine.
+        expect(await messageOf(run), path).toBe(`${path} could not be read (EACCES).`);
+      }
+    },
+  );
+
+  it('names no commit when a file that is in no component is on disk only, and names the file', async () => {
+    const { repo } = projectRepo();
+    repo.write('force-app/main/default/notes.txt', 'not in the commit, and not metadata\n');
+    const reading = await readLocalSource(repo.dir, source());
+    // The files that are stored are those of the commit. The folders as a whole are not: that is the claim.
+    expect(reading.commit).toBeNull();
+    expect(reading.issues).toMatchObject([
+      { code: 'FILES_NOT_METADATA', details: { paths: ['force-app/main/default/notes.txt'] } },
+      { code: 'WORKING_TREE_MODIFIED', details: { paths: ['force-app/main/default/notes.txt'] } },
     ]);
   });
 
@@ -328,9 +666,12 @@ describe('reading a Git source', () => {
   it('changes nothing in the repository', async () => {
     const { repo } = projectRepo();
     repo.write('force-app/main/default/classes/Greeter.cls', 'changed\n');
-    const before = repo.git('status', '--porcelain=v2', '--branch');
+    const before = folderFingerprint(join(repo.dir, '.git'));
+    const status = repo.git('status', '--porcelain=v2', '--branch');
     await readLocalSource(repo.dir, source());
     await readLocalSource(repo.dir, source({ ref: 'main' }));
-    expect(repo.git('status', '--porcelain=v2', '--branch')).toBe(before);
+    // Not one file of the repository is new, gone or different: no index refreshed, no object added, no lock left.
+    expect(folderFingerprint(join(repo.dir, '.git'))).toBe(before);
+    expect(repo.git('status', '--porcelain=v2', '--branch')).toBe(status);
   });
 });

@@ -72,8 +72,8 @@ export interface Store {
   write<T>(work: () => T): T;
   /**
    * Moves the write-ahead log into the database file. Call it after a large
-   * write has been committed. Returns false if a reader in another process
-   * kept a part of the log in use, or if the store is read-only.
+   * write has been committed. It does not wait: it returns false if another
+   * connection kept a part of the log in use, or if the store is read-only.
    */
   checkpoint(): boolean;
   close(): void;
@@ -298,7 +298,18 @@ function openOnce(options: OpenStoreOptions, busyTimeoutMs: number): Store {
     checkpoint: () => {
       if (readOnly) return false;
       if (writing) throw new EngineError('INTERNAL', 'A checkpoint was asked for inside a write transaction.');
-      return guarded(() => prepared('PRAGMA wal_checkpoint(TRUNCATE)').get())?.['busy'] === 0;
+      // A checkpoint is housekeeping and waits for nobody: a connection that reads holds it up, and the next
+      // checkpoint or the last connection to close does the work then.
+      return (
+        guarded(() => {
+          database.exec('PRAGMA busy_timeout = 0');
+          try {
+            return prepared('PRAGMA wal_checkpoint(TRUNCATE)').get();
+          } finally {
+            database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
+          }
+        })?.['busy'] === 0
+      );
     },
     close: () => {
       statements.clear();

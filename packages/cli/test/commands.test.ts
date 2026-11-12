@@ -1,9 +1,9 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EngineError, ERROR_CODES, type ErrorCode } from '@sf-orglens/engine';
 import { createWriter, EXIT, printable, table } from '../src/output.ts';
+import { commitAll as commitAllIn, withoutGit } from './helpers/git.ts';
 import { matchesSchema, orglens, orglensJson, outputSchema, tempDirs } from './helpers/run.ts';
 
 const dirs = tempDirs();
@@ -375,29 +375,9 @@ function projectWorkspace(extra: Readonly<Record<string, string>> = {}): string 
 }
 
 /** Makes the folder a Git repository with one commit of everything in it, and returns the id of the commit. */
-function commitAll(dir: string): string {
-  const git = (...args: string[]): string => {
-    const settings = [
-      'user.name=OrgLens Test',
-      'user.email=test@example.invalid',
-      'commit.gpgsign=false',
-      'core.autocrlf=false',
-    ];
-    const result = spawnSync('git', [...settings.flatMap((one) => ['-c', one]), ...args], {
-      cwd: dir,
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr || String(result.error)}`);
-    return result.stdout.trim();
-  };
-  git('init', '--quiet');
-  git('add', '--all');
-  git('commit', '--quiet', '-m', 'A commit');
-  return git('rev-parse', 'HEAD');
-}
+const commitAll = (dir: string): string => commitAllIn(dir, dirs.next());
 
-const NO_COMMIT =
-  'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository, or Git is not installed.';
+const NO_COMMIT = 'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository.';
 
 describe('orglens snapshot and coverage', () => {
   it('takes a snapshot of a folder, says what it holds, and shows it again', async () => {
@@ -444,6 +424,24 @@ describe('orglens snapshot and coverage', () => {
     expect((await orglensJson(dir, ['coverage', 'work'])).data).toMatchObject({ snapshot: { commit }, issues: [] });
   });
 
+  it('takes a snapshot of a folder on a machine without Git, and says that a commit needs it', async () => {
+    const dir = projectWorkspace({
+      'orglens.toml': 'schema_version = 1\n[sources.work]\nkind = "git"\n[sources.main]\nkind = "git"\nref = "main"\n',
+    });
+    commitAll(dir);
+    const taken = await withoutGit(dirs.next(), () => orglens(dir, ['snapshot', 'work']));
+    expect(taken).toMatchObject({ code: 0, stderr: '' });
+    expect(taken.stdout).toContain('Snapshot #1 of "work" is complete: 1 component in 2 files');
+    expect(taken.stdout).toContain('COMMIT_UNKNOWN  The snapshot names no commit: no "git" program was found.');
+
+    const byName = await withoutGit(dirs.next(), () => orglensJson(dir, ['snapshot', 'main']));
+    expect(byName).toMatchObject({
+      code: 1,
+      error: { code: 'SOURCE_READ_FAILED', details: { reason: 'GIT_NOT_INSTALLED' } },
+    });
+    expect(byName.error?.message).toBe('Git is needed to read "main", and no "git" program was found.');
+  });
+
   it('writes the report as JSON that matches the schema, the same from both commands', async () => {
     const dir = projectWorkspace();
     const taken = await orglensJson(dir, ['snapshot', 'work']);
@@ -462,7 +460,14 @@ describe('orglens snapshot and coverage', () => {
         bytes: PROJECT_BYTES,
       },
       types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, note: null }],
-      issues: [{ severity: 'info', code: 'COMMIT_UNKNOWN', message: expect.any(String) as string, details: {} }],
+      issues: [
+        {
+          severity: 'info',
+          code: 'COMMIT_UNKNOWN',
+          message: expect.any(String) as string,
+          details: { reason: 'NOT_A_REPOSITORY' },
+        },
+      ],
     });
     const shown = await orglensJson(dir, ['coverage', 'work', '--snapshot', '1']);
     expect(shown).toMatchObject({ code: 0, command: 'coverage', ok: true });
@@ -482,7 +487,7 @@ describe('orglens snapshot and coverage', () => {
       'ApexClass  1       1          0',
       '',
       'SEVERITY  CODE                WHAT',
-      'error     FOLDER_MISSING      1 folder of the source does not exist: gone.',
+      'error     FOLDER_MISSING      1 folder of the source does not exist, or is a link, a submodule or a file: gone.',
       'warning   FILES_NOT_METADATA  1 file is not part of a metadata component and not in the snapshot.',
       NO_COMMIT.replace('COMMIT_UNKNOWN  ', 'COMMIT_UNKNOWN      '),
       '',

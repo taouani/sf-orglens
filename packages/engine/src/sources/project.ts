@@ -51,6 +51,11 @@ export function packageDirectories(content: Uint8Array): string[] {
         `The package directory ${JSON.stringify(path)} is not a folder below the folder of the file. OrgLens does not read the folder of the file itself.`,
       );
     }
+    // On Windows and macOS two such folders are one, and every file of it would be read under two names.
+    const twin = dirs.find((other) => other !== dir && other.toLowerCase() === dir.toLowerCase());
+    if (twin !== undefined) {
+      throw invalid(`The package directories "${twin}" and "${dir}" differ only in upper and lower case.`);
+    }
     if (!dirs.includes(dir)) dirs.push(dir);
   }
   // A folder inside another one that is declared is read with that one. Read twice, its files would be there twice.

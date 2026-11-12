@@ -1,10 +1,10 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFolders } from '../src/sources/folder.ts';
 import { normaliseDir, packageDirectories } from '../src/sources/project.ts';
-import { byCodeUnit, filterTree, pathDetails } from '../src/sources/tree.ts';
-import { codeOf, tempDirs } from './helpers/store.ts';
+import { byCodeUnit, filterTree, pathDetails, systemCode } from '../src/sources/tree.ts';
+import { canLoseAccess, codeOf, tempDirs } from './helpers/store.ts';
 
 const temp = tempDirs();
 afterEach(temp.cleanUp);
@@ -70,9 +70,52 @@ describe('reading folders', () => {
     expect(reading.skipped).toEqual(['app/file-link.cls', 'app/folder-link', 'whole']);
     expect(reading.missing).toEqual([]);
   });
+
+  it('does not read a folder that is a Git repository of its own, and reports it', () => {
+    const root = temp.next();
+    write(root, 'app/a.cls');
+    // A submodule that is checked out has a file of this name, a repository that was cloned there a folder.
+    write(root, 'app/vendor/.git', 'gitdir: ../../.git/modules/vendor\n');
+    write(root, 'app/vendor/classes/V.cls');
+    write(root, 'app/cloned/.git/HEAD', 'ref: refs/heads/main\n');
+    write(root, 'app/cloned/classes/C.cls');
+    write(root, 'whole/.git/HEAD');
+    write(root, 'whole/w.cls');
+    const reading = readFolders(root, ['app', 'whole']);
+    expect(reading.tree.files).toEqual(['app/a.cls']);
+    expect(reading.skipped).toEqual(['app/cloned', 'app/vendor', 'whole']);
+  });
+
+  it.runIf(canLoseAccess)('reports a folder it may not list, and reads the others', () => {
+    const root = temp.next();
+    write(root, 'app/a.cls');
+    write(root, 'app/closed/b.cls');
+    write(root, 'shut/c.cls');
+    chmodSync(join(root, 'app', 'closed'), 0o000);
+    chmodSync(join(root, 'shut'), 0o000);
+    try {
+      const reading = readFolders(root, ['app', 'shut']);
+      expect(reading.tree.files).toEqual(['app/a.cls']);
+      expect(reading.unreadable).toEqual([
+        { path: 'app/closed', reason: 'EACCES' },
+        { path: 'shut', reason: 'EACCES' },
+      ]);
+      expect(reading.missing).toEqual([]);
+    } finally {
+      chmodSync(join(root, 'app', 'closed'), 0o755);
+      chmodSync(join(root, 'shut'), 0o755);
+    }
+  });
 });
 
 describe('trees', () => {
+  it('takes the code of a system error, and nothing that is not one', () => {
+    expect(systemCode(Object.assign(new Error('x'), { code: 'EACCES' }))).toBe('EACCES');
+    expect(systemCode(Object.assign(new Error('x'), { code: "EACCES: open '/home/me/file'" }))).toBeNull();
+    expect(systemCode(new Error('x'))).toBeNull();
+    expect(systemCode(null)).toBeNull();
+  });
+
   it('orders names the same way everywhere', () => {
     expect(['b', 'B', 'a', 'é', 'Z', '_', '1'].sort(byCodeUnit)).toEqual(['1', 'B', 'Z', '_', 'a', 'b', 'é']);
   });
@@ -124,6 +167,14 @@ describe('sfdx-project.json', () => {
         ],
       }),
     ).toEqual(['force-app', 'force-app-extra', 'packages/core']);
+  });
+
+  it('refuses package directories that differ only in upper and lower case', () => {
+    // On Windows and macOS they are one folder, and every file of it would be read under two names.
+    expect(codeOf(() => dirs({ packageDirectories: [{ path: 'force-app' }, { path: 'Force-App' }] }))).toBe(
+      'SOURCE_READ_FAILED',
+    );
+    expect(dirs({ packageDirectories: [{ path: 'force-app' }, { path: 'force-app/' }] })).toEqual(['force-app']);
   });
 
   it.each([

@@ -1,13 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { takeSnapshot } from '../src/api/snapshot.ts';
 import { initWorkspace, openWorkspace, type Workspace } from '../src/api/workspace.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore } from '../src/store/open.ts';
-import { createRepo, PROJECT_JSON, projectFiles, type TestRepo } from './helpers/git-repo.ts';
+import { FIXTURES_DIR } from './helpers/answer-key.ts';
+import { withoutGit } from './helpers/environment.ts';
+import { createRepo, folderFingerprint, PROJECT_JSON, projectFiles, type TestRepo } from './helpers/git-repo.ts';
 import { canLoseAccess, DRIVERS, tempDirs } from './helpers/store.ts';
 
 const temp = tempDirs();
@@ -177,20 +180,93 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
   });
 
   it('stores a reading with something missing as partial, and says what is missing', async () => {
-    const { repo, workspace } = await setUp();
-    // The body of the class is gone. Its description is still there.
+    const { repo, workspace, database } = await setUp();
+    // The body of the class is gone. Its description is still there, and belongs to nothing.
     rmSync(join(repo.dir, ...CLASS.split('/')));
     const report = await workspace.snapshot('work');
-    expect(report.snapshot.status).toBe('partial');
+    expect(report.snapshot).toMatchObject({ status: 'partial', files: 2, commit: null });
+    // What is missing is the class, and only the class: the object and its field are in the snapshot.
+    expect(report.types).toEqual([
+      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, note: null },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, note: null },
+    ]);
+    expect(Object.keys(stored(database, 1))).toEqual(FILES.filter((path) => !path.includes('/classes/')));
     const errors = report.issues.filter((issue) => issue.severity === 'error');
-    expect(errors.length).toBeGreaterThan(0);
-    for (const issue of errors) {
-      expect(issue.code).toMatch(/^[A-Z][A-Z_]+$/);
+    expect(errors).toMatchObject([{ code: 'RESOLVE_FAILED', details: { at: `${CLASS}-meta.xml` } }]);
+    expect(report.issues.map((issue) => issue.code)).toEqual(['RESOLVE_FAILED', 'WORKING_TREE_MODIFIED']);
+    for (const issue of report.issues) {
       expect(issue.message).not.toBe('');
       // No path of this machine is stored: the place is given inside the source.
       expect(JSON.stringify(issue)).not.toContain(repo.dir);
     }
     expect((await workspace.coverage('work')).snapshot.status).toBe('partial');
+  });
+
+  it('names no commit when a file changes between the comparison with the commit and the moment it is stored', async () => {
+    const { repo, commit, database } = await setUp();
+    const declared = {
+      kind: 'git',
+      name: 'work',
+      description: null,
+      repo: '.',
+      ref: null,
+      paths: null,
+      tracks: null,
+    } as const;
+    const open = (change: () => void) => () => {
+      // The source has been read and compared with the commit by now. The file changes before it is stored.
+      change();
+      mkdirSync(join(repo.dir, '.orglens'), { recursive: true });
+      return openStore({ path: database, driver });
+    };
+
+    const untouched = await takeSnapshot(
+      repo.dir,
+      declared,
+      open(() => undefined),
+    );
+    expect(untouched.snapshot).toMatchObject({ status: 'complete', commit });
+    expect(untouched.issues).toEqual([]);
+
+    const changed = await takeSnapshot(
+      repo.dir,
+      declared,
+      open(() => {
+        repo.write(CLASS, 'public class Greeter { /* not the commit */ }\n');
+      }),
+    );
+    // What is on disk now is stored, and the snapshot does not claim to be the commit.
+    expect(changed.snapshot).toMatchObject({ status: 'complete', commit: null, files: 4 });
+    expect(changed.issues).toEqual([
+      {
+        severity: 'info',
+        code: 'CHANGED_WHILE_READ',
+        message: 'The snapshot names no commit: 1 file was changed or removed while the snapshot was taken.',
+        details: { count: 1, paths: [CLASS] },
+      },
+    ]);
+    expect(stored(database, changed.snapshot.id)).toEqual(onDisk(repo));
+    expect(stored(database, changed.snapshot.id)).not.toEqual(stored(database, untouched.snapshot.id));
+
+    repo.git('checkout', '--quiet', '--', CLASS);
+    const removed = await takeSnapshot(
+      repo.dir,
+      declared,
+      open(() => {
+        rmSync(join(repo.dir, ...CLASS.split('/')));
+      }),
+    );
+    expect(removed.snapshot).toMatchObject({ status: 'partial', commit: null, files: 3 });
+    expect(removed.issues.map((issue) => issue.code)).toEqual(['FILE_UNREADABLE', 'CHANGED_WHILE_READ']);
+  });
+
+  it('takes a snapshot of the folders without a git program, and names no commit', async () => {
+    const { workspace } = await setUp();
+    const report = await withoutGit(temp.next(), () => workspace.snapshot('work'));
+    expect(report.snapshot).toMatchObject({ status: 'complete', files: 4, commit: null });
+    expect(report.issues).toMatchObject([{ code: 'COMMIT_UNKNOWN', details: { reason: 'GIT_NOT_INSTALLED' } }]);
+    const failed = await withoutGit(temp.next(), () => failure(() => workspace.snapshot('main')));
+    expect(failed).toMatchObject({ code: 'SOURCE_READ_FAILED', details: { reason: 'GIT_NOT_INSTALLED' } });
   });
 
   it.runIf(canLoseAccess)(
@@ -301,14 +377,38 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
 
   it('never changes the source: not the working tree, not the repository', async () => {
     const { repo, workspace } = await setUp({ '.gitignore': '.orglens/\norglens.toml\n' });
-    const head = repo.git('rev-parse', 'HEAD');
-    const objects = repo.git('count-objects', '-v');
+    const before = folderFingerprint(join(repo.dir, '.git'));
     await workspace.snapshot('work');
     await workspace.snapshot('main');
+    // Not one file of the repository is new, gone or different, and the working tree is as it was.
+    expect(folderFingerprint(join(repo.dir, '.git'))).toBe(before);
     expect(repo.git('status', '--porcelain')).toBe('');
-    expect(repo.git('rev-parse', 'HEAD')).toBe(head);
-    expect(repo.git('count-objects', '-v')).toBe(objects);
-    expect(repo.git('stash', 'list')).toBe('');
+  });
+
+  it('finds a component for every Apex file of the fixture project, and stores it complete', async () => {
+    // This is the completeness test of the plan: an Apex file of the fixture that no component claims fails here.
+    const root = temp.next();
+    cpSync(join(FIXTURES_DIR, 'billing-sfdx'), join(root, 'project'), { recursive: true });
+    writeFileSync(
+      join(root, 'orglens.toml'),
+      'schema_version = 1\n[sources.fixture]\nkind = "git"\nrepo = "project"\n',
+    );
+    const workspace = await openWorkspace({ root, env });
+    const report = await workspace.snapshot('fixture');
+    expect(report.snapshot.status).toBe('complete');
+    expect(report.issues.filter((issue) => issue.severity !== 'info')).toEqual([]);
+
+    const apex = (dir: string): string[] =>
+      readdirSync(join(FIXTURES_DIR, 'billing-sfdx', dir), { recursive: true })
+        .map(String)
+        .filter((file) => /\.(?:cls|trigger)$/.test(file))
+        .map((file) => `${dir}/${file.replaceAll('\\', '/')}`);
+    const expected = apex('force-app').sort();
+    expect(expected.length).toBeGreaterThan(10);
+    const database = join(root, '.orglens', 'orglens.db');
+    expect(Object.keys(stored(database, 1)).filter((path) => /\.(?:cls|trigger)$/.test(path))).toEqual(expected);
+    const classes = report.types.filter((one) => one.type === 'ApexClass' || one.type === 'ApexTrigger');
+    expect(classes.reduce((sum, one) => sum + one.retrieved, 0)).toBe(expected.length);
   });
 });
 
@@ -336,6 +436,13 @@ describe('a snapshot of a repository folder', () => {
       expect(`${run.stdout}${run.stderr}`).toBe('complete 4\n');
       expect(run.status).toBe(0);
     }
+    expect(readdirSync(home)).toEqual([]);
+    // Also when the environment asks the Salesforce libraries for their log file.
+    const asked = spawnSync(process.execPath, [helper, repo.dir, 'work'], {
+      env: { ...environment, SF_DISABLE_LOG_FILE: 'false' },
+      encoding: 'utf8',
+    });
+    expect(`${asked.stdout}${asked.stderr}`).toBe('complete 4\n');
     expect(readdirSync(home)).toEqual([]);
   }, 60_000);
 });

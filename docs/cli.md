@@ -54,28 +54,49 @@ folders and files are read. A source of the kind `org` or `sandbox` cannot be re
 - Every snapshot gets a number that is never used again. Earlier snapshots stay as they are. A file that did not
   change between two snapshots is stored once.
 - A snapshot is `complete` or `partial`. It is partial when something the source should hold could not be read: a
-  folder that is declared and does not exist, a file that cannot be opened, a component whose files could not be
-  matched. Each of these is an issue of the severity `error`. The snapshot is stored either way, `ok` is `true`,
-  and the exit code is `5`, so that a script does not take an incomplete picture for a complete one.
+  folder that is declared and does not exist or is not a folder, a folder that cannot be listed, a file that
+  cannot be opened, a file or folder with a name that is not UTF-8, a `-meta.xml` file the Salesforce library
+  cannot place, an Apex file that belongs to no component. Each of these is an issue of the severity `error`,
+  and it costs the snapshot that one file or folder and nothing beside it. The snapshot is stored either way,
+  `ok` is `true`, and the exit code is `5`, so that a script does not take an incomplete picture for a complete
+  one.
 - Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing: symbolic links
   that were not followed, files that `.forceignore` excludes, files that belong to no metadata component, a
-  working tree that differs from its commit. They do not make a snapshot partial.
-- `snapshot.commit` is the full id of a commit only if the snapshot holds exactly what that commit holds, byte
-  for byte. A source with a `ref` always does. Folders read from disk do if every file that was read is the same
-  as in the commit that is checked out. Otherwise `commit` is `null`, and the issue `WORKING_TREE_MODIFIED` lists
-  the files that differ. On a machine where Git converts line endings on checkout, that is every text file, and
-  the issue says so (`details.onlyLineEndings`).
-- A source that cannot be read at all (no repository, no `sfdx-project.json`, an unknown branch) ends with
-  `SOURCE_READ_FAILED` and stores nothing. `details.reason` says which it was.
+  component that is defined in two places, a working tree that differs from its commit. They do not make a
+  snapshot partial.
+- `snapshot.commit` is the full id of the commit the snapshot was read from, or `null`.
+  - For a source with a `ref` it is the commit that name stood for when the snapshot was taken. Everything in the
+    snapshot comes from that commit. If the snapshot is partial, it does not hold all of it.
+  - For folders read from disk it is the commit that is checked out, and it is given only if the folders hold
+    exactly that commit. Compared byte for byte are: every file below the folders that `.forceignore` does not
+    exclude, whether it ends up in the snapshot or not, the project file, and every place a `.forceignore` can be
+    at. The files are compared a second time when they are stored.
+  - Otherwise `commit` is `null`, and an issue of the severity `info` says why. `WORKING_TREE_MODIFIED` lists the
+    files that differ. On a machine where Git converts line endings on checkout, that is every text file, and
+    the issue says so (`details.onlyLineEndings`). `CHANGED_WHILE_READ` lists files that changed while the
+    snapshot was taken. `COMMIT_UNKNOWN` means Git gave no commit, and `details.reason` says why:
+    `NOT_A_REPOSITORY`, `NO_COMMIT`, `NOT_TRUSTED` (Git refuses a repository of another user),
+    `GIT_NOT_INSTALLED` or `GIT_FAILED`.
+- A source that cannot be read at all ends with `SOURCE_READ_FAILED` and stores nothing: no repository, no
+  `sfdx-project.json`, an unknown branch, no folder that can be read, a project file or a `.forceignore` that may
+  not be opened. `details.reason` says which it was.
 
 `orglens coverage <source>` shows the latest snapshot of a source, or the one given with `--snapshot <number>`.
 It ends with `0` also when that snapshot is partial: showing the report is what it was asked to do. The column
 `ANALYSED` is `0` for every type until the analysers arrive.
 
-The issue codes of today: `FOLDER_MISSING`, `FILE_UNREADABLE`, `RESOLVE_FAILED` and `APEX_FILE_UNRESOLVED`
-(error), `LINK_SKIPPED` and `FILES_NOT_METADATA` (warning), `FILES_IGNORED`, `COMMIT_UNKNOWN` and
-`WORKING_TREE_MODIFIED` (info). An issue about several files carries their number in `details.count` and at most
-the first 50 paths in `details.paths`.
+The issue codes of today:
+
+| Severity  | Codes                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`                                                     |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    |
+
+An issue about several files carries their number in `details.count` and at most the first 50 paths in
+`details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
+with its `type`, its `fullName` and the `paths` of its definitions. Only components without parts are looked at:
+a class or a field in two package directories is reported, an object whose file is in two of them is not.
 
 ### Not available yet
 
@@ -250,8 +271,9 @@ For `CONFIG_INVALID`, `details.diagnostics` lists every problem: objects with `f
 `message` and `text`.
 
 For `SOURCE_READ_FAILED`, `details.reason` is one of `REPO_NOT_FOUND`, `PROJECT_FILE_MISSING`,
-`PROJECT_FILE_INVALID`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`, `GIT_NOT_INSTALLED`, `GIT_FAILED`
-and `KIND_NOT_READABLE`.
+`PROJECT_FILE_INVALID`, `FILE_UNREADABLE`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`,
+`GIT_NOT_INSTALLED`, `GIT_TOO_OLD`, `GIT_FAILED` and `KIND_NOT_READABLE`. With `GIT_FAILED`, the message carries
+what Git said, which can include paths of this machine.
 
 ## Start-up time
 

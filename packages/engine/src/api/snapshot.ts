@@ -10,6 +10,7 @@ import type { SourceDeclaration } from '../core/config/config.ts';
 import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { readLocalSource } from '../sources/local.ts';
+import { byCodeUnit, pathDetails, systemCode } from '../sources/tree.ts';
 import type { Store } from '../store/open.ts';
 import {
   addCoverage,
@@ -108,7 +109,10 @@ export function noSnapshot(source: string, id?: number): EngineError {
       ? `There is no snapshot of the source "${source}" yet.`
       : `The source "${source}" has no snapshot ${String(id)}.`,
     {
-      hint: id === undefined ? `Take one with: orglens snapshot ${source}` : 'See the snapshots with: orglens status',
+      hint:
+        id === undefined
+          ? `Take one with: orglens snapshot ${source}`
+          : 'The latest snapshot of each source is shown by: orglens status',
       details: { source, snapshot: id ?? null },
     },
   );
@@ -158,7 +162,7 @@ export async function takeSnapshot(
         startedAt,
         finishedAt: null,
         engineVersion: engineVersion(),
-        gitCommit: reading.commit,
+        gitCommit: null,
       });
 
       const issues: StoredIssue[] = reading.issues.map((issue) => ({
@@ -167,15 +171,18 @@ export async function takeSnapshot(
         details: issue.details ?? null,
       }));
       const unreadable = new Set<string>();
+      const changed: string[] = [];
       for (const path of reading.tree.files) {
         try {
-          addSnapshotFile(store, snapshotId, path, reading.tree.read(path));
+          const content = reading.tree.read(path);
+          // The file was compared with the commit earlier and is read again here. What is stored decides.
+          if (reading.holds?.(path, content) === false) changed.push(path);
+          addSnapshotFile(store, snapshotId, path, content);
         } catch (error) {
           // A file that was listed and cannot be read: it was deleted in the meantime, or may not be read.
           if (error instanceof EngineError) throw error;
           unreadable.add(path);
-          const code = (error as { code?: unknown } | null)?.code;
-          const reason = typeof code === 'string' && /^[A-Z0-9_]+$/.test(code) ? code : null;
+          const reason = systemCode(error);
           issues.push({
             severity: 'error',
             code: 'FILE_UNREADABLE',
@@ -185,6 +192,19 @@ export async function takeSnapshot(
             details: { path, reason },
           });
         }
+      }
+
+      // Folders that named a commit hold it only if every file that was stored is still the file of the commit.
+      const moved = reading.holds !== null && (changed.length > 0 || unreadable.size > 0);
+      if (moved) {
+        const count = changed.length + unreadable.size;
+        issues.push({
+          severity: 'info',
+          code: 'CHANGED_WHILE_READ',
+          message: `The snapshot names no commit: ${String(count)} ${count === 1 ? 'file was' : 'files were'} changed or removed while the snapshot was taken.`,
+          componentKey: null,
+          details: pathDetails([...changed, ...unreadable].sort(byCodeUnit)),
+        });
       }
 
       const types = new Map<string, { listed: number; retrieved: number }>();
@@ -200,7 +220,11 @@ export async function takeSnapshot(
       for (const issue of issues) addIssue(store, snapshotId, issue);
 
       const complete = !issues.some((issue) => issue.severity === 'error');
-      finishSnapshot(store, snapshotId, complete ? 'complete' : 'partial', now());
+      finishSnapshot(store, snapshotId, {
+        status: complete ? 'complete' : 'partial',
+        finishedAt: now(),
+        gitCommit: moved ? null : reading.commit,
+      });
       return snapshotId;
     });
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.

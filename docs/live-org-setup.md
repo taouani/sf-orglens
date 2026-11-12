@@ -4,7 +4,7 @@ OrgLens is tested against one real Salesforce org: a free Developer Edition org 
 project. This page is the checklist for the maintainer who owns that org. It takes about 20 minutes and is done once.
 
 At the end, four secrets exist in a protected environment of the GitHub repository. Only the workflow `live-org.yml`
-reads them, and only when a maintainer starts it by hand. Nobody else, and no tool, ever holds the key.
+reads them, when a maintainer starts it by hand. Nobody else, and no tool, ever holds the key.
 
 These steps follow the Salesforce documentation as of November 2026. They were written without access to an org, so
 a label on the screen may differ. If one does, note it and correct this page.
@@ -36,6 +36,9 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out orglens-ci.key
 openssl req -new -x509 -sha256 -days 730 -key orglens-ci.key -out orglens-ci.crt -subj "/CN=orglens-ci"
 ```
 
+In Git Bash on Windows, write `-subj "//CN=orglens-ci"` with two slashes. With one, Git Bash takes the value for
+a path and rewrites it, and `openssl` fails.
+
 `orglens-ci.key` is the private key. It is the secret. `orglens-ci.crt` is the certificate. It is not secret, and it
 is the file Salesforce gets. The certificate is valid for two years. After that, repeat steps 2 to 4 with a new pair.
 
@@ -55,7 +58,9 @@ is the file Salesforce gets. The certificate is valid for two years. After that,
 11. In **Plugin Policies**, set **Permitted Users** to `Admin approved users are pre-authorized` and confirm with
     **OK**.
 12. In **App Policies**, select the profile **System Administrator**. This is the profile of the user you signed up
-    with.
+    with. It lets every user with that profile log in through the app. In an org that has one user and is used for
+    nothing else, that is the one user. The narrower way is to create a permission set, assign it to that user
+    only, and select it here under **Select Permission Sets** instead of the profile.
 13. Click **Save**.
 14. Open the **Settings** tab, then **OAuth Settings**, and click **Consumer Key and Secret**. Salesforce sends a
     verification code by email. Enter it, click **Verify**, and copy the **Consumer Key**. The consumer secret is not
@@ -65,14 +70,17 @@ A new app can take up to ten minutes before Salesforce accepts logins with it.
 
 ## 4. Store the four secrets in GitHub
 
-The secrets live in an environment, not in the repository as a whole, so that only one workflow can read them.
+The secrets live in an environment, not in the repository as a whole. An environment does not tie its secrets to
+one workflow file: any workflow that runs from an allowed branch and names the environment gets them. What
+protects them is the rule in step 2, which allows only `main`, together with the review every change to `main`
+goes through, and your approval of each run if you choose step 3.
 
 1. In the repository on GitHub, open **Settings**, then **Environments**, and click **New environment**. Name it
    `live-org`.
 2. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the branch `main`. A
-   workflow that runs from any other branch then cannot read the secrets.
+   workflow that runs from any other branch, or from a pull request, then cannot read the secrets.
 3. Optional, and recommended: tick **Required reviewers** and add yourself. Every run of the workflow then waits for
-   your approval.
+   your approval. A run on a schedule would wait for it too.
 4. Under **Environment secrets**, add these four:
 
 | Name                         | Value                                                                                                                    |
@@ -99,13 +107,20 @@ sf org login jwt --client-id <consumer key> --jwt-key-file orglens-ci.key --user
 
 ## Keeping the org alive
 
-Salesforce may deactivate a Developer Edition org that nobody logs in to for a long time. The workflow has a weekly
-run that logs in and does nothing else. If the org is lost anyway, sign up for a new one, repeat this page, and run
+Salesforce may deactivate a Developer Edition org that nobody logs in to for a long time. Until the workflow
+exists, log in to the org yourself every few months. The plan of Phase 0 gives the workflow a weekly run that logs
+in and does nothing else. That would be a run with the secrets that nobody started, so whether the workflow gets
+it is the maintainer's decision when the workflow is built. Whether a login through the API counts for Salesforce
+as a login was not verified either. If the org is lost anyway, sign up for a new one, repeat this page, and run
 the workflow: it deploys the fixture again.
 
 ## If the key may have leaked
 
-1. In the org, open the external client app and upload a new certificate, or delete the app. The old key stops
-   working at once.
-2. Replace the secret `ORGLENS_TEST_ORG_JWT_KEY`.
-3. Change the password of the user.
+1. In the org, open the external client app and upload a new certificate, or delete the app. No new login is
+   possible with the old key from then on.
+2. End the sessions that exist already. A token that was issued before stays valid until its session ends. In
+   Setup, open **Session Management**, select the sessions of the user and click **Remove**. In the external
+   client app, under the OAuth usage of the app, revoke its tokens for the user.
+3. Replace the secret `ORGLENS_TEST_ORG_JWT_KEY`.
+
+Changing the password of the user does not help: a login with a key does not use the password.

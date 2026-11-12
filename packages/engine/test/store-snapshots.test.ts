@@ -71,8 +71,15 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
       files: 3,
       bytes: 21,
     });
-    finishSnapshot(store, id, 'complete', T1);
-    expect(readSnapshot(store, 'repo')).toMatchObject({ status: 'complete', finishedAt: T1 });
+    // How it ended is set at the end, and so is the commit: whether it holds one is known only then.
+    finishSnapshot(store, id, { status: 'complete', finishedAt: T1, gitCommit: 'c'.repeat(40) });
+    expect(readSnapshot(store, 'repo')).toMatchObject({
+      status: 'complete',
+      finishedAt: T1,
+      gitCommit: 'c'.repeat(40),
+    });
+    finishSnapshot(store, id, { status: 'partial', finishedAt: T1, gitCommit: null });
+    expect(readSnapshot(store, 'repo')).toMatchObject({ status: 'partial', gitCommit: null });
     store.close();
   });
 

@@ -34,15 +34,38 @@ export interface Resolution {
   readonly components: readonly ResolvedComponent[];
   /** Files of the tree that belong to no component, sorted. */
   readonly unresolved: readonly string[];
-  /** What the library could not make sense of, with the folder or the component it was working on. */
+  /**
+   * What the library could not make sense of, with the file, the folder or
+   * the component it was working on. A failure is narrowed down to the
+   * smallest folder or file that causes it, and everything beside that is
+   * resolved.
+   */
   readonly problems: readonly { readonly at: string; readonly message: string }[];
+  /**
+   * Components that are defined in more than one place, such as a class of
+   * one name in two package directories, each with the files that define
+   * it. Only components without parts are looked at. One that is made of
+   * parts, such as an object with its fields or the file of the custom
+   * labels, may lie in several folders, and whether two files of the object
+   * itself contradict each other is not checked.
+   */
+  readonly duplicates: readonly {
+    readonly type: string;
+    readonly fullName: string;
+    readonly paths: readonly string[];
+  }[];
 }
 
 let library: Promise<typeof Library> | undefined;
 
-/** Loads the Salesforce library once. It is told beforehand not to write a log file into the home folder. */
+/**
+ * Loads the Salesforce library once. It is told beforehand not to write a
+ * log file into the home folder. The library reads that from the
+ * environment and nowhere else, so the variable is set for this process and
+ * stays set, whatever it was before.
+ */
 function loadLibrary(): Promise<typeof Library> {
-  process.env['SF_DISABLE_LOG_FILE'] ??= 'true';
+  process.env['SF_DISABLE_LOG_FILE'] = 'true';
   library ??= import('@salesforce/source-deploy-retrieve');
   return library;
 }
@@ -124,11 +147,23 @@ export async function resolveComponents(tree: SourceTree, dirs: readonly string[
   const problems: { at: string; message: string }[] = [];
   const owner = new Map<string, string>();
   const found = new Map<string, { type: string; fullName: string; files: string[] }>();
+  /** Where each component that is not made of parts is defined: the paths of its own file. */
+  const definedAt = new Map<string, Set<string>>();
+
+  const idOf = (component: SourceComponent): string => `${component.type.name}\n${component.fullName}`;
+  const entryOf = (component: SourceComponent): { type: string; fullName: string; files: string[] } => {
+    const id = idOf(component);
+    let entry = found.get(id);
+    if (entry === undefined) {
+      found.set(id, (entry = { type: component.type.name, fullName: component.fullName, files: [] }));
+    }
+    return entry;
+  };
 
   const visit = (component: SourceComponent, parent?: SourceComponent): void => {
     const type = component.type.name;
     const fullName = component.fullName;
-    const id = `${type}\n${fullName}`;
+    const id = idOf(component);
     let children: SourceComponent[] = [];
     try {
       children = component.getChildren();
@@ -145,32 +180,72 @@ export async function resolveComponents(tree: SourceTree, dirs: readonly string[
       problems.push({ at: `${type} ${fullName}`, message: messageOf(error) });
     }
     // A component whose parts lie in several folders is found once per folder. Its files are put together.
-    const entry = found.get(id) ?? { type, fullName, files: [] };
-    found.set(id, entry);
+    const entry = entryOf(component);
+    // A component without parts has one definition. A second one at another path is a second component of the
+    // same name. A component with parts is left alone: Salesforce puts an object together from several folders,
+    // and projects in use have the file of the object itself in more than one of them.
+    const definition = component.xml === undefined ? null : inTree(component.xml);
+    if (definition !== null && component.type.children === undefined) {
+      let paths = definedAt.get(id);
+      if (paths === undefined) definedAt.set(id, (paths = new Set()));
+      paths.add(definition);
+    }
     for (const fsPath of [component.xml, ...content]) {
       // A component that is an element of the file of its parent names that file as its own. It stays the parent's.
-      const path = fsPath === undefined || fsPath === parent?.xml ? null : inTree(fsPath);
+      const path = fsPath === undefined || fsPath === (parent ?? component.parent)?.xml ? null : inTree(fsPath);
       if (path === null || !files.has(path) || owner.has(path)) continue;
       owner.set(path, id);
       entry.files.push(path);
     }
   };
 
-  for (const dir of dirs) {
-    if (!folders.has(dir)) continue;
+  /** Files and folders the library failed on. They are named in a problem and not counted as unresolved again. */
+  const failed: string[] = [];
+
+  /**
+   * Resolves what is at a path. The library gives up on a whole folder for
+   * one file it cannot place, so a folder that fails is resolved entry by
+   * entry, down to the file or the folder that is the cause.
+   */
+  const resolveAt = (path: string): void => {
+    const names = folders.get(path);
+    // Walking a folder, the library reads a component from its -meta.xml file and from nothing else. Asked for
+    // another file by name, it would make a component of an Apex file that has no -meta.xml file.
+    if (names === undefined && !path.endsWith('-meta.xml')) return;
+    let components: SourceComponent[];
     try {
-      for (const component of resolver.getComponentsFromPath(join(VIRTUAL_ROOT, ...dir.split('/')))) visit(component);
+      components = resolver.getComponentsFromPath(join(VIRTUAL_ROOT, ...path.split('/')));
     } catch (error) {
-      problems.push({ at: dir, message: messageOf(error) });
+      const before = problems.length;
+      for (const name of [...(names ?? [])].sort(byCodeUnit)) resolveAt(`${path}/${name}`);
+      if (problems.length === before) {
+        // A file, or a folder in which nothing fails on its own: this is what the library cannot read.
+        problems.push({ at: path, message: messageOf(error) });
+        failed.push(path);
+      }
+      return;
     }
+    for (const component of components) visit(component);
+  };
+
+  for (const dir of dirs) {
+    if (folders.has(dir)) resolveAt(dir);
   }
 
   const below = (file: string): boolean => dirs.some((dir) => file.startsWith(`${dir}/`));
+  const inFailed = (file: string): boolean => failed.some((at) => file === at || file.startsWith(`${at}/`));
   return {
     components: [...found.values()]
       .map((component) => ({ ...component, files: component.files.sort(byCodeUnit) }))
       .sort((a, b) => byCodeUnit(a.type, b.type) || byCodeUnit(a.fullName, b.fullName)),
-    unresolved: tree.files.filter((file) => below(file) && !owner.has(file)),
+    unresolved: tree.files.filter((file) => below(file) && !owner.has(file) && !inFailed(file)),
     problems,
+    duplicates: [...definedAt]
+      .filter(([, paths]) => paths.size > 1)
+      .map(([id, paths]) => {
+        const [type = '', fullName = ''] = id.split('\n');
+        return { type, fullName, paths: [...paths].sort(byCodeUnit) };
+      })
+      .sort((a, b) => byCodeUnit(a.type, b.type) || byCodeUnit(a.fullName, b.fullName)),
   };
 }

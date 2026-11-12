@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /**
@@ -8,6 +10,11 @@ import { dirname, join } from 'node:path';
  * The settings that differ between machines are fixed here: who commits,
  * the name of the first branch, and no conversion of line endings, so that
  * what a test writes is what a commit holds.
+ *
+ * Git is started without any `GIT_` variable of the process that runs the
+ * tests, and without the settings of the machine and of the user. Tests are
+ * also run by hooks, and Git hands a hook the place of the repository it
+ * runs for. With that inherited, a test would commit into that repository.
  */
 export interface TestRepo {
   readonly dir: string;
@@ -27,16 +34,36 @@ const SETTINGS = [
   ['init.defaultBranch', 'main'],
 ].flatMap(([name, value]) => ['-c', `${String(name)}=${String(value)}`]);
 
-export function createRepo(dir: string): TestRepo {
+let emptyConfig: string | undefined;
+
+/** The environment of the Git of a test: nothing of Git inherited, no settings of the machine or the user. */
+export function testGitEnvironment(): NodeJS.ProcessEnv {
+  if (emptyConfig === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), 'orglens-gitconfig-'));
+    emptyConfig = join(dir, 'config');
+    writeFileSync(emptyConfig, '');
+    process.on('exit', () => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+  }
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (!name.toUpperCase().startsWith('GIT_')) environment[name] = value;
+  }
+  return { ...environment, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: '1' };
+}
+
+/** Makes a repository in a folder. `sha256` asks for one that names its objects with SHA-256, which an older Git refuses. */
+export function createRepo(dir: string, options: { sha256?: boolean } = {}): TestRepo {
   mkdirSync(dir, { recursive: true });
   const git = (...args: string[]): string => {
-    const result = spawnSync('git', [...SETTINGS, ...args], { cwd: dir, encoding: 'utf8' });
+    const result = spawnSync('git', [...SETTINGS, ...args], { cwd: dir, encoding: 'utf8', env: testGitEnvironment() });
     if (result.status !== 0) {
       throw new Error(`git ${args.join(' ')} failed: ${result.stderr || String(result.error)}`);
     }
     return result.stdout.trim();
   };
-  git('init', '--quiet');
+  git('init', '--quiet', ...(options.sha256 === true ? ['--object-format=sha256'] : []));
   return {
     dir,
     git,
@@ -51,6 +78,26 @@ export function createRepo(dir: string): TestRepo {
       return git('rev-parse', 'HEAD');
     },
   };
+}
+
+/**
+ * Every file below a folder with a hash of its content, as one text. Taken
+ * of the `.git` folder before and after, it shows any change to a
+ * repository: an object that was fetched, an index that was rewritten, a
+ * lock that was left behind.
+ */
+export function folderFingerprint(dir: string): string {
+  const lines: string[] = [];
+  const walk = (folder: string, prefix: string): void => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const path = join(folder, entry.name);
+      const name = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) walk(path, `${name}/`);
+      else lines.push(`${name} ${createHash('sha256').update(readFileSync(path)).digest('hex')}`);
+    }
+  };
+  walk(dir, '');
+  return lines.sort().join('\n');
 }
 
 /** The files of a minimal Salesforce project: one class, one object with one field. Paths are below `dir`. */

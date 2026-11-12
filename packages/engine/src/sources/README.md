@@ -7,7 +7,7 @@ May import from: `core`.
 | File             | What it holds                                                                            |
 | ---------------- | ---------------------------------------------------------------------------------------- |
 | `tree.ts`        | `SourceTree`: the one shape every source is read into, and the issues of a reading       |
-| `folder.ts`      | Folders of the disk as a tree. Symbolic links are not followed                           |
+| `folder.ts`      | Folders of the disk as a tree. Links and repositories inside are not followed            |
 | `git.ts`         | A commit as a tree, read from the object database by the `git` program, and what differs |
 | `project.ts`     | The package directories of `sfdx-project.json`                                           |
 | `forceignore.ts` | The rules of `.forceignore`, evaluated on a tree                                         |

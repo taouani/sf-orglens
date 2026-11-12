@@ -1,7 +1,10 @@
 /**
  * Reads the public codebases of `fixtures/corpora.toml` and compares the
- * components found with what the resolver of Salesforce finds when it reads
- * the same folders from disk itself.
+ * components and their files with what the resolver of Salesforce finds
+ * when it reads the same folders from disk itself.
+ *
+ * The same comparison on the fixture project is in
+ * `sources-resolve.test.ts`, and that one runs everywhere.
  *
  * The codebases are not part of this repository. A codebase that was not
  * downloaded (`pnpm run corpora:fetch`) is skipped, so the test needs no
@@ -9,10 +12,10 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MetadataResolver, type SourceComponent } from '@salesforce/source-deploy-retrieve';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { readLocalSource } from '../src/sources/local.ts';
+import { libraryFiles, libraryReading } from './helpers/library-reading.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const corpora = join(root, '.corpora');
@@ -24,7 +27,7 @@ describe('the public codebases', () => {
   for (const { name, paths } of manifest.corpus) {
     // A codebase that is not there shows in the report of the run as skipped, not as passed.
     it.skipIf(!existsSync(join(corpora, name)))(
-      `reads ${name} to the components the resolver of Salesforce finds`,
+      `reads ${name} to the components and the files the resolver of Salesforce finds`,
       async () => {
         const reading = await readLocalSource(corpora, {
           kind: 'git',
@@ -36,19 +39,13 @@ describe('the public codebases', () => {
           tracks: null,
         });
         const ours = new Set(reading.components.map((component) => `${component.type}:${component.fullName}`));
-
-        const theirs = new Set<string>();
-        const visit = (component: SourceComponent): void => {
-          theirs.add(`${component.type.name}:${component.fullName}`);
-          component.getChildren().forEach(visit);
-        };
-        for (const dir of reading.dirs) {
-          new MetadataResolver().getComponentsFromPath(join(corpora, name, dir)).forEach(visit);
-        }
+        const theirs = libraryReading(join(corpora, name), reading.dirs);
 
         expect(theirs.size).toBeGreaterThan(100);
         expect([...ours].filter((one) => !theirs.has(one))).toEqual([]);
-        expect([...theirs].filter((one) => !ours.has(one))).toEqual([]);
+        expect([...theirs.keys()].filter((one) => !ours.has(one))).toEqual([]);
+        // The files that are stored are the files the library names, no more and no fewer.
+        expect(reading.tree.files).toEqual(libraryFiles(theirs));
         // Every file that is stored belongs to a component, and nothing failed to resolve.
         expect(reading.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
       },

@@ -24,8 +24,26 @@ export interface TreeReading {
   readonly tree: SourceTree;
   /** The folders that were asked for and do not exist, sorted. */
   readonly missing: readonly string[];
-  /** Entries that are not read, sorted: symbolic links, submodules, special files. */
+  /**
+   * Entries that are not read, sorted: symbolic links, submodules and
+   * other repositories inside the source, special files. A folder that was
+   * asked for can be among them.
+   */
   readonly skipped: readonly string[];
+  /** Folders that could not be listed, sorted, each with the code of the system error if it has one. */
+  readonly unreadable: readonly { readonly path: string; readonly reason: string | null }[];
+  /**
+   * Entries whose name is not UTF-8, sorted. They are not read: a path is
+   * text everywhere after this. Each is shown with a replacement character
+   * where the name is not UTF-8.
+   */
+  readonly undecodable: readonly string[];
+}
+
+/** The code of a system error, such as `EACCES`, or `null` if what was thrown has none. */
+export function systemCode(thrown: unknown): string | null {
+  const code = (thrown as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^[A-Z0-9_]+$/.test(code) ? code : null;
 }
 
 /** Something that went wrong or is uncertain while a source was read. Nothing is dropped without one. */

@@ -101,8 +101,10 @@ Run `pnpm run check` before every push.
 - `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v0.yaml` belong together
   (`fixtures/README.md`). The key is written by hand and is never changed to make an analyser pass. Change a fixture
   file and its entries in the key in the same pull request. `fixture-key.test.ts` says which entries moved.
-- Tests need no network and no org. A test that needs a Git repository makes one with `test/helpers/git-repo.ts`.
-  `git` is the only program a test starts besides Node.js.
+- Tests need no network and no org. A test that needs a Git repository makes one with the Git helper of its
+  package (`packages/engine/test/helpers/git-repo.ts`, `packages/cli/test/helpers/git.ts`). The helpers start Git
+  without the `GIT_` variables and the Git settings of the machine, so that a test run from a hook cannot write
+  into the repository of the developer. `git` is the only program a test starts besides Node.js.
 - Every store test runs against both SQLite drivers (`test/helpers/store.ts`). The store uses only what the driver
   port in `store/driver.ts` offers.
 - Dependencies are pinned to exact versions. A new runtime dependency needs a reason in the pull request, and a
