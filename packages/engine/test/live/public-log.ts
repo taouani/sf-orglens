@@ -16,7 +16,10 @@
  * No message of Salesforce, of a Salesforce library or of OrgLens is
  * printed either, with one exception: a tool may list forms a message of
  * Salesforce is known to have, and print a message whose whole text has
- * one of them (`deploy-fixture.ts`, `read-org.ts`). On top of the forms,
+ * one of them (`deploy-fixture.ts`, `read-org.ts`). Of a message in
+ * another form, a tool may show the words of a short list of everyday
+ * words and nothing else, and of a name of the org how it is built
+ * (`everydayWords` and `nameForm` in `read-org.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */

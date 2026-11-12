@@ -123,7 +123,7 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
  * Words of Apex, of formulas and of the platform that a problem may name although the fixture project does not
  * hold them, in lower case.
  */
-const PLATFORM_WORDS: ReadonlySet<string> = new Set(
+export const PLATFORM_WORDS: ReadonlySet<string> = new Set(
   (
     'void null true false this super string integer decimal double long boolean date datetime time id blob object ' +
     'sobject list set map schema system database test exception type text number percent currency picklist checkbox ' +
@@ -202,7 +202,7 @@ const span = (ms: number): string => {
  * The code of a failed request, if it has one that may be printed: of a fault of the Metadata API, which carries
  * its code with a prefix (`sf:INSUFFICIENT_ACCESS`), of an answer that is not one of the API, or of the network.
  */
-function codeOf(log: PublicLog, error: unknown): string | null {
+export function codeOf(log: PublicLog, error: unknown): string | null {
   const said = (error as { errorCode?: unknown } | null)?.errorCode;
   return log.code(typeof said === 'string' ? said.replace(/^.*:/, '') : undefined) ?? log.code(networkCode(error));
 }

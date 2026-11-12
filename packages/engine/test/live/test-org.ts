@@ -84,10 +84,38 @@ export interface FixtureComponent {
   readonly fullName: string;
 }
 
+/** One reference of the answer key of the fixture project. */
+interface KeyedReference {
+  readonly to: string;
+  readonly via: string;
+  readonly kind: string;
+  /** `confirmed` where the key says nothing. */
+  readonly tier?: string;
+  readonly stretch?: boolean;
+}
+
+/** The answer key of the fixture project, as far as the tools read it (`fixtures/README.md` has the format). */
+export interface AnswerKey {
+  readonly components?: Readonly<Record<string, readonly string[]>>;
+  /** Keys of targets that Salesforce provides. */
+  readonly standard?: readonly string[];
+  /** Keys of fields that nothing in the project refers to. */
+  readonly unreferenced?: readonly string[];
+  readonly references?: readonly {
+    readonly file: string;
+    readonly members: readonly { readonly from: string; readonly refs: readonly KeyedReference[] }[];
+  }[];
+}
+
+export function answerKey(): AnswerKey {
+  return parse(readFileSync(ANSWER_KEY, 'utf8')) as AnswerKey;
+}
+
 /** The components of the fixture project, as its answer key lists them. */
 export function fixtureComponents(): FixtureComponent[] {
-  const key = parse(readFileSync(ANSWER_KEY, 'utf8')) as { components?: Record<string, string[]> };
-  return Object.entries(key.components ?? {}).flatMap(([type, names]) => names.map((fullName) => ({ type, fullName })));
+  return Object.entries(answerKey().components ?? {}).flatMap(([type, names]) =>
+    names.map((fullName) => ({ type, fullName })),
+  );
 }
 
 /** The files of the fixture project below its package directory, as a snapshot names them: `classes/Foo.cls`. */

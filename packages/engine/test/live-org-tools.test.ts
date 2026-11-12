@@ -16,7 +16,8 @@ import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
 import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
 import { publicLog, type PublicLog } from './live/public-log.ts';
-import { fileDifference, readOrg, remarkForm } from './live/read-org.ts';
+import { probeOrg } from './live/probe-org.ts';
+import { everydayWords, fileDifference, missingLines, nameForm, readOrg, remarkForm } from './live/read-org.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -263,8 +264,110 @@ describe('a remark of Salesforce about a retrieve, as it is printed', () => {
       "Entity of type '(not shown)' named '(a name)' cannot be found",
     );
     expect(remarkForm(log, 'Something else about SecretPlan')).toBe(
-      'a remark of a form that is not known, and not shown',
+      'a remark of a form that is not known. Its everyday words: …',
     );
+  });
+});
+
+describe('a text that is not ours, in everyday words', () => {
+  it('keeps the words of the list, and leaves out names, numbers and what stands in quotes', () => {
+    expect(
+      everydayWords('Load of metadata from db failed for metadata of type:Report and file name:SECRET_PLANS/Takeover.'),
+    ).toBe('Load of metadata from db failed for metadata of … and file …');
+    expect(everydayWords("The folder 'All Files' cannot be found in Secret_Plan__c 42 times.")).toBe(
+      'The folder … cannot be found in …',
+    );
+    // A name that is made of everyday words is not taken apart at its underscores.
+    expect(everydayWords('Standard_Value_Set is unknown (not found).')).toBe('… is unknown (not found).');
+    expect(everydayWords('')).toBe('');
+  });
+
+  it('keeps the names it is given, such as the names of metadata types', () => {
+    expect(everydayWords('Entity type CustomObject is unknown', new Set(['CustomObject']))).toBe(
+      'Entity type CustomObject is unknown',
+    );
+    expect(everydayWords('Entity type CustomObject is unknown')).toBe('Entity type … is unknown');
+  });
+});
+
+describe('the form of a name', () => {
+  it('says how a name is built and nothing of the name', () => {
+    expect(nameForm('SecretPlan')).toBe('a');
+    expect(nameForm('Account.Secret_Plan')).toBe('a.a');
+    expect(nameForm('unfiled$public/Takeover_2026')).toBe('unfiled$public/a');
+    expect(nameForm('SECRET_PLANS/Take%2Eover')).toBe('a/a%a');
+    expect(nameForm('Übernahme-Plan (alt)')).toBe('?a-a (a)');
+    expect(nameForm('a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z')).toBe(
+      'a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…',
+    );
+  });
+});
+
+describe('what is said about components that are missing', () => {
+  const { log } = collected();
+  const item = (type: string, fullName: string, listed: boolean, retrieved: boolean, more: object = {}) => ({
+    type,
+    fullName,
+    listed,
+    retrieved,
+    namespacePrefix: null,
+    manageableState: null,
+    ...more,
+  });
+
+  it('says nothing when everything the org listed came back and nothing else', () => {
+    expect(missingLines(log, [item('ApexClass', 'SecretPlan', true, true)])).toEqual([]);
+  });
+
+  it('says how many are missing, how their names are built, and whether what they belong to came back', () => {
+    const lines = missingLines(log, [
+      item('CustomObject', 'Account', true, true),
+      item('CustomObject', 'Secret_Plan__c', true, false),
+      item('ListView', 'Account.Secret_View', true, false),
+      item('ListView', 'Secret_Plan__c.All', true, false),
+      item('ListView', 'Takeover.All', true, false),
+      item('ListView', 'Account.Kept', true, true),
+      item('ReportFolder', 'SECRET_PLANS', true, true),
+      item('Report', 'SECRET_PLANS/Takeover', true, false),
+      item('Report', 'unfiled$public/Takeover', true, false),
+      item('Report', 'hidden_notes/Takeover', true, false, { namespacePrefix: 'sp', manageableState: 'installed' }),
+    ]);
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomObject: 1 of 2 did not come back. Forms of the names: a (1).',
+      '- ListView: 3 of 4 did not come back. Forms of the names: a.a (3). What stands before the dot, as CustomObject: came back (1), did not come back (1), is not in the list (1).',
+      '- Report: 3 of 3 did not come back. Of a package: 1. State: none (2), installed (1). Forms of the names: a/a (2), unfiled$public/a (1). The folder before the slash, as ReportFolder: came back (1), is not in the list (1), is the folder of unfiled items (1).',
+    ]);
+    for (const name of ['Secret', 'SECRET', 'Takeover', 'hidden', 'Kept']) expect(lines.join('\n')).not.toContain(name);
+  });
+
+  it('says when a component came back under a name that is nearly the one the org listed', () => {
+    const lines = missingLines(log, [
+      item('RecordType', 'Account.Secret_Plan', true, false),
+      item('RecordType', 'account.secret_plan', false, true),
+      item('Report', 'SECRET_PLANS/Take%2Eover', true, false),
+      item('Report', 'SECRET_PLANS/Take.over', false, true),
+      item('LightningComponentBundle', 'sp__takeover', true, false),
+      item('LightningComponentBundle', 'takeover', false, true),
+      item('CustomField', 'Account.Secret_Plan__c', true, false),
+      item('CustomField', 'Person.Secret_Plan__c', false, true),
+      item('CustomField', 'Account.Other__c', true, false),
+    ]);
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomField: 2 of 2 did not come back. Forms of the names: a.a (2). What stands before the dot, as CustomObject: is not in the list (2). Came back, not listed, under a name that differs in what stands before its last dot or slash (1).',
+      '- LightningComponentBundle: 1 of 1 did not come back. Forms of the names: a (1). Came back, not listed, under a name that differs only in the prefix of a package (1).',
+      '- RecordType: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Came back, not listed, under a name that differs only in upper and lower case (1).',
+      '- Report: 1 of 1 did not come back. Forms of the names: a/a%a (1). The folder before the slash, as ReportFolder: is not in the list (1). Came back, not listed, under a name that differs only in how a character is encoded (1).',
+      '',
+      'Components the org handed out and had not listed, by type:',
+      '- CustomField: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+      '- LightningComponentBundle: 1. Forms of the names: a (1).',
+      '- RecordType: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+      '- Report: 1. Forms of the names: a/a.a (1). The folder before the slash, as ReportFolder: is not in the list (1).',
+    ]);
   });
 });
 
@@ -530,9 +633,12 @@ describe('reading the test org', () => {
     expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
     expect(output).toContain('- ApexClass InvoiceSelector: listed, not retrieved');
     expect(output).toContain('- classes/InvoiceSelector.cls: not in the snapshot');
+    expect(output).toContain(
+      '- ApexClass: 1 of 12 did not come back. State: unmanaged (1). Forms of the names: a (1).',
+    );
     expect(output.split('\n').slice(-2)).toEqual([
       '',
-      '::error::The snapshot of the test org is not complete. The observations above say what is missing.',
+      '::error::The fixture project is not whole in the snapshot of the test org. The lines above say what is missing.',
     ]);
     expectNoSecret(output);
   });
@@ -623,8 +729,20 @@ describe('reading an org that holds more than the fixture project', () => {
     const { log, text } = collected();
     await readOrg(log, { env: environment() });
     const output = text();
-    expect(log.failed).toBe(true);
+    // The fixture project is whole in the snapshot. What the org holds beside it and does not hand out is a warning.
+    expect(log.failed).toBe(false);
+    expect(output.split('\n').at(-1)).toBe(
+      '::warning::The snapshot of the test org is not complete, and the fixture project is whole in it. The observations above say what is missing.',
+    );
     expect(output).toContain('The snapshot of the test org is partial.');
+    // What is missing is described without a name.
+    expect(output).toContain(
+      '- ApexClass: 1 of 13 did not come back. State: unmanaged (1). Forms of the names: a (1).',
+    );
+    expect(output).toContain('- CustomObject: 1. Forms of the names: a (1).');
+    expect(output).toContain(
+      '- 1 time: in (a folder that is not shown), 1 level deep, a name that ends in .txt. In everyday words: The file … to no metadata type that is known.',
+    );
     // Each of these observations holds a name of the org in the database. The code is shown, the name is not.
     expect(output).toContain(
       '- error LISTING_FAILED: 1 observation. Types: Report. Codes of Salesforce: INSUFFICIENT_ACCESS (1)',
@@ -666,6 +784,346 @@ describe('reading an org that holds more than the fixture project', () => {
   });
 });
 
+describe('asking the org what Salesforce knows about references', () => {
+  type Row = Record<string, unknown>;
+  /** An id of 18 characters, as the Tooling API gives it. */
+  const id = (prefix: string, n: number): string => `${prefix}${String(n).padStart(12, '0')}AAA`;
+  const INVOICE = id('01I', 1);
+  const LINE = id('01I', 2);
+  const PLAN = id('01I', 9);
+  const FOREIGN = ['SecretPlan', 'Secret_Plan', 'Takeover', 'hidden'];
+
+  const dependency = (
+    type: string,
+    from: string,
+    name: string,
+    refType: string,
+    to: string,
+    refName: string,
+    namespace: string | null = null,
+  ): Row => ({
+    MetadataComponentId: from,
+    MetadataComponentName: name,
+    MetadataComponentNamespace: namespace,
+    MetadataComponentType: type,
+    RefMetadataComponentId: to,
+    RefMetadataComponentName: refName,
+    RefMetadataComponentNamespace: null,
+    RefMetadataComponentType: refType,
+  });
+
+  /** What the compiler holds for a class: one variable, one method, and two classes it refers to. */
+  const symbolTable = (name: string): Row => ({
+    id: name,
+    key: name,
+    name,
+    namespace: null,
+    constructors: [],
+    interfaces: [],
+    innerClasses: [],
+    properties: [],
+    tableDeclaration: { name, type: name, modifiers: ['public'], location: { line: 1, column: 14 }, references: [] },
+    variables: [
+      {
+        name: 'invoice',
+        type: 'Invoice__c',
+        location: { line: 8, column: 20 },
+        references: [
+          { line: 9, column: 9 },
+          { line: 10, column: 9 },
+        ],
+      },
+    ],
+    methods: [
+      {
+        name: 'openInvoices',
+        returnType: 'List<Invoice__c>',
+        parameters: [{ name: 'accountId', type: 'Id' }],
+        modifiers: ['public', 'static'],
+        location: { line: 7, column: 36 },
+        references: [{ line: 30, column: 16 }],
+      },
+    ],
+    externalReferences: [
+      {
+        name: 'InvoiceSelector',
+        namespace: null,
+        methods: [{ name: 'byStatus', references: [{ line: 12, column: 32 }] }],
+        variables: [],
+        references: [],
+      },
+      {
+        name: 'SecretPlan',
+        namespace: null,
+        methods: [],
+        variables: [{ name: 'Amount__c', references: [{ line: 14, column: 5 }] }],
+        references: [],
+      },
+    ],
+  });
+
+  /** A small org: parts of the fixture project, and a class, an object and a flow beside it. */
+  const tables = (): Record<string, Row[]> => ({
+    CustomObject: [
+      { Id: INVOICE, DeveloperName: 'Invoice', NamespacePrefix: null },
+      { Id: LINE, DeveloperName: 'Invoice_Line', NamespacePrefix: null },
+      { Id: PLAN, DeveloperName: 'Secret_Plan', NamespacePrefix: null },
+    ],
+    CustomField: [
+      { Id: id('00N', 1), DeveloperName: 'Amount', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
+      { Id: id('00N', 2), DeveloperName: 'Status', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
+      { Id: id('00N', 3), DeveloperName: 'Status', NamespacePrefix: null, TableEnumOrId: LINE.slice(0, 15) },
+      { Id: id('00N', 4), DeveloperName: 'Tier', NamespacePrefix: null, TableEnumOrId: 'Account' },
+      { Id: id('00N', 5), DeveloperName: 'Is_Key_Account', NamespacePrefix: null, TableEnumOrId: 'Account' },
+      { Id: id('00N', 6), DeveloperName: 'Unused_Field', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
+      { Id: id('00N', 9), DeveloperName: 'Takeover_Date', NamespacePrefix: null, TableEnumOrId: PLAN.slice(0, 15) },
+    ],
+    ValidationRule: [
+      {
+        Id: id('03d', 1),
+        ValidationName: 'Locked_When_Paid',
+        NamespacePrefix: null,
+        EntityDefinitionId: INVOICE.slice(0, 15),
+      },
+    ],
+    ApexClass: [
+      { Id: id('01p', 1), Name: 'InvoiceService', NamespacePrefix: null, SymbolTable: symbolTable('InvoiceService') },
+      { Id: id('01p', 2), Name: 'InvoiceSelector', NamespacePrefix: null, SymbolTable: null },
+      { Id: id('01p', 9), Name: 'SecretPlan', NamespacePrefix: null, SymbolTable: symbolTable('SecretPlan') },
+      // A class of a package with the name of a class of the fixture project.
+      { Id: id('01p', 8), Name: 'InvoiceService', NamespacePrefix: 'hidden', SymbolTable: null },
+    ],
+    ApexTrigger: [{ Id: id('01q', 1), Name: 'InvoiceTrigger', NamespacePrefix: null }],
+    MetadataComponentDependency: [
+      // In the answer key.
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 1), 'Amount'),
+      dependency('ValidationRule', id('03d', 1), 'Locked_When_Paid', 'CustomField', id('00N', 2), 'Status'),
+      dependency('CustomField', id('00N', 5), 'Is_Key_Account', 'CustomField', id('00N', 4), 'Tier'),
+      dependency('ApexTrigger', id('01q', 1), 'InvoiceTrigger', 'CustomObject', INVOICE, 'Invoice'),
+      // A class the org has no row for is found by its name, and a standard object by its name.
+      dependency('ApexClass', id('01p', 3), 'InvoiceServiceTest', 'StandardEntity', 'Account', 'Account'),
+      // Between components of the fixture project, and not in the answer key.
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 3), 'Status'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'ApexClass', id('01p', 2), 'InvoiceSelector'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 6), 'Unused_Field'),
+      // With a component that is not of the fixture project.
+      dependency('ApexClass', id('01p', 9), 'SecretPlan', 'CustomObject', PLAN, 'Secret_Plan'),
+      dependency('ApexClass', id('01p', 9), 'SecretPlan', 'CustomField', id('00N', 9), 'Takeover_Date'),
+      dependency('Flow', id('301', 1), 'Takeover', 'CustomField', id('00N', 1), 'Amount'),
+      dependency('ApexClass', id('01p', 8), 'InvoiceService', 'CustomField', id('00N', 1), 'Amount', 'hidden'),
+    ],
+  });
+
+  /**
+   * Makes the mock org answer the Tooling API from tables. It knows the filters the tool uses, gives at most
+   * 2,000 rows of the Dependency API, and refuses the objects in `faults`, each with the code that is given.
+   */
+  function tooling(rows: Record<string, Row[]>, options: { faults?: Record<string, string>; pageSize?: number } = {}) {
+    const later = new Map<string, Row[]>();
+    const asked: string[] = [];
+    mock.intercept = (request) => {
+      const found = /\/tooling\/query(?:\/(.+))?$/.exec(request.path);
+      if (found === null) return undefined;
+      let answer: Row[];
+      if (found[1] !== undefined) {
+        answer = later.get(found[1]) ?? [];
+      } else {
+        const soql = request.query.get('q') ?? '';
+        asked.push(soql);
+        const object = /FROM (\w+)/.exec(soql)?.[1] ?? '';
+        const withSymbols = soql.includes('SymbolTable');
+        const fault = options.faults?.[withSymbols ? `${object}.SymbolTable` : object];
+        if (fault !== undefined) {
+          return {
+            status: 400,
+            body: JSON.stringify([{ message: `Refused for ${USERNAME} at ${mock.url}`, errorCode: fault }]),
+          };
+        }
+        const type = /(?<!Ref)MetadataComponentType = '(\w+)'/.exec(soql)?.[1];
+        const notTypes = /(?<!Ref)MetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
+        const target = /RefMetadataComponentType = '(\w+)'/.exec(soql)?.[1];
+        const notTargets = /RefMetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
+        const without = (list: string | undefined, value: unknown): boolean =>
+          !(list?.includes(`'${String(value)}'`) ?? false);
+        answer = (rows[object] ?? []).filter(
+          (row) =>
+            (type === undefined || row['MetadataComponentType'] === type) &&
+            without(notTypes, row['MetadataComponentType']) &&
+            (target === undefined || row['RefMetadataComponentType'] === target) &&
+            without(notTargets, row['RefMetadataComponentType']),
+        );
+        if (object === 'MetadataComponentDependency') answer = answer.slice(0, 2000);
+        if (!withSymbols) {
+          answer = answer.map((row) =>
+            Object.fromEntries(Object.entries(row).filter(([name]) => name !== 'SymbolTable')),
+          );
+        }
+      }
+      const size = options.pageSize ?? answer.length;
+      const rest = answer.slice(size);
+      let next: string | undefined;
+      if (rest.length > 0) {
+        const locator = `01gPAGE-${String(later.size)}`;
+        later.set(locator, rest);
+        next = `/services/data/v66.0/tooling/query/${locator}`;
+      }
+      return {
+        status: 200,
+        body: JSON.stringify({
+          size: answer.length - rest.length,
+          totalSize: answer.length,
+          done: rest.length === 0,
+          nextRecordsUrl: next,
+          records: answer.slice(0, size),
+        }),
+      };
+    };
+    return asked;
+  }
+
+  const expectNothingForeign = (output: string): void => {
+    for (const name of FOREIGN) expect(output).not.toContain(name);
+    expectNoSecret(output);
+  };
+
+  it('says which pairs of the answer key the Dependency API reports, and counts the rest of the org', async () => {
+    const asked = tooling(tables());
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain('One query without a filter: 12 rows in 1 page.');
+    expect(output).toMatch(/^ApexClass +8 +ok$/m);
+    expect(output).toMatch(/^Flow +1 +ok$/m);
+    expect(output).toMatch(/^ValidationRule +1 +ok$/m);
+    expect(output).toContain('Different rows in all: 12. Every query for a pair of types was answered in full.');
+    expect(output).toContain(
+      'Rows read to find the names behind the ids: CustomObject 3, CustomField 7, ValidationRule 1, ApexClass 4, ApexTrigger 1.',
+    );
+    expect(output).toContain(
+      'Rows between two components of the fixture project: 8, which are 8 pairs. Rows with a component that is not of it: 4.',
+    );
+    expect(output).toContain(
+      'The rows with a component that is not of the fixture project, by type: ApexClass to CustomField 2, ApexClass to CustomObject 1, Flow to CustomField 1',
+    );
+    expect(output).toContain(
+      'The answer key holds 137 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
+    );
+    expect(output).toMatch(/^ApexClass +CustomField +\d+ +1$/m);
+    expect(output).toMatch(/^ApexClass +CustomObject \(of Salesforce\) +\d+ +1$/m);
+    expect(output).toMatch(/^ValidationRule +CustomField +11 +1$/m);
+    expect(output).toMatch(/^formula +\d+ +2$/m);
+    expect(output).toMatch(/^probable +\d+ +0$/m);
+    expect(output).toContain('- reported  ApexClass:invoiceservice -> CustomField:invoice__c.amount__c  (field, soql)');
+    expect(output).toContain('- missing   ApexClass:invoiceservice -> CustomField:invoice__c.status__c  (field, soql)');
+    expect(output).toContain('- reported  ApexTrigger:invoicetrigger -> CustomObject:invoice__c  (declaration)');
+    expect(output).toContain('- reported  ApexClass:invoiceservicetest -> CustomObject:account  (dml)');
+    // Two fields are named Status. The id says which one the row is about.
+    expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 3.');
+    expect(output).toContain('- ApexClass:invoiceservice -> ApexClass:invoiceselector');
+    expect(output).toContain('- ApexClass:invoiceservice -> CustomField:invoice_line__c.status__c');
+    expect(output).toContain(
+      'Fields the answer key calls unreferenced: 4. The Dependency API reports a reference to 1 of them: CustomField:invoice__c.unused_field__c.',
+    );
+    // Every query names a type of component, never a component.
+    for (const soql of asked) for (const name of FOREIGN) expect(soql).not.toContain(name);
+    expectNothingForeign(output);
+  });
+
+  it('says what the symbol tables of the compiler hold for the classes of the fixture project', async () => {
+    tooling(tables(), { faults: { 'ApexTrigger.SymbolTable': 'INVALID_FIELD' }, pageSize: 3 });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toMatch(/Classes: 4 in 2 pages, after \d+\.\d s\. With a symbol table: 2\./);
+    expect(output).toContain('Classes of the fixture project: 12. Found: 2. With a symbol table: 1.');
+    expect(output).toMatch(/^InvoiceSelector +no symbol table$/m);
+    expect(output).toMatch(/^InvoiceService +1 +0 +0 +1 +0 +2 +5$/m);
+    expect(output).toContain(
+      'Fields of a symbol table: constructors, externalReferences, id, innerClasses, interfaces, key, methods, name, namespace, properties, tableDeclaration, variables.',
+    );
+    expect(output).toContain(
+      'Places of use the symbol tables hold (entries of "references"): 5. External references: 2.',
+    );
+    expect(output).toContain('- InvoiceService to InvoiceSelector: methods 1, variables 0, places 1');
+    // The class beside the fixture project is not named, also where a class of the fixture project refers to it.
+    expect(output).toContain('- InvoiceService to (not shown): methods 0, variables 1, places 1');
+    expect(output).toContain(
+      'Texts in the symbol tables that name a custom field of the fixture project: 1. That name one of its custom objects and no field: 2.',
+    );
+    expect(output).toContain(
+      '- externalReferences.variables.name: 1 with a field, 0 with an object only, for example Amount__c',
+    );
+    expect(output).toContain(
+      '- methods.returnType: 0 with a field, 1 with an object only, for example List<Invoice__c>',
+    );
+    expect(output).toContain('- InvoiceService.openInvoices(Id): List<Invoice__c>');
+    expect(output).toContain('Triggers cannot be asked for with a symbol table (INVALID_FIELD).');
+    expect(output).toMatch(/Requests to the Tooling API: \d+\./);
+    expectNothingForeign(output);
+  });
+
+  it('asks again per pair of types where a query is at the limit of 2,000 rows, and says when rows are still missing', async () => {
+    const org = tables();
+    const many = (count: number, refType: string, to: string, refName: string): Row[] =>
+      Array.from({ length: count }, (_, index) =>
+        dependency('ApexClass', id('01p', 100 + index), `SecretPlan${String(index)}`, refType, to, refName),
+      );
+    org['MetadataComponentDependency'] = [
+      ...many(2050, 'CustomField', id('00N', 9), 'Takeover_Date'),
+      // Behind the limit: a type of target that the first queries do not show, and the rows of the fixture project.
+      ...many(30, 'CustomLabel', id('101', 1), 'Takeover'),
+      ...(org['MetadataComponentDependency'] ?? []),
+    ];
+    tooling(org);
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain(
+      'One query without a filter: 2000 rows in 1 page. That is the limit of 2000 rows: the org may hold more.',
+    );
+    expect(output).toMatch(/^ApexClass +2000 +at the limit, asked again per type of the target$/m);
+    expect(output).toMatch(/^ {2}to CustomField +2000 +at the limit: rows are missing$/m);
+    expect(output).toMatch(/^ {2}to every other type +33 +ok$/m);
+    // The types the limit hid are found: the flow, the trigger, the rule and the field that refer.
+    expect(output).toMatch(/^Flow +1 +ok$/m);
+    expect(output).toMatch(/^ApexTrigger +1 +ok$/m);
+    expect(output).toContain('1 query for a pair of types could not be answered in full, so rows are missing.');
+    expect(output).toContain(
+      'The answer key holds 137 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
+    );
+    expectNothingForeign(output);
+  });
+
+  it('fails with the codes of Salesforce when the org answers neither', async () => {
+    tooling(tables(), {
+      faults: { MetadataComponentDependency: 'INVALID_TYPE', 'ApexClass.SymbolTable': 'INSUFFICIENT_ACCESS' },
+    });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output).toContain('One query without a filter failed (INVALID_TYPE).');
+    expect(output).toContain('No query of the Dependency API was answered.');
+    expect(output).toContain('The classes could not be read with their symbol tables (INSUFFICIENT_ACCESS).');
+    expect(output.split('\n').at(-1)).toBe(
+      '::error::The org did not answer either of the two. The codes above say why.',
+    );
+    expectNothingForeign(output);
+  });
+
+  it('fails with the code of the login when the org cannot be logged in to', async () => {
+    mock.key = null;
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    expect(log.failed).toBe(true);
+    expect(text()).toMatch(/^::error::The test org was not asked, because the login to it failed: LOGIN_FAILED/);
+    expectNoSecret(text());
+  });
+});
+
 describe('a tool of the live-org workflow as a program', () => {
   /** Starts a tool from source, as the workflow does. It must not block this process, which is where the mock org answers. */
   const run = (
@@ -698,6 +1156,24 @@ describe('a tool of the live-org workflow as a program', () => {
     expect(read.stdout).toContain('The snapshot of the test org is complete.');
     expect(read.code).toBe(0);
     expectNoSecret(read.stdout);
+  });
+
+  it('asks the org about references from source, prints nothing but its own lines, and ends with 0', async () => {
+    const home = dirs.next();
+    // An org that has no row of either kind.
+    mock.intercept = (request) =>
+      request.path.includes('/tooling/query')
+        ? { status: 200, body: JSON.stringify({ size: 0, totalSize: 0, done: true, records: [] }) }
+        : undefined;
+    const probed = await run('probe-org.ts', { ...environment(), HOME: home, USERPROFILE: home });
+    expect(probed.stderr).toBe('');
+    expect(probed.stdout).toContain('One query without a filter: 0 rows in 1 page.\n');
+    expect(probed.stdout).toContain(
+      'The answer key holds 137 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
+    );
+    expect(probed.stdout).toContain('Classes of the fixture project: 12. Found: 0. With a symbol table: 0.\n');
+    expect(probed.code).toBe(0);
+    expectNoSecret(probed.stdout);
   });
 
   it('lets only the lines of the log of the tool out, whatever else is written or thrown', async () => {
