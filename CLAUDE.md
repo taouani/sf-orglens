@@ -20,8 +20,8 @@ These rules come from the maintainer and apply to every phase.
 4. **Phase close.** When a phase is built: update the overall plan, write a test plan the maintainer can follow by
    hand in `docs/test-plans/phase-N.md`, and write a short phase report.
 5. **Everything is in git.** Plans, test plans, research notes and decision records live in `docs/`. A decision
-   that changes the architecture, the data model, the storage format or a public contract gets a record in
-   `docs/adr/`.
+   that changes the architecture, the data model, the storage format, a public contract or the scope of a release
+   gets a record in `docs/adr/`.
 6. **Scope follows the plan.** No feature from a later phase is started early. No rider (automation order,
    integration map, security audit) and no language-model feature starts before the correctness gate has passed.
    A command is added to the CLI only once it does something: no stubs.
@@ -76,6 +76,7 @@ pnpm run lint
 pnpm run format:write
 pnpm run depcruise
 pnpm run knip
+pnpm run check:adr          # format and coverage of docs/adr
 pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
 ```

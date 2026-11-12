@@ -50,6 +50,8 @@ jobs:
         run: pnpm run depcruise
       - name: Unused code
         run: pnpm run knip
+      - name: Decision records
+        run: pnpm run check:adr
       - name: Boundary probes
         run: pnpm run check:boundaries
       - name: Tests with coverage

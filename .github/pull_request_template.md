@@ -12,7 +12,7 @@
 - [ ] `pnpm run check` passes locally.
 - [ ] Tests cover the change. Golden files were reviewed, not just regenerated.
 - [ ] No data from a real org, no host names, no user names and no credentials are included.
-- [ ] Layer rules are respected, and a decision record was added if the architecture, data model, storage format or a public contract changed.
+- [ ] Layer rules are respected, and a decision record was added if the architecture, data model, storage format, a public contract or the scope of a release changed.
 - [ ] A changeset was added if users will notice the change.
 - [ ] Sub-agent code review done and every finding resolved or answered.
 - [ ] Commits are signed off (`git commit -s`) for contributions from outside the maintainer team.
