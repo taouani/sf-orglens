@@ -34,7 +34,18 @@ describe('EngineError', () => {
 
   // The codes are a public contract. Adding one is a deliberate change to this list.
   it('has exactly the documented codes', () => {
-    expect(Object.keys(ERROR_CODES).sort()).toEqual(['INTERNAL', 'KEY_INVALID', 'REFERENCE_INVALID']);
+    expect(Object.keys(ERROR_CODES).sort()).toEqual([
+      'INTERNAL',
+      'KEY_INVALID',
+      'REFERENCE_INVALID',
+      'STORE_BUSY',
+      'STORE_FAILED',
+      'STORE_FOREIGN',
+      'STORE_MIGRATION_FAILED',
+      'STORE_NEWER',
+      'STORE_NOT_FOUND',
+      'STORE_OUTDATED',
+    ]);
     for (const description of Object.values(ERROR_CODES)) expect(description).toMatch(/\.$/);
   });
 });

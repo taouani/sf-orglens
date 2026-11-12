@@ -79,6 +79,7 @@ pnpm run knip
 pnpm run check:adr          # format and coverage of docs/adr
 pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
+pnpm run bench              # storage benchmark on a synthetic org, not part of check
 ```
 
 Run `pnpm run check` before every push.
@@ -93,6 +94,8 @@ Run `pnpm run check` before every push.
   `toMatchFileSnapshot`. Review a changed golden file like code. Never regenerate one just to make a test pass.
 - All text is LF on every platform. Fixtures record line and column positions.
 - Tests need no network and no org.
+- Every store test runs against both SQLite drivers (`test/helpers/store.ts`). The store uses only what the driver
+  port in `store/driver.ts` offers.
 - Dependencies are pinned to exact versions. A new runtime dependency needs a reason in the pull request, and a
   decision record if it is structural.
 - Machine-readable output is a contract: `--json` shapes and exit codes are documented and change only with a

@@ -30,6 +30,14 @@
   "engines": {
     "node": ">=24.15.0"
   },
+  "peerDependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public",
     "exports": {
@@ -39,5 +47,8 @@
       },
       "./package.json": "./package.json"
     }
+  },
+  "devDependencies": {
+    "better-sqlite3": "13.0.3"
   }
 }

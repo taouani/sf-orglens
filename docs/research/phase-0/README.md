@@ -13,6 +13,12 @@ installing and running the libraries in question, not from reading about them. C
 | [corpora-and-proof.md](corpora-and-proof.md) | Which public codebases and which free orgs can be used to prove correctness. |
 | [harvest-and-config.md](harvest-and-config.md) | What is reused from the three earlier prototypes, and the design of the configuration file, the engine API and the JSON output. |
 
+One note was added while Phase 0 was built:
+
+| Note | What it holds |
+| --- | --- |
+| [store-benchmark.md](store-benchmark.md) | The numbers of the storage benchmark in `bench/`, measured again with the code in the repository. |
+
 ## How to read them
 
 - The notes are kept as written. They are working papers, not polished documents, and they are not updated when
