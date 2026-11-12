@@ -242,6 +242,9 @@ importers:
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
+      jszip:
+        specifier: 3.10.2
+        version: 3.10.2
       yaml:
         specifier: 2.9.1
         version: 2.9.1
