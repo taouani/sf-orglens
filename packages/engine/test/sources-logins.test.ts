@@ -15,7 +15,7 @@ import {
 } from '../src/sources/jwt.ts';
 import { chooseCliLogin, cliStateDir, listCliLogins, sameOrg, type CliLogin } from '../src/sources/logins.ts';
 import { connectToOrg, planLogin } from '../src/sources/org.ts';
-import { networkCode } from '../src/sources/org-errors.ts';
+import { isFailedRenewal, networkCode, saidBy } from '../src/sources/org-errors.ts';
 import { forgetCliLogins, homeFiles, loginsOfLibrary, seedCliLogin } from './helpers/cli-logins.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
@@ -178,7 +178,12 @@ describe('chooseCliLogin', () => {
   });
 
   it('does not fall back to the org id when the linked login is gone', () => {
-    expect(chooseCliLogin(org(), 'gone', [zoe])).toMatchObject({ via: 'none', reason: 'LOGIN_UNKNOWN' });
+    const gone = chooseCliLogin(org(), 'gone', [zoe]);
+    expect(gone).toMatchObject({ via: 'none', reason: 'LOGIN_UNKNOWN' });
+    expect(gone).toMatchObject({ hint: expect.stringContaining('sf org login web --alias gone)') as unknown });
+    // A user name is not proposed as an alias.
+    const user = chooseCliLogin(org(), 'eve@example.com', [zoe]);
+    expect(user).toMatchObject({ hint: expect.stringContaining('(sf org login web)') as unknown });
   });
 
   it('takes the one login of the declared org', () => {
@@ -335,6 +340,20 @@ describe('loginWithKey', () => {
     expect(mock.sessions.size).toBe(2);
   });
 
+  it('reads a key as a pasted secret often arrives', async () => {
+    accept();
+    const lines = pair.privateKey.trim().split('\n');
+    for (const text of [
+      `${lines.join('\\n')}\n`,
+      `  ${lines.join('\\n')}  `,
+      lines.join('\\r\\n'),
+      `\n${lines.join('\r\n')}\r\n`,
+    ]) {
+      await loginWithKey(settings({ key: { text } }), [mock.url]);
+    }
+    expect(mock.sessions.size).toBe(4);
+  });
+
   it('says which variable holds no usable key, and nothing about the key', async () => {
     const names = jwtVariables('prod');
     const notAKey = await failure(() => loginWithKey(settings({ key: { text: 'not a key at all' } }), [mock.url]));
@@ -405,9 +424,34 @@ describe('loginWithKey', () => {
     const html = await failure(() => loginWithKey(settings(), [mock.url]));
     expect(html.details).toMatchObject({ reason: 'REQUEST_FAILED' });
 
+    // With a character set in the header, the library passes the whole page on as its message.
+    const page = `<!DOCTYPE html><html><head><title>Down</title></head><body>${'x'.repeat(5000)} ci@example.com</body></html>`;
+    mock.intercept = () => ({ status: 503, type: 'text/html; charset=UTF-8', body: page });
+    const charset = await failure(() => loginWithKey(settings(), [mock.url]));
+    expect(charset.details).toMatchObject({ reason: 'REQUEST_FAILED' });
+    expect(charset.message).toContain('The answer was a page, not data.');
+    expect(charset.message).not.toContain('xxxx');
+    expect(charset.message).not.toContain('example.com');
+
     mock.intercept = () => ({ status: 200, body: JSON.stringify({ access_token: 'x', instance_url: 'ftp://x' }) });
     const incomplete = await failure(() => loginWithKey(settings(), [mock.url]));
     expect(incomplete.details).toMatchObject({ reason: 'REQUEST_FAILED' });
+  });
+
+  it('masks a user name and an address in what Salesforce says about a refusal', async () => {
+    mock.intercept = () => ({
+      status: 400,
+      body: JSON.stringify({
+        error: 'invalid_grant',
+        error_description: `user ci@example.com hasn't approved this consumer at ${mock.url}/setup or acme.my.salesforce.com`,
+      }),
+    });
+    const error = await failure(() => loginWithKey(settings(), [mock.url]));
+    expect(error.details).toMatchObject({ reason: 'JWT_REJECTED', error: 'invalid_grant' });
+    expect(error.message).toContain("user [user] hasn't approved this consumer at [address] or [address]");
+    expect(JSON.stringify(error)).not.toContain('example.com');
+    expect(JSON.stringify(error)).not.toContain('127.0.0.1');
+    expect(JSON.stringify(error)).not.toContain('acme');
   });
 
   it('says that the org cannot be reached when nothing listens at the address', async () => {
@@ -439,6 +483,33 @@ describe('networkCode', () => {
     const circle: { cause?: unknown; message: string } = { message: 'round' };
     circle.cause = circle;
     expect(networkCode(circle)).toBeNull();
+  });
+});
+
+describe('what Salesforce or a library says', () => {
+  it('is shown in one line, without tokens, addresses and user names, and cut to a length', () => {
+    expect(saidBy(new Error('first\n  second'))).toBe('first second');
+    expect(saidBy(new Error('see https://acme.my.salesforce.com/x?y=1, or acme--uat.sandbox.my.salesforce.com'))).toBe(
+      'see [address] or [address]',
+    );
+    expect(saidBy(new Error('user zoe@example.com (zoe+ci@example.co.uk) is not allowed'))).toBe(
+      'user [user] ([user]) is not allowed',
+    );
+    expect(saidBy(new Error('y'.repeat(1000)))).toBe(`${'y'.repeat(300)}…`);
+    expect(saidBy('<html><body>zoe@example.com</body></html>')).toBe('The answer was a page, not data.');
+    expect(
+      saidBy(new Error('session 00Dxx0000000001!AQEAQabcdefghijklmnopqrstuvwxyz0123456789 is gone')),
+    ).not.toContain('AQEAQabcdefghijklmnop');
+  });
+
+  it('counts as a failed renewal only when the library says so itself', () => {
+    expect(isFailedRenewal(new Error('Unable to refresh session due to: expired access/refresh token'))).toBe(true);
+    // The answer of an org that happens to hold the word.
+    expect(isFailedRenewal(new Error('<meta http-equiv="Refresh" content="0">'))).toBe(false);
+    expect(isFailedRenewal(Object.assign(new Error('Unable to refresh session'), { name: 'ERROR_HTTP_404' }))).toBe(
+      false,
+    );
+    expect(isFailedRenewal('Unable to refresh session')).toBe(false);
   });
 });
 
@@ -483,23 +554,52 @@ describe('connectToOrg with a login of the Salesforce CLI', () => {
     expect(session).toMatchObject({ via: 'linked', alias: 'other', username: 'adam@example.com', orgId: ORG_ID });
   });
 
-  it('renews a session that has expired', async () => {
-    await seed({ accessToken: 'expired-session' });
-    const session = await connectToOrg(org(), undefined, {});
-    expect(session.orgId).toBe(ORG_ID);
-    // The two queries are the library's own, made when it stores the renewed session: whether the org is a
-    // Dev Hub, and the name and kind of the org. Record 0031 names them. A change here is a change to that record.
-    expect(mock.asked()).toEqual([
-      'GET /services/data/v66.0/',
-      'POST /services/oauth2/token',
-      'GET /services/data/v51.0/query',
-      'GET /services/data/v50.0/query',
-      'GET /services/data/v66.0/',
-    ]);
-    const stored = readFileSync(join(cliStateDir(), 'zoe@example.com.json'), 'utf8');
-    expect(stored).not.toContain('expired-session');
-    expect(stored).not.toMatch(/session-\d/);
-    expect(stored).not.toContain('valid-refresh');
+  it('renews a session that has expired, and the library then asks the org about the org', async () => {
+    // An org that lists its versions as Salesforce does. The other mock also lists 9.0, to show that OrgLens
+    // compares versions as numbers. The library compares them as text, and would take 9.0 for the newest.
+    const plain = await startMockOrg({ versions: ['64.0', '65.0', '66.0'] });
+    try {
+      plain.refreshTokens.add('valid-refresh');
+      await seed({ instanceUrl: plain.url, accessToken: 'expired-session' });
+      const session = await connectToOrg(org(), undefined, {});
+      expect(session).toMatchObject({ orgId: ORG_ID, apiVersion: '66.0' });
+      expect(session.connection.accessToken).toMatch(/^session-\d+$/);
+      // Everything after the renewal and before the last request is the library's own, made when it stores the
+      // renewed session: whether the org is a Dev Hub, the versions of the org, and the name and kind of the org.
+      // Record 0031 names these requests. A change here is a change to that record.
+      expect(plain.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        'GET /services/data',
+        'GET /services/data/v66.0/',
+        'POST /services/oauth2/token',
+        'GET /services/data/v51.0/query',
+        'GET /services/data',
+        'GET /services/data/v66.0/query',
+        'GET /services/data/v66.0/',
+      ]);
+      const stored = readFileSync(join(cliStateDir(), 'zoe@example.com.json'), 'utf8');
+      expect(stored).not.toContain('expired-session');
+      expect(stored).not.toMatch(/session-\d/);
+      expect(stored).not.toContain('valid-refresh');
+      expect(JSON.parse(stored)).toMatchObject({ instanceApiVersion: '66.0' });
+    } finally {
+      await plain.close();
+    }
+  });
+
+  it('does not take the answer of an org for a session that could not be renewed', async () => {
+    await seed();
+    mock.intercept = (request) =>
+      request.path === '/services/data/v66.0/'
+        ? {
+            status: 404,
+            type: 'text/html; charset=UTF-8',
+            body: '<html><head><meta http-equiv="Refresh" content="0; url=https://example.com/"></head></html>',
+          }
+        : undefined;
+    const error = await failure(() => connectToOrg(org(), undefined, {}));
+    expect(error.details).toMatchObject({ reason: 'REQUEST_FAILED' });
+    expect(error.message).toContain('The answer was a page, not data.');
+    expect(error.message).not.toContain('meta');
   });
 
   it('says to log in again when the session cannot be renewed', async () => {
@@ -610,18 +710,47 @@ describe('connectToOrg with a key from the environment', () => {
     accept();
     mock.sessions.add('valid-session');
     await seedCliLogin({
-      username: 'ci@example.com',
+      username: 'zoe@example.com',
       alias: 'main',
       orgId: ORG_ID,
       instanceUrl: mock.url,
       accessToken: 'valid-session',
       refreshToken: 'valid-refresh',
     });
-    const file = join(cliStateDir(), 'ci@example.com.json');
+    const file = join(cliStateDir(), 'zoe@example.com.json');
     const before = readFileSync(file, 'utf8');
     const session = await connectToOrg(org(), 'main', env());
     expect(session.via).toBe('jwt-env');
+    expect(session.username).toBe('ci@example.com');
     expect(session.connection.accessToken).toMatch(/^session-\d+$/);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('is refused for a user who also has a login of the Salesforce CLI, before anything is sent', async () => {
+    // The library would take over the refresh token of that login, renew a session of the key with it, and
+    // write the login file. A login with a key must not turn into another login.
+    accept();
+    mock.refreshTokens.add('valid-refresh');
+    await seedCliLogin({
+      username: 'ci@example.com',
+      alias: 'main',
+      orgId: ORG_ID,
+      instanceUrl: mock.url,
+      accessToken: 'expired-session',
+      refreshToken: 'valid-refresh',
+    });
+    const file = join(cliStateDir(), 'ci@example.com.json');
+    const before = readFileSync(file, 'utf8');
+    for (const username of ['ci@example.com', 'CI@Example.com']) {
+      const error = await failure(() => connectToOrg(org(), undefined, { ...env(), [names.username]: username }));
+      expect(error).toMatchObject({
+        code: 'LOGIN_FAILED',
+        details: { reason: 'JWT_USER_HAS_LOGIN', source: 'prod' },
+      });
+      expect(error.hint).toContain(names.username);
+      expect(JSON.stringify(error)).not.toContain('example.com');
+    }
+    expect(mock.requests).toEqual([]);
     expect(readFileSync(file, 'utf8')).toBe(before);
   });
 

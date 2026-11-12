@@ -260,11 +260,24 @@ What differs from the list above in part two, or is not done:
   one job can read several orgs.
 - `source check` also works for a source of the kind `git`: it reads everything a snapshot would read and stores
   nothing.
-- When the session of a Salesforce CLI login has expired, the Salesforce library renews it and then makes two
-  queries of its own about the org. Record 0031 names them and why they are accepted.
+- When the session of a Salesforce CLI login has expired, the Salesforce library renews it and then makes three
+  requests of its own about the org. Record 0031 names them and why they are accepted.
+- A login with a key is refused for a user who also has a Salesforce CLI login on the machine. The code review
+  showed that the library otherwise takes over the stored login of that user.
+- A login in the personal file for a source that is no longer declared is not an error. `doctor` names it, and
+  every variable `ORGLENS_JWT_…` that no source reads.
 - Not verified: the keychains of macOS, Linux and Windows (the tests use the file-based one on all three), a
   login written by the real Salesforce CLI, and a real org. The live-org workflow is the first check against
   Salesforce itself.
+
+The code review of part two left these for part three:
+
+- A guard that the library never stores a session of a login with a key. Nothing does so today. Paths of the
+  library that part three may use, such as looking up the newest API version, save the login they work with.
+- Time limits for the requests the library makes itself. Only the three requests OrgLens makes have its limit of
+  30 seconds. A renewal, and later a retrieve, run with the limit of the library, which is 30 minutes.
+- The HTTP client of the library follows a redirect and sends the session along. The address it starts from is
+  the one that issued the session, so this was accepted for a login. A retrieve should decide it again.
 
 The code review of part one left these for part three, where they have to be decided before an org snapshot is
 stored. One of them is done:

@@ -7,11 +7,18 @@
  * names no login and no user: it says how many logins there are, and by
  * which route each org source would be logged in.
  */
-import { diagnosticsJson, formatDiagnostic, SHARED_CONFIG_FILE, type WorkspaceConfig } from '../core/config/config.ts';
+import {
+  diagnosticsJson,
+  formatDiagnostic,
+  LOCAL_CONFIG_FILE,
+  SHARED_CONFIG_FILE,
+  type WorkspaceConfig,
+} from '../core/config/config.ts';
 import { isEngineError, type JsonValue } from '../core/errors.ts';
 import { redactText } from '../core/redact.ts';
 import { engineVersion } from '../core/version.ts';
 import { gitProgram } from '../sources/git.ts';
+import { jwtVariables } from '../sources/jwt.ts';
 import { listCliLogins } from '../sources/logins.ts';
 import { planLogin } from '../sources/org.ts';
 import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
@@ -147,12 +154,46 @@ function checkLogins(config: WorkspaceConfig | undefined, env: Environment): Doc
   const logins = listCliLogins();
   const count = `${String(logins.length)} Salesforce CLI ${logins.length === 1 ? 'login' : 'logins'} on this machine.`;
   const orgs = (config?.sources ?? []).filter((source) => source.kind !== 'git');
+
+  // Two mistakes that would otherwise go unnoticed, because what is not read is not an error: a variable for a
+  // login with a key that no source reads, such as a misspelled one, and a login in the personal file for a
+  // source that is no longer declared. Only names are shown, never what a variable holds.
+  // On Windows the name of a variable is found whatever its case.
+  const asRead = (name: string): string => (process.platform === 'win32' ? name.toUpperCase() : name);
+  const read = new Set(orgs.flatMap((source) => Object.values(jwtVariables(source.name))));
+  const unreadVariables =
+    config === undefined
+      ? []
+      : Object.keys(env)
+          .filter((name) => /^ORGLENS_JWT_/i.test(name) && (env[name] ?? '') !== '' && !read.has(asRead(name)))
+          .sort();
+  const unusedLogins = [...(config?.unusedLogins ?? [])].sort();
+  const notes = [
+    ...(unreadVariables.length === 0
+      ? []
+      : [
+          `No source reads ${unreadVariables.length === 1 ? 'the variable' : 'the variables'} ${unreadVariables.join(', ')}.`,
+        ]),
+    ...(unusedLogins.length === 0
+      ? []
+      : [
+          `${LOCAL_CONFIG_FILE} names a login for ${unusedLogins.map((name) => `"${name}"`).join(', ')}, which ${SHARED_CONFIG_FILE} does not declare. It is not used.`,
+        ]),
+  ];
+  const extra = { unreadVariables, unusedLogins };
+
   if (config === undefined || orgs.length === 0) {
     return {
       id: 'logins',
-      status: 'ok',
-      summary: `${count} ${config === undefined ? 'No workspace configuration says which are needed.' : 'The workspace declares no org or sandbox.'}`,
-      details: { cliLogins: logins.length, sources: [] },
+      status: notes.length === 0 ? 'ok' : 'warning',
+      summary: [
+        count,
+        config === undefined
+          ? 'No workspace configuration says which are needed.'
+          : 'The workspace declares no org or sandbox.',
+        ...notes,
+      ].join(' '),
+      details: { cliLogins: logins.length, sources: [], ...extra },
     };
   }
   const plans = orgs.map((source) => planLogin(source, config.logins[source.name], logins, env));
@@ -160,12 +201,15 @@ function checkLogins(config: WorkspaceConfig | undefined, env: Environment): Doc
   const first = without[0];
   return {
     id: 'logins',
-    status: first === undefined ? 'ok' : 'warning',
-    summary:
+    status: first === undefined && notes.length === 0 ? 'ok' : 'warning',
+    summary: [
+      count,
       first === undefined
-        ? `${count} Every org and sandbox of the workspace has a login. Whether it still works shows: orglens source check <name>`
-        : `${count} ${String(without.length)} of ${String(plans.length)} org and sandbox sources cannot be logged in. "${first.source}": ${first.problem ?? ''}`,
-    details: { cliLogins: logins.length, sources: plans.map((plan) => ({ ...plan })) },
+        ? 'Every org and sandbox of the workspace has a login. Whether it still works shows: orglens source check <name>'
+        : `${String(without.length)} of ${String(plans.length)} org and sandbox sources cannot be logged in. "${first.source}": ${first.problem ?? ''}`,
+      ...notes,
+    ].join(' '),
+    details: { cliLogins: logins.length, sources: plans.map((plan) => ({ ...plan })), ...extra },
   };
 }
 

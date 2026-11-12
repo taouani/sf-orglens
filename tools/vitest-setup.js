@@ -9,7 +9,8 @@
  * The variables that steer the Salesforce libraries and the login with a
  * key are removed, so that a test behaves the same on every machine. So are
  * the proxy variables: the libraries would send requests for a test server
- * on this machine to the proxy. On macOS the libraries are told to keep
+ * on this machine to the proxy. So are the variables that change the time
+ * limit of the HTTP client and what the libraries print. On macOS the libraries are told to keep
  * their encryption key in a file of the home folder, as they do on Linux,
  * and not in the keychain of the person.
  */
@@ -20,7 +21,11 @@ import { join } from 'node:path';
 const home = realpathSync(mkdtempSync(join(tmpdir(), 'orglens-home-')));
 
 for (const name of Object.keys(process.env)) {
-  if (/^(?:SF_|SFDX_|ORGLENS_JWT_)/i.test(name) || /^(?:https?|all|no)_proxy$/i.test(name)) {
+  if (
+    /^(?:SF_|SFDX_|ORGLENS_JWT_|JSFORCE_)/i.test(name) ||
+    /^(?:https?|all|no)_proxy$/i.test(name) ||
+    /^(?:HTTP_TIMEOUT|DEBUG)$/i.test(name)
+  ) {
     Reflect.deleteProperty(process.env, name);
   }
 }

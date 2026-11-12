@@ -1,10 +1,12 @@
 /**
  * The failures of logging in to an org, as engine errors.
  *
- * What Salesforce or the Salesforce libraries say is passed through
- * `redactText` before it becomes part of a message. A message here never
- * names a token, a key, a host or a user: a job on a build server prints
- * it into a log that others read.
+ * A job on a build server prints these messages into a log that others
+ * read. The words of OrgLens in them never name a token, a key, a host or
+ * a user. What Salesforce or the Salesforce libraries say goes through
+ * `saidBy` before it becomes part of a message: tokens are removed, what
+ * has the form of an address or of a user name is masked, a page is not
+ * passed on, and the text is cut to a length.
  */
 import { EngineError, type JsonValue } from '../core/errors.ts';
 import { redactText } from '../core/redact.ts';
@@ -18,6 +20,7 @@ import { redactText } from '../core/redact.ts';
  * - `JWT_INCOMPLETE`: some of the variables for a login with a key are set and others are missing.
  * - `JWT_INVALID`: a variable for a login with a key holds something that cannot be used.
  * - `JWT_REJECTED`: Salesforce refused the login with the key.
+ * - `JWT_USER_HAS_LOGIN`: the user of the key also has a login of the Salesforce CLI on this machine.
  * - `SESSION_EXPIRED`: the login is no longer valid and could not be renewed.
  * - `ORG_UNREACHABLE`: no answer came from the org.
  * - `REQUEST_FAILED`: the org answered with something else than expected.
@@ -29,6 +32,7 @@ export type LoginFailure =
   | 'JWT_INCOMPLETE'
   | 'JWT_INVALID'
   | 'JWT_REJECTED'
+  | 'JWT_USER_HAS_LOGIN'
   | 'SESSION_EXPIRED'
   | 'ORG_UNREACHABLE'
   | 'REQUEST_FAILED';
@@ -103,8 +107,29 @@ export function isInvalidSession(thrown: unknown): boolean {
   return chain(thrown).some((link) => link.code === 'INVALID_SESSION_ID' || link.name === 'INVALID_SESSION_ID');
 }
 
-/** What was thrown, in one line that is safe to show. */
+/**
+ * True if what was thrown says that the library tried to renew the session and could not. The library has no
+ * name and no code for this, only the start of its message. An answer of the org never starts like this: the
+ * library puts what the org said after these words.
+ */
+export function isFailedRenewal(thrown: unknown): boolean {
+  return thrown instanceof Error && thrown.name === 'Error' && thrown.message.startsWith('Unable to refresh session');
+}
+
+/** The longest text of Salesforce or of a library that becomes part of a message. */
+const SAID_LIMIT = 300;
+
+/**
+ * What was thrown, in one line that is safe to show. Tokens are removed. What has the form of an address, of a
+ * host of Salesforce or of a user name is masked: the text is not ours, and a message must not name the org or
+ * the user. A page is not passed on at all.
+ */
 export function saidBy(thrown: unknown): string {
-  const text = thrown instanceof Error ? thrown.message : String(thrown);
-  return redactText(text.replace(/\s+/g, ' ').trim());
+  const text = (thrown instanceof Error ? thrown.message : String(thrown)).replace(/\s+/g, ' ').trim();
+  if (/<\s*(?:!doctype|html|head|body|meta|script|title)\b/i.test(text)) return 'The answer was a page, not data.';
+  const safe = redactText(text)
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"')]+/gi, '[address]')
+    .replace(/[^\s"'(<]+@[^\s"')>]+/g, '[user]')
+    .replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:salesforce|force|salesforce-setup|site)\.com\b/gi, '[address]');
+  return safe.length > SAID_LIMIT ? `${safe.slice(0, SAID_LIMIT)}…` : safe;
 }

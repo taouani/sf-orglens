@@ -43,12 +43,16 @@ What the help texts do not say:
 - `source add`, `source remove` and `source link` take a lock while they change a configuration file, so two of
   them at the same moment do not lose each other's change. A command that cannot get the lock within two seconds
   ends with `WORKSPACE_IO`.
-- `source remove` also removes the login that `source link` set for the source from `.orglens/local.toml`. A
-  login for a source that is not declared would make that file invalid.
+- `source remove` also removes the login that `source link` set for the source from `.orglens/local.toml`.
 - `doctor` connects to nothing. Its check `logins` says how many logins the Salesforce CLI has on this machine and
   by which route each org and sandbox of the workspace would be logged in. It names no login and no user, so the
-  report can be pasted into an issue. Whether a login still works shows `source check`. Its check `git` is a
-  warning, not a failure, when Git is missing or older than 2.30: folders on disk are read without Git.
+  report can be pasted into an issue. Whether a login still works shows `source check`. The check is a warning
+  when a source cannot be logged in, and for two things that are easy to miss because what is not read is not an
+  error: a variable that starts with `ORGLENS_JWT_` and is read by no source, such as a misspelled one
+  (`details.unreadVariables`, names only), and a login in `.orglens/local.toml` for a source that `orglens.toml`
+  no longer declares (`details.unusedLogins`).
+- The check `git` of `doctor` is a warning, not a failure, when Git is missing or older than 2.30: folders on disk
+  are read without Git.
 - A reader that closes the pipe early, as in `orglens status | head -1`, ends the command quietly with the exit
   code `1`.
 
@@ -118,7 +122,8 @@ already, found in this order:
    `ORGLENS_JWT_PROD_CLIENT_ID`, and the key in `ORGLENS_JWT_PROD_KEY` or the path of its file in
    `ORGLENS_JWT_PROD_KEY_FILE`. [configuration.md](configuration.md#environment-variables) describes them. As soon
    as one of them is set, the source is logged in with the key. Half a set is an error and never a reason to use
-   the login of whoever runs the job.
+   the login of whoever runs the job. Neither is a key whose user also has a Salesforce CLI login on the machine:
+   that is refused (`JWT_USER_HAS_LOGIN`), because the Salesforce library would mix the two.
 2. **The Salesforce CLI login that is linked to the source**: `orglens source link prod my-alias`. The login is
    named by its alias or its user name, as `sf org list` shows it. The choice is personal and goes into
    `.orglens/local.toml`. The login itself stays with the Salesforce CLI.
@@ -138,10 +143,15 @@ uses, which is the newest the org offers. For a login with a key, the user name 
   from what the Salesforce CLI knows and by `check` from what the org itself says. A source without `org_id`
   accepts any login, and both commands say which `org_id` to add.
 - `source check` ends with the exit code `4` when no login is found, the login no longer works, or the org does
-  not answer within 30 seconds (`LOGIN_FAILED`, with the cause in `details.reason`), and for `ORG_MISMATCH`.
+  not answer (`LOGIN_FAILED`, with the cause in `details.reason`), and for `ORG_MISMATCH`.
+- The requests OrgLens makes itself give up when no answer starts within 30 seconds: the login with a key, the
+  list of API versions, and the question who is logged in. The requests the Salesforce library makes while it
+  renews a session have the library's own limit, which is far longer. They go to the address that has just
+  answered the list of versions.
 - A Salesforce CLI login whose session has expired is renewed by the Salesforce library, which writes the new
-  session into the login file of the Salesforce CLI, as the CLI itself does. Nothing else is written outside the
-  workspace. [Record 0031](adr/0031-logins-and-the-home-folder.md) lists every file that is touched.
+  session into the login file of the Salesforce CLI, as the CLI itself does. While it does, the library asks the
+  org three things of its own: whether it is a Dev Hub, which API versions it has, and its name and kind.
+  [Record 0031](adr/0031-logins-and-the-home-folder.md) lists every file that is read or written.
 - For a source of the kind `git`, `source check` reads everything a snapshot would read and stores nothing. It
   reports the commit, the number of components and files, and the issues, and ends with `5` if a snapshot taken
   now would be partial.
@@ -187,6 +197,10 @@ rewrite the lines around it.
 With `--json`, a command writes exactly one line to the standard output and nothing to the standard error stream.
 The line is one JSON object, the envelope, followed by a line feed. This holds for a success, for a failure and
 for a command line that cannot be understood.
+
+One thing OrgLens does not control: Node.js prints the warnings of a library to the standard error stream. The
+Salesforce libraries warn about a variable they no longer like, such as `SFDX_USE_GENERIC_UNIX_KEYCHAIN`, and
+about an address that starts with `http://`. Read the result from the standard output only.
 
 ```json
 {
@@ -242,16 +256,18 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                   |
-| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                        |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                              |
-| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                  |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, snapshot count, latest snapshot).                                                                                            |
-| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `note`), `issues` (`severity`, `code`, `message`, `details`). |
-| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                       |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                          |
+| Command         | `data`                                                                                                                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                      |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                           |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                 |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                     |
+| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                        |
+| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`. |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, snapshot count, latest snapshot).                                                                                                               |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `note`), `issues` (`severity`, `code`, `message`, `details`).                    |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                          |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                             |
 
 A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace
@@ -327,21 +343,25 @@ what Git said, which can include paths of this machine.
 
 For `LOGIN_FAILED`, `details.reason` is one of:
 
-| Reason            | Situation                                                                                           |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| `NO_LOGIN`        | Nothing says which login the source uses, or no Salesforce CLI login belongs to its org.            |
-| `LOGIN_AMBIGUOUS` | Several Salesforce CLI logins belong to the org of the source. Choose one with `source link`.       |
-| `LOGIN_UNKNOWN`   | The login that is linked, or that was given to `source link`, is not on this machine.               |
-| `JWT_INCOMPLETE`  | Some of the variables for a login with a key are set and others are missing (`details.missing`).    |
-| `JWT_INVALID`     | A variable holds something that cannot be used (`details.variable`): no key, no login URL.          |
-| `JWT_REJECTED`    | Salesforce refused the login with the key. `details.error` is its error code, the message its text. |
-| `SESSION_EXPIRED` | The login is no longer valid and could not be renewed. Log in again with the Salesforce CLI.        |
-| `ORG_UNREACHABLE` | No answer came from the org. `details.network` is the code of the failure, or `TIMEOUT`.            |
-| `REQUEST_FAILED`  | The org, or what answers at its address, answered with something else than expected.                |
+| Reason               | Situation                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `NO_LOGIN`           | Nothing says which login the source uses, or no Salesforce CLI login belongs to its org.                        |
+| `LOGIN_AMBIGUOUS`    | Several Salesforce CLI logins belong to the org of the source. Choose one with `source link`.                   |
+| `LOGIN_UNKNOWN`      | The login that is linked, or that was given to `source link`, is not on this machine.                           |
+| `JWT_INCOMPLETE`     | Some of the variables for a login with a key are set and others are missing (`details.missing`).                |
+| `JWT_INVALID`        | A variable holds something that cannot be used (`details.variable`): no key, no login URL.                      |
+| `JWT_REJECTED`       | Salesforce refused the login with the key. `details.error` is its error code, the message its text.             |
+| `JWT_USER_HAS_LOGIN` | The user of the key also has a Salesforce CLI login on this machine. Unset the variables, or log that user out. |
+| `SESSION_EXPIRED`    | The login is no longer valid and could not be renewed. Log in again with the Salesforce CLI.                    |
+| `ORG_UNREACHABLE`    | No answer came from the org. `details.network` is the code of the failure, or `TIMEOUT`.                        |
+| `REQUEST_FAILED`     | The org, or what answers at its address, answered with something else than expected.                            |
 
 `details.source` is the name of the source. For `ORG_MISMATCH`, `details.declared` and `details.found` are the two
-org ids. No message and no detail holds a token or a key. A message about a login with a key holds no user name
-and no address either.
+org ids. No message and no detail holds a token or a key. What OrgLens itself says about a login with a key names
+no user and no address. Where a message passes on what Salesforce or a Salesforce library said, tokens are
+removed, everything that has the form of an address or of a user name is replaced by `[address]` or `[user]`, a
+page is not passed on, and the text is cut after 300 characters. That is a filter by form, not a promise about
+every text Salesforce can send.
 
 ## Start-up time
 

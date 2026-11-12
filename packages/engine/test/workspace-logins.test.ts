@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -154,6 +154,33 @@ describe('sources.link', () => {
     ]);
   });
 
+  it('keeps the login of a source that could not be removed from the shared file', async () => {
+    await seed();
+    const dir = dirs.next();
+    const workspace = await workspaceIn(dir);
+    await workspace.sources.link('prod', 'main');
+    const linked = local(dir);
+    // The shared file cannot be replaced: its folder takes no new file. The personal file could be written.
+    chmodSync(dir, 0o555);
+    try {
+      const probe = join(dir, 'probe');
+      let writable = true;
+      try {
+        writeFileSync(probe, '');
+      } catch {
+        writable = false;
+      }
+      // An administrator writes anywhere. The test says nothing there.
+      if (writable) return;
+      expect(await failure(() => workspace.sources.remove('prod'))).toMatchObject({ code: 'WORKSPACE_IO' });
+      expect(local(dir)).toBe(linked);
+      expect(readFileSync(join(dir, 'orglens.toml'), 'utf8')).toBe(CONFIG);
+    } finally {
+      chmodSync(dir, 0o755);
+      rmSync(join(dir, 'probe'), { force: true });
+    }
+  });
+
   it('does not remove a source whose login it cannot remove', async () => {
     const dir = dirs.next();
     const workspace = await workspaceIn(dir);
@@ -197,6 +224,16 @@ describe('sources.check', () => {
     expect(
       readFileSync(join(dir, '.orglens', 'logs', readdirSync(join(dir, '.orglens', 'logs'))[0] ?? ''), 'utf8'),
     ).not.toContain('zoe@example.com');
+  });
+
+  it('keeps its log out of Git in a folder that has the configuration and nothing else', async () => {
+    await seed();
+    const dir = dirs.next();
+    const workspace = await workspaceIn(dir);
+    expect(existsSync(join(dir, '.orglens'))).toBe(false);
+    await workspace.sources.check('prod');
+    expect(readFileSync(join(dir, '.orglens', '.gitignore'), 'utf8')).toBe('*\n');
+    expect(readdirSync(join(dir, '.orglens')).sort()).toEqual(['.gitignore', 'logs']);
   });
 
   it('reads the folders of a repository as a snapshot would, and stores nothing', async () => {
@@ -317,6 +354,8 @@ describe('doctor', () => {
               'No login is linked to the source, and it declares no org_id. Link one with: orglens source link uat <alias>',
           },
         ],
+        unreadVariables: [],
+        unusedLogins: [],
       },
     });
 
@@ -344,6 +383,71 @@ describe('doctor', () => {
     expect(mock.requests).toEqual([]);
   });
 
+  it('names a variable that no source reads, and a login for a source that is no longer declared', async () => {
+    await seed();
+    const dir = dirs.next();
+    const workspace = await workspaceIn(dir);
+    await workspace.sources.link('uat', 'main');
+    // A colleague removes the source from the shared file. The personal file still names its login.
+    writeFileSync(join(dir, 'orglens.toml'), CONFIG.replace('[sources.uat]\nkind = "sandbox"\n', ''));
+    const env = {
+      ORGLENS_JWT_PROD_CLIENTID: 'misspelled',
+      ORGLENS_JWT_UAT_USERNAME: 'ci@example.com',
+      ORGLENS_JWT_OTHER_KEY: '',
+    };
+    const report = await doctor({ root: dir, env });
+    expect(report.ok).toBe(true);
+    expect(report.checks.find((check) => check.id === 'config')).toMatchObject({ status: 'ok' });
+    const logins = report.checks.find((check) => check.id === 'logins');
+    expect(logins).toMatchObject({
+      status: 'warning',
+      details: {
+        sources: [{ source: 'prod', via: 'org-id', problem: null }],
+        unreadVariables: ['ORGLENS_JWT_PROD_CLIENTID', 'ORGLENS_JWT_UAT_USERNAME'],
+        unusedLogins: ['uat'],
+      },
+    });
+    expect(logins?.summary).toContain(
+      'No source reads the variables ORGLENS_JWT_PROD_CLIENTID, ORGLENS_JWT_UAT_USERNAME.',
+    );
+    expect(logins?.summary).toContain(
+      '.orglens/local.toml names a login for "uat", which orglens.toml does not declare. It is not used.',
+    );
+    expect(JSON.stringify(report)).not.toContain('example.com');
+    expect(JSON.stringify(report)).not.toContain('misspelled');
+
+    // Every command still works, and the source that is left is checked as before.
+    const again = await openWorkspace({ root: dir, env: {} });
+    expect((await again.sources.list()).map((source) => source.name)).toEqual(['prod', 'repo']);
+    expect(await again.sources.check('prod')).toMatchObject({ login: { via: 'org-id' } });
+  });
+
+  it('says that the user of a key also has a login of the Salesforce CLI', async () => {
+    await seed({ username: 'ci@example.com' });
+    const dir = dirs.next();
+    await workspaceIn(dir);
+    const env = {
+      ORGLENS_JWT_PROD_USERNAME: 'ci@example.com',
+      ORGLENS_JWT_PROD_CLIENT_ID: 'client-id',
+      ORGLENS_JWT_PROD_KEY: 'a key',
+    };
+    const report = await doctor({ root: dir, env });
+    expect(report.checks.find((check) => check.id === 'logins')).toMatchObject({
+      status: 'warning',
+      details: {
+        sources: [
+          {
+            source: 'prod',
+            via: 'jwt-env',
+            problem: 'The user of the key also has a login of the Salesforce CLI on this machine.',
+          },
+          { source: 'uat', via: 'none' },
+        ],
+      },
+    });
+    expect(JSON.stringify(report)).not.toContain('example.com');
+  });
+
   it('has nothing to say about logins for a workspace without an org', async () => {
     const dir = dirs.next();
     writeFileSync(join(dir, 'orglens.toml'), 'schema_version = 1\n\n[sources.repo]\nkind = "git"\n');
@@ -352,7 +456,7 @@ describe('doctor', () => {
       id: 'logins',
       status: 'ok',
       summary: '0 Salesforce CLI logins on this machine. The workspace declares no org or sandbox.',
-      details: { cliLogins: 0, sources: [] },
+      details: { cliLogins: 0, sources: [], unreadVariables: [], unusedLogins: [] },
     });
   });
 });

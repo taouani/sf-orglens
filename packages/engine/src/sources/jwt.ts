@@ -114,7 +114,7 @@ export function readJwtSettings(source: OrgLikeSource, env: Environment): JwtSet
       source.name,
       `The login with a key for the source "${source.name}" is not complete. Not set: ${missing.join(', ')}.`,
       {
-        hint: `Set ${names.username}, ${names.clientId}, and ${names.key} or ${names.keyFile}. To use a login of the Salesforce CLI, unset all variables that start with ${names.username.slice(0, -'USERNAME'.length)}.`,
+        hint: `Set ${names.username}, ${names.clientId}, and ${names.key} or ${names.keyFile}. To use a login of the Salesforce CLI, unset ${Object.values(names).join(', ')}.`,
         details: { missing },
       },
     );
@@ -158,9 +158,9 @@ function privateKey(settings: JwtSettings): KeyObject {
 
   let pem: string;
   if ('text' in settings.key) {
-    const { text } = settings.key;
-    // A variable set in one line carries the line ends of the key as the two characters \ and n.
-    pem = text.includes('\n') ? text : text.replaceAll('\\n', '\n');
+    // A variable set in one line carries the line ends of the key as the two characters \ and n, and a secret
+    // that was pasted often has a line end or a blank around it. A key in PEM form holds no backslash of its own.
+    pem = settings.key.text.replace(/\\r\\n|\\n|\\r/g, '\n').trim();
   } else {
     try {
       pem = readFileSync(settings.key.file, 'utf8');

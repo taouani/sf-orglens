@@ -18,11 +18,11 @@
  * Only metadata is read through a connection. Nothing here queries records.
  */
 import type { Connection } from '@salesforce/core';
-import { EngineError } from '../core/errors.ts';
-import { audiences, loginWithKey, readJwtSettings, REQUEST_TIMEOUT_MS, type JwtSettings } from './jwt.ts';
+import { EngineError, isEngineError } from '../core/errors.ts';
+import { audiences, jwtVariables, loginWithKey, readJwtSettings, REQUEST_TIMEOUT_MS, type JwtSettings } from './jwt.ts';
 import { loadCore, loadJsforce } from './library.ts';
 import { chooseCliLogin, listCliLogins, sameOrg, type CliLogin, type OrgLikeSource } from './logins.ts';
-import { isInvalidSession, loginFailed, networkCode, saidBy, unreachable } from './org-errors.ts';
+import { isFailedRenewal, isInvalidSession, loginFailed, networkCode, saidBy, unreachable } from './org-errors.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -100,8 +100,9 @@ async function identify(
   } catch (error) {
     const network = networkCode(error);
     if (network !== null) throw unreachable(source.name, network, error);
-    // A session that cannot be renewed is reported in words by the library, and as a code by Salesforce.
-    if (isInvalidSession(error) || /refresh/i.test(error instanceof Error ? error.message : '')) throw expired();
+    // A session that is not accepted is reported as a code by Salesforce, and one that the library could not
+    // renew by the library, in words.
+    if (isInvalidSession(error) || isFailedRenewal(error)) throw expired();
     throw loginFailed(
       'REQUEST_FAILED',
       source.name,
@@ -123,7 +124,36 @@ async function identify(
   return { orgId };
 }
 
-async function connectWithKey(source: OrgLikeSource, settings: JwtSettings): Promise<OrgSession> {
+/** True if a login of the Salesforce CLI is one of the user of the key. User names do not differ by case. */
+const hasLoginOf = (settings: JwtSettings, logins: readonly CliLogin[]): boolean =>
+  logins.some((login) => login.username.toLowerCase() === settings.username.toLowerCase());
+
+/**
+ * A login with a key is refused for a user who also has a login of the
+ * Salesforce CLI on this machine. The library reads the login file of the
+ * user of a session it is given, and takes over what it finds: with a
+ * refresh token from that file, it would renew a session of the key that
+ * the org does not accept with the other login, and write the file. A
+ * login with a key must be that and nothing else.
+ */
+function keyUserHasLogin(source: OrgLikeSource): EngineError {
+  const names = jwtVariables(source.name);
+  return loginFailed(
+    'JWT_USER_HAS_LOGIN',
+    source.name,
+    `The user of the key for the source "${source.name}" also has a login of the Salesforce CLI on this machine. OrgLens does not use the two together.`,
+    {
+      hint: `To use the login of the Salesforce CLI, unset ${Object.values(names).join(', ')}. To use the key, log that user out of the Salesforce CLI (sf org logout), or run the job as a user of the machine who has no such login.`,
+    },
+  );
+}
+
+async function connectWithKey(
+  source: OrgLikeSource,
+  settings: JwtSettings,
+  logins: readonly CliLogin[],
+): Promise<OrgSession> {
+  if (hasLoginOf(settings, logins)) throw keyUserHasLogin(source);
   const token = await loginWithKey(settings, audiences(settings.loginUrl, source.kind));
   if (source.orgId !== null && !sameOrg(source.orgId, token.orgId)) {
     throw orgMismatch(source, token.orgId, 'login with a key');
@@ -145,8 +175,12 @@ async function connectWithKey(source: OrgLikeSource, settings: JwtSettings): Pro
         namespacePrefix: null,
       },
     });
+    // The check above looked at the files. This one asks the library what it made of them: a session and nothing
+    // to renew it with. Anything else means that it found a login of the user after all.
+    if (!authInfo.isAccessTokenFlow()) throw keyUserHasLogin(source);
     connection = await OrgConnection.create({ authInfo, connectionOptions: { version: apiVersion } });
   } catch (error) {
+    if (isEngineError(error)) throw error;
     throw loginFailed(
       'REQUEST_FAILED',
       source.name,
@@ -253,7 +287,15 @@ export function planLogin(
 ): LoginPlan {
   const plan = (via: LoginPlan['via'], problem: string | null): LoginPlan => ({ source: source.name, via, problem });
   try {
-    if (readJwtSettings(source, env) !== undefined) return plan('jwt-env', null);
+    const settings = readJwtSettings(source, env);
+    if (settings !== undefined) {
+      return plan(
+        'jwt-env',
+        hasLoginOf(settings, logins)
+          ? 'The user of the key also has a login of the Salesforce CLI on this machine.'
+          : null,
+      );
+    }
   } catch (error) {
     // These messages name variables, and never what a variable holds.
     return plan('jwt-env', error instanceof Error ? error.message : String(error));
@@ -289,8 +331,9 @@ export async function connectToOrg(
   env: Environment,
 ): Promise<OrgSession> {
   const settings = readJwtSettings(source, env);
-  if (settings !== undefined) return connectWithKey(source, settings);
-  const choice = chooseCliLogin(source, linked, listCliLogins());
+  const logins = listCliLogins();
+  if (settings !== undefined) return connectWithKey(source, settings, logins);
+  const choice = chooseCliLogin(source, linked, logins);
   if (choice.via === 'none') {
     throw loginFailed(choice.reason, source.name, choice.message, { hint: choice.hint });
   }

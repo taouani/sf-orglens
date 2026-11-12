@@ -474,13 +474,14 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
         const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
         if (typeof local === 'object') throw invalidConfig([local]);
         const changed = change(shared, local);
-        // The personal file first. A command that is stopped between the two leaves a source without its login,
-        // which is a valid configuration. The other order would leave a login for a source that is not declared.
-        if (changed.local !== undefined && changed.local !== local) {
-          writeFileAtomically(paths.localConfigFile, changed.local);
-        }
+        // The shared file first. If the second write fails, a login is left for a source that is no longer
+        // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
+        // of a source that is still there.
         if (changed.shared !== undefined && changed.shared !== shared) {
           writeFileAtomically(paths.configFile, changed.shared);
+        }
+        if (changed.local !== undefined && changed.local !== local) {
+          writeFileAtomically(paths.localConfigFile, changed.local);
         }
       });
       config = loadConfig(paths, env);
@@ -595,6 +596,9 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           boundary(async () => {
             const source = declared(name);
             const checked = await checkSource(paths.root, source, config.logins[name], env);
+            // A job in a fresh clone is the main user of this command. The log must not be the first file of a
+            // data folder that Git does not ignore yet.
+            ensureDataDir(paths);
             workspaceLogger(paths).info('source.check', {
               source: name,
               kind: checked.kind,

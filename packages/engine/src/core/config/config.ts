@@ -90,6 +90,12 @@ export interface WorkspaceConfig {
    * without an entry is matched to a login by its org id.
    */
   readonly logins: Readonly<Record<string, string>>;
+  /**
+   * The names in the personal file that carry a login and are no source of
+   * the shared file. They are not an error: the shared file is changed by
+   * others. `doctor` names them.
+   */
+  readonly unusedLogins: readonly string[];
 }
 
 /** One problem in a configuration file. */
@@ -502,6 +508,7 @@ function readShared(table: Table, report: FileReport): { name: string | null; so
 interface LocalSettings {
   readonly driver: StoreDriverName | undefined;
   readonly logins: Readonly<Record<string, string>>;
+  readonly unusedLogins: readonly string[];
 }
 
 /**
@@ -520,25 +527,30 @@ function readLocal(
   store?.finish();
 
   const logins = new Map<string, string>();
+  const unusedLogins: string[] = [];
   const sourceTables = root.table('sources');
   if (sourceTables !== undefined) {
     for (const sourceName of Object.keys(table['sources'] as Table)) {
       const reader = sourceTables.table(sourceName);
       if (reader === undefined) continue;
-      const source = declared?.find((one) => one.name === sourceName);
-      if (!SOURCE_NAME.test(sourceName) || (declared !== undefined && source === undefined)) {
+      if (!SOURCE_NAME.test(sourceName)) {
         report.add(
           reader.path,
-          `${SHARED_CONFIG_FILE} declares no source "${sourceName}". Remove this table, or correct the name.`,
+          `"${sourceName}" cannot be the name of a source. Remove this table, or correct the name.`,
         );
         continue;
       }
+      const source = declared?.find((one) => one.name === sourceName);
       const login = reader.string('login');
       if (login !== undefined) {
         if (source?.kind === 'git') {
           reader.fail('login', 'A source of kind "git" has no login. Remove this key.');
         } else if (login === '' || login !== login.trim() || login.length > 255) {
           reader.fail('login', 'A login is the alias or the user name of a Salesforce CLI login.');
+        } else if (declared !== undefined && source === undefined) {
+          // The shared file is changed by others: a colleague removes or renames a source, or a branch without
+          // it is checked out. That must not make the personal file invalid. The login is kept and not used.
+          unusedLogins.push(sourceName);
         } else {
           logins.set(sourceName, login);
         }
@@ -548,7 +560,7 @@ function readLocal(
     sourceTables.finish();
   }
   root.finish();
-  return { driver, logins: Object.fromEntries(logins) };
+  return { driver, logins: Object.fromEntries(logins), unusedLogins };
 }
 
 /**
@@ -574,12 +586,13 @@ export function readConfig(input: ConfigInput): ConfigResult {
   let driver: StoreDriverName = 'node:sqlite';
   let driverSetBy: WorkspaceConfig['store']['driverSetBy'] = 'default';
   let logins: Readonly<Record<string, string>> = {};
+  let unusedLogins: readonly string[] = [];
   if (input.local !== undefined) {
     const local = parseToml(LOCAL_CONFIG_FILE, input.local);
     if ('table' in local) {
       scanForSecrets(local.table, [], local.report);
       const settings = readLocal(local.table, local.report, sharedIsSound ? sources : undefined);
-      ({ logins } = settings);
+      ({ logins, unusedLogins } = settings);
       if (settings.driver !== undefined) {
         driver = settings.driver;
         driverSetBy = 'local';
@@ -607,7 +620,7 @@ export function readConfig(input: ConfigInput): ConfigResult {
   }
 
   if (diagnostics.length > 0) return { ok: false, diagnostics };
-  return { ok: true, config: { name, sources, store: { driver, driverSetBy }, logins } };
+  return { ok: true, config: { name, sources, store: { driver, driverSetBy }, logins, unusedLogins } };
 }
 
 /** The problems as they appear in the details of an error and in a report: each with the line a person reads. */

@@ -63,6 +63,7 @@ describe('readConfig', () => {
         ],
         store: { driver: 'node:sqlite', driverSetBy: 'default' },
         logins: {},
+        unusedLogins: [],
       },
     });
   });
@@ -70,7 +71,13 @@ describe('readConfig', () => {
   it('reads the smallest file there is', () => {
     expect(readConfig({ shared: 'schema_version = 1\n' })).toEqual({
       ok: true,
-      config: { name: null, sources: [], store: { driver: 'node:sqlite', driverSetBy: 'default' }, logins: {} },
+      config: {
+        name: null,
+        sources: [],
+        store: { driver: 'node:sqlite', driverSetBy: 'default' },
+        logins: {},
+        unusedLogins: [],
+      },
     });
   });
 
@@ -541,11 +548,6 @@ describe('readConfig', () => {
         '[store]\npath = "/tmp/x.db"\n',
         '.orglens/local.toml:2:1: store.path: Unknown key "path". Known keys: driver.',
       ],
-      [
-        'a source the shared file does not declare',
-        '[sources.prod]\nlogin = "main"\n',
-        '.orglens/local.toml:1:1: sources.prod: orglens.toml declares no source "prod". Remove this table, or correct the name.',
-      ],
     ])('refuses %s in the local file', (_label, local, expected) => {
       expect(diagnosticsOf({ shared, local }).map(formatDiagnostic)).toEqual([expected]);
     });
@@ -565,6 +567,18 @@ describe('readConfig', () => {
         expect(readConfig({ shared: sources, local: 'sources.prod.login = "a"\n' })).toMatchObject({
           config: { logins: { prod: 'a' } },
         });
+      });
+
+      it('is kept and not used for a source the shared file does not declare', () => {
+        // The shared file is changed by others. A source that a colleague removed must not break every command.
+        const local = '[sources.prod]\nlogin = "main"\n\n[sources.gone]\nlogin = "old"\n\n[sources.left]\n';
+        expect(readConfig({ shared: sources, local })).toMatchObject({
+          ok: true,
+          config: { logins: { prod: 'main' }, unusedLogins: ['gone'] },
+        });
+        expect(read('[sources.gone]\nlogin = ""\n')).toEqual([
+          '.orglens/local.toml:2:1: sources.gone.login: A login is the alias or the user name of a Salesforce CLI login.',
+        ]);
       });
 
       it.each([
@@ -596,7 +610,7 @@ describe('readConfig', () => {
         [
           'a name no source can have',
           '[sources.Prod]\nlogin = "main"\n',
-          '.orglens/local.toml:1:1: sources.Prod: orglens.toml declares no source "Prod". Remove this table, or correct the name.',
+          '.orglens/local.toml:1:1: sources.Prod: "Prod" cannot be the name of a source. Remove this table, or correct the name.',
         ],
         ['sources that are not tables', 'sources = 1\n', '.orglens/local.toml:1:1: sources: This must be a table.'],
       ])('is refused for %s', (_label, local, expected) => {

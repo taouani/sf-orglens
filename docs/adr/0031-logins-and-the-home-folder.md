@@ -22,9 +22,11 @@ mock org, with the home folder redirected.
 
 **Which login a source uses is decided in a fixed order, and a later step never covers for a failed earlier one.**
 
-1. If any variable `ORGLENS_JWT_<SOURCE>_*` is set, the source is logged in with a key. An incomplete set is an
+1. If one of the five variables for a login with a key is set for the source (`ORGLENS_JWT_<SOURCE>_USERNAME`,
+   `_CLIENT_ID`, `_KEY`, `_KEY_FILE`, `_LOGIN_URL`), the source is logged in with a key. An incomplete set is an
    error. It is not a reason to try a login of the Salesforce CLI, because a job that silently used another login
-   would read as another user.
+   would read as another user. A variable with another name, such as a misspelled one, is not read and is no
+   error. `doctor` warns about every variable that starts with `ORGLENS_JWT_` and that no source reads.
 2. Otherwise, if the personal file `.orglens/local.toml` names a login for the source, that login is used, found
    by alias first and then by user name. If it is no longer on the machine, that is an error.
 3. Otherwise, if exactly one login of the Salesforce CLI belongs to the org the source declares with `org_id`,
@@ -39,8 +41,9 @@ identity of the session and compares the org id with the one the source declares
 without `org_id` accepts any org, and `source check` says so.
 
 **The API version is the newest the org offers.** OrgLens asks the org for its versions, which needs no login, and
-hands the answer to the library. The version set for the Salesforce CLI (`org-api-version`) is not applied, and
-the library neither looks the version up nor stores it. Two people who read the same org use the same version.
+hands the answer to the library. The version set for the Salesforce CLI (`org-api-version`) is not applied. When
+it connects, the library neither looks the version up nor stores it. Two people who read the same org use the
+same version. A renewal is the exception to "nor stores it": see below.
 
 **The logins are listed by reading files, without the library.** `doctor` and the choice of a login read the
 names of the files in `.sfdx`, and from each login file the user name, the org id and the address of the org, and
@@ -51,7 +54,17 @@ is made.
 **The exchange with a key is made by OrgLens.** The library's own login with a key writes a login file.
 OrgLens signs the assertion with `node:crypto` (RS256, valid for three minutes), posts it to the token address, and
 hands the session to the library in memory. The request has a time limit of 30 seconds and is not repeated.
-Details:
+
+**A login with a key is refused for a user who also has a login of the Salesforce CLI on the machine.** The
+library reads the login file of the user of a session it is given and takes over what it finds. With a refresh
+token from that file, it renews a session of the key that the org does not accept with the other login, writes
+the login file, and the result still looks like a login with a key. The code review of this work showed exactly
+that. OrgLens therefore looks for a login of the same user before it sends anything, and after the library has
+built its login it asks the library whether that login is a session and nothing else. In both cases the command
+ends with the reason `JWT_USER_HAS_LOGIN`. A build server has no login of the Salesforce CLI. A person who tries
+the key of a job on a machine where that user is logged in has to log the user out or unset the variables.
+
+Details of the login with a key:
 
 - The key is given as text in `ORGLENS_JWT_<SOURCE>_KEY` or as a path in `ORGLENS_JWT_<SOURCE>_KEY_FILE`, never
   both. Only RSA keys are accepted. A message about a key names the variable and never what it holds.
@@ -65,40 +78,62 @@ Details:
 - For a login with a key, `source check` shows neither the user name nor the address of the org. Both come from
   secrets, and the output of a job is read by others.
 
-**What is read and written in the home folder.** Measured on Linux with the file-based keychain. `<user>` stands
-for a user name.
+**What is read and written.** Measured on Linux with the file-based keychain, by tracing the files the process
+opens. `<user>` stands for a user name. All paths are in the home folder unless they say otherwise.
 
-| What OrgLens does                            | Read                                                                               | Written                                                                              |
-| -------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `doctor`, `source link`, choosing a login    | names in `.sfdx`, `.sfdx/<user>.json`, `.sfdx/alias.json`                          | nothing, and no folder is created                                                    |
-| Connecting with a Salesforce CLI login       | the above, and through the library the key of the keychain and `.sfdx/<user>.json` | nothing while the session is valid                                                   |
-| The same, when the session has expired       | the same                                                                           | `.sfdx/<user>.json`, rewritten by the library with the new session and what it found |
-| Connecting with a key from the environment   | `.sfdx/<user>.json` of the same user, if there is one                              | `.sfdx/alias.json` and `.sfdx/key.json`, if they are not there yet                   |
-| Any use of the library                       |                                                                                    | no log file: `SF_DISABLE_LOG_FILE` is set before the library loads                   |
-| OrgLens itself, in the workspace of the user | `.orglens/local.toml`                                                              | `.orglens/local.toml`, by `source link` and `source remove` only                     |
+| What OrgLens does                          | Read                                                                                                                                                                                | Written                                                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `doctor`, `source link`, choosing a login  | names in `.sfdx`, `.sfdx/<user>.json`, `.sfdx/alias.json`                                                                                                                           | nothing, and no folder is created                                                                                              |
+| Any connection, through the library        | `.sf/config.json`, `.sfdx/sfdx-config.json`, `.jsforce/config.json`, and `sfdx-project.json` in the current folder and every folder above it. A file that is missing is not created | no log file: `SF_DISABLE_LOG_FILE` is set before the library loads                                                             |
+| Connecting with a Salesforce CLI login     | the above, the encryption key (keychain or `.sfdx/key.json`), `.sfdx/<user>.json`, `.sfdx/alias.json`                                                                               | nothing while the session is valid                                                                                             |
+| The same, when the session has expired     | the same                                                                                                                                                                            | `.sfdx/<user>.json`, rewritten by the library, and for the time of the renewal a lock file beside it                           |
+| Connecting with a key from the environment | the above, and it looks for `.sfdx/<user>.json` of the user of the key                                                                                                              | `.sfdx/alias.json` and `.sfdx/key.json`, if they are not there yet                                                             |
+| OrgLens itself, in the workspace           | `orglens.toml`, `.orglens/local.toml`                                                                                                                                               | `.orglens/local.toml` by `source link` and `source remove`, and a line in `.orglens/logs/` by `source link` and `source check` |
 
-Three of these rows need words:
+Some of these rows need words:
 
+- **The settings of the Salesforce CLI are read.** The library reads the configuration files of the Salesforce
+  CLI and of its HTTP client, and looks for a Salesforce project around the current folder, as it does for every
+  program that uses it. OrgLens passes the two settings it would otherwise take from there, the login and the API
+  version, itself. What else those files can change in the library was not examined.
 - **A login with a key leaves two files.** The library creates `.sfdx/alias.json` with an empty list of aliases
   and `.sfdx/key.json` with a new encryption key of its own, which protects nothing. Neither holds the session,
   the user name or the private key, and no login file is written. A test runs the login in two processes in a row
   and requires that the home folder holds exactly these two files afterwards. With the keychain of the system in
   use, the library would put that key there instead of in `key.json`.
-- **A login with a key reads the login file of the same user.** If the user of the key also has a login of the
-  Salesforce CLI on the machine, the library adds the fields of that file to its copy in memory. The session of
-  the key is the one that is used, and the file is not changed. Both are tested.
 - **Renewing an expired session is the library's work, and it asks the org more than OrgLens does.** When the
-  session of a Salesforce CLI login has expired, the library renews it with the stored refresh token. It then
-  makes two queries of its own before it stores the result: one finds out whether the org is a Dev Hub, the other
-  reads the name, the instance, the kind, the namespace and the trial end date of the org. It writes those into
-  the login file with the new session. The Salesforce CLI does the same whenever it renews a login. The code of
-  OrgLens makes neither query. A test pins the requests, so that a new version of the library that asks for more
-  fails it.
+  session of a Salesforce CLI login has expired, the library renews it with the stored refresh token. Before it
+  stores the result, it makes three requests of its own: a query that finds out whether the org is a Dev Hub, the
+  list of API versions, and a query that reads the name, the instance, the kind, the namespace and the trial end
+  date of the org. It writes all of that into the login file with the new session, the newest API version
+  included. The Salesforce CLI does the same whenever it renews a login. The code of OrgLens makes none of these
+  requests. A test pins the full list of requests, so that a new version of the library that asks for more
+  fails it. These requests run with the time limit of the library, which is 30 minutes, not with the 30 seconds
+  of the requests OrgLens makes. If the process is stopped during a renewal, the lock file can stay behind.
+- **The workspace log.** `source check` writes one line to the log of the workspace: the name of the source, its
+  kind and the route of the login. In a folder that holds the configuration and nothing else, as a fresh clone on
+  a build server does, the file that keeps `.orglens` out of Git is written first.
+
+**What Salesforce says is filtered before it is shown.** The words of OrgLens in a message name no token, no key,
+no address and no user. Where a message passes on what Salesforce or the library said, tokens are removed,
+everything that has the form of an address or of a user name is masked, a page is not passed on, and the text is
+cut after 300 characters. Whether a session could not be renewed is decided from the start of the library's own
+message, which is the only sign the library gives, and not from a word somewhere in the answer of an org.
+
+**A redirect is followed.** The HTTP client of the library follows a redirect and sends the headers of the request
+along, the session included. The signed assertion is not sent along: a redirected request loses its body. The
+requests with a session start at the address that issued it. This was accepted for a login and is to be decided
+again for a retrieve.
 
 **Failures are sorted, and say what to do.** Every failed login is the error `LOGIN_FAILED` with a reason in its
 details: no login, several logins, a linked login that is gone, variables that are incomplete or invalid, a
-refused key, a session that cannot be renewed, an org that cannot be reached, or a request that failed. A message
-never contains a token or a key. `docs/cli.md` lists the reasons.
+refused key, a key whose user also has a login of the Salesforce CLI, a session that cannot be renewed, an org
+that cannot be reached, or a request that failed. `docs/cli.md` lists the reasons.
+
+**The personal file may name a source that is gone.** `orglens.toml` is shared and `.orglens/local.toml` is not.
+When a colleague removes or renames a source, the login that someone else linked to it stays in that person's
+file. That is not an error, the login is not used, and `doctor` names it. `source remove` changes the shared file
+first and the personal file second, so that a failure in between leaves this harmless state.
 
 ## Consequences
 
@@ -107,7 +142,10 @@ never contains a token or a key. `docs/cli.md` lists the reasons.
 - The rule "OrgLens reads metadata only" holds for the code of OrgLens. It does not fully hold for the process:
   on a renewal the library reads one row that describes the org itself, and looks for Dev Hub records. Avoiding
   that would mean renewing sessions without the library, which means handling refresh tokens in OrgLens. That
-  was judged the worse choice.
+  was judged the worse choice. `CLAUDE.md` states the exception next to the rule.
+- A login with a key cannot be tried on a machine where the same user is logged in with the Salesforce CLI.
+- Part three of this work has to make sure that the library never stores a session of a login with a key. Nothing
+  does so today, but paths of the library that a retrieve may use save the login they work with.
 - A job that logs in with a key leaves two small files without secrets in the home folder of the runner. They
   could be avoided only by not using the library for the connection.
 - Reading the login files directly depends on their layout, which is the library's and not a public contract.

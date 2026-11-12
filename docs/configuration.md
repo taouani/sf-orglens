@@ -177,9 +177,11 @@ login = "acme-prod"
 | `store.driver`         | The SQLite binding: `"node:sqlite"` (default, built into Node.js) or `"better-sqlite3"` (an optional package that has to be installed). See [record 0025](adr/0025-sqlite-driver.md).                                                             |
 | `sources.<name>.login` | The Salesforce CLI login you use for the org or sandbox `<name>`: its alias or its user name, as `sf org list` shows it. `orglens source link <name> <login>` writes it. It is a name, not a credential: the login stays with the Salesforce CLI. |
 
-A table `[sources.<name>]` is accepted only for a source that `orglens.toml` declares, and `login` only for an org
-or a sandbox. `orglens source remove` removes the table together with the source. See
-[the logins](cli.md#logins) for the order in which a login is found.
+`login` is accepted only for an org or a sandbox. `orglens source remove` removes the table together with the
+source. A table for a name that `orglens.toml` does not declare is not an error: the shared file is changed by
+others, and a source that a colleague removed or renamed must not stop every command of yours. Its login is not
+used, and `orglens doctor` names it until you remove the table. See [the logins](cli.md#logins) for the order in
+which a login is found.
 
 ## Environment variables
 
@@ -199,13 +201,20 @@ in upper case, with `_` for `-`. For a source `prod` the prefix is `ORGLENS_JWT_
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ORGLENS_JWT_<SOURCE>_USERNAME`  | The user to log in as. Required.                                                                                                                                                  |
 | `ORGLENS_JWT_<SOURCE>_CLIENT_ID` | The consumer key of the app in the org. Required.                                                                                                                                 |
-| `ORGLENS_JWT_<SOURCE>_KEY`       | The private key in PEM form, without a passphrase. A value in one line may carry its line ends as `\n`.                                                                           |
-| `ORGLENS_JWT_<SOURCE>_KEY_FILE`  | The path of a file that holds the key. Exactly one of the two key variables is set.                                                                                               |
+| `ORGLENS_JWT_<SOURCE>_KEY`       | The private key in PEM form, without a passphrase. A value in one line may carry its line ends as `\n`. Blanks and line ends around the value are ignored.                        |
+| `ORGLENS_JWT_<SOURCE>_KEY_FILE`  | The path of a file that holds the key. Exactly one of the two key variables is set. A relative path starts at the folder the command runs in, not at the workspace.               |
 | `ORGLENS_JWT_<SOURCE>_LOGIN_URL` | Where to log in. Optional. Without it: the `login_url` of the source, and without that `https://login.salesforce.com` for an org and `https://test.salesforce.com` for a sandbox. |
 
 - As soon as one of the five is set, the source is logged in with the key, and no Salesforce CLI login is
   considered for it. If a required one is missing, the command ends with `LOGIN_FAILED`.
 - An empty value counts as not set.
+- Only these five names are read. A variable with another name, such as `ORGLENS_JWT_PROD_CLIENTID` or
+  `ORGLENS_JWT_UAT-EU_USERNAME`, is not an error for the commands, and a source for which none of the five is set
+  uses a Salesforce CLI login. `orglens doctor` warns about every variable that starts with `ORGLENS_JWT_` and is
+  read by no source.
+- The user of the key must not also have a Salesforce CLI login on the machine. The Salesforce library would
+  take over the stored login of that user, and a login with a key would no longer be only that. The command ends
+  with `LOGIN_FAILED` (`JWT_USER_HAS_LOGIN`) before anything is sent. A build server has no such login.
 - The login URL starts with `https://`. Only for an address of this machine itself (`localhost`, `127.0.0.1`),
   `http://` is accepted, which is what tests use.
 - The key is an RSA key. OrgLens signs the request with it, sends the request to Salesforce, and keeps the session
@@ -247,8 +256,8 @@ and the layout of every other line stay exactly as they were.
 - `source link` changes the value of `login` in the table `[sources.NAME]` of `local.toml` and keeps a comment
   after it. Where the table has no `login`, a line is added below its header. Where there is no such table, one is
   appended, and where there is no file, it is created with a two-line comment at its top. `source remove` deletes
-  the table from `local.toml` first and the source from `orglens.toml` second, so that a command that is stopped
-  in between leaves a valid configuration.
+  the source from `orglens.toml` first and the table from `local.toml` second. If the second step fails, a login
+  is left for a source that is no longer declared, which is a valid configuration and which `doctor` names.
 - After the change and before the file is written, the new text is read and checked like any configuration, and it
   must show exactly the intended difference. If it does not, nothing is written.
 - The new file is written next to the old one and then moved over it, so a crash never leaves half a file. It

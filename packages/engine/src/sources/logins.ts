@@ -141,7 +141,8 @@ export function chooseCliLogin(
         via: 'none',
         reason: 'LOGIN_UNKNOWN',
         message: `The login "${linked}" that is linked to the source "${source.name}" is not a login of the Salesforce CLI on this machine.`,
-        hint: `Log in with the Salesforce CLI (sf org login web --alias ${linked}), or link another login with: ${link}`,
+        // A user name is not proposed as an alias: an alias wins over a user name, whoever logs in under it.
+        hint: `Log in with the Salesforce CLI (sf org login web${linked.includes('@') ? '' : ` --alias ${linked}`}), or link another login with: ${link}`,
       };
     }
     return { via: 'linked', login, alias: login.aliases.includes(linked) ? linked : (login.aliases[0] ?? null) };
