@@ -9,6 +9,10 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    ignore:
+      # The Node.js types follow the oldest supported Node.js line, so a new major is taken by hand, with the floor.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       dev-tools:
         dependency-type: development

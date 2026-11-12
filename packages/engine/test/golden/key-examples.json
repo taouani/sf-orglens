@@ -1,0 +1,127 @@
+[
+  {
+    "label": "custom object",
+    "key": "CustomObject:invoice__c",
+    "parent": null
+  },
+  {
+    "label": "standard field",
+    "key": "CustomField:account.industry",
+    "parent": "CustomObject:account"
+  },
+  {
+    "label": "custom field in a managed namespace",
+    "key": "CustomField:account.ns__score__c",
+    "parent": "CustomObject:account"
+  },
+  {
+    "label": "custom field on a managed object",
+    "key": "CustomField:ns__invoice__c.ns__amount__c",
+    "parent": "CustomObject:ns__invoice__c"
+  },
+  {
+    "label": "Apex class",
+    "key": "ApexClass:accountservice",
+    "parent": null
+  },
+  {
+    "label": "Apex class in a managed namespace",
+    "key": "ApexClass:ns__billingservice",
+    "parent": null
+  },
+  {
+    "label": "Apex method",
+    "key": "ApexClass:accountservice#method:run(account)",
+    "parent": "ApexClass:accountservice"
+  },
+  {
+    "label": "Apex method overload",
+    "key": "ApexClass:accountservice#method:run(account,boolean)",
+    "parent": "ApexClass:accountservice"
+  },
+  {
+    "label": "constructor",
+    "key": "ApexClass:accountservice#ctor:(id)",
+    "parent": "ApexClass:accountservice"
+  },
+  {
+    "label": "property",
+    "key": "ApexClass:accountservice#prop:isactive",
+    "parent": "ApexClass:accountservice"
+  },
+  {
+    "label": "inner class",
+    "key": "ApexClass:accountservice#inner:helper",
+    "parent": "ApexClass:accountservice"
+  },
+  {
+    "label": "method of an inner class",
+    "key": "ApexClass:accountservice#inner:helper/method:apply()",
+    "parent": "ApexClass:accountservice#inner:helper"
+  },
+  {
+    "label": "trigger",
+    "key": "ApexTrigger:accounttrigger",
+    "parent": null
+  },
+  {
+    "label": "flow",
+    "key": "Flow:my_flow",
+    "parent": null
+  },
+  {
+    "label": "flow element",
+    "key": "Flow:my_flow#element:decision_1",
+    "parent": "Flow:my_flow"
+  },
+  {
+    "label": "validation rule",
+    "key": "ValidationRule:account.region_required",
+    "parent": "CustomObject:account"
+  },
+  {
+    "label": "record type",
+    "key": "RecordType:account.partner",
+    "parent": "CustomObject:account"
+  },
+  {
+    "label": "custom metadata type",
+    "key": "CustomObject:settings__mdt",
+    "parent": null
+  },
+  {
+    "label": "custom metadata record",
+    "key": "CustomMetadata:settings.default",
+    "parent": "CustomObject:settings__mdt"
+  },
+  {
+    "label": "permission set",
+    "key": "PermissionSet:sales_ops",
+    "parent": null
+  },
+  {
+    "label": "profile",
+    "key": "Profile:admin",
+    "parent": null
+  },
+  {
+    "label": "profile with an encoded name",
+    "key": "Profile:custom%3a marketing profile",
+    "parent": null
+  },
+  {
+    "label": "Lightning web component",
+    "key": "LightningComponentBundle:mycmp",
+    "parent": null
+  },
+  {
+    "label": "file of a Lightning web component",
+    "key": "LightningComponentBundle:mycmp#file:mycmp.js",
+    "parent": "LightningComponentBundle:mycmp"
+  },
+  {
+    "label": "named credential",
+    "key": "NamedCredential:erp",
+    "parent": null
+  }
+]

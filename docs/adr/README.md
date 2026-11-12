@@ -34,6 +34,7 @@ during the build.
 | [0021](0021-correctness-proof.md)                 | A three-level proof of correctness and a gate before riders and launch            | Accepted | M4         |
 | [0022](0022-public-pre-release.md)                | Public from the first commit, announced after the gate                            | Accepted | M5         |
 | [0023](0023-toolchain-and-layer-enforcement.md)   | Toolchain, and layer rules enforced by independent mechanisms                     | Accepted |            |
+| [0024](0024-component-key-grammar.md)             | Component key grammar: escaping, sub-component kinds and collisions               | Accepted |            |
 
 ## Writing a record
 
