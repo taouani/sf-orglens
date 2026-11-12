@@ -418,6 +418,26 @@ Status after the first real runs and the third pull request of this work package
   the org.
 - Not done yet: the runs of the probe, and the report `docs/research/phase-0/real-org.md`, which follows them.
 
+Status after the run of the probes and the fourth pull request of this work package (2026-11-12).
+
+- Items 1 to 5 are done, and the report is written: [`docs/research/phase-0/real-org.md`](../research/phase-0/real-org.md).
+- **The Dependency API is usable for field-level verification of custom fields, within known limits.** It reports
+  100 of the 137 pairs of the answer key, and nothing that is wrong. Every static reference from Apex, from a
+  formula and from an active validation rule to a custom field or a custom object is reported. It has no row
+  for a standard field, for a name in text, for the target of a lookup, for a roll-up summary or for an inactive
+  rule. The source of a row is a component, not a method, and a row says neither where nor whether it reads or
+  writes.
+- **The symbol tables of the compiler are not usable as a cross-check for references.** The table the org keeps
+  for a saved class holds declarations and no reference. A table with references needs a compile in the org,
+  which writes to it. This is the negative answer the acceptance rule below names. It touches decision A4 of
+  the overall plan and is brought to the maintainer as a decision.
+- A second read of the org took 120 seconds, the first 197, for the same content. The step is green with a
+  warning. For 12 of the 223 components the org lists and does not hand out, the reason is known.
+- No fix to the engine came out of the runs. Two things are left for the phase that builds the reading of an
+  org in full: a bundle of an installed package is listed with the prefix of the package and handed out without
+  it, and what "complete" should mean for a snapshot of a real org is not decided.
+- Item 6 was not run. It is for the maintainer to choose.
+
 Run and record in `docs/research/phase-0/real-org.md`:
 
 1. Deploy fixture v0 to the Developer Edition org with a script kept in the repository.

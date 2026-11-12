@@ -207,7 +207,7 @@ the number of pairs it reports is a lower bound. A pair that only the name of a 
 the org did not say which object the id belongs to, is marked "by name" and not counted.
 
 The steps were tested against a mock org only before their first run. What the first runs showed is in
-`docs/research/phase-0/real-org.md`, once that report is written.
+[`docs/research/phase-0/real-org.md`](research/phase-0/real-org.md).
 
 ## Keeping the org alive
 

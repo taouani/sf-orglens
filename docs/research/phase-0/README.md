@@ -13,11 +13,12 @@ installing and running the libraries in question, not from reading about them. C
 | [corpora-and-proof.md](corpora-and-proof.md) | Which public codebases and which free orgs can be used to prove correctness. |
 | [harvest-and-config.md](harvest-and-config.md) | What is reused from the three earlier prototypes, and the design of the configuration file, the engine API and the JSON output. |
 
-One note was added while Phase 0 was built:
+Two notes were added while Phase 0 was built:
 
 | Note | What it holds |
 | --- | --- |
 | [store-benchmark.md](store-benchmark.md) | The numbers of the storage benchmark in `bench/`, measured again with the code in the repository. |
+| [real-org.md](real-org.md) | What the first runs against a real org showed: the deploy of the fixture project, the first snapshot, what Salesforce rewrites, what an org lists and does not hand out, and what the Dependency API and the symbol tables of the compiler can be used for. |
 
 ## How to read them
 
