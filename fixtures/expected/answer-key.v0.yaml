@@ -1,0 +1,641 @@
+# The answer key of the fixture project billing-sfdx, version 0.
+#
+# It was written by hand, by reading the files, before any analyser existed. It
+# says which references an analyser must find in the project, and which it must
+# never report. The format and the rules of what is keyed are in ../README.md.
+# packages/engine/test/fixture-key.test.ts checks this file against the project.
+#
+# One entry: { line, match, kind, to, via } and, where they differ from the
+# default: nth (1), tier (confirmed), op, stretch (false), note.
+#   line, match, nth   where the reference stands: the nth whole word `match` on that line
+#   kind               reads | writes | references | extends | triggers-on
+#   to                 the component key of the target
+#   via                how the source names the target (see README)
+#   stretch            an analyser may miss it without losing recall, and may find it without losing precision
+
+version: 0
+project: billing-sfdx
+
+# What the project contains, by Metadata API type and full name.
+components:
+  ApexClass:
+    - DynamicAccess
+    - InvoiceBatch
+    - InvoiceCalloutService
+    - InvoiceConstants
+    - InvoiceController
+    - InvoiceLineService
+    - InvoiceSelector
+    - InvoiceService
+    - InvoiceServiceTest
+    - InvoiceTriggerHandler
+    - ParserTorture
+    - TriggerHandler
+  ApexTrigger:
+    - InvoiceTrigger
+  CustomObject:
+    - Invoice__c
+    - Invoice_Line__c
+  CustomField:
+    - Account.Credit_Limit__c
+    - Account.Is_Key_Account__c
+    - Account.Primary_Contact__c
+    - Account.Risk_Score__c
+    - Account.Tier__c
+    - Invoice__c.Account_Industry__c
+    - Invoice__c.Account_Tier__c
+    - Invoice__c.Account__c
+    - Invoice__c.Amount__c
+    - Invoice__c.Billing_Contact__c
+    - Invoice__c.Days_Overdue__c
+    - Invoice__c.Due_Date__c
+    - Invoice__c.External_Id__c
+    - Invoice__c.Grand_Total__c
+    - Invoice__c.Is_Mine__c
+    - Invoice__c.Legacy_Code__c
+    - Invoice__c.Line_Count__c
+    - Invoice__c.Lines_Total__c
+    - Invoice__c.Owner_Manager_Email__c
+    - Invoice__c.Paid_Date__c
+    - Invoice__c.Status__c
+    - Invoice__c.Summary__c
+    - Invoice__c.Tax_Rate__c
+    - Invoice__c.Total__c
+    - Invoice__c.Unused_Field__c
+    - Invoice_Line__c.Invoice__c
+    - Invoice_Line__c.Is_Billable__c
+    - Invoice_Line__c.Line_Amount__c
+    - Invoice_Line__c.Quantity__c
+    - Invoice_Line__c.Status__c
+    - Invoice_Line__c.Unit_Price__c
+  ValidationRule:
+    - Account.Key_Account_Needs_Contact
+    - Invoice__c.Amount_Within_Credit_Limit
+    - Invoice__c.Locked_When_Paid
+    - Invoice__c.Paid_Requires_Paid_Date
+    - Invoice_Line__c.Price_Not_Negative
+    - Invoice_Line__c.Quantity_Positive
+
+# Targets that Salesforce provides. They have no file in the project.
+standard:
+  - CustomObject:account
+  - CustomObject:contact
+  - CustomObject:event
+  - CustomField:account.industry
+  - CustomField:account.name
+  - CustomField:contact.accountid
+  - CustomField:contact.email
+  - CustomField:contact.lastname
+  - CustomField:event.whatid
+  - CustomField:invoice__c.createddate
+  - CustomField:invoice__c.name
+  - CustomField:invoice__c.ownerid
+  - CustomField:user.email
+  - CustomField:user.managerid
+
+# The fields of the project that nothing in the project refers to. Unused_Field__c is the control case: its name
+# stands in comments and in text, and nowhere else.
+unreferenced:
+  - CustomField:invoice__c.account_industry__c
+  - CustomField:invoice__c.billing_contact__c
+  - CustomField:invoice__c.line_count__c
+  - CustomField:invoice__c.unused_field__c
+
+references:
+  # ------------------------------------------------------------------ Phase 1: fields and validation rules
+  - file: force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:account.is_key_account__c
+        refs:
+          - { line: 5, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: formula }
+          - { line: 6, match: Credit_Limit__c, kind: reads, to: CustomField:account.credit_limit__c, via: formula }
+
+  - file: force-app/main/default/objects/Account/fields/Primary_Contact__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:account.primary_contact__c
+        refs:
+          - { line: 6, match: Contact, kind: references, to: CustomObject:contact, via: lookup }
+
+  - file: force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:account.key_account_needs_contact
+        refs:
+          - { line: 6, match: Is_Key_Account__c, kind: reads, to: CustomField:account.is_key_account__c, via: formula }
+          - { line: 7, match: Primary_Contact__c, kind: reads, to: CustomField:account.primary_contact__c, via: formula }
+          - { line: 9, match: Primary_Contact__c, kind: references, to: CustomField:account.primary_contact__c, via: display-field }
+
+  - file: force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice_line__c.invoice__c
+        refs:
+          - { line: 5, match: Invoice__c, kind: references, to: CustomObject:invoice__c, via: lookup }
+
+  - file: force-app/main/default/objects/Invoice_Line__c/fields/Line_Amount__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice_line__c.line_amount__c
+        refs:
+          - { line: 4, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: formula }
+          - { line: 4, match: Unit_Price__c, kind: reads, to: CustomField:invoice_line__c.unit_price__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice_Line__c/validationRules/Price_Not_Negative.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice_line__c.price_not_negative
+        refs:
+          - { line: 6, match: Unit_Price__c, kind: reads, to: CustomField:invoice_line__c.unit_price__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice_Line__c/validationRules/Quantity_Positive.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice_line__c.quantity_positive
+        refs:
+          - { line: 6, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: formula, note: The rule is inactive. It still refers to the field. }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Account_Industry__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.account_industry__c
+        refs:
+          - { line: 4, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: formula }
+          - { line: 4, match: Industry, kind: reads, to: CustomField:account.industry, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.account_tier__c
+        refs:
+          - { line: 4, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: formula }
+          - { line: 4, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Account__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.account__c
+        refs:
+          - { line: 6, match: Account, kind: references, to: CustomObject:account, via: lookup }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Billing_Contact__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.billing_contact__c
+        refs:
+          - { line: 10, match: AccountId, kind: reads, to: CustomField:contact.accountid, via: filter }
+          - { line: 12, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: filter }
+          - { line: 16, match: Contact, kind: references, to: CustomObject:contact, via: lookup }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Days_Overdue__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.days_overdue__c
+        refs:
+          - { line: 5, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: formula }
+          - { line: 5, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula }
+          - { line: 7, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.grand_total__c
+        refs:
+          - { line: 4, match: Total__c, kind: reads, to: CustomField:invoice__c.total__c, via: formula, note: A formula on a formula. }
+          - { line: 4, match: Lines_Total__c, kind: reads, to: CustomField:invoice__c.lines_total__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Is_Mine__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.is_mine__c
+        refs:
+          - { line: 4, match: OwnerId, kind: reads, to: CustomField:invoice__c.ownerid, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Line_Count__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.line_count__c
+        refs:
+          - { line: 5, match: Invoice__c, kind: references, to: CustomField:invoice_line__c.invoice__c, via: summary }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Lines_Total__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.lines_total__c
+        refs:
+          - { line: 5, match: Line_Amount__c, kind: reads, to: CustomField:invoice_line__c.line_amount__c, via: summary }
+          - { line: 7, match: Is_Billable__c, kind: reads, to: CustomField:invoice_line__c.is_billable__c, via: filter }
+          - { line: 11, match: Invoice__c, kind: references, to: CustomField:invoice_line__c.invoice__c, via: summary }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Owner_Manager_Email__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.owner_manager_email__c
+        refs:
+          - { line: 4, match: Owner, kind: reads, to: CustomField:invoice__c.ownerid, via: formula }
+          - { line: 4, match: Manager, kind: reads, to: CustomField:user.managerid, via: formula }
+          - { line: 4, match: Email, kind: reads, to: CustomField:user.email, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.summary__c
+        refs:
+          - { line: 5, match: Name, kind: reads, to: CustomField:invoice__c.name, via: formula }
+          - { line: 5, match: amount__C, kind: reads, to: CustomField:invoice__c.amount__c, via: formula, note: Written in another case than the field is declared. }
+
+  - file: force-app/main/default/objects/Invoice__c/fields/Total__c.field-meta.xml
+    phase: 1
+    members:
+      - from: CustomField:invoice__c.total__c
+        refs:
+          - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: formula }
+          - { line: 4, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice__c.amount_within_credit_limit
+        refs:
+          - { line: 5, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: formula }
+          - { line: 5, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: formula }
+          - { line: 5, match: Credit_Limit__c, kind: reads, to: CustomField:account.credit_limit__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/validationRules/Locked_When_Paid.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice__c.locked_when_paid
+        refs:
+          - { line: 6, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula }
+          - { line: 7, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: formula }
+
+  - file: force-app/main/default/objects/Invoice__c/validationRules/Paid_Requires_Paid_Date.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice__c.paid_requires_paid_date
+        refs:
+          - { line: 6, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula }
+          - { line: 7, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, via: formula }
+          - { line: 9, match: Paid_Date__c, kind: references, to: CustomField:invoice__c.paid_date__c, via: display-field }
+
+  # ------------------------------------------------------------------ Phase 3: Apex
+  - file: force-app/main/default/classes/InvoiceConstants.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoiceconstants#var:amount
+        refs:
+          - { line: 11, match: Amount__c, kind: references, to: CustomField:invoice__c.amount__c, via: token }
+      - from: ApexClass:invoiceconstants#var:external_id
+        refs:
+          - { line: 12, match: External_Id__c, kind: references, to: CustomField:invoice__c.external_id__c, via: token }
+      - from: ApexClass:invoiceconstants#var:invoice_type
+        refs:
+          - { line: 13, match: Invoice__c, kind: references, to: CustomObject:invoice__c, via: token }
+
+  - file: force-app/main/default/classes/InvoiceService.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoiceservice#method:openinvoices(id)
+        refs:
+          - { line: 9, match: Name, kind: reads, to: CustomField:invoice__c.name, via: soql }
+          - { line: 9, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 9, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: soql }
+          - { line: 10, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 10, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: soql }
+          - { line: 11, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: soql }
+          - { line: 11, match: Unit_Price__c, kind: reads, to: CustomField:invoice_line__c.unit_price__c, via: soql }
+          - { line: 11, match: Lines__r, kind: references, to: CustomField:invoice_line__c.invoice__c, via: soql }
+          - { line: 11, match: Lines__r, kind: reads, to: CustomObject:invoice_line__c, via: soql }
+          - { line: 11, match: Is_Billable__c, kind: reads, to: CustomField:invoice_line__c.is_billable__c, via: soql }
+          - { line: 12, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 13, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 14, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
+          - { line: 15, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: soql }
+      - from: ApexClass:invoiceservice#method:markpaid(id)
+        refs:
+          - { line: 21, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
+          - { line: 21, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, via: soql }
+          - { line: 21, match: Invoice__c, nth: 2, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 22, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 25, match: Status__c, kind: writes, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 26, match: Paid_Date__c, kind: writes, to: CustomField:invoice__c.paid_date__c, via: field }
+          - { line: 27, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
+      - from: ApexClass:invoiceservice#method:createdraft(account,decimal)
+        refs:
+          - { line: 32, match: Account__c, kind: writes, to: CustomField:invoice__c.account__c, via: field }
+          - { line: 33, match: Amount__c, kind: writes, to: CustomField:invoice__c.amount__c, via: field }
+          - { line: 34, match: Status__c, kind: writes, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 36, match: Credit_Limit__c, kind: reads, to: CustomField:account.credit_limit__c, via: field }
+          - { line: 38, match: Risk_Score__c, kind: writes, to: CustomField:account.risk_score__c, via: field }
+          - { line: 40, match: insert, kind: writes, to: CustomObject:invoice__c, via: dml, op: insert }
+      - from: ApexClass:invoiceservice#method:totaldue(list<invoice__c>)
+        refs:
+          - { line: 47, match: Total__c, kind: reads, to: CustomField:invoice__c.total__c, via: field }
+      - from: ApexClass:invoiceservice#method:raisetax(set<id>,decimal)
+        refs:
+          - { line: 53, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: soql }
+          - { line: 53, match: Invoice__c, nth: 2, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 55, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: field, note: "+= reads and writes." }
+          - { line: 55, match: Tax_Rate__c, kind: writes, to: CustomField:invoice__c.tax_rate__c, via: field }
+          - { line: 57, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
+      - from: ApexClass:invoiceservice#method:countbytier(string)
+        refs:
+          - { line: 61, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 61, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 61, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: soql }
+
+  - file: force-app/main/default/classes/InvoiceSelector.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoiceselector#method:bystatus(string)
+        refs:
+          - { line: 6, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: text, tier: probable }
+          - { line: 6, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, via: text, tier: probable }
+          - { line: 6, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 6, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: text, tier: probable }
+      - from: ApexClass:invoiceselector#method:withlegacycode()
+        refs:
+          - { line: 11, match: FIELD_LEGACY, kind: reads, to: CustomField:invoice__c.legacy_code__c, via: text, tier: probable, note: The name is a constant of another class. }
+          - { line: 12, match: OBJECT_INVOICE, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 13, match: FIELD_LEGACY, kind: reads, to: CustomField:invoice__c.legacy_code__c, via: text, tier: probable }
+      - from: ApexClass:invoiceselector#method:summaries()
+        refs:
+          - { line: 19, match: fields, kind: reads, to: CustomField:invoice__c.amount__c, via: text, tier: probable, stretch: true, note: "The names are a list constant of another class, joined into the query." }
+          - { line: 19, match: fields, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: text, tier: probable, stretch: true }
+          - { line: 19, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+      - from: ApexClass:invoiceselector#method:sortedby(string)
+        refs:
+          - { line: 23, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 23, match: fieldName, kind: reads, to: CustomObject:invoice__c, via: text, tier: possible, note: The object is known. The field comes from the caller. }
+      - from: ApexClass:invoiceselector#method:overdue()
+        refs:
+          - { line: 33, match: Days_Overdue__c, kind: reads, to: CustomField:invoice__c.days_overdue__c, via: text, tier: probable }
+          - { line: 33, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 34, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: text, tier: probable, note: The query is two literals joined by +. }
+      - from: ApexClass:invoiceselector#method:aboveamount(decimal)
+        refs:
+          - { line: 41, match: Grand_Total__c, kind: reads, to: CustomField:invoice__c.grand_total__c, via: text, tier: probable }
+          - { line: 41, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 41, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: text, tier: probable }
+
+  - file: force-app/main/default/classes/DynamicAccess.cls
+    phase: 3
+    members:
+      - from: ApexClass:dynamicaccess#method:riskscore(account)
+        refs:
+          - { line: 6, match: Risk_Score__c, kind: reads, to: CustomField:account.risk_score__c, via: text, tier: probable }
+      - from: ApexClass:dynamicaccess#method:fieldof(sobject)
+        refs:
+          - { line: 10, match: Risk_Score__c, kind: reads, to: CustomField:account.risk_score__c, via: text, tier: possible, stretch: true, note: The object is not known. Account has the only field of this name. }
+      - from: ApexClass:dynamicaccess#method:setlegacycode(invoice__c,string)
+        refs:
+          - { line: 14, match: FIELD_LEGACY, kind: writes, to: CustomField:invoice__c.legacy_code__c, via: text, tier: probable }
+      - from: ApexClass:dynamicaccess#method:legacycode(invoice__c)
+        refs:
+          - { line: 18, match: FIELD_LEGACY, kind: reads, to: CustomField:invoice__c.legacy_code__c, via: text, tier: probable }
+      - from: ApexClass:dynamicaccess#method:valueof(invoice__c,string)
+        refs:
+          - { line: 22, match: fieldName, kind: reads, to: CustomObject:invoice__c, via: text, tier: possible }
+      - from: ApexClass:dynamicaccess#method:amountbytoken(invoice__c)
+        refs:
+          - { line: 31, match: AMOUNT, kind: reads, to: CustomField:invoice__c.amount__c, via: token, note: The token is a constant of another class. }
+      - from: ApexClass:dynamicaccess#method:canreadamount()
+        refs:
+          - { line: 35, match: Amount__c, kind: references, to: CustomField:invoice__c.amount__c, via: token }
+      - from: ApexClass:dynamicaccess#method:tokenbyname(string)
+        refs:
+          - { line: 39, match: Invoice__c, kind: references, to: CustomObject:invoice__c, via: token }
+          - { line: 39, match: fieldName, kind: references, to: CustomObject:invoice__c, via: text, tier: possible }
+      - from: ApexClass:dynamicaccess#method:statusdescribe()
+        refs:
+          - { line: 43, match: OBJECT_INVOICE, kind: references, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 45, match: FIELD_STATUS, kind: references, to: CustomField:invoice__c.status__c, via: text, tier: probable, stretch: true, note: The object reaches this line through two local variables. }
+
+  - file: force-app/main/default/classes/InvoiceTriggerHandler.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoicetriggerhandler
+        refs:
+          - { line: 4, match: TriggerHandler, kind: extends, to: ApexClass:triggerhandler, via: declaration }
+      - from: ApexClass:invoicetriggerhandler#method:beforeinsert(list<sobject>)
+        refs:
+          - { line: 7, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: field }
+          - { line: 8, match: Due_Date__c, kind: writes, to: CustomField:invoice__c.due_date__c, via: field }
+          - { line: 10, match: External_Id__c, kind: reads, to: CustomField:invoice__c.external_id__c, via: field }
+          - { line: 11, match: External_Id__c, kind: writes, to: CustomField:invoice__c.external_id__c, via: field }
+      - from: ApexClass:invoicetriggerhandler#method:beforeupdate(list<sobject>,map<id,sobject>)
+        refs:
+          - { line: 19, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 20, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 22, match: Paid_Date__c, kind: writes, to: CustomField:invoice__c.paid_date__c, via: field }
+      - from: ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)
+        refs:
+          - { line: 31, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: field }
+          - { line: 32, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: field }
+          - { line: 33, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: field }
+      - from: ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)
+        refs:
+          - { line: 44, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 44, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 45, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 46, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 47, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
+          - { line: 48, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 52, match: Risk_Score__c, kind: writes, to: CustomField:account.risk_score__c, via: field }
+          - { line: 54, match: update, kind: writes, to: CustomObject:account, via: dml, op: update }
+
+  - file: force-app/main/default/triggers/InvoiceTrigger.trigger
+    phase: 3
+    members:
+      - from: ApexTrigger:invoicetrigger
+        refs:
+          - { line: 1, match: Invoice__c, kind: triggers-on, to: CustomObject:invoice__c, via: declaration }
+
+  - file: force-app/main/default/classes/InvoiceLineService.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoicelineservice#method:billlines(id)
+        refs:
+          - { line: 7, match: Status__c, kind: reads, to: CustomField:invoice_line__c.status__c, via: soql }
+          - { line: 8, match: Invoice__r, kind: reads, to: CustomField:invoice_line__c.invoice__c, via: soql }
+          - { line: 8, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql, note: "The status of the invoice, not of the line." }
+          - { line: 9, match: Invoice__r, kind: reads, to: CustomField:invoice_line__c.invoice__c, via: soql }
+          - { line: 9, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 9, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: soql }
+          - { line: 10, match: Invoice_Line__c, kind: reads, to: CustomObject:invoice_line__c, via: soql }
+          - { line: 11, match: Invoice__c, kind: reads, to: CustomField:invoice_line__c.invoice__c, via: soql, note: "The field of the line, not the object." }
+          - { line: 12, match: Is_Billable__c, kind: reads, to: CustomField:invoice_line__c.is_billable__c, via: soql }
+          - { line: 15, match: Invoice__r, kind: reads, to: CustomField:invoice_line__c.invoice__c, via: field }
+          - { line: 15, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 16, match: Status__c, kind: writes, to: CustomField:invoice_line__c.status__c, via: field }
+          - { line: 19, match: update, kind: writes, to: CustomObject:invoice_line__c, via: dml, op: update }
+      - from: ApexClass:invoicelineservice#method:billableamount(invoice__c)
+        refs:
+          - { line: 24, match: Lines__r, kind: references, to: CustomField:invoice_line__c.invoice__c, via: field }
+          - { line: 25, match: Is_Billable__c, kind: reads, to: CustomField:invoice_line__c.is_billable__c, via: field }
+          - { line: 26, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: field }
+          - { line: 26, match: Unit_Price__c, kind: reads, to: CustomField:invoice_line__c.unit_price__c, via: field }
+      - from: ApexClass:invoicelineservice#method:addline(invoice__c,decimal,decimal)
+        refs:
+          - { line: 34, match: Invoice__c, kind: writes, to: CustomField:invoice_line__c.invoice__c, via: field }
+          - { line: 35, match: Quantity__c, kind: writes, to: CustomField:invoice_line__c.quantity__c, via: field }
+          - { line: 36, match: Unit_Price__c, kind: writes, to: CustomField:invoice_line__c.unit_price__c, via: field }
+          - { line: 37, match: Status__c, kind: writes, to: CustomField:invoice_line__c.status__c, via: field }
+          - { line: 38, match: insert, kind: writes, to: CustomObject:invoice_line__c, via: dml, op: insert }
+      - from: ApexClass:invoicelineservice#method:statusof(sobject)
+        refs:
+          - { line: 44, match: Status__c, kind: reads, to: CustomField:invoice_line__c.status__c, via: field }
+          - { line: 46, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+
+  - file: force-app/main/default/classes/InvoiceBatch.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoicebatch#inner:result/method:add(invoice__c)
+        refs:
+          - { line: 11, match: Grand_Total__c, kind: reads, to: CustomField:invoice__c.grand_total__c, via: field }
+      - from: ApexClass:invoicebatch#method:start(database.batchablecontext)
+        refs:
+          - { line: 19, match: Grand_Total__c, kind: reads, to: CustomField:invoice__c.grand_total__c, via: soql }
+          - { line: 19, match: Days_Overdue__c, kind: reads, to: CustomField:invoice__c.days_overdue__c, via: soql }
+          - { line: 20, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 20, match: Primary_Contact__r, kind: reads, to: CustomField:account.primary_contact__c, via: soql }
+          - { line: 20, match: Email, kind: reads, to: CustomField:contact.email, via: soql }
+          - { line: 21, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 22, match: Days_Overdue__c, kind: reads, to: CustomField:invoice__c.days_overdue__c, via: soql }
+      - from: ApexClass:invoicebatch#method:execute(database.batchablecontext,list<invoice__c>)
+        refs:
+          - { line: 28, match: Days_Overdue__c, kind: reads, to: CustomField:invoice__c.days_overdue__c, via: field }
+          - { line: 29, match: Status__c, kind: writes, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 33, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
+
+  - file: force-app/main/default/classes/InvoiceController.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoicecontroller#method:recentinvoices(id)
+        refs:
+          - { line: 8, match: Name, kind: reads, to: CustomField:invoice__c.name, via: soql }
+          - { line: 8, match: Summary__c, kind: reads, to: CustomField:invoice__c.summary__c, via: soql }
+          - { line: 8, match: Account_Tier__c, kind: reads, to: CustomField:invoice__c.account_tier__c, via: soql }
+          - { line: 8, match: Is_Mine__c, kind: reads, to: CustomField:invoice__c.is_mine__c, via: soql }
+          - { line: 9, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 10, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
+          - { line: 12, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: soql }
+      - from: ApexClass:invoicecontroller#method:saveamount(id,decimal)
+        refs:
+          - { line: 28, match: Amount__c, kind: writes, to: CustomField:invoice__c.amount__c, via: field }
+          - { line: 29, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
+
+  - file: force-app/main/default/classes/InvoiceCalloutService.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoicecalloutservice#method:send(invoice__c)
+        refs:
+          - { line: 11, match: External_Id__c, kind: reads, to: CustomField:invoice__c.external_id__c, via: field }
+          - { line: 12, match: Grand_Total__c, kind: reads, to: CustomField:invoice__c.grand_total__c, via: field }
+          - { line: 13, match: Owner_Manager_Email__c, kind: reads, to: CustomField:invoice__c.owner_manager_email__c, via: field }
+
+  - file: force-app/main/default/classes/InvoiceServiceTest.cls
+    phase: 3
+    members:
+      - from: ApexClass:invoiceservicetest#method:setup()
+        refs:
+          - { line: 5, match: Name, kind: writes, to: CustomField:account.name, via: field }
+          - { line: 5, match: Tier__c, kind: writes, to: CustomField:account.tier__c, via: field }
+          - { line: 5, match: Credit_Limit__c, kind: writes, to: CustomField:account.credit_limit__c, via: field }
+          - { line: 6, match: insert, kind: writes, to: CustomObject:account, via: dml, op: insert }
+          - { line: 7, match: Account__c, kind: writes, to: CustomField:invoice__c.account__c, via: field }
+          - { line: 7, match: Amount__c, kind: writes, to: CustomField:invoice__c.amount__c, via: field }
+          - { line: 7, match: Status__c, kind: writes, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 7, match: insert, kind: writes, to: CustomObject:invoice__c, via: dml, op: insert }
+      - from: ApexClass:invoiceservicetest#method:marksaninvoiceaspaid()
+        refs:
+          - { line: 12, match: Invoice__c, nth: 2, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 17, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
+          - { line: 17, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, via: soql }
+          - { line: 17, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 18, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+          - { line: 19, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, via: field }
+
+  - file: force-app/main/default/classes/ParserTorture.cls
+    phase: 3
+    members:
+      - from: ApexClass:parsertorture#prop:lastamount
+        refs:
+          - { line: 16, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 16, match: Invoice__c, nth: 2, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 16, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: soql }
+          - { line: 17, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: field }
+      - from: ApexClass:parsertorture#method:describe(sobject)
+        refs:
+          - { line: 27, match: Name, kind: reads, to: CustomField:invoice__c.name, via: field }
+          - { line: 30, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: field }
+      - from: ApexClass:parsertorture#method:tierof(invoice__c)
+        refs:
+          - { line: 42, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: field }
+          - { line: 42, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: field }
+      - from: ApexClass:parsertorture#method:search(string)
+        refs:
+          - { line: 52, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: sosl }
+          - { line: 52, match: Name, kind: reads, to: CustomField:invoice__c.name, via: sosl }
+          - { line: 52, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: sosl }
+          - { line: 53, match: Account, kind: reads, to: CustomObject:account, via: sosl }
+          - { line: 53, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: sosl }
+      - from: ApexClass:parsertorture#method:typeof()
+        refs:
+          - { line: 59, match: What, kind: reads, to: CustomField:event.whatid, via: soql, stretch: true, note: A standard relationship that points at several objects. }
+          - { line: 60, match: Account, kind: reads, to: CustomObject:account, via: soql }
+          - { line: 60, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: soql }
+          - { line: 60, match: Credit_Limit__c, kind: reads, to: CustomField:account.credit_limit__c, via: soql }
+          - { line: 61, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 61, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 63, match: Event, kind: reads, to: CustomObject:event, via: soql }
+      - from: ApexClass:parsertorture#method:averagepaid()
+        refs:
+          - { line: 68, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 68, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 68, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
+      - from: ApexClass:parsertorture#method:upsertbyexternalid(list<invoice__c>)
+        refs:
+          - { line: 73, match: upsert, kind: writes, to: CustomObject:invoice__c, via: dml, op: upsert }
+          - { line: 73, match: External_Id__c, kind: references, to: CustomField:invoice__c.external_id__c, via: dml }
+      - from: ApexClass:parsertorture#method:upsertbytoken(list<invoice__c>)
+        refs:
+          - { line: 77, match: upsert, kind: writes, to: CustomObject:invoice__c, via: dml, op: upsert }
+          - { line: 77, match: EXTERNAL_ID, kind: references, to: CustomField:invoice__c.external_id__c, via: token }
+      - from: ApexClass:parsertorture#method:deleteinchunks()
+        refs:
+          - { line: 81, match: Invoice__c, nth: 2, kind: reads, to: CustomObject:invoice__c, via: soql }
+          - { line: 81, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: soql }
+          - { line: 82, match: delete, kind: writes, to: CustomObject:invoice__c, via: dml, op: delete }
+      - from: ApexClass:parsertorture#method:shadow()
+        refs:
+          - { line: 88, match: LastName, kind: writes, to: CustomField:contact.lastname, via: field }
+          - { line: 89, match: LastName, kind: reads, to: CustomField:contact.lastname, via: field }
+      - from: ApexClass:parsertorture#method:comments(invoice__c)
+        refs:
+          - { line: 95, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: field }
+
+# What must never be reported: a reference to `not` that is located on this line of this file.
+negatives:
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 2, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A comment that looks like code. }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 11, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: Text in a literal that no query and no field access uses. }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 89, match: LastName, not: CustomField:account.lastname, why: The variable is named account. Its type is Contact. }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 93, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A block comment. }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 94, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: Code inside a text literal. }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 95, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A line comment after real code. }
+  - { file: force-app/main/default/classes/InvoiceTriggerHandler.cls, line: 50, match: total, nth: 2, not: CustomField:invoice__c.total__c, why: "The alias of an aggregate, not a field." }
+  - { file: force-app/main/default/classes/InvoiceCalloutService.cls, line: 12, match: total, not: CustomField:invoice__c.total__c, why: The key of a map. }
+  - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 7, match: Status__c, not: CustomField:invoice__c.status__c, why: The status of the line. The invoice has a field of the same name. }
+  - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 16, match: Status__c, not: CustomField:invoice__c.status__c, why: "The status of the line is written, not that of the invoice." }
+  - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 11, match: Invoice__c, not: CustomObject:invoice__c, why: "The lookup field of the line, not the object." }
+  - { file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml, line: 4, match: Paid_Date__c, not: CustomField:invoice__c.paid_date__c, why: A comment inside a formula. }
+  - { file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml, line: 5, match: Status__c, not: CustomField:invoice__c.status__c, why: Text inside a formula. }
+  - { file: force-app/main/default/objects/Invoice_Line__c/validationRules/Price_Not_Negative.validationRule-meta.xml, line: 5, match: Quantity__c, not: CustomField:invoice_line__c.quantity__c, why: The description of a rule is text. }
+  - { file: force-app/main/default/objects/Invoice_Line__c/validationRules/Price_Not_Negative.validationRule-meta.xml, line: 7, match: Quantity__c, not: CustomField:invoice_line__c.quantity__c, why: The error message of a rule is text. }
+
+# Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
+unknowns:
+  - { file: force-app/main/default/classes/InvoiceSelector.cls, line: 28, match: objectName, from: "ApexClass:invoiceselector#method:anyobject(string,string)", why: The object and the field of the query come from the caller. }
+  - { file: force-app/main/default/classes/DynamicAccess.cls, line: 26, match: fieldName, from: "ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)", why: A read by name on a record of unknown type. }
+  - { file: force-app/main/default/classes/DynamicAccess.cls, line: 27, match: fieldName, from: "ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)", why: A write by name on a record of unknown type. }

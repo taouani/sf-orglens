@@ -6,7 +6,7 @@ import orglens from './tools/eslint-plugin-orglens.js';
 const nodeGlobals = { console: 'readonly', process: 'readonly', URL: 'readonly' };
 
 export default defineConfig(
-  globalIgnores(['**/dist/**', '**/coverage/**', '**/test/golden/**']),
+  globalIgnores(['**/dist/**', '**/coverage/**', '**/test/golden/**', '.corpora/**']),
   js.configs.recommended,
   {
     files: ['**/*.ts'],

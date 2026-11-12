@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Summary__c</fullName>
+    <formula>/* Paid_Date__c is not part of the summary */
+Name &amp; ' - ' &amp; TEXT(amount__C) &amp; ' (Status__c)'</formula>
+    <label>Summary</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Text</type>
+</CustomField>

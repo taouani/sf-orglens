@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Key_Account_Needs_Contact</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  Is_Key_Account__c,
+  ISBLANK(Primary_Contact__c)
+)</errorConditionFormula>
+    <errorDisplayField>Primary_Contact__c</errorDisplayField>
+    <errorMessage>A key account needs a primary contact.</errorMessage>
+</ValidationRule>

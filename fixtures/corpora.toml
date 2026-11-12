@@ -1,0 +1,36 @@
+# Public Salesforce codebases that OrgLens is tested against.
+#
+# Nothing of them is stored in this repository. `pnpm run corpora:fetch` downloads each one at the commit pinned
+# here into the folder .corpora, which Git ignores. A corpus is changed by changing its commit in this file, in a
+# pull request, so that every measurement can be repeated.
+#
+# name     the folder under .corpora
+# url      the public Git repository
+# commit   the full commit id. A branch or a tag is not accepted, because both can move.
+# licence  the SPDX identifier of the licence of the codebase, as its repository states it
+# paths    the package folders that hold the metadata
+# use      what OrgLens uses the codebase for
+
+[[corpus]]
+name = "apex-recipes"
+url = "https://github.com/trailheadapps/apex-recipes.git"
+commit = "5d31e01c2b09b0c07e520e96706b562c7425a936"
+licence = "CC0-1.0"
+paths = ["force-app"]
+use = "Apex of ordinary size that deploys to any org. Hand-checked sample of references in the Apex trial."
+
+[[corpus]]
+name = "nebula-logger"
+url = "https://github.com/jongpie/NebulaLogger.git"
+commit = "b792ac8d8b4eb31b14a164a24951c3cb4125a616"
+licence = "MIT"
+paths = ["nebula-logger/core"]
+use = "Apex together with flows, custom metadata and components. Used from Phase 2."
+
+[[corpus]]
+name = "npsp"
+url = "https://github.com/SalesforceFoundation/NPSP.git"
+commit = "f5072b44781e7f31cb396c6919cfa7d0ead0ec6a"
+licence = "BSD-3-Clause"
+paths = ["force-app"]
+use = "Scale: more than 10,000 components. Parsed for robustness, speed and memory. Never deployed."

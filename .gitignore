@@ -16,6 +16,9 @@ coverage/
 .env.*
 !.env.example
 
+# Public test codebases, downloaded by `pnpm run corpora:fetch`
+.corpora/
+
 # Salesforce CLI state
 .sf/
 .sfdx/

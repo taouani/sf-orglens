@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Lines_Total__c</fullName>
+    <label>Lines Total</label>
+    <summarizedField>Invoice_Line__c.Line_Amount__c</summarizedField>
+    <summaryFilterItems>
+        <field>Invoice_Line__c.Is_Billable__c</field>
+        <operation>equals</operation>
+        <value>True</value>
+    </summaryFilterItems>
+    <summaryForeignKey>Invoice_Line__c.Invoice__c</summaryForeignKey>
+    <summaryOperation>sum</summaryOperation>
+    <type>Summary</type>
+</CustomField>

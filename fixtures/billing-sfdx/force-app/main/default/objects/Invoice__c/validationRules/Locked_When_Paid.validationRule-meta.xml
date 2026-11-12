@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Locked_When_Paid</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  ISPICKVAL(PRIORVALUE(Status__c), 'Paid'),
+  ISCHANGED(Amount__c),
+  $Profile.Name &lt;&gt; 'System Administrator'
+)</errorConditionFormula>
+    <errorMessage>A paid invoice cannot change its amount.</errorMessage>
+</ValidationRule>
