@@ -33,6 +33,8 @@ interface InventoryType {
    */
   readonly listing: 'ok' | 'failed' | 'unlistable';
   readonly reason: string | null;
+  /** The code of Salesforce for the refusal `reason` tells of, if it gave one. */
+  readonly code: string | null;
 }
 
 export interface Inventory {
@@ -109,7 +111,12 @@ export async function takeInventory(
   const described = await api.describe();
   let requests = 1;
 
-  const types = new Map<string, { role: InventoryType['role']; of: string | null; failures: string[] }>();
+  /** A refusal: what the org said, and its code for it. */
+  interface Failure {
+    readonly said: string;
+    readonly code: string | null;
+  }
+  const types = new Map<string, { role: InventoryType['role']; of: string | null; failures: Failure[] }>();
   const add = (type: string, role: InventoryType['role'], of: string | null): void => {
     if (!types.has(type)) types.set(type, { role, of, failures: [] });
   };
@@ -140,7 +147,9 @@ export async function takeInventory(
       refusals += 1;
       firstRefusal ??= error;
       const said = `${error.code === null ? '' : `${error.code}: `}${error.message}`;
-      types.get(type)?.failures.push(folder === undefined ? said : `Folder ${folder}: ${said}`);
+      types
+        .get(type)
+        ?.failures.push({ said: folder === undefined ? said : `Folder ${folder}: ${said}`, code: error.code });
     }
     for (const item of listed) {
       const id = `${item.type}\n${item.fullName}`;
@@ -188,9 +197,22 @@ export async function takeInventory(
         // A type whose folders could not be listed has an unknown number of components.
         const folderType = FOLDER_TYPE[type] ?? `${type}Folder`;
         const foldersFailed = inFolders.has(type) ? (types.get(folderType)?.failures ?? []) : [];
-        const all = [...failures, ...foldersFailed.map((failure) => `Its folders could not be listed: ${failure}`)];
-        if (type in UNLISTABLE) return { type, role, of, listing: 'unlistable', reason: UNLISTABLE[type] ?? null };
-        return { type, role, of, listing: all.length === 0 ? 'ok' : 'failed', reason: all[0] ?? null };
+        const all: Failure[] = [
+          ...failures,
+          ...foldersFailed.map(({ said, code }) => ({ said: `Its folders could not be listed: ${said}`, code })),
+        ];
+        if (type in UNLISTABLE) {
+          return { type, role, of, listing: 'unlistable', reason: UNLISTABLE[type] ?? null, code: null };
+        }
+        const [first] = all;
+        return {
+          type,
+          role,
+          of,
+          listing: first === undefined ? 'ok' : 'failed',
+          reason: first?.said ?? null,
+          code: first?.code ?? null,
+        };
       })
       .sort((a, b) => byCodeUnit(a.type, b.type)),
     items: [...items.values()].sort((a, b) => byCodeUnit(a.type, b.type) || byCodeUnit(a.fullName, b.fullName)),

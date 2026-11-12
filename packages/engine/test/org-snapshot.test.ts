@@ -291,7 +291,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         code: 'CHUNK_SPLIT',
         message:
           'A retrieve of 16 components failed and was tried again in two halves. LIMIT_EXCEEDED: Too many files in retrieve call, limit is 10.',
-        details: { members: 16, said: 'LIMIT_EXCEEDED: Too many files in retrieve call, limit is 10.' },
+        details: {
+          members: 16,
+          said: 'LIMIT_EXCEEDED: Too many files in retrieve call, limit is 10.',
+          code: 'LIMIT_EXCEEDED',
+        },
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1', '1 done - 1', '2 done - 1', '3 done - 1']);
       expect(
@@ -325,6 +329,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           count: 1,
           components: ['ApexClass DynamicAccess'],
           said: 'LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1.',
+          code: 'LIMIT_EXCEEDED',
         },
       });
       const missing = report.issues.filter((issue) => issue.code === 'NOT_RETRIEVED');
@@ -355,6 +360,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           reason: 'RETRIEVES_FAILING',
           source: 'prod',
           said: 'LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1.',
+          code: 'LIMIT_EXCEEDED',
           snapshot: 1,
         },
       });
@@ -393,7 +399,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           code: 'LISTING_FAILED',
           message:
             'The org did not say which components of the type ApexClass it has. INVALID_TYPE: Cannot use: ApexClass in this organization',
-          details: { type: 'ApexClass' },
+          details: { type: 'ApexClass', code: 'INVALID_TYPE' },
         },
       ]);
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => !path.startsWith('classes/')));
@@ -891,6 +897,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           details: {
             members: 16,
             said: 'What Salesforce handed out could not be read. It is not a zip file that can be read.',
+            code: null,
           },
         },
       ]);

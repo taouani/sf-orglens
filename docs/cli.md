@@ -162,8 +162,8 @@ they have below a package directory, such as `classes/Foo.cls`.
   `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
   `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
   asked for, such as a used-up limit of requests, and `details.code` is its code), `RETRIEVE_TOO_SLOW`, or
-  `RETRIEVES_FAILING` (20 retrieves in a row failed). `details.snapshot` is the number of the unfinished
-  snapshot.
+  `RETRIEVES_FAILING` (20 retrieves in a row failed, and `details.code` is the code of the last one, or `null`).
+  `details.snapshot` is the number of the unfinished snapshot.
 - While the org is asked what it holds, the same refusal ends the command before a snapshot is stored. So does an
   org that refuses more than half of its listings.
 - A login that fails before anything was read ends with `LOGIN_FAILED` or `ORG_MISMATCH` and stores nothing.
@@ -207,7 +207,9 @@ The issue codes of today:
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
 the type in `details.type`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
-`RETRIEVE_MESSAGES` its remarks in `details.messages`.
+`RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
+the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
+there and not out of the text.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
