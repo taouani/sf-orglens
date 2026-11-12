@@ -27,7 +27,7 @@
   "devDependencies": {
     "@changesets/cli": "3.0.3",
     "@eslint/js": "10.0.1",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@vitest/coverage-v8": "5.1.0",
     "dependency-cruiser": "18.7.2",
     "eslint": "10.14.0",
