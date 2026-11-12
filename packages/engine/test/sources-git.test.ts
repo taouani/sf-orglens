@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -223,6 +223,23 @@ describe('reading a commit', () => {
     const onDiskOnly: SourceTree = { files: [], read: () => new Uint8Array() };
     expect(differencesFromCommit(dir, commit, ['app'], () => true, onDiskOnly).paths).toEqual(['app/classes/A.cls']);
     expect(folderFingerprint(join(dir, '.git'))).toBe(before);
+  });
+
+  it('says that a file of the commit is not there when the repository has lost it', () => {
+    const { repo, commit } = repoWithOneCommit();
+    const reading = readCommit(repo.dir, commit, ['app']);
+    const object = repo.git('rev-parse', `${commit}:app/classes/A.cls`);
+    const file = join(repo.dir, '.git', 'objects', object.slice(0, 2), object.slice(2));
+    // Git writes its files read-only, and Windows does not delete such a file.
+    chmodSync(file, 0o666);
+    rmSync(file);
+
+    const lost = { code: 'SOURCE_READ_FAILED', reason: 'OBJECT_MISSING' };
+    // The file was listed before it was lost, and is read after.
+    expect(failure(() => reading.tree.read('app/classes/A.cls'))).toEqual(lost);
+    expect(failure(() => readCommit(repo.dir, commit, ['app']))).toEqual(lost);
+    expect(failure(() => readCommitFile(repo.dir, commit, 'app/classes/A.cls'))).toEqual(lost);
+    expect(fileText(readCommitFile(repo.dir, commit, 'app/classes/B.cls'))).toBe('class B {}\n');
   });
 
   it('reads the object a commit names, not one a replacement points to', () => {

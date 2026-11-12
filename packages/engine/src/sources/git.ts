@@ -103,8 +103,13 @@ interface GitResult {
 
 const NOTHING = Buffer.alloc(0);
 
-const MISSING_HINT =
-  'A partial clone does not hold every file, and OrgLens fetches nothing: fetch the commit completely. If the clone is complete, "git fsck" says more.';
+/** The error for a file of a commit that is not in the object database of this machine. */
+function missing(repoDir: string, object: string | null): EngineError {
+  return new EngineError('SOURCE_READ_FAILED', 'A file of the commit is not in the repository on this machine.', {
+    hint: 'A partial clone does not hold every file, and OrgLens fetches nothing: fetch the commit completely. If the clone is complete, "git fsck" says more.',
+    details: { reason: 'OBJECT_MISSING', repo: repoDir, object },
+  });
+}
 
 function git(repoDir: string, args: readonly string[], input?: string): GitResult {
   const result = spawnSync('git', [...GIT_OPTIONS, ...args], {
@@ -154,12 +159,7 @@ function failed(repoDir: string, doing: string, result: GitResult): EngineError 
     );
   }
   // A partial clone holds a commit without all of its files, and nothing is fetched here.
-  if (/promisor remote|lazy fetching disabled/.test(result.stderr)) {
-    return new EngineError('SOURCE_READ_FAILED', 'A file of the commit is not in the repository on this machine.', {
-      hint: MISSING_HINT,
-      details: { reason: 'OBJECT_MISSING', repo: repoDir },
-    });
-  }
+  if (/promisor remote|lazy fetching disabled/.test(result.stderr)) return missing(repoDir, null);
   return new EngineError('SOURCE_READ_FAILED', `Git could not ${doing}. It says: ${result.stderr || 'nothing'}`, {
     details: { reason: 'GIT_FAILED', repo: repoDir, status: result.status },
   });
@@ -284,9 +284,36 @@ function listCommit(repoDir: string, commit: string, paths: readonly string[], s
       continue;
     }
     if (type !== 'blob' || mode === MODE_LINK) skipped.push(path);
+    // Git writes no number where it cannot find the file in the repository. Depending on its version it goes on.
+    else if (sizes && !/^\d+$/.test(size ?? '')) throw missing(repoDir, object);
     else files.set(path, { object, size: sizes ? Number(size) : 0 });
   }
   return { files, skipped, undecodable };
+}
+
+/**
+ * Reads files of the object database by their ids, in one call of Git.
+ * Fails with `OBJECT_MISSING` if one of them is not in the repository on
+ * this machine.
+ */
+function readObjects(repoDir: string, objects: readonly string[]): Map<string, Uint8Array> {
+  const result = git(repoDir, ['cat-file', '--batch'], objects.map((object) => `${object}\n`).join(''));
+  if (result.status !== 0) throw failed(repoDir, 'read the files of the commit', result);
+  const contents = new Map<string, Uint8Array>();
+  const out = result.stdout;
+  let at = 0;
+  for (const object of objects) {
+    // <object> blob <size>\n<content>\n, or <object> missing\n
+    const end = out.indexOf(0x0a, at);
+    const header = end === -1 ? '' : out.toString('latin1', at, end);
+    const match = /^([0-9a-f]+) blob (\d+)$/.exec(header);
+    if (match?.[1] !== object) throw missing(repoDir, object);
+    const size = Number(match[2]);
+    // Copied out, so that the large output of the call can be freed when its contents are no longer kept.
+    contents.set(object, new Uint8Array(out.subarray(end + 1, end + 1 + size)));
+    at = end + 1 + size + 1;
+  }
+  return contents;
 }
 
 /**
@@ -328,30 +355,9 @@ export function readCommit(
       loaded.set(batch, hit);
       return hit.contents;
     }
-    const objects = batchObjects[batch] ?? [];
-    const result = git(repoDir, ['cat-file', '--batch'], objects.map((object) => `${object}\n`).join(''));
-    if (result.status !== 0) throw failed(repoDir, 'read the files of the commit', result);
-    const contents = new Map<string, Uint8Array>();
-    const out = result.stdout;
-    let at = 0;
+    const contents = readObjects(repoDir, batchObjects[batch] ?? []);
     let bytes = 0;
-    for (const object of objects) {
-      // <object> blob <size>\n<content>\n
-      const end = out.indexOf(0x0a, at);
-      const header = end === -1 ? '' : out.toString('latin1', at, end);
-      const match = /^([0-9a-f]+) blob (\d+)$/.exec(header);
-      if (match?.[1] !== object) {
-        throw new EngineError('SOURCE_READ_FAILED', 'A file of the commit is not in the repository on this machine.', {
-          hint: MISSING_HINT,
-          details: { reason: 'OBJECT_MISSING', repo: repoDir, object },
-        });
-      }
-      const size = Number(match[2]);
-      // Copied out, so that the large output of the batch can be freed when the batch leaves the cache.
-      contents.set(object, new Uint8Array(out.subarray(end + 1, end + 1 + size)));
-      at = end + 1 + size + 1;
-      bytes += size;
-    }
+    for (const content of contents.values()) bytes += content.byteLength;
     while (loadedBytes + bytes > limits.cacheBytes && loaded.size > 0) {
       const [oldest, entry] = loaded.entries().next().value as [number, { bytes: number }];
       loaded.delete(oldest);
@@ -390,9 +396,7 @@ export function readCommitFile(repoDir: string, commit: string, path: string): U
   if (entry.skipped.includes(path)) return 'link';
   const object = entry.files.get(path)?.object;
   if (object === undefined) return null;
-  const result = git(repoDir, ['cat-file', 'blob', object]);
-  if (result.status !== 0) throw failed(repoDir, `read "${path}" of the commit`, result);
-  return new Uint8Array(result.stdout);
+  return readObjects(repoDir, [object]).get(object) ?? null;
 }
 
 /** The id Git gives a file with this content. The length of another id of the repository says which hash it uses. */
