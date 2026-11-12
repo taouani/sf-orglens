@@ -29,6 +29,20 @@ export default defineConfig(
     rules: { 'orglens/layers': 'error' },
   },
   {
+    // Keys, comparisons and sort orders must be the same on every machine, whatever its locale.
+    files: ['packages/*/src/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CallExpression[callee.property.name=/^(toLocaleLowerCase|toLocaleUpperCase|localeCompare)$/]',
+          message:
+            'The result depends on the locale of the machine. Use toLowerCase, toUpperCase or a plain comparison.',
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.cjs'],
     languageOptions: { sourceType: 'commonjs', globals: { module: 'writable', require: 'readonly' } },
   },

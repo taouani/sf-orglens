@@ -112,11 +112,24 @@ describe('buildKey', () => {
     expect(buildKey({ type: 'customfield', fullName: 'account.REGION__c' })).toBe(expected);
   });
 
-  it('folds independently of the locale and of the Unicode form', () => {
+  it('folds independently of the Unicode form', () => {
     // "é" as one code point and as "e" plus a combining accent are the same name.
     expect(buildKey({ type: 'Flow', fullName: 'Café' })).toBe(buildKey({ type: 'Flow', fullName: 'Café' }));
-    // The Turkish dotted capital I must not depend on the machine's locale.
-    expect(foldName('TITLE')).toBe('title');
+    expect(buildKey({ type: 'Flow', fullName: 'Café' })).toBe('Flow:café');
+    // Lower-casing can leave a pair that composes: "J" plus caron becomes one code point.
+    expect(foldName('J̌')).toBe('ǰ');
+    // Compatibility forms are different names and stay different: no NFKC.
+    expect(foldName('ﬁx')).toBe('ﬁx');
+    expect(foldName('①')).toBe('①');
+  });
+
+  it('folds a letter the same way wherever it stands in a name', () => {
+    // Lower-casing writes a Greek capital sigma as a final sigma at the end of a word. Keys use one sigma.
+    expect(foldName('ΑΣ')).toBe('ασ');
+    expect(foldName('ΑΣ.F')).toBe('ασ.f');
+    expect(foldName('ας')).toBe('ασ');
+    const field = buildKey({ type: 'CustomField', fullName: 'ΑΣ.F' });
+    expect(parentKey(field)).toBe(buildKey({ type: 'CustomObject', fullName: 'ΑΣ' }));
   });
 
   it('keeps overloads apart and treats an array and a list as the same type', () => {
@@ -126,6 +139,36 @@ describe('buildKey', () => {
     expect(run()).toBe('ApexClass:accountservice#method:run()');
     expect(run('String[]')).toBe(run('List<String>'));
     expect(run('Map<Id, List<Account>>')).toBe('ApexClass:accountservice#method:run(map<id,list<account>>)');
+  });
+
+  it('accepts a method or a constructor only with its signature in canonical form', () => {
+    const sub = (kind: 'method' | 'ctor', name: string): KeyParts => ({
+      type: 'ApexClass',
+      fullName: 'A',
+      subs: [{ kind, name }],
+    });
+    expect(buildKey(sub('method', 'Run(Account,list<String>)'))).toBe('ApexClass:a#method:run(account,list<string>)');
+    expect(buildKey(sub('ctor', '(Id)'))).toBe('ApexClass:a#ctor:(id)');
+    for (const name of [
+      'run',
+      'run(',
+      'run)',
+      'run(String[])',
+      'run(a, b)',
+      'run(a,)',
+      'run(,a)',
+      'run()x',
+      'r un()',
+    ]) {
+      expectInvalid(() => buildKey(sub('method', name)));
+    }
+    for (const name of ['a', 'a()', '(String[])', '(a, b)', '(a,,b)']) {
+      expectInvalid(() => buildKey(sub('ctor', name)));
+    }
+    // The other kinds carry no signature and are not checked for one.
+    expect(buildKey({ type: 'ApexClass', fullName: 'A', subs: [{ kind: 'prop', name: 'run' }] })).toBe(
+      'ApexClass:a#prop:run',
+    );
   });
 
   it('writes a namespace as part of the name', () => {
@@ -161,7 +204,11 @@ describe('buildKey', () => {
     expectInvalid(() => buildKey({ type: 'Flow', fullName: '' }));
     expectInvalid(() => buildKey({ type: 'Flow', fullName: 'a\tb' }));
     expectInvalid(() => buildKey({ type: 'Flow', fullName: 'a\nb' }));
-    expectInvalid(() => buildKey({ type: 'Flow', fullName: 'a b' }));
+    expectInvalid(() => buildKey({ type: 'Flow', fullName: 'a\u2028b' }));
+    expectInvalid(() => buildKey({ type: 'Flow', fullName: 'a\uD800b' }));
+    expectInvalid(() => buildKey({ type: 'Flow', fullName: 'F', subs: [{ kind: 'element', name: '\uDC00' }] }));
+    expectInvalid(() => buildKey({ type: 'My_Type', fullName: 'Greeting' }));
+    expectInvalid(() => buildKey({ type: '9Type', fullName: 'Greeting' }));
     expectInvalid(() => buildKey({ type: 'Flow', fullName: 'F', subs: [{ kind: 'element', name: '' }] }));
     expectInvalid(() => buildKey({ type: 'Flow', fullName: 'F', subs: [{ kind: 'element', name: 'a\u0000' }] }));
     expectInvalid(() => buildKey({ type: 'Flow', fullName: 'F', subs: [{ kind: 'step' as 'element', name: 'a' }] }));
@@ -187,6 +234,19 @@ describe('canonicalType', () => {
       expect(canonicalType(type.toUpperCase())).toBe(type);
       expect(canonicalType(type.toLowerCase())).toBe(type);
     }
+  });
+
+  it('compares only ASCII letters without case', () => {
+    // The Kelvin sign lower-cases to "k". It is not a letter of a type name.
+    expectInvalid(() => canonicalType('Wor\u212AflowRule'));
+    expectInvalid(() => canonicalType('\u212A'));
+  });
+
+  it('keeps a type it does not know exactly as given', () => {
+    expect(canonicalType('CustomLabel')).toBe('CustomLabel');
+    expect(canonicalType('CUSTOMLABEL')).toBe('CUSTOMLABEL');
+    expectInvalid(() => canonicalType('customLabel'));
+    expectInvalid(() => canonicalType('Custom_Label'));
   });
 });
 
@@ -225,6 +285,14 @@ describe('parseKey', () => {
       'ApexClass:accountservice#file:a%b',
       'ApexClass:accountservice#file:a#b',
       'ApexClass:account\tservice',
+      'ApexClass:account\uD800service',
+      'ApexClass:accountservice#method:run',
+      'ApexClass:accountservice#method:run(string[])',
+      'ApexClass:accountservice#method:run(string, id)',
+      'ApexClass:accountservice#method:(id)',
+      'ApexClass:accountservice#ctor:accountservice',
+      'ApexClass:accountservice#ctor:accountservice(id)',
+      'ApexClass:\u03B1\u03C2',
     ];
     for (const text of notCanonical) {
       expect(isComponentKey(text), text).toBe(false);
@@ -262,6 +330,18 @@ describe('parentKey', () => {
     expect(parentOf({ type: 'CustomObject', fullName: 'Account' })).toBeUndefined();
     expect(parentOf({ type: 'Profile', fullName: 'Sales v1.2' })).toBeUndefined();
     expect(parentOf({ type: 'CustomField', fullName: '.Odd' })).toBeUndefined();
+    expect(parentOf({ type: 'CustomField', fullName: 'Account.' })).toBeUndefined();
+    // A workflow rule is named after its object, and it belongs to the workflow file of that object.
+    expect(parentOf({ type: 'WorkflowRule', fullName: 'Account.Notify owner' })).toBeUndefined();
+  });
+
+  it('ends the parent at the first dot', () => {
+    expect(parentOf({ type: 'ListView', fullName: 'Account.Open v1.2' })).toBe('CustomObject:account');
+    expect(parentOf({ type: 'CustomMetadata', fullName: 'Settings.Default.v2' })).toBe('CustomObject:settings__mdt');
+  });
+
+  it('does not write the suffix of a custom metadata type twice', () => {
+    expect(parentOf({ type: 'CustomMetadata', fullName: 'Settings__mdt.Default' })).toBe('CustomObject:settings__mdt');
   });
 });
 
@@ -275,6 +355,12 @@ describe('apexSignature', () => {
     expect(apexSignature(['ns.Outer.Inner[]', 'Set<Id>'])).toBe('(list<ns.outer.inner>,set<id>)');
     // Text that is not a type must not hang or throw.
     expect(apexSignature(['>[]', '[][]', '<[]'])).toBe('(list<>>,list<list<>>,<list<>)');
+  });
+
+  it('rejects what cannot be a parameter type', () => {
+    expectInvalid(() => apexSignature(['']));
+    expectInvalid(() => apexSignature(['Account', '  ']));
+    expectInvalid(() => apexSignature(['run(String)']));
   });
 });
 
@@ -301,6 +387,26 @@ describe('KeyRegistry', () => {
     expect(registry.displayName(upper)).toBe('Foo');
   });
 
+  it('names the files in a collision, so that two names that look the same can be told apart', () => {
+    const registry = new KeyRegistry();
+    const composed = buildKey({ type: 'Flow', fullName: 'Caf\u00E9' });
+    const decomposed = buildKey({ type: 'Flow', fullName: 'Cafe\u0301' });
+    registry.register({ key: composed, displayName: 'Caf\u00E9', file: 'flows/a.flow-meta.xml' });
+    const collision = registry.register({ key: decomposed, displayName: 'Cafe\u0301', file: 'flows/b.flow-meta.xml' });
+    expect(collision?.message).toBe(
+      '"Cafe\u0301" (flows/b.flow-meta.xml) and "Caf\u00E9" (flows/a.flow-meta.xml) have the same key Flow:caf\u00E9. The first one is kept.',
+    );
+  });
+
+  it('reports a collision for every further component with a taken key', () => {
+    const registry = new KeyRegistry();
+    const key = buildKey({ type: 'ApexClass', fullName: 'Foo' });
+    registry.register({ key, displayName: '' });
+    expect(registry.register({ key, displayName: 'foo' })?.kept).toBe('');
+    expect(registry.register({ key, displayName: 'FOO' })?.kept).toBe('');
+    expect(registry.collisions).toHaveLength(2);
+  });
+
   it('keeps different components apart', () => {
     const registry = new KeyRegistry();
     const first = buildKey({ type: 'ApexClass', fullName: 'Foo' });
@@ -322,18 +428,41 @@ describe('properties of keys', () => {
     .array(
       fc.oneof(
         fc.string({ unit: 'grapheme', maxLength: 6 }),
-        fc.constantFrom('#', '/', '%', ':', '.', '%23', '%2F', '%2f', '%25', '__', 'İ', 'Σ', 'ß', 'ǅ', ' '),
+        fc.constantFrom('#', '/', '%', ':', '.', '%23', '%2F', '%2f', '%25', '__', 'İ', 'Σ', 'ß', 'ǅ', ' ', 'J̌'),
       ),
       { minLength: 1, maxLength: 6 },
     )
     .map((pieces) => pieces.join(''))
-    .filter((text) => text !== '' && !controlCharacters.test(text));
-  const subComponent = fc.record({ kind: fc.constantFrom(...SUB_KINDS), name: nameText });
+    .filter((text) => text !== '' && text.isWellFormed() && !controlCharacters.test(text));
+  const parameterTypes = fc.array(
+    fc.constantFrom('Account', 'String[]', 'Map<Id, Account>', 'ns.Outer.Inner', 'List<List<Id>>'),
+    { maxLength: 3 },
+  );
+  const unsignedKinds = SUB_KINDS.filter((kind) => kind !== 'method' && kind !== 'ctor');
+  /** The name of a method: any name text without whitespace and brackets. */
+  const methodName = nameText.filter((text) => !/[()\s]/.test(foldName(text)));
+  const subOf = (name: fc.Arbitrary<string>, method: fc.Arbitrary<string>): fc.Arbitrary<SubComponent> =>
+    fc.oneof(
+      fc.record({ kind: fc.constantFrom(...unsignedKinds), name }),
+      fc
+        .record({ kind: fc.constant('method' as const), name: fc.tuple(method, parameterTypes) })
+        .map(({ kind, name: [text, types] }): SubComponent => ({ kind, name: `${text}${apexSignature(types)}` })),
+      parameterTypes.map((types): SubComponent => ({ kind: 'ctor', name: apexSignature(types) })),
+    );
+  const subComponent = subOf(nameText, methodName);
   const keyParts = fc.record({
     type: fc.constantFrom(...KNOWN_TYPES, 'CustomLabel', 'apexclass', 'FLOW'),
     fullName: nameText,
     subs: fc.array(subComponent, { maxLength: 3 }),
   });
+  /** Names as Salesforce API names are: ASCII. For these, upper case and lower case are the same name. */
+  const asciiName = fc.stringMatching(/^[A-Za-z][A-Za-z0-9_.]{0,11}$/);
+  const asciiSub = subOf(
+    asciiName,
+    asciiName.filter((text) => !text.includes('.')),
+  );
+  const upper = (subs: readonly SubComponent[]): SubComponent[] =>
+    subs.map((sub) => ({ kind: sub.kind, name: sub.name.toUpperCase() }));
 
   it('folding is idempotent', () => {
     fc.assert(
@@ -351,26 +480,31 @@ describe('properties of keys', () => {
         expect(parsed.type).toBe(canonicalType(parts.type));
         expect(parsed.subs).toEqual(parts.subs.map((sub) => ({ kind: sub.kind, name: foldName(sub.name) })));
         expect(buildKey({ type: parsed.type, fullName: parsed.name, subs: parsed.subs })).toBe(key);
+        expect(Buffer.from(key, 'utf8').toString('utf8')).toBe(key);
       }),
     );
   });
 
-  it('a key does not depend on the case of its input', () => {
+  it('a key does not depend on the case of an ASCII name', () => {
+    // This holds for ASCII only. For other scripts upper case is not the reverse of lower case: "ß" becomes "SS".
     fc.assert(
-      fc.property(keyParts, (parts) => {
-        const folded: KeyParts = {
-          type: parts.type,
-          fullName: foldName(parts.fullName),
-          subs: parts.subs.map((sub) => ({ kind: sub.kind, name: foldName(sub.name) })),
-        };
-        expect(buildKey(folded)).toBe(buildKey(parts));
+      fc.property(asciiName, fc.array(asciiSub, { maxLength: 3 }), (fullName, subs) => {
+        const key = buildKey({ type: 'ApexClass', fullName, subs });
+        expect(buildKey({ type: 'APEXCLASS', fullName: fullName.toUpperCase(), subs: upper(subs) })).toBe(key);
+        expect(buildKey({ type: 'apexclass', fullName: fullName.toLowerCase(), subs })).toBe(key);
       }),
     );
   });
 
-  it('different paths of sub-components give different keys', () => {
+  it('two paths of sub-components give the same key exactly when they fold to the same path', () => {
+    const paths = fc.array(asciiSub, { maxLength: 3 });
+    // Half of the pairs are the same path in another case, so that both outcomes are tried.
+    const pair = fc.oneof(
+      fc.tuple(paths, paths),
+      paths.map((path): [SubComponent[], SubComponent[]] => [path, upper(path)]),
+    );
     fc.assert(
-      fc.property(fc.array(subComponent, { maxLength: 3 }), fc.array(subComponent, { maxLength: 3 }), (a, b) => {
+      fc.property(pair, ([a, b]) => {
         const fold = (subs: readonly SubComponent[]): string =>
           JSON.stringify(subs.map((sub) => [sub.kind, foldName(sub.name)]));
         const keyA = buildKey({ type: 'ApexClass', fullName: 'A', subs: a });
@@ -389,17 +523,43 @@ describe('properties of keys', () => {
     );
   });
 
+  const expectParsesOrIsInvalid = (text: string): boolean => {
+    try {
+      const parsed = parseKey(text);
+      expect(buildKey({ type: parsed.type, fullName: parsed.name, subs: parsed.subs })).toBe(text);
+      return true;
+    } catch (error) {
+      expect(error).toBeInstanceOf(EngineError);
+      expect((error as EngineError).code).toBe('KEY_INVALID');
+      return false;
+    }
+  };
+
   it('parseKey never throws anything but KEY_INVALID, whatever the text', () => {
     fc.assert(
       fc.property(fc.string({ unit: 'binary' }), (text) => {
-        try {
-          const parsed = parseKey(text);
-          expect(buildKey({ type: parsed.type, fullName: parsed.name, subs: parsed.subs })).toBe(text);
-        } catch (error) {
-          expect(error).toBeInstanceOf(EngineError);
-          expect((error as EngineError).code).toBe('KEY_INVALID');
-        }
+        expectParsesOrIsInvalid(text);
       }),
     );
+  });
+
+  it('a key with one character changed either parses to itself or is rejected', () => {
+    // Random text almost never parses. A valid key with one change does about one time in three.
+    const change = fc.record({
+      at: fc.nat(),
+      remove: fc.boolean(),
+      insert: fc.constantFrom('', '#', '/', '%', ':', '.', '(', ')', ',', ' ', 'a', 'A', '2', '\u0000', '\uD800'),
+    });
+    let parsed = 0;
+    fc.assert(
+      fc.property(keyParts, change, (parts, { at, remove, insert }) => {
+        const key = buildKey(parts);
+        const position = at % (key.length + 1);
+        const changed = `${key.slice(0, position)}${insert}${key.slice(position + (remove ? 1 : 0))}`;
+        if (expectParsesOrIsInvalid(changed)) parsed += 1;
+      }),
+      { numRuns: 500 },
+    );
+    expect(parsed).toBeGreaterThan(20);
   });
 });

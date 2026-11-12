@@ -42,8 +42,18 @@ describe('EngineError', () => {
 describe('isEngineError', () => {
   it('recognises an engine error, also one from another copy of the package', () => {
     expect(isEngineError(new EngineError('INTERNAL', 'x'))).toBe(true);
-    const foreign = Object.assign(new Error('x'), { name: 'EngineError', code: 'KEY_INVALID' });
+    // A second copy of the class, as a second installed copy of the package would have.
+    class OtherCopy extends Error {
+      readonly code = 'KEY_INVALID';
+      override readonly name = 'EngineError';
+      toJSON(): { code: string; message: string } {
+        return { code: this.code, message: this.message };
+      }
+    }
+    const foreign: unknown = new OtherCopy('x');
     expect(isEngineError(foreign)).toBe(true);
+    expect(toEngineError(foreign)).toBe(foreign);
+    expect(toEngineError(foreign).toJSON()).toEqual({ code: 'KEY_INVALID', message: 'x' });
   });
 
   it('rejects everything else', () => {
@@ -53,6 +63,8 @@ describe('isEngineError', () => {
     expect(isEngineError(Object.assign(new Error('x'), { name: 'EngineError', code: 'toString' }))).toBe(false);
     expect(isEngineError({ name: 'EngineError', code: 'INTERNAL', message: 'x' })).toBe(false);
     expect(isEngineError(undefined)).toBe(false);
+    // The name and a code are not enough: without `toJSON` it cannot be used as an engine error.
+    expect(isEngineError(Object.assign(new Error('x'), { name: 'EngineError', code: 'KEY_INVALID' }))).toBe(false);
   });
 });
 
@@ -72,5 +84,31 @@ describe('toEngineError', () => {
     expect(toEngineError('text').message).toBe('text');
     expect(toEngineError(new Error('')).message).toBe('Unknown error');
     expect(toEngineError(undefined).message).toBe('undefined');
+  });
+
+  it('never throws, whatever was thrown at it', () => {
+    expect(toEngineError(Object.create(null)).message).toBe('Unknown error');
+    expect(toEngineError({ message: 'real reason' }).message).toBe('real reason');
+    expect(toEngineError({ message: 7 }).message).toBe('[object Object]');
+    expect(toEngineError(Symbol('s')).message).toBe('Symbol(s)');
+    expect(toEngineError(null).message).toBe('null');
+  });
+
+  it('masks credentials in a message the engine did not write', () => {
+    const token = ['00D5g00000', 'AbCdE', '!', 'AQEAQ', 'z'.repeat(40)].join('');
+    const wrapped = toEngineError(new Error(`session ${token} is invalid, see https://x.example/?sid=abc`));
+    expect(wrapped.toJSON()).toEqual({
+      code: 'INTERNAL',
+      message: 'session [REDACTED] is invalid, see https://x.example/?sid=[REDACTED]',
+    });
+  });
+
+  it('keeps the code an engine error from a newer copy of the package reported', () => {
+    const newer = Object.assign(new Error('The snapshot is locked.'), { name: 'EngineError', code: 'NOT_YET_KNOWN' });
+    expect(toEngineError(newer).toJSON()).toEqual({
+      code: 'INTERNAL',
+      message: 'The snapshot is locked.',
+      details: { reportedCode: 'NOT_YET_KNOWN' },
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -77,7 +77,7 @@ describe('createLogger', () => {
     logger.error('login.failed', {
       accessToken: token,
       error: new Error(`server said: invalid session ${token}`),
-      url: `https://example.my.salesforce.com/?sid=${token}`,
+      url: `https://acme.my.salesforce.example/?sid=${token}`,
     });
     expect(lines[0]).not.toContain('AQEAQ');
     expect(lines[0]).toContain(REDACTED);
@@ -102,6 +102,70 @@ describe('createLogger', () => {
     }).not.toThrow();
   });
 
+  it('treats a level it does not know as the default, never as "write everything"', () => {
+    const typo = capture({ level: 'verbose' as 'debug' });
+    typo.logger.debug('a');
+    typo.logger.info('b');
+    expect(typo.records().map((record) => record['event'])).toEqual(['b']);
+  });
+
+  it('never throws, and writes a short record when the real one cannot be built', () => {
+    const { logger, records } = capture();
+    const fields = Object.defineProperty({}, 'bad', {
+      enumerable: true,
+      get: () => {
+        throw new Error('no');
+      },
+    }) as Record<string, unknown>;
+    expect(() => {
+      logger.error('direct', fields);
+      logger.child(fields).warn('child');
+      logger.info('nested', { deep: fields });
+    }).not.toThrow();
+    expect(records()).toEqual([
+      {
+        time: '2026-11-12T08:09:10.123Z',
+        level: 'error',
+        event: 'direct',
+        logError: 'The record could not be built: Error',
+      },
+      {
+        time: '2026-11-12T08:09:10.123Z',
+        level: 'warn',
+        event: 'child',
+        logError: 'The record could not be built: Error',
+      },
+      { time: '2026-11-12T08:09:10.123Z', level: 'info', event: 'nested', deep: '[unreadable]' },
+    ]);
+  });
+
+  it('falls back to the system clock when the given clock fails', () => {
+    for (const now of [
+      (): Date => new Date(Number.NaN),
+      (): Date => {
+        throw new Error('no clock');
+      },
+    ]) {
+      const { logger, records } = capture({ now });
+      logger.info('still written');
+      expect(Math.abs(Date.now() - Date.parse(String(records()[0]?.['time'])))).toBeLessThan(60_000);
+    }
+  });
+
+  it('does not leave a rejection unhandled when the sink turns out to be asynchronous', async () => {
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown): void => void unhandled.push(reason);
+    process.on('unhandledRejection', listener);
+    try {
+      const sink = (() => Promise.reject(new Error('disk full'))) as unknown as LoggerOptions['sink'];
+      createLogger({ sink }).error('anything');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+  });
+
   it('uses the system clock when none is given', () => {
     const lines: string[] = [];
     createLogger({ sink: (line) => lines.push(line) }).info('now');
@@ -121,14 +185,21 @@ describe('createFileSink', () => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
-  it('creates the folder and appends lines to a file named after the start time', () => {
+  it('creates the folder and appends lines to the file of the day', () => {
     const dir = join(tempDir(), 'nested', 'logs');
-    const { sink, path } = createFileSink({ dir, now: at('2026-11-12T08:09:10.123Z') });
-    expect(basename(path)).toBe(`orglens-20261112T080910Z-${String(process.pid)}.jsonl`);
+    const { sink, path } = createFileSink({ dir, now: at('2026-11-12T23:59:59.999Z') });
+    expect(basename(path)).toBe('orglens-2026-11-12.jsonl');
     expect(readFileSync(path, 'utf8')).toBe('');
     sink('{"a":1}');
     sink('{"b":2}');
     expect(readFileSync(path, 'utf8')).toBe('{"a":1}\n{"b":2}\n');
+  });
+
+  it.skipIf(process.platform === 'win32')('keeps the folder and the file to the owner', () => {
+    const dir = join(tempDir(), 'logs');
+    const { path } = createFileSink({ dir });
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   it('works as the sink of a logger', () => {
@@ -139,35 +210,67 @@ describe('createFileSink', () => {
     );
   });
 
-  it('keeps the most recent files and removes the oldest', () => {
-    const dir = tempDir();
-    for (let day = 1; day <= 5; day += 1) {
-      createFileSink({ dir, keep: 3, now: at(`2026-11-0${String(day)}T00:00:00Z`) });
-    }
-    expect(readdirSync(dir).map((name) => name.slice(0, 24))).toEqual([
-      'orglens-20261103T000000Z',
-      'orglens-20261104T000000Z',
-      'orglens-20261105T000000Z',
-    ]);
-  });
-
-  it('never removes the file it has just created, and never touches other files', () => {
-    const dir = tempDir();
-    writeFileSync(join(dir, 'notes.txt'), 'mine');
-    writeFileSync(join(dir, 'orglens-20991231T235959Z-1.jsonl'), 'from the future\n');
-    writeFileSync(join(dir, 'orglens-custom.jsonl'), 'not ours\n');
-    const { path } = createFileSink({ dir, keep: 0, now: at('2026-11-12T00:00:00Z') });
-    expect(readdirSync(dir).sort()).toEqual([basename(path), 'notes.txt', 'orglens-custom.jsonl'].sort());
-  });
-
-  it('gives two sinks started in the same second different files', () => {
+  it('lets every run of one day append to the same file', () => {
     const dir = tempDir();
     const first = createFileSink({ dir, now: at('2026-11-12T00:00:00Z') });
-    const second = createFileSink({ dir, now: at('2026-11-12T00:00:00Z') });
-    expect(second.path).not.toBe(first.path);
+    const second = createFileSink({ dir, now: at('2026-11-12T18:00:00Z') });
+    expect(second.path).toBe(first.path);
     first.sink('1');
     second.sink('2');
-    expect(readFileSync(first.path, 'utf8')).toBe('1\n');
-    expect(readFileSync(second.path, 'utf8')).toBe('2\n');
+    first.sink('3');
+    expect(readFileSync(first.path, 'utf8')).toBe('1\n2\n3\n');
+  });
+
+  const days = (dir: string): string[] =>
+    readdirSync(dir)
+      .sort()
+      .map((name) => name.slice(8, 18));
+
+  it('keeps the files of the last days and removes older ones', () => {
+    const dir = tempDir();
+    for (let day = 1; day <= 9; day += 1) {
+      createFileSink({ dir, keepDays: 3, now: at(`2026-11-0${String(day)}T12:00:00Z`) });
+    }
+    expect(days(dir)).toEqual(['2026-11-07', '2026-11-08', '2026-11-09']);
+  });
+
+  it('keeps 14 days when nothing else is asked for, or when what is asked for is no number of days', () => {
+    for (const keepDays of [undefined, Number.NaN, 0, -1, 2.5]) {
+      const dir = tempDir();
+      for (const day of ['2026-10-01', '2026-10-29', '2026-10-30', '2026-11-11']) {
+        writeFileSync(join(dir, `orglens-${day}.jsonl`), 'old\n');
+      }
+      createFileSink({ dir, ...(keepDays === undefined ? {} : { keepDays }), now: at('2026-11-12T00:00:00Z') });
+      expect(days(dir)).toEqual(['2026-10-30', '2026-11-11', '2026-11-12']);
+    }
+  });
+
+  it('never removes the file a longer run is still writing to', () => {
+    const dir = tempDir();
+    const longRun = createFileSink({ dir, keepDays: 2, now: at('2026-11-11T23:00:00Z') });
+    longRun.sink('before midnight');
+    createFileSink({ dir, keepDays: 2, now: at('2026-11-12T00:30:00Z') });
+    longRun.sink('after midnight');
+    expect(readFileSync(longRun.path, 'utf8')).toBe('before midnight\nafter midnight\n');
+  });
+
+  it('never touches other files, and is not stopped by something it cannot remove', () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'notes.txt'), 'mine');
+    writeFileSync(join(dir, 'orglens-custom.jsonl'), 'not ours\n');
+    writeFileSync(join(dir, 'orglens-20200101T000000Z-1.jsonl'), 'not ours either\n');
+    // A folder with the name of an old log file cannot be removed like a file.
+    mkdirSync(join(dir, 'orglens-2020-01-01.jsonl'));
+    writeFileSync(join(dir, 'orglens-2020-01-02.jsonl'), 'old\n');
+    const { path } = createFileSink({ dir, now: at('2026-11-12T00:00:00Z') });
+    expect(readdirSync(dir).sort()).toEqual(
+      [
+        basename(path),
+        'notes.txt',
+        'orglens-custom.jsonl',
+        'orglens-20200101T000000Z-1.jsonl',
+        'orglens-2020-01-01.jsonl',
+      ].sort(),
+    );
   });
 });

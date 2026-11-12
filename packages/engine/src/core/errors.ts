@@ -7,6 +7,7 @@
  * or reused for a different meaning. New codes are added with the feature
  * that raises them, never ahead of it.
  */
+import { redactText } from './redact.ts';
 
 /** A value that survives `JSON.stringify` unchanged. Everything that crosses the engine API is one. */
 export type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
@@ -62,18 +63,46 @@ export class EngineError extends Error {
 
 /**
  * True for an `EngineError`, including one created by another copy of the
- * engine package, where `instanceof` would fail.
+ * engine package, where `instanceof` would fail. Such a copy is recognised by
+ * its name, a code this copy knows, and the `toJSON` method.
  */
 export function isEngineError(value: unknown): value is EngineError {
   if (value instanceof EngineError) return true;
   if (!(value instanceof Error) || value.name !== 'EngineError') return false;
-  const code: unknown = (value as { code?: unknown }).code;
-  return typeof code === 'string' && Object.hasOwn(ERROR_CODES, code);
+  const { code, toJSON } = value as { code?: unknown; toJSON?: unknown };
+  return typeof code === 'string' && Object.hasOwn(ERROR_CODES, code) && typeof toJSON === 'function';
 }
 
-/** Returns the value itself if it is an engine error, and wraps anything else as `INTERNAL`. */
+/** The text of anything that was thrown. It never throws itself. */
+function describeThrown(value: unknown): string {
+  try {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value !== null) {
+      const message: unknown = (value as { message?: unknown }).message;
+      if (typeof message === 'string') return message;
+    }
+    return String(value);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Returns the value itself if it is an engine error, and wraps anything else
+ * as `INTERNAL`.
+ *
+ * The message of a wrapped value was not written by the engine, so it is
+ * passed through `redactText` before it can reach a client. An engine error
+ * from a newer copy of the package, with a code this copy does not know, is
+ * wrapped too, and the code it reported is kept in the details.
+ */
 export function toEngineError(value: unknown): EngineError {
   if (isEngineError(value)) return value;
-  const message = value instanceof Error ? value.message : String(value);
-  return new EngineError('INTERNAL', message === '' ? 'Unknown error' : message, { cause: value });
+  const message = redactText(describeThrown(value));
+  const reportedCode: unknown =
+    value instanceof Error && value.name === 'EngineError' ? (value as { code?: unknown }).code : undefined;
+  return new EngineError('INTERNAL', message === '' ? 'Unknown error' : message, {
+    cause: value,
+    ...(typeof reportedCode === 'string' ? { details: { reportedCode: redactText(reportedCode) } } : {}),
+  });
 }

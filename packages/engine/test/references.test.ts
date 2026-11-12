@@ -96,30 +96,44 @@ describe('validateReference', () => {
   });
 
   it('accepts the other shapes a reference can have', () => {
+    const accepted = (change: Partial<Reference>): void => {
+      expect(() => validateReference({ ...valid, ...change }), JSON.stringify(change)).not.toThrow();
+    };
+    // A named target the snapshot does not hold, whether the source is certain of the name or not.
+    accepted({ to: null, resolution: 'unresolved', confidence: 'probable' });
+    accepted({ to: null, resolution: 'unresolved', confidence: 'confirmed' });
+    // A target outside the snapshot, with or without a key.
+    accepted({ to: null, resolution: 'external' });
+    accepted({ resolution: 'external' });
+    // A field decided at run time: the reference points at the object.
+    const object = buildKey({ type: 'CustomObject', fullName: 'Account' });
+    accepted({ to: object, toType: 'CustomObject', resolution: 'dynamic', confidence: 'possible' });
+    accepted({ to: object, toType: 'CustomObject', resolution: 'dynamic', confidence: 'probable' });
+    // A type the engine does not know by name.
+    accepted({ to: buildKey({ type: 'CustomLabel', fullName: 'Greeting' }), toType: 'CustomLabel' });
+  });
+
+  it('asks a parser for a full location, and lets Salesforce data come without one', () => {
     const bare: Reference = {
       from: valid.from,
       to: valid.to,
       toType: valid.toType,
       toNameRaw: valid.toNameRaw,
       kind: valid.kind,
-      origin: valid.origin,
+      origin: 'dependency-api',
       confidence: valid.confidence,
       resolution: valid.resolution,
     };
     expect(() => validateReference(bare)).not.toThrow();
-    expect(() => validateReference({ ...valid, location: { file: 'a.cls', line: 1 } })).not.toThrow();
+    expect(() => validateReference({ ...bare, origin: 'symboltable' })).not.toThrow();
     expect(() =>
-      validateReference({ ...valid, to: null, resolution: 'unresolved', confidence: 'probable' }),
+      validateReference({ ...bare, origin: 'symboltable', location: { file: 'a.cls', line: 1 } }),
     ).not.toThrow();
-    expect(() => validateReference({ ...valid, to: null, resolution: 'external' })).not.toThrow();
-    expect(() =>
-      validateReference({ ...valid, to: null, resolution: 'dynamic', confidence: 'possible' }),
-    ).not.toThrow();
-    // A dynamic reference may still know the object it points at.
-    const object = buildKey({ type: 'CustomObject', fullName: 'Account' });
-    expect(() =>
-      validateReference({ ...valid, to: object, resolution: 'dynamic', confidence: 'possible' }),
-    ).not.toThrow();
+    for (const origin of REFERENCE_ORIGINS.filter((one) => one.startsWith('parser:'))) {
+      expect(() => validateReference({ ...valid, origin })).not.toThrow();
+      expectRejected({ origin, location: undefined }, /must have a source location/);
+      expectRejected({ origin, location: { file: 'a.cls', line: 1 } }, /a parser always gives one/);
+    }
   });
 
   it('rejects ends that are not component keys', () => {
@@ -140,12 +154,28 @@ describe('validateReference', () => {
 
   it('requires the type and the written form of the target', () => {
     expectRejected({ toType: '' }, /metadata type of its target/);
+    expectRejected({ toType: 'custom field!' }, /metadata type of its target/);
+    expectRejected({ toType: 'customfield' }, /metadata type of its target/);
+    expectRejected({ toType: 7 }, /metadata type of its target/);
+    expectRejected({ toType: 'CustomObject' }, /must be the type of the target key/);
     expectRejected({ toNameRaw: '' }, /as it was written/);
+    expectRejected({ toNameRaw: undefined }, /as it was written/);
   });
 
   it('keeps resolution and target consistent', () => {
     expectRejected({ to: null }, /resolved reference must have a target key/);
     expectRejected({ resolution: 'unresolved' }, /unresolved reference must not have a target key/);
+  });
+
+  it('gives every possible reference a target: the object is known, or it is no reference', () => {
+    expectRejected(
+      { to: null, resolution: 'dynamic', confidence: 'possible' },
+      /possible reference must have a target/,
+    );
+    expectRejected(
+      { to: null, resolution: 'external', confidence: 'possible' },
+      /possible reference must have a target/,
+    );
   });
 
   it('never calls a run-time target confirmed', () => {
@@ -154,6 +184,13 @@ describe('validateReference', () => {
 
   it('rejects positions that do not start at 1 and paths with backslashes', () => {
     expectRejected({ location: { file: 'a.cls', line: 0 } }, /line of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: -1, column: 1 } }, /line of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: '3', column: 1 } }, /line of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: 3, column: -2 } }, /column of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: 3, column: 1.5 } }, /column of a source location/);
+    expectRejected({ location: null }, /source location is an object/);
+    expectRejected({ location: 'a.cls:3' }, /source location is an object/);
+    expectRejected({ location: { line: 3, column: 1 } }, /forward slashes/);
     expectRejected({ location: { file: 'a.cls', line: 1.5 } }, /line of a source location/);
     expectRejected({ location: { file: 'a.cls', line: 3, column: 0 } }, /column of a source location/);
     expectRejected({ location: { file: 'classes\\a.cls', line: 3 } }, /forward slashes/);

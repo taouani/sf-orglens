@@ -10,7 +10,7 @@ May import from: nothing else in the engine.
 | `references.ts` | The reference vocabulary: kinds, origins, confidence tiers, resolutions, source locations       |
 | `errors.ts`     | `EngineError` and the stable error codes                                                        |
 | `redact.ts`     | Masking of credentials in anything that is logged                                               |
-| `logger.ts`     | The JSON-lines logger and its file sink                                                         |
+| `logger.ts`     | The JSON-lines logger and its file sink: one file per day, old days removed                     |
 | `version.ts`    | The version of the engine package                                                               |
 
 The order of the layers is `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer may import from

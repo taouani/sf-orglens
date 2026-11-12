@@ -1,16 +1,6 @@
 [
-  "CONFIDENCE_TIERS",
   "ERROR_CODES",
   "EngineError",
-  "REFERENCE_KINDS",
-  "REFERENCE_ORIGINS",
-  "RESOLUTIONS",
-  "SUB_KINDS",
-  "apexSignature",
-  "buildKey",
   "engineVersion",
-  "isComponentKey",
-  "isEngineError",
-  "parentKey",
-  "parseKey"
+  "isEngineError"
 ]

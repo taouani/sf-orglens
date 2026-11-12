@@ -28,7 +28,12 @@
  * encoding that Salesforce itself applies to full names (`Custom%3A Profile`)
  * is kept as delivered, and the name is never decoded. In `subname`, "%",
  * "#" and "/" are percent-encoded, and decoded again by `parseKey`.
- * Control characters are rejected everywhere.
+ * Control characters and text that is not well-formed Unicode (a lone
+ * surrogate) are rejected everywhere.
+ *
+ * The name of a method or a constructor ends with its signature, exactly as
+ * `apexSignature` writes it. Any other spelling is rejected, so that two
+ * producers cannot give one method two keys.
  */
 import { EngineError } from './errors.ts';
 
@@ -37,11 +42,14 @@ export type ComponentKey = string & { readonly __componentKey: unique symbol };
 
 /** The kinds of sub-component a key can address. */
 export const SUB_KINDS = ['method', 'ctor', 'prop', 'var', 'inner', 'init', 'element', 'file', 'value'] as const;
-export type SubKind = (typeof SUB_KINDS)[number];
+type SubKind = (typeof SUB_KINDS)[number];
 
 export interface SubComponent {
   readonly kind: SubKind;
-  /** The name of the sub-component, in any case. For a method: its name followed by `apexSignature(...)`. */
+  /**
+   * The name of the sub-component, in any case. For a method or a constructor: its name followed by
+   * `apexSignature(...)`, for example `run(account,list<string>)`. No other spelling of the signature is accepted.
+   */
   readonly name: string;
 }
 
@@ -98,6 +106,11 @@ export const KNOWN_TYPES = [
 
 const KNOWN_TYPE_BY_FOLDED_NAME = new Map<string, string>(KNOWN_TYPES.map((type) => [type.toLowerCase(), type]));
 const TYPE_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
+const ASCII_LETTERS_AND_DIGITS = /^[A-Za-z0-9]+$/;
+/** A signature in canonical form: no whitespace and no empty parameter. A method name stands in front of it. */
+const SIGNATURE = String.raw`\((?:[^(),\s]+(?:,[^(),\s]+)*)?\)`;
+const METHOD_NAME = new RegExp(`^[^()\\s]+${SIGNATURE}$`);
+const CTOR_NAME = new RegExp(`^${SIGNATURE}$`);
 const SUB_KIND_SET: ReadonlySet<string> = new Set(SUB_KINDS);
 // C0 controls, DEL, C1 controls, and the Unicode line and paragraph separators.
 const CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]/u;
@@ -116,16 +129,22 @@ function invalid(message: string, details: Record<string, string>): EngineError 
 }
 
 /**
- * Case-folds a name the way keys do: Unicode NFC and lower case, independent
- * of the locale. Folding a folded name changes nothing.
+ * Folds a name the way keys do: Unicode NFC and lower case, independent of
+ * the locale. Folding a folded name changes nothing.
+ *
+ * This is lower-casing, not full Unicode case folding. Lower-casing has one
+ * rule that depends on the neighbours of a letter: a Greek capital sigma
+ * becomes "ς" at the end of a word and "σ" elsewhere. Both are written "σ"
+ * here, so that a name folds the same way alone and as part of a longer name.
  */
 export function foldName(name: string): string {
-  return name.normalize('NFC').toLowerCase().normalize('NFC');
+  return name.normalize('NFC').toLowerCase().replaceAll('\u03C2', '\u03C3').normalize('NFC');
 }
 
 /** Returns the registry spelling of a metadata type name. */
 export function canonicalType(type: string): string {
-  const known = KNOWN_TYPE_BY_FOLDED_NAME.get(type.toLowerCase());
+  // Only ASCII is compared without case: the Kelvin sign lower-cases to "k" and must not pass as one.
+  const known = ASCII_LETTERS_AND_DIGITS.test(type) ? KNOWN_TYPE_BY_FOLDED_NAME.get(type.toLowerCase()) : undefined;
   if (known !== undefined) return known;
   if (!TYPE_PATTERN.test(type)) {
     throw invalid(`"${type}" is not a metadata type name.`, { type });
@@ -135,8 +154,23 @@ export function canonicalType(type: string): string {
 
 function checkText(label: string, text: string, key: string): void {
   if (text === '') throw invalid(`The ${label} of a component key must not be empty.`, { key });
+  if (!text.isWellFormed()) {
+    // A lone surrogate has no UTF-8 form: stored, two different names would become the same text.
+    throw invalid(`The ${label} of a component key must be well-formed Unicode.`, { key: text.toWellFormed() });
+  }
   if (CONTROL_CHARACTERS.test(text)) {
     throw invalid(`The ${label} of a component key must not contain control characters.`, { key });
+  }
+}
+
+function checkSignature(kind: string, name: string, key: string): void {
+  const pattern = kind === 'method' ? METHOD_NAME : kind === 'ctor' ? CTOR_NAME : undefined;
+  if (pattern === undefined) return;
+  if (!pattern.test(name) || name.includes('[]')) {
+    const example = kind === 'method' ? 'run(account,list<string>)' : '(account,list<string>)';
+    throw invalid(`The name of a ${kind} is written with its signature as apexSignature gives it, like "${example}".`, {
+      key,
+    });
   }
 }
 
@@ -163,7 +197,9 @@ export function buildKey(parts: KeyParts): ComponentKey {
       throw invalid(`"${sub.kind}" is not a kind of sub-component.`, { key: described });
     }
     checkText(`${sub.kind} name`, sub.name, described);
-    return { kind: sub.kind, name: foldName(sub.name) };
+    const name = foldName(sub.name);
+    checkSignature(sub.kind, name, described);
+    return { kind: sub.kind, name };
   });
   return formatKey(type, encodeName(foldName(parts.fullName)), subs);
 }
@@ -198,6 +234,7 @@ export function parseKey(key: string): ParsedKey {
       if (foldName(subName) !== subName || encodeSubName(subName) !== encoded) {
         throw invalid(`The ${kind} name in a component key is lower case and percent-encoded.`, { key });
       }
+      checkSignature(kind, subName, key);
       subs.push({ kind: kind as SubKind, name: subName });
     }
   }
@@ -225,10 +262,15 @@ export function isComponentKey(text: string): text is ComponentKey {
 export function parentKey(key: ComponentKey): ComponentKey | undefined {
   const { type, name, subs } = parseKey(key);
   if (subs.length > 0) return formatKey(type, name, subs.slice(0, -1));
+  // The parent ends at the first dot. A name with nothing before or after it has no parent.
   const dot = name.indexOf('.');
-  if (dot < 1) return undefined;
-  if (CHILD_OF_OBJECT.has(type)) return formatKey('CustomObject', name.slice(0, dot), []);
-  if (type === 'CustomMetadata') return formatKey('CustomObject', `${name.slice(0, dot)}__mdt`, []);
+  if (dot < 1 || dot === name.length - 1) return undefined;
+  const parent = name.slice(0, dot);
+  if (CHILD_OF_OBJECT.has(type)) return formatKey('CustomObject', parent, []);
+  if (type === 'CustomMetadata') {
+    // The full name of a record is `Type.Record`, without the suffix of the type.
+    return formatKey('CustomObject', parent.endsWith('__mdt') ? parent : `${parent}__mdt`, []);
+  }
   return undefined;
 }
 
@@ -256,9 +298,19 @@ function arraysAsLists(type: string): string {
  * The canonical signature of an Apex method or constructor: its parameter
  * types, folded, without whitespace, with every `T[]` written as `list<t>`.
  * `apexSignature(['Account', 'String[]'])` is `(account,list<string>)`.
+ *
+ * A type is taken as it is spelled in the declaration: `Schema.Account` and
+ * `Account` give different signatures. Which spelling the Apex resolver
+ * hands in is decided with the Apex analysis.
  */
 export function apexSignature(parameterTypes: readonly string[]): string {
-  const canonical = parameterTypes.map((parameterType) => arraysAsLists(foldName(parameterType).replace(/\s+/g, '')));
+  const canonical = parameterTypes.map((parameterType) => {
+    const type = arraysAsLists(foldName(parameterType).replace(/\s+/g, ''));
+    if (type === '' || /[()]/.test(type)) {
+      throw invalid(`"${parameterType}" is not an Apex parameter type.`, { type: parameterType });
+    }
+    return type;
+  });
   return `(${canonical.join(',')})`;
 }
 
@@ -267,9 +319,17 @@ export interface KeyRegistration {
   readonly key: ComponentKey;
   /** The name in its original spelling. */
   readonly displayName: string;
+  /** The file the component was read from, if there is one. It tells two components apart whose names look alike. */
+  readonly file?: string;
 }
 
-/** Two components whose names fold to the same key. The first one registered is kept. */
+/**
+ * Two components whose names fold to the same key. The first one registered
+ * is kept.
+ *
+ * A collision is an issue of a snapshot, not a failure of a call, so its code
+ * is not one of `ERROR_CODES`. Issue codes are stored with the snapshot.
+ */
 export interface KeyCollision {
   readonly code: 'KEY_COLLISION';
   readonly severity: 'error';
@@ -288,39 +348,41 @@ export interface KeyCollision {
  * merged into the first and is not dropped silently: it is reported.
  */
 export class KeyRegistry {
-  readonly #displayNames = new Map<ComponentKey, string>();
+  readonly #registered = new Map<ComponentKey, KeyRegistration>();
   readonly #collisions: KeyCollision[] = [];
 
   /** Registers a component. Returns `undefined` if the key was free, and the collision if it was taken. */
   register(registration: KeyRegistration): KeyCollision | undefined {
-    const kept = this.#displayNames.get(registration.key);
+    const kept = this.#registered.get(registration.key);
     if (kept === undefined) {
-      this.#displayNames.set(registration.key, registration.displayName);
+      this.#registered.set(registration.key, registration);
       return undefined;
     }
+    const describe = (one: KeyRegistration): string =>
+      one.file === undefined ? `"${one.displayName}"` : `"${one.displayName}" (${one.file})`;
     const collision: KeyCollision = {
       code: 'KEY_COLLISION',
       severity: 'error',
       key: registration.key,
-      kept,
+      kept: kept.displayName,
       dropped: registration.displayName,
-      message: `"${registration.displayName}" and "${kept}" have the same key ${registration.key}. The first one is kept.`,
+      message: `${describe(registration)} and ${describe(kept)} have the same key ${registration.key}. The first one is kept.`,
     };
     this.#collisions.push(collision);
     return collision;
   }
 
   has(key: ComponentKey): boolean {
-    return this.#displayNames.has(key);
+    return this.#registered.has(key);
   }
 
   /** The original spelling of the component registered under this key. */
   displayName(key: ComponentKey): string | undefined {
-    return this.#displayNames.get(key);
+    return this.#registered.get(key)?.displayName;
   }
 
   get size(): number {
-    return this.#displayNames.size;
+    return this.#registered.size;
   }
 
   get collisions(): readonly KeyCollision[] {
