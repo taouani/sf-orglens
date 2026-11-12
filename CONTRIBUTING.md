@@ -41,6 +41,9 @@ pnpm run check
 | `pnpm run coverage`                          | Tests with coverage thresholds                                                       |
 | `pnpm run publint` and `pnpm run smoke:pack` | The packages install and run outside the workspace                                   |
 
+`pnpm run bench` runs the storage benchmark on a synthetic org. It is not part of `check`. See
+[`bench/README.md`](bench/README.md).
+
 ## Architecture rules
 
 The engine has six layers in a fixed order: `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer

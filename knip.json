@@ -2,7 +2,8 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs", "layers.cjs", "tools/*.js"]
+      "entry": ["scripts/*.mjs", "layers.cjs", "tools/*.js"],
+      "ignoreDependencies": ["better-sqlite3"]
     },
     "packages/engine": {
       "entry": ["test/**/*.test.ts"],

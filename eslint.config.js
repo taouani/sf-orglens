@@ -47,7 +47,7 @@ export default defineConfig(
     languageOptions: { sourceType: 'commonjs', globals: { module: 'writable', require: 'readonly' } },
   },
   {
-    files: ['scripts/**/*.mjs', 'tools/**/*.js'],
+    files: ['scripts/**/*.mjs', 'bench/**/*.mjs', 'tools/**/*.js'],
     languageOptions: { globals: nodeGlobals },
   },
 );

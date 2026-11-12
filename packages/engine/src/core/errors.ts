@@ -16,6 +16,13 @@ export type JsonValue = string | number | boolean | null | readonly JsonValue[] 
 export const ERROR_CODES = {
   KEY_INVALID: 'A component key, or the parts given to build one, do not follow the key grammar.',
   REFERENCE_INVALID: 'A reference record breaks one of the rules of the reference vocabulary.',
+  STORE_NOT_FOUND: 'The workspace has no database yet, and the command only reads.',
+  STORE_FOREIGN: 'The file at the place of the workspace database was not created by OrgLens.',
+  STORE_NEWER: 'The workspace database was written by a newer version of OrgLens.',
+  STORE_OUTDATED: 'The workspace database needs a migration, and the command only reads.',
+  STORE_BUSY: 'Another process holds the write lock of the workspace database.',
+  STORE_MIGRATION_FAILED: 'A migration of the workspace database failed and was rolled back.',
+  STORE_FAILED: 'The workspace database could not be opened, read or written.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',
 } as const;
 

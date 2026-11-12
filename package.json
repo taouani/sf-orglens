@@ -19,6 +19,7 @@
     "format:write": "prettier --write .",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "knip": "knip",
+    "bench": "node bench/bench.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:adr": "node scripts/check-adr.mjs",
     "publint": "pnpm -r --filter \"./packages/*\" exec publint --strict",
