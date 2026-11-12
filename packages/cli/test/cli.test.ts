@@ -1,17 +1,27 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { engineVersion } from '@sf-orglens/engine';
-import { buildProgram, EXIT_USAGE, main, versionLine } from '../src/main.ts';
+import { buildProgram, main, versionLine } from '../src/main.ts';
+import { EXIT } from '../src/output.ts';
+import { orglens, tempDirs } from './helpers/run.ts';
 
 const bin = fileURLToPath(new URL('../src/bin.ts', import.meta.url));
 
 /** Runs the CLI from source, the same way a user runs the built binary. */
-function run(...args: string[]): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, ['--conditions=@sf-orglens/source', bin, ...args], { encoding: 'utf8' });
+function runIn(cwd: string, ...args: string[]): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(process.execPath, ['--conditions=@sf-orglens/source', bin, ...args], {
+    encoding: 'utf8',
+    cwd,
+    env: { ...process.env, ORGLENS_WORKSPACE: '', ORGLENS_SQLITE_DRIVER: '' },
+  });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
+const run = (...args: string[]): ReturnType<typeof runIn> => runIn(process.cwd(), ...args);
+
+const dirs = tempDirs();
+afterEach(dirs.cleanUp);
 
 const cliManifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -50,8 +60,67 @@ describe('orglens binary', () => {
     expect(stderr).toMatch(/^error: /);
   });
 
-  it('registers no commands before they do something', () => {
-    expect(buildProgram().commands).toHaveLength(0);
+  it('registers exactly the commands that do something', () => {
+    const io = { stdout: () => undefined, stderr: () => undefined, cwd: '.', env: {} };
+    const names = (command: ReturnType<typeof buildProgram>): string[] => command.commands.map((one) => one.name());
+    const program = buildProgram(io, () => undefined);
+    expect(names(program)).toEqual(['init', 'source', 'status', 'doctor']);
+    expect(names(program.commands[1] ?? program)).toEqual(['add', 'list', 'remove']);
+  });
+
+  it.each([
+    ['init', 'help-init.txt'],
+    ['source', 'help-source.txt'],
+    ['source add', 'help-source-add.txt'],
+    ['source list', 'help-source-list.txt'],
+    ['source remove', 'help-source-remove.txt'],
+    ['status', 'help-status.txt'],
+    ['doctor', 'help-doctor.txt'],
+  ])('prints help for "%s" that matches the golden file', async (command, golden) => {
+    const result = await orglens('.', [...command.split(' '), '--help']);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe('');
+    await expect(result.stdout).toMatchFileSnapshot(`./golden/${golden}`);
+  });
+
+  it('carries results, failures and exit codes through the real process', () => {
+    const dir = dirs.next();
+    const init = runIn(dir, 'init', '--name', 'e2e');
+    expect(init.stderr).toBe('');
+    expect(init.status).toBe(0);
+    expect(init.stdout).toContain('created orglens.toml');
+
+    const status = runIn(dir, 'status', '--json');
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({ command: 'status', ok: true, data: { name: 'e2e' } });
+
+    const missing = runIn(dir, 'source', 'remove', 'nobody');
+    expect(missing.status).toBe(2);
+    expect(missing.stdout).toBe('');
+    expect(missing.stderr).toMatch(/^error: /);
+
+    const usage = runIn(dir, 'source', 'remove', '--json');
+    expect(usage.status).toBe(2);
+    expect(usage.stderr).toBe('');
+    expect(JSON.parse(usage.stdout)).toMatchObject({ ok: false, error: { code: 'USAGE' } });
+  });
+
+  it('ends quietly when the reader of its output has gone away', async () => {
+    const dir = dirs.next();
+    expect(runIn(dir, 'init').status).toBe(0);
+    // What "orglens status --json | head -c 0" does: the pipe is closed before the command writes.
+    const child = spawn(process.execPath, ['--conditions=@sf-orglens/source', bin, 'status', '--json'], {
+      cwd: dir,
+      env: { ...process.env, ORGLENS_WORKSPACE: '', ORGLENS_SQLITE_DRIVER: '' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout.destroy();
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    const status = await new Promise<number | null>((done) => child.on('close', done));
+    // No stack trace of Node.js, and no text on the error stream of a command that was asked for JSON.
+    expect(stderr).toBe('');
+    expect(status).toBe(1);
   });
 
   // The guard reads process.versions.node, so a preload that overrides it
@@ -95,7 +164,7 @@ describe('main', () => {
   it('shows help and returns 0 when given no arguments', async () => {
     const stdout = capture('stdout');
     await expect(main(['node', 'orglens'])).resolves.toBe(0);
-    expect(stdout()).toContain('Usage: orglens [options]');
+    expect(stdout()).toContain('Usage: orglens [options] [command]');
     expect(stdout()).toContain('Pre-release');
   });
 
@@ -107,8 +176,7 @@ describe('main', () => {
 
   it('returns the usage exit code for a command line it cannot parse', async () => {
     const stderr = capture('stderr');
-    await expect(main(['node', 'orglens', '--no-such-option'])).resolves.toBe(EXIT_USAGE);
-    expect(EXIT_USAGE).toBe(2);
+    await expect(main(['node', 'orglens', '--no-such-option'])).resolves.toBe(EXIT.usage);
     expect(stderr()).toContain("unknown option '--no-such-option'");
   });
 });

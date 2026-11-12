@@ -12,3 +12,20 @@ export { engineVersion } from '../core/version.ts';
 
 export { EngineError, ERROR_CODES, isEngineError } from '../core/errors.ts';
 export type { EngineErrorJson, EngineErrorOptions, ErrorCode, JsonValue } from '../core/errors.ts';
+
+export { initWorkspace, openWorkspace } from './workspace.ts';
+export type {
+  InitOptions,
+  InitResult,
+  SnapshotSummary,
+  SourceInput,
+  SourceStatus,
+  StoreStatus,
+  Workspace,
+  WorkspaceLocator,
+  WorkspaceStatus,
+} from './workspace.ts';
+export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
+
+export { doctor } from './doctor.ts';
+export type { DoctorCheck, DoctorReport } from './doctor.ts';

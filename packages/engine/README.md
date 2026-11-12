@@ -12,9 +12,13 @@ This package is for programs that drive the engine themselves. Everything it off
 entry point. Nothing below it is part of the API.
 
 ```js
-import { engineVersion } from '@sf-orglens/engine';
+import { openWorkspace } from '@sf-orglens/engine';
 
-console.log(engineVersion());
+const workspace = await openWorkspace({ cwd: process.cwd() });
+const status = await workspace.status();
+console.log(status.sources.map((source) => source.name));
 ```
+
+A function of the API fails only with an `EngineError`. Its `code` is one of the stable codes in `ERROR_CODES`.
 
 Requires Node.js 24.15 or newer. Licensed under the Apache License 2.0.

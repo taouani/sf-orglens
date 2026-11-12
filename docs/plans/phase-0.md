@@ -173,6 +173,19 @@ Accepted when:
 - A startup-time test holds a budget for a command that needs no org (target under 150 ms on CI Linux).
 - `doctor` reports Node version, SQLite capabilities, workspace state and available Salesforce logins, in text and JSON.
 
+Status after pull request 5 (2026-11-12). Built: both configuration files with strict reading, the `.orglens` layout,
+`init`, `source add|list|remove`, `status`, `doctor`, the JSON envelope, the exit codes and the start-up check. The
+decisions made on the way are in records [0027](../adr/0027-json-envelope-and-exit-codes.md) and
+[0028](../adr/0028-configuration-files.md). What differs from the list above:
+
+- `source link`, `source check`, `snapshot` and `coverage` are not built. Each of them needs an org or a retrieve, so
+  they arrive with WP7. The rule "no stubs" forbids adding them earlier. The same holds for the retrieve cache in
+  `.orglens`, for the Salesforce logins in `doctor`, and for matching a source to a Salesforce CLI login.
+- The JSON Schema is written by hand, not generated. A test validates the real output of every command against it.
+- Exit code `1` stands for every failure that is not a usage error, including a failed check of `doctor`, not only
+  for an internal error.
+- `init` does not change a `.gitignore` of the repository. `.orglens` holds its own.
+
 ### WP6 Fixture project, answer key, test codebases
 
 Build:

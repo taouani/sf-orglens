@@ -50,5 +50,8 @@
   },
   "devDependencies": {
     "better-sqlite3": "13.0.3"
+  },
+  "dependencies": {
+    "smol-toml": "1.9.1"
   }
 }

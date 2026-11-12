@@ -5,6 +5,9 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 
 > **Pre-release.** The project is being built in the open and is not usable yet. There is no published package and
 > no analysis command. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
+>
+> What exists today: a workspace with its configuration and its database, and the commands `init`, `source`,
+> `status` and `doctor`. See [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
 
 ## What it will do
 
@@ -39,6 +42,8 @@ packages/cli      The `orglens` command line. Uses only the public API of the en
 docs/plans        The re-architecture plan and one plan per phase.
 docs/research     Research notes behind the plans.
 docs/adr          Decision records.
+docs/cli.md       The commands, the JSON output contract and the exit codes.
+docs/configuration.md   The configuration files of a workspace.
 scripts           Repository checks used by CI.
 tools             The ESLint rule that enforces the layer rules.
 ```
@@ -51,7 +56,7 @@ You need Node.js 24.15 or newer and [pnpm](https://pnpm.io) 12.
 pnpm install
 pnpm run build
 pnpm run check   # build, lint, format, layer rules, unused code, boundary probes, tests with coverage
-node packages/cli/dist/bin.js --version
+node packages/cli/dist/bin.js --help
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose a change.

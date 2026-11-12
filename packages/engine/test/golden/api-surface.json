@@ -1,6 +1,9 @@
 [
   "ERROR_CODES",
   "EngineError",
+  "doctor",
   "engineVersion",
-  "isEngineError"
+  "initWorkspace",
+  "isEngineError",
+  "openWorkspace"
 ]

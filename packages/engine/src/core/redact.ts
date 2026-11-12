@@ -79,6 +79,10 @@ const HEADER_LABELS: ReadonlySet<string> = new Set(['authorization', 'proxyautho
  * Every pattern starts at a boundary, which keeps the scan linear in the
  * length of the text.
  */
+const BEARER = /(?<![A-Za-z0-9])bearer\s+[A-Za-z0-9._~\-+/=!]{16,}/gi;
+/** The same, told from prose by a digit or a base64 sign. For the place where a hit refuses a value. */
+const BEARER_STRICT = /(?<![A-Za-z0-9])bearer\s+(?=[A-Za-z._~-]*[0-9+/=!])[A-Za-z0-9._~\-+/=!]{16,}/i;
+
 const SECRET_SHAPES: readonly RegExp[] = [
   // PEM blocks: private keys and certificates. An unfinished block is masked to the end of the text.
   /-----BEGIN [A-Z0-9 ]+-----[\s\S]*?(?:-----END [A-Z0-9 ]+-----|$)/g,
@@ -91,7 +95,7 @@ const SECRET_SHAPES: readonly RegExp[] = [
   // JSON Web Token: three base64url parts.
   /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g,
   // A bearer token on its own.
-  /(?<![A-Za-z0-9])bearer\s+[A-Za-z0-9._~\-+/=!]{16,}/gi,
+  BEARER,
   // Basic credentials on their own: base64, told from prose by a digit or a base64 sign.
   /(?<![A-Za-z0-9])Basic\s+(?=[A-Za-z]*[0-9+/=])[A-Za-z0-9+/=]{16,}/g,
 ];
@@ -171,6 +175,19 @@ export function redactText(text: string): string {
     isSecretLabel(name) ? `<${name}>${REDACTED}</${name}>` : element,
   );
   return maskLabelled(result);
+}
+
+/**
+ * True if the text holds one of the known shapes of a secret: a key block, a
+ * token, an auth URL, a URL with a password. Labels are not considered, so a
+ * sentence that only mentions the word "password" is not a hit.
+ *
+ * Masking can afford to hide a harmless word. This check refuses a value, so it asks more of a bearer token:
+ * "the token bearer infrastructure-team" is prose.
+ */
+export function hasSecretShape(text: string): boolean {
+  const shapes = [...SECRET_SHAPES.filter((shape) => shape !== BEARER), BEARER_STRICT, URL_USER_INFO];
+  return shapes.some((shape) => text.search(shape) !== -1);
 }
 
 interface Walk {

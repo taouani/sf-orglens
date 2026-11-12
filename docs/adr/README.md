@@ -37,6 +37,8 @@ during the build.
 | [0024](0024-component-key-grammar.md)             | Component key grammar: escaping, sub-component kinds and collisions                             | Accepted |            |
 | [0025](0025-sqlite-driver.md)                     | SQLite through a driver port: `node:sqlite` by default, `better-sqlite3` as the tested fallback | Accepted |            |
 | [0026](0026-workspace-database.md)                | The workspace database: how it is opened, migrated and what its first schema holds              | Accepted |            |
+| [0027](0027-json-envelope-and-exit-codes.md)      | One JSON envelope for every command, and six exit codes                                         | Accepted |            |
+| [0028](0028-configuration-files.md)               | Configuration: two TOML files, strict reading, and edits that keep the file as written          | Accepted |            |
 
 ## Writing a record
 
@@ -57,7 +59,6 @@ These decisions are made while Phase 0 is built, and each is recorded with the w
 
 | Decision                                                                         | Recorded with             |
 | -------------------------------------------------------------------------------- | ------------------------- |
-| The JSON envelope and the table of exit codes                                    | The CLI shell             |
 | The format of the fixture and of its answer key                                  | The fixture               |
 | Salesforce connectivity, and every file it touches in the home directory         | Salesforce connectivity   |
 | What the cross-checks can prove, and with it the definition of the gate (0021)   | The live-org measurements |

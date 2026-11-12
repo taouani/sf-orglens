@@ -12,6 +12,7 @@ May import from: nothing else in the engine.
 | `redact.ts`     | Masking of credentials in anything that is logged                                               |
 | `logger.ts`     | The JSON-lines logger and its file sink: one file per day, old days removed                     |
 | `version.ts`    | The version of the engine package                                                               |
+| `config/`       | The configuration: reading and checking the two TOML files, and the edits commands make to them |
 
 The order of the layers is `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer may import from
 layers earlier in that list and never from later ones, nor from the engine entry point `src/index.ts`. The rule is

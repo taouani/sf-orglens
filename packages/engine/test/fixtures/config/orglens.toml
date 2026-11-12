@@ -1,0 +1,40 @@
+# orglens.toml: the shared configuration of a workspace. Commit this file.
+# It never holds a password, a token or a key.
+
+schema_version = 1
+
+[workspace]
+name = "acme-salesforce"          # a label for output
+
+# ---------------------------------------------------------------- sources
+# A source is a named place that snapshots are taken from.
+
+[sources.prod]
+kind = "org"                      # a production or developer org
+description = "EMEA production"
+org_id = "00D000000000001EAA"     # identifies the org, is not a credential
+login_url = "https://login.salesforce.com"
+
+[sources.uat]
+kind = "sandbox"
+description = "UAT full-copy sandbox"
+org_id = "00D000000000002EAA"
+sandbox_of = "prod"
+sandbox_name = "uat"
+
+[sources.emea-repo]
+kind = "git"
+description = "EMEA folders of the monorepo"
+repo = "."
+ref = "main"
+paths = [                         # the folders that together make up this one org
+  "orgs/emea/main",
+  "orgs/emea/shared",
+  "orgs/common",
+]
+tracks = "prod"
+
+# The APAC folders, read from the working tree.
+[sources.apac-repo]
+kind = "git"
+paths = ["orgs/apac/core", "orgs/apac/extra"]

@@ -56,6 +56,8 @@ jobs:
         run: pnpm run check:boundaries
       - name: Tests with coverage
         run: pnpm run coverage
+      - name: Start-up time
+        run: pnpm run check:startup
 
   package:
     name: Package smoke test (${{ matrix.os }})

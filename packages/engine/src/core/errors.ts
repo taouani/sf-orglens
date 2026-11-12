@@ -23,6 +23,15 @@ export const ERROR_CODES = {
   STORE_BUSY: 'Another process holds the write lock of the workspace database.',
   STORE_MIGRATION_FAILED: 'A migration of the workspace database failed and was rolled back.',
   STORE_FAILED: 'The workspace database could not be opened, read or written.',
+  WORKSPACE_NOT_FOUND: 'No workspace was found: no orglens.toml in this folder or in a folder above it.',
+  WORKSPACE_EXISTS: 'A workspace cannot be created here, because this folder already belongs to one.',
+  WORKSPACE_IO: 'A file or folder of the workspace could not be read or written.',
+  CONFIG_INVALID: 'A configuration file, or an environment variable that overrides it, has a problem.',
+  CONFIG_NOT_EDITABLE: 'orglens.toml is written in a way OrgLens cannot change safely. It has to be edited by hand.',
+  SOURCE_NOT_FOUND: 'No source with this name is declared in orglens.toml.',
+  SOURCE_EXISTS: 'A source with this name is already declared in orglens.toml.',
+  SOURCE_INVALID: 'The declaration of a source breaks a rule of the configuration.',
+  SOURCE_IN_USE: 'The source cannot be removed, because another source refers to it.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',
 } as const;
 

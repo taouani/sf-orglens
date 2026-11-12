@@ -11,5 +11,7 @@
     "inlineSources": false,
     "customConditions": ["@sf-orglens/source"]
   },
-  "include": [".", "../src"]
+  // The tests resolve the engine to its source. The last entry declares a module that the engine source imports
+  // and that ships no types of its own.
+  "include": [".", "../src", "../../engine/src/store/better-sqlite3-module.d.ts"]
 }

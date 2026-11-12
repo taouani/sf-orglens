@@ -1,0 +1,14 @@
+Usage: orglens doctor [options]
+
+Checks Node.js, SQLite, the workspace, its configuration and its database, and
+reports every check. It changes neither the configuration nor the data. The exit
+code is 1 if a check failed.
+
+Options:
+  -h, --help            show help and exit
+
+Global Options:
+  -V, --version         print the version and exit
+  --json                write the result as one line of JSON
+  --workspace <folder>  the workspace folder (default: found from the current
+                        folder upwards)
