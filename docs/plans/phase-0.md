@@ -235,7 +235,7 @@ Accepted when:
 - A test proves `jwt-env` leaves no credential file and works twice in a row.
 - A fixture-folder snapshot and an org snapshot of the same content produce the same file list.
 
-Status after the second of three pull requests for this work package (2026-11-12). The work package is built in
+Status after the third of three pull requests for this work package (2026-11-12). The work package is built in
 three parts, because each is useful and reviewable on its own: what needs no org, the logins, and reading an org.
 The scope of the work package is unchanged. Three pull requests where the table below had one is a change to the
 plan the maintainer approved, and each split is named as such in the pull request that makes it:
@@ -248,8 +248,50 @@ plan the maintainer approved, and each split is named as such in the pull reques
   `logins` in `doctor`, and tests against a mock org with the home folder redirected. The decisions, and every
   file that is read or written in the home folder, are in record
   [0031](../adr/0031-logins-and-the-home-folder.md).
-- **Part three, not built: reading an org.** The inventory, the chunk planner, the journalled retrieve, the org
-  snapshot, and the tests for kill and resume and for a chunk that is split.
+- **Part three, built: reading an org.** The inventory, the chunk planner, the journalled retrieve, the org
+  snapshot, and the tests for kill and resume and for a chunk that is split. The decisions are in record
+  [0032](../adr/0032-reading-an-org.md).
+
+What differs from the list above in part three, or is not done:
+
+- **Nothing of part three has met Salesforce.** Every test runs against a mock org that answers the Metadata API
+  from the fixture project. Record 0032 lists what that leaves open: the names in a retrieve against the names
+  the org lists, which types real orgs refuse to list, the wording of a retrieve that is too large, folders in
+  folders, speed and limits on a large org. WP8 is where these are measured.
+- A mock org that holds each of the three public codebases was read as well (506, 1,021 and 12,056 files). Every
+  component came back. That check found two defects the fixture project could not show, both fixed: custom labels
+  could not be stored, and reports in folders were never asked for. It runs where the codebases are downloaded,
+  not in CI.
+- Found on the way, not changed: how a Git source is resolved follows settings in the `sfdx-project.json` of the
+  folder the command runs in (`sourceBehaviorOptions`). Record 0032 describes it. It has to be decided with the
+  comparison of an org and a repository.
+- **Profiles and permission sets are read incompletely.** Salesforce hands them out with the access to the
+  components of the same retrieve only. The snapshot says so with a warning. How they are read completely has to
+  be decided before access impact is built.
+- The retrieve does not go through the Salesforce library. OrgLens makes the four requests of the Metadata API
+  itself, because the retrieve of the library keeps the state of a job in memory only, waits up to 30 minutes for
+  a request and follows redirects. The library converts the files that come back. The requests are sent with the
+  HTTP client of the library (`undici`, now a direct dependency of the engine), with one time limit for the whole
+  answer: the code review showed that the SOAP client limits only the time until an answer starts and ends the
+  process when a connection breaks in the middle of one.
+- The code review of part three found one blocker (a second command that was refused the lock deleted the work
+  folder of the snapshot that ran) and four ways a snapshot could hang, loop or end wrongly. All are fixed, each
+  with a test that fails without its fix. Record 0032 lists what stays open, with two questions for the
+  maintainer: a sandbox that is refreshed gets a new org id, and folders inside folders may need a query that the
+  data rule forbids.
+- A type that fails to list is recorded as failed and makes the snapshot partial. Standard value sets, which
+  Salesforce never lists, are not read and a warning says so.
+- Coverage has the columns listed, retrieved and analysed, and says per type how the listing went. What failed
+  is in the issues, not in a column.
+- The acceptance criterion "a fixture-folder snapshot and an org snapshot of the same content produce the same
+  file list" is met against the mock with one difference: the mock org also hands out the standard object
+  `Account`, because it holds custom fields.
+- Kill and resume is tested with a second process that is killed while a retrieve runs. The login by alias, the
+  split on a limit and the test that a login with a key leaves no credential file run in CI on all three systems.
+- The storage schema has version 2 (migration 2).
+- Of the notes the reviews of parts one and two left, record 0032 decides each. Three stay as they are: the files
+  of a component are not stored, `coverage` refuses a source that is no longer declared, and a Git LFS pointer is
+  stored as the file.
 
 What differs from the list above in part two, or is not done:
 
@@ -270,7 +312,7 @@ What differs from the list above in part two, or is not done:
   login written by the real Salesforce CLI, and a real org. The live-org workflow is the first check against
   Salesforce itself.
 
-The code review of part two left these for part three:
+The code review of part two left these for part three. Record 0032 says how each was decided:
 
 - A guard that the library never stores a session of a login with a key. Nothing does so today. Paths of the
   library that part three may use, such as looking up the newest API version, save the login they work with.
@@ -279,8 +321,8 @@ The code review of part two left these for part three:
 - The HTTP client of the library follows a redirect and sends the session along. The address it starts from is
   the one that issued the session, so this was accepted for a login. A retrieve should decide it again.
 
-The code review of part one left these for part three, where they have to be decided before an org snapshot is
-stored. One of them is done:
+The code review of part one left these for part three. Record 0032 says how each was decided, and the latest
+snapshot is now the latest that ended:
 
 - A snapshot does not record what was read: not `repo`, the name of the `ref`, the folders, nor which file belongs
   to which component. Only the counts per type survive. Phase 1 needs the components.
@@ -309,8 +351,8 @@ What differs from the list above in part one, or is not done:
   project, which runs in CI. The same test on the three public codebases is skipped where they are not
   downloaded, which includes CI. By hand, 20 public codebases were compared once.
 - Not run: Windows and macOS beyond what CI runs, and any Git older than 2.43.
-- The acceptance criterion "a fixture-folder snapshot and an org snapshot produce the same file list" waits for
-  part three and the test org.
+- The acceptance criterion "a fixture-folder snapshot and an org snapshot produce the same file list" is met
+  against the mock org in part three, and waits for the test org.
 - Measured once by hand, not held by CI: NPSP (11,707 components in 12,056 files) is read and stored in about 3
   seconds, from disk and from a commit.
 

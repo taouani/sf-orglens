@@ -9,6 +9,7 @@ import {
   initWorkspace,
   openWorkspace,
   type CoverageReport,
+  type SnapshotProgress,
   type SourceDeclaration,
   type SourceInput,
   type SourceStatus,
@@ -20,6 +21,8 @@ export interface Context {
   readonly io: Io;
   /** The value of `--workspace`. */
   readonly workspace: string | undefined;
+  /** Says what a command that takes long is doing. */
+  readonly progress: (line: string) => void;
 }
 
 const locator = (context: Context): WorkspaceLocator => ({
@@ -236,6 +239,15 @@ function latest(source: SourceStatus): string {
   return `#${String(snapshot.id)} ${snapshot.status}, ${snapshot.finishedAt === null ? `started ${snapshot.startedAt}` : `finished ${snapshot.finishedAt}`}`;
 }
 
+/** The line about a snapshot of an org that has not ended. */
+function unfinished(source: SourceStatus): string[] {
+  const snapshot = source.unfinishedSnapshot;
+  if (snapshot === null) return [];
+  return [
+    `Snapshot #${String(snapshot.id)} of "${source.name}" was begun ${snapshot.startedAt} and has not ended: ${String(snapshot.chunksDone)} of ${count(snapshot.chunks, 'chunk is', 'chunks are')} stored. "orglens snapshot ${source.name}" continues it.`,
+  ];
+}
+
 export async function status(context: Context): Promise<Outcome> {
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.status();
@@ -261,6 +273,7 @@ export async function status(context: Context): Promise<Outcome> {
             ['SOURCE', 'KIND', 'SNAPSHOTS', 'LATEST SNAPSHOT'],
             report.sources.map((source) => [source.name, source.kind, String(source.snapshots), latest(source)]),
           )),
+      ...report.sources.flatMap(unfinished),
     ],
   };
 }
@@ -275,20 +288,45 @@ function count(number: number, one: string, many: string): string {
 /** The lines that describe a snapshot: one sentence, the types, and the issues. */
 function coverageLines(report: CoverageReport, headline: string): string[] {
   const { snapshot, types, issues } = report;
-  const components = types.reduce((sum, type) => sum + type.listed, 0);
+  // What came back although the source had not listed it, per type. The snapshot holds it.
+  const unlisted = new Map<string, number>();
+  for (const issue of issues) {
+    const { type, count: number } = issue.details;
+    if (issue.code === 'UNLISTED_COMPONENTS' && typeof type === 'string' && typeof number === 'number') {
+      unlisted.set(type, (unlisted.get(type) ?? 0) + number);
+    }
+  }
+  // The components the snapshot holds, not the ones the source listed: of a partial snapshot these are fewer.
+  const components = types.reduce((sum, type) => sum + type.retrieved + (unlisted.get(type.type) ?? 0), 0);
   const lines = [
     `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
       snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
     }.`,
   ];
-  if (types.length > 0) {
+  // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
+  // nothing in a table. A type it could not list always does, and so does one of which something came back.
+  const shown = types.filter(
+    (type) => type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok' || unlisted.has(type.type),
+  );
+  if (shown.length > 0) {
     lines.push(
       '',
       ...table(
         ['TYPE', 'LISTED', 'RETRIEVED', 'ANALYSED'],
-        types.map((type) => [type.type, String(type.listed), String(type.retrieved), String(type.analysed)]),
+        shown.map((type) => {
+          const more = unlisted.get(type.type);
+          return [
+            type.type,
+            LISTED[type.listing](type.listed),
+            `${String(type.retrieved)}${more === undefined ? '' : ` (and ${String(more)} not listed)`}`,
+            String(type.analysed),
+          ];
+        }),
       ),
     );
+  }
+  if (shown.length < types.length) {
+    lines.push('', `${count(types.length - shown.length, 'more type has', 'more types have')} no components.`);
   }
   if (issues.length > 0) {
     lines.push(
@@ -302,6 +340,44 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   return lines;
 }
 
+/** How many components a source listed, with what is to be known about the number. */
+const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (listed: number) => string>> = {
+  ok: (listed) => String(listed),
+  failed: (listed) => `${String(listed)} (listing failed)`,
+  unlistable: () => 'not listed',
+};
+
+/** At most one line about the listing in this many milliseconds. An org is asked hundreds of times. */
+const LISTING_LINE_EVERY_MS = 5_000;
+
+/** Turns what the engine tells about a snapshot of an org into lines. */
+function progressLines(source: string, write: (line: string) => void): (event: SnapshotProgress) => void {
+  let listingSaid = 0;
+  return (event) => {
+    if (event.step === 'connected') {
+      write(`Logged in to the org of "${source}". It is read with API version ${event.apiVersion}.`);
+    } else if (event.step === 'listing') {
+      if (Date.now() - listingSaid < LISTING_LINE_EVERY_MS) return;
+      listingSaid = Date.now();
+      write(
+        `Asking the org what it holds: ${String(event.done)} of ${count(event.total, 'request', 'requests')} answered.`,
+      );
+    } else if (event.step === 'planned') {
+      write(
+        `Snapshot #${String(event.snapshot)}: the org lists ${count(event.components, 'component', 'components')}. They are retrieved in ${count(event.chunks, 'chunk', 'chunks')}.`,
+      );
+    } else if (event.step === 'resumed') {
+      write(
+        `Snapshot #${String(event.snapshot)} was interrupted and is continued: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
+      );
+    } else {
+      write(
+        `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
+      );
+    }
+  };
+}
+
 const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], string>> = {
   complete: 'is complete:',
   partial: 'is partial, something is missing:',
@@ -309,9 +385,16 @@ const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], st
   failed: 'failed:',
 };
 
-export async function snapshot(context: Context, source: string): Promise<Outcome> {
+export async function snapshot(
+  context: Context,
+  source: string,
+  options: { restart?: boolean | undefined } = {},
+): Promise<Outcome> {
   const workspace = await openWorkspace(locator(context));
-  const report = await workspace.snapshot(source);
+  const report = await workspace.snapshot(source, {
+    restart: options.restart,
+    onProgress: progressLines(source, context.progress),
+  });
   const { id, status } = report.snapshot;
   return {
     data: report,

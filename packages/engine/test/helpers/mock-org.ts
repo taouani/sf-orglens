@@ -4,12 +4,16 @@
  *
  * It issues sessions for a login with a key (it checks the signature, the
  * audience, the app and the user, as Salesforce does) and for a refresh
- * token, lists API versions, and says who is logged in. It knows no
- * metadata. Every request is recorded, so a test can say what was asked.
+ * token, lists API versions, and says who is logged in. Every request is
+ * recorded, so a test can say what was asked.
+ *
+ * It knows no metadata until a test gives it some (`mock-metadata.ts`).
+ * Then it answers the Metadata API as well.
  */
 import { createVerify } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { soapFault, type MockMetadata } from './mock-metadata.ts';
 
 interface MockRequest {
   readonly method: string;
@@ -17,12 +21,20 @@ interface MockRequest {
   /** The session the request was made with, or `null`. */
   readonly session: string | null;
   readonly form: URLSearchParams;
+  /** The body as it was sent. */
+  readonly body: string;
 }
 
 interface MockAnswer {
   readonly status: number;
   readonly body: string;
   readonly type?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * What happens after the first half of the body is sent. `cut`: the connection is closed. `stall`: nothing more
+   * is sent, and the answer never ends.
+   */
+  readonly halfway?: 'cut' | 'stall';
 }
 
 export interface MockOrg {
@@ -30,6 +42,8 @@ export interface MockOrg {
   readonly url: string;
   /** The id of the org, with 18 characters. */
   readonly orgId: string;
+  /** The API versions the org says it has. A test changes them to make the org one release newer. */
+  readonly versions: string[];
   readonly requests: MockRequest[];
   /** The sessions the org accepts. A test adds the session of a login it has seeded, and removes one to let it expire. */
   readonly sessions: Set<string>;
@@ -43,8 +57,12 @@ export interface MockOrg {
     /** The audiences the org accepts. Default: its own address. */
     readonly audiences?: readonly string[];
   } | null;
+  /** The metadata the org holds. `null`: it does not answer the Metadata API. */
+  metadata: MockMetadata | null;
+  /** While this is true, the org takes every request and answers none. */
+  stall: boolean;
   /** Set by a test to answer a request in another way. Returning `undefined` leaves the request to the org. */
-  intercept: ((request: MockRequest) => MockAnswer | undefined) | null;
+  intercept: ((request: MockRequest) => MockAnswer | Promise<MockAnswer | undefined> | undefined) | null;
   /** The requests so far as `METHOD path`, without the ones for the list of versions. */
   asked(): string[];
   close(): Promise<void>;
@@ -57,7 +75,7 @@ const refused = (description: string): MockAnswer =>
 export async function startMockOrg(options: { orgId?: string; versions?: readonly string[] } = {}): Promise<MockOrg> {
   const orgId = options.orgId ?? '00Dxx0000000001EAA';
   const userId = '005xx000000001AAAA';
-  const versions = options.versions ?? ['65.0', '66.0', '9.0'];
+  const versions = [...(options.versions ?? ['65.0', '66.0', '9.0'])];
   let issued = 0;
   let url = '';
 
@@ -104,9 +122,16 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
     return session('api');
   };
 
-  const answer = (request: MockRequest): MockAnswer => {
-    const intercepted = org.intercept?.(request);
+  const answer = async (request: MockRequest): Promise<MockAnswer> => {
+    const intercepted = await org.intercept?.(request);
     if (intercepted !== undefined) return intercepted;
+    if (request.path.startsWith('/services/Soap/m/') && request.method === 'POST' && org.metadata !== null) {
+      // A request to the Metadata API carries the session in its body.
+      const session = /<sessionId>([^<]*)<\/sessionId>/.exec(request.body)?.[1] ?? '';
+      if (!org.sessions.has(session))
+        return soapFault('INVALID_SESSION_ID', 'Invalid Session ID found in SessionHeader');
+      return org.metadata.answer(request.body);
+    }
     if (request.path === '/services/oauth2/token' && request.method === 'POST') return token(request.form);
     if (request.path === '/services/data' || request.path === '/services/data/') {
       return json(
@@ -145,16 +170,32 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
     incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
     incoming.on('end', () => {
       const address = new URL(incoming.url ?? '/', url);
+      const sent = Buffer.concat(chunks).toString('utf8');
       const request: MockRequest = {
         method: incoming.method ?? '',
         path: address.pathname,
         session: /^Bearer (.+)$/.exec(incoming.headers.authorization ?? '')?.[1] ?? null,
-        form: new URLSearchParams(Buffer.concat(chunks).toString('utf8')),
+        form: new URLSearchParams(sent),
+        body: sent,
       };
       org.requests.push(request);
-      const { status, body, type } = answer(request);
-      outgoing.writeHead(status, { 'content-type': type ?? 'application/json' });
-      outgoing.end(body);
+      if (org.stall) return;
+      void answer(request).then(
+        ({ status, body, type, headers, halfway }) => {
+          outgoing.writeHead(status, { 'content-type': type ?? 'application/json', ...headers });
+          if (halfway === undefined) {
+            outgoing.end(body);
+            return;
+          }
+          outgoing.write(body.slice(0, Math.ceil(body.length / 2)), () => {
+            if (halfway === 'cut') outgoing.destroy();
+          });
+        },
+        (error: unknown) => {
+          outgoing.writeHead(500, { 'content-type': 'text/plain' });
+          outgoing.end(`The mock org failed: ${String(error)}`);
+        },
+      );
     });
   });
 
@@ -163,10 +204,13 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
       return url;
     },
     orgId,
+    versions,
     requests: [],
     sessions: new Set(),
     refreshTokens: new Set(),
     key: null,
+    metadata: null,
+    stall: false,
     intercept: null,
     asked: () =>
       org.requests

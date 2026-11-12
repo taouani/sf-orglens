@@ -64,7 +64,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         file: '.orglens/orglens.db',
         state: 'ready',
         driver: driverName,
-        schemaVersion: 1,
+        schemaVersion: 2,
         sizeBytes: expect.any(Number) as number,
         problem: null,
       },
@@ -122,8 +122,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       store.run(
         `INSERT INTO source (id, name, kind, created_at) VALUES (1, 'prod', 'org', '2026-01-01T00:00:00.000Z')`,
       );
+      // A finished snapshot, one that was given up, and one that is under way with one of its two chunks stored.
       for (const [status, finished] of [
         ['complete', '2026-01-02T00:05:00.000Z'],
+        ['failed', '2026-01-02T00:06:00.000Z'],
         ['running', null],
       ] as const) {
         store.run(
@@ -132,6 +134,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
           '2026-01-02T00:00:00.000Z',
           finished,
         );
+      }
+      for (const [seq, state] of [
+        [0, 'done'],
+        [1, 'pending'],
+      ] as const) {
+        store.run("INSERT INTO retrieve_chunk (snapshot_id, seq, status, members) VALUES (3, ?, ?, '[]')", seq, state);
       }
     });
     store.close();
@@ -144,8 +152,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         description: null,
         orgId: null,
         loginUrl: null,
-        snapshots: 2,
-        latestSnapshot: { id: 2, status: 'running', startedAt: '2026-01-02T00:00:00.000Z', finishedAt: null },
+        // The latest snapshot is the latest that is finished. What is under way is told beside it.
+        snapshots: 1,
+        latestSnapshot: {
+          id: 1,
+          status: 'complete',
+          startedAt: '2026-01-02T00:00:00.000Z',
+          finishedAt: '2026-01-02T00:05:00.000Z',
+        },
+        unfinishedSnapshot: { id: 3, startedAt: '2026-01-02T00:00:00.000Z', chunksDone: 1, chunks: 2 },
       },
       {
         name: 'repo',
@@ -157,6 +172,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         tracks: null,
         snapshots: 0,
         latestSnapshot: null,
+        unfinishedSnapshot: null,
       },
     ]);
   });
@@ -197,7 +213,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       ['logins', 'ok'],
     ]);
     expect(report.checks[5]?.details).toEqual({ sources: [], driver: driverName });
-    expect(report.checks[6]?.summary).toBe('The database is at schema version 1.');
+    expect(report.checks[6]?.summary).toBe('The database is at schema version 2.');
     // The report is plain data.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });

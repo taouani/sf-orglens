@@ -9,12 +9,13 @@
 import { EngineError } from '../core/errors.ts';
 import type { SqlDatabase, SqlDriver } from './driver.ts';
 import { migration0001 } from './migrations/0001-initial.ts';
+import { migration0002 } from './migrations/0002-org-snapshots.ts';
 import type { Migration } from './migrations/migration.ts';
 
 export type { Migration } from './migrations/migration.ts';
 
 /** Every migration, in order. A released migration is never edited: a change is a new migration. */
-export const MIGRATIONS: readonly Migration[] = [migration0001];
+export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002];
 
 /** Marks a SQLite file as an OrgLens workspace database: the bytes "OLNS". */
 export const APPLICATION_ID = 0x4f_4c_4e_53;

@@ -48,7 +48,7 @@ CREATE TABLE inventory_item (
   -- As the org reported it.
   last_modified_at TEXT,
   namespace_prefix TEXT,
-  manageable_state TEXT,
+  manageable_state TEXT, listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)), retrieved INTEGER NOT NULL DEFAULT 0 CHECK (retrieved IN (0, 1)),
   PRIMARY KEY (snapshot_id, type, full_name)
 ) STRICT, WITHOUT ROWID;
 
@@ -61,7 +61,7 @@ CREATE TABLE retrieve_chunk (
   attempts    INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   started_at  TEXT CHECK (started_at IS NULL OR started_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
   finished_at TEXT CHECK (finished_at IS NULL OR finished_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
-  error       TEXT,
+  error       TEXT, job_id TEXT,
   PRIMARY KEY (snapshot_id, seq)
 ) STRICT, WITHOUT ROWID;
 
@@ -71,7 +71,7 @@ CREATE TABLE snapshot_type_coverage (
   listed      INTEGER NOT NULL DEFAULT 0 CHECK (listed >= 0),
   retrieved   INTEGER NOT NULL DEFAULT 0 CHECK (retrieved >= 0),
   analysed    INTEGER NOT NULL DEFAULT 0 CHECK (analysed >= 0),
-  note        TEXT,
+  note        TEXT, listing TEXT NOT NULL DEFAULT 'ok' CHECK (listing IN ('ok', 'failed', 'unlistable')),
   PRIMARY KEY (snapshot_id, type)
 ) STRICT, WITHOUT ROWID;
 
@@ -87,3 +87,5 @@ CREATE TABLE snapshot_issue (
 ) STRICT;
 
 CREATE INDEX snapshot_issue_by_snapshot ON snapshot_issue (snapshot_id, severity);
+
+CREATE UNIQUE INDEX snapshot_one_running ON snapshot (source_id) WHERE status = 'running';

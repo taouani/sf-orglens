@@ -49,6 +49,7 @@ const EXIT_OF_ERROR: Readonly<Record<OutputErrorCode, ExitCode>> = {
   SOURCE_INVALID: EXIT.usage,
   SOURCE_IN_USE: EXIT.usage,
   SNAPSHOT_NOT_FOUND: EXIT.usage,
+  SNAPSHOT_RUNNING: EXIT.failure,
   LOGIN_FAILED: EXIT.connection,
   ORG_MISMATCH: EXIT.connection,
   WORKSPACE_IO: EXIT.failure,
@@ -167,6 +168,11 @@ function errorDetailLines(error: OutputError): string[] {
 }
 
 export interface Writer {
+  /**
+   * Says what a command that takes long is doing. A person reads it on the standard error stream, so the result
+   * on the standard output stays what it is. With `--json` nothing is written.
+   */
+  progress(line: string): void;
   /** Writes the result of a command and returns the exit code. */
   succeed(command: string, outcome: Outcome): ExitCode;
   /** Writes a failure and returns the exit code. `command` is `null` when the command line was rejected before a command ran. */
@@ -180,6 +186,9 @@ export function createWriter(io: Io, json: boolean): Writer {
     );
   };
   return {
+    progress(line) {
+      if (!json) io.stderr(`${printable(line)}\n`);
+    },
     succeed(command, outcome) {
       if (json) envelope(command, outcome.data, null);
       else io.stdout(outcome.lines.map((line) => `${printable(line)}\n`).join(''));

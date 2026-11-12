@@ -43,6 +43,7 @@ import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
+import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
 import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
 import {
   DATABASE_FILE,
@@ -123,10 +124,25 @@ export interface SnapshotSummary {
   readonly finishedAt: string | null;
 }
 
+/** A snapshot of an org that was begun and has not ended. */
+export interface UnfinishedSnapshot {
+  readonly id: number;
+  readonly startedAt: string;
+  /** How many chunks of the retrieve are stored or were given up, and how many there are. */
+  readonly chunksDone: number;
+  readonly chunks: number;
+}
+
 export type SourceStatus = SourceDeclaration & {
-  /** How many snapshots of this source the database holds. */
+  /** How many finished snapshots of this source the database holds: complete ones and partial ones. */
   readonly snapshots: number;
+  /** The latest finished snapshot. This is the one `coverage` shows. */
   readonly latestSnapshot: SnapshotSummary | null;
+  /**
+   * The snapshot of an org that is being taken, or that was interrupted. The next `snapshot` of the source
+   * continues it.
+   */
+  readonly unfinishedSnapshot: UnfinishedSnapshot | null;
 };
 
 export interface WorkspaceStatus {
@@ -179,10 +195,23 @@ export interface Workspace {
   /**
    * Reads a source now and stores what it holds as a new snapshot. Earlier snapshots stay as they are. The source
    * itself is never changed.
+   *
+   * A snapshot of an org or a sandbox takes minutes. If one was interrupted, this call continues it and takes no
+   * new one.
    */
-  snapshot(source: string): Promise<CoverageReport>;
+  snapshot(source: string, options?: SnapshotOptions): Promise<CoverageReport>;
   /** What the latest snapshot of a source holds, or the snapshot with the given id. Reads only. */
   coverage(source: string, options?: { readonly snapshot?: number | undefined }): Promise<CoverageReport>;
+}
+
+export interface SnapshotOptions {
+  /**
+   * True to give up a snapshot of an org that was interrupted, and to take a new one. A snapshot of a Git source
+   * is never interrupted, so this changes nothing for one.
+   */
+  readonly restart?: boolean | undefined;
+  /** Called while an org is read. It is not called for a Git source. */
+  readonly onProgress?: ((event: SnapshotProgress) => void) | undefined;
 }
 
 export interface InitOptions {
@@ -372,13 +401,20 @@ const STORE_STATES: Readonly<Record<string, StoreStatus['state']>> = {
   STORE_BUSY: 'busy',
 };
 
+/** What `status` shows of the snapshots of one source. */
+interface SourceSnapshots {
+  readonly count: number;
+  readonly latest: SnapshotSummary | null;
+  readonly unfinished: UnfinishedSnapshot | null;
+}
+
 /** Looks at the database without changing it, and reads what `status` shows from it. */
 export async function inspectStore(
   paths: WorkspacePaths,
   config: WorkspaceConfig,
-): Promise<{ store: StoreStatus; snapshots: ReadonlyMap<string, { count: number; latest: SnapshotSummary | null }> }> {
+): Promise<{ store: StoreStatus; snapshots: ReadonlyMap<string, SourceSnapshots> }> {
   const base = { file: DATABASE_FILE, driver: config.store.driver };
-  const snapshots = new Map<string, { count: number; latest: SnapshotSummary | null }>();
+  const snapshots = new Map<string, SourceSnapshots>();
   const sizeBytes = existsSync(paths.databaseFile) ? statSync(paths.databaseFile).size : null;
   try {
     const store = openStore({
@@ -387,11 +423,17 @@ export async function inspectStore(
       readOnly: true,
     });
     try {
+      // A snapshot that has not ended, or that was given up, is not the latest one: it holds a part at most.
       const rows = store.all(
         `SELECT s.name AS name, n.id AS id, n.status AS status, n.started_at AS started_at, n.finished_at AS finished_at,
-                (SELECT COUNT(*) FROM snapshot c WHERE c.source_id = s.id) AS count
+                (SELECT COUNT(*) FROM snapshot c WHERE c.source_id = s.id AND c.status IN ('complete', 'partial')) AS count,
+                r.id AS running, r.started_at AS running_since,
+                (SELECT COUNT(*) FROM retrieve_chunk k WHERE k.snapshot_id = r.id) AS chunks,
+                (SELECT COUNT(*) FROM retrieve_chunk k WHERE k.snapshot_id = r.id AND k.status IN ('done', 'failed')) AS chunks_done
            FROM source s
-           LEFT JOIN snapshot n ON n.id = (SELECT MAX(m.id) FROM snapshot m WHERE m.source_id = s.id)`,
+           LEFT JOIN snapshot n ON n.id = (SELECT MAX(m.id) FROM snapshot m
+                                            WHERE m.source_id = s.id AND m.status IN ('complete', 'partial'))
+           LEFT JOIN snapshot r ON r.source_id = s.id AND r.status = 'running'`,
       );
       for (const row of rows) {
         snapshots.set(String(row['name']), {
@@ -404,6 +446,15 @@ export async function inspectStore(
                   status: String(row['status']),
                   startedAt: String(row['started_at']),
                   finishedAt: row['finished_at'] === null ? null : String(row['finished_at']),
+                },
+          unfinished:
+            row['running'] === null
+              ? null
+              : {
+                  id: Number(row['running']),
+                  startedAt: String(row['running_since']),
+                  chunksDone: Number(row['chunks_done']),
+                  chunks: Number(row['chunks']),
                 },
         });
       }
@@ -499,17 +550,44 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
     return {
       root: paths.root,
       name: config.name,
-      snapshot: (name) =>
+      snapshot: (name, options = {}) =>
         boundary(async () => {
           const source = declared(name);
           const driver = await resolveDriver(config.store.driver);
-          const taken = await takeSnapshot(paths.root, source, () => {
+          const open = (): ReturnType<typeof openStore> => {
             ensureDataDir(paths);
             return openStore({ path: paths.databaseFile, driver });
-          });
-          const { id, status, files, commit } = taken.snapshot;
-          workspaceLogger(paths).info('snapshot.taken', { source: name, snapshot: id, status, files, commit });
-          return taken;
+          };
+          try {
+            const taken =
+              source.kind === 'git'
+                ? await takeSnapshot(paths.root, source, open)
+                : await takeOrgSnapshot({
+                    paths,
+                    source,
+                    linked: config.logins[name],
+                    env,
+                    openStore: open,
+                    restart: options.restart,
+                    onProgress: options.onProgress,
+                  });
+            const { id, status, files, commit } = taken.snapshot;
+            workspaceLogger(paths).info('snapshot.taken', { source: name, snapshot: id, status, files, commit });
+            return taken;
+          } catch (error) {
+            // Only what OrgLens itself says about the failure goes into the log: its code and its reason. A run
+            // that stopped before it created the data folder, for want of a login, does not create it for the log.
+            if (source.kind !== 'git' && isEngineError(error) && existsSync(paths.dataDir)) {
+              const { reason, snapshot } = error.details ?? {};
+              workspaceLogger(paths).warn('snapshot.stopped', {
+                source: name,
+                code: error.code,
+                reason: typeof reason === 'string' ? reason : null,
+                snapshot: typeof snapshot === 'number' ? snapshot : null,
+              });
+            }
+            throw error;
+          }
         }),
       coverage: (name, options = {}) =>
         boundary(async () => {
@@ -538,6 +616,7 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
               ...source,
               snapshots: snapshots.get(source.name)?.count ?? 0,
               latestSnapshot: snapshots.get(source.name)?.latest ?? null,
+              unfinishedSnapshot: snapshots.get(source.name)?.unfinished ?? null,
             })),
           };
         }),

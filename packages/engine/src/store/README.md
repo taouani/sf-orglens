@@ -13,10 +13,12 @@ May import from: `core`, `sources`, `extraction`.
 | `migrate.ts`, `migrations` | The migration runner and the numbered migrations                               |
 | `blobs.ts`                 | File contents, stored once per distinct content                                |
 | `snapshots.ts`             | Sources, snapshots, their files, coverage per type and issues                  |
+| `journal.ts`               | The journal of a snapshot of an org: what it listed, and the chunks it reads   |
 | `probe.ts`                 | What the SQLite build at hand can do                                           |
 
-Decision records: [0025](../../../../docs/adr/0025-sqlite-driver.md) for the drivers and
-[0026](../../../../docs/adr/0026-workspace-database.md) for the database.
+Decision records: [0025](../../../../docs/adr/0025-sqlite-driver.md) for the drivers,
+[0026](../../../../docs/adr/0026-workspace-database.md) for the database and
+[0032](../../../../docs/adr/0032-reading-an-org.md) for the journal.
 
 The order of the layers is `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer may import from
 layers earlier in that list and never from later ones, nor from the engine entry point `src/index.ts`. The rule is

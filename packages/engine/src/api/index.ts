@@ -17,11 +17,13 @@ export { initWorkspace, openWorkspace } from './workspace.ts';
 export type {
   InitOptions,
   InitResult,
+  SnapshotOptions,
   SnapshotSummary,
   SourceInput,
   SourceLink,
   SourceStatus,
   StoreStatus,
+  UnfinishedSnapshot,
   Workspace,
   WorkspaceLocator,
   WorkspaceStatus,
@@ -29,6 +31,7 @@ export type {
 export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
 
 export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
+export type { SnapshotProgress } from './org-snapshot.ts';
 export type { GitCheck, OrgCheck, SourceCheck } from './check.ts';
 
 export { doctor } from './doctor.ts';

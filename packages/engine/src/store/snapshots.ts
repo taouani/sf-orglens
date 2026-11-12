@@ -9,27 +9,29 @@ import { EngineError, type JsonValue } from '../core/errors.ts';
 import { putBlob } from './blobs.ts';
 import type { Store } from './open.ts';
 
-export type SourceKind = 'org' | 'sandbox' | 'git';
+type SourceKind = 'org' | 'sandbox' | 'git';
 export type SnapshotStatus = 'running' | 'complete' | 'partial' | 'failed';
 type IssueSeverity = 'error' | 'warning' | 'info';
 
+interface DeclaredSource {
+  readonly name: string;
+  readonly kind: SourceKind;
+  /** The id of the org, as the org states it. Not set for a Git source. */
+  readonly orgId?: string | undefined;
+}
+
 /**
- * The row of a declared source, created if this is its first snapshot.
+ * Refuses a source whose name the database knows as something else, and
+ * returns its row if it has one. Nothing is written.
  *
  * The name is what ties snapshots together. A name that was used for a
  * source of another kind is refused: its snapshots would be compared with
- * the new ones as if they were readings of the same thing.
+ * the new ones as if they were readings of the same thing. For the same
+ * reason, a name whose snapshots are of one org is refused for another org.
  */
-export function ensureSource(store: Store, source: { name: string; kind: SourceKind; createdAt: string }): number {
-  const row = store.get('SELECT id, kind FROM source WHERE name = ?', source.name);
-  if (row === undefined) {
-    return store.run(
-      'INSERT INTO source (name, kind, created_at) VALUES (?, ?, ?)',
-      source.name,
-      source.kind,
-      source.createdAt,
-    ).lastInsertRowid;
-  }
+export function checkSource(store: Store, source: DeclaredSource): { id: number; orgId: string | null } | undefined {
+  const row = store.get('SELECT id, kind, org_id FROM source WHERE name = ?', source.name);
+  if (row === undefined) return undefined;
   if (row['kind'] !== source.kind) {
     throw new EngineError(
       'SOURCE_INVALID',
@@ -40,7 +42,39 @@ export function ensureSource(store: Store, source: { name: string; kind: SourceK
       },
     );
   }
-  return Number(row['id']);
+  const orgId = typeof row['org_id'] === 'string' ? row['org_id'] : null;
+  if (source.orgId !== undefined && orgId !== null && orgId !== source.orgId) {
+    throw new EngineError(
+      'ORG_MISMATCH',
+      `The database holds snapshots of the source "${source.name}" from the org ${orgId}, and the login belongs to the org ${source.orgId}.`,
+      {
+        hint: 'Snapshots of two orgs under one name would be compared as if they were one org. Give the other org a source of its own in orglens.toml.',
+        details: { source: source.name, declared: orgId, found: source.orgId },
+      },
+    );
+  }
+  return { id: Number(row['id']), orgId };
+}
+
+/**
+ * The row of a declared source, created if this is its first snapshot. The
+ * first snapshot of an org sets which org the name stands for.
+ */
+export function ensureSource(store: Store, source: DeclaredSource & { readonly createdAt: string }): number {
+  const row = checkSource(store, source);
+  if (row === undefined) {
+    return store.run(
+      'INSERT INTO source (name, kind, org_id, created_at) VALUES (?, ?, ?, ?)',
+      source.name,
+      source.kind,
+      source.orgId ?? null,
+      source.createdAt,
+    ).lastInsertRowid;
+  }
+  if (source.orgId !== undefined && row.orgId === null) {
+    store.run('UPDATE source SET org_id = ? WHERE id = ?', source.orgId, row.id);
+  }
+  return row.id;
 }
 
 export interface NewSnapshot {
@@ -49,18 +83,21 @@ export interface NewSnapshot {
   readonly startedAt: string;
   readonly finishedAt: string | null;
   readonly engineVersion: string;
+  /** The Salesforce API version an org is read with. */
+  readonly apiVersion?: string | undefined;
   readonly gitCommit: string | null;
 }
 
 export function insertSnapshot(store: Store, snapshot: NewSnapshot): number {
   return store.run(
-    `INSERT INTO snapshot (source_id, status, started_at, finished_at, engine_version, git_commit)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO snapshot (source_id, status, started_at, finished_at, engine_version, api_version, git_commit)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     snapshot.sourceId,
     snapshot.status,
     snapshot.startedAt,
     snapshot.finishedAt,
     snapshot.engineVersion,
+    snapshot.apiVersion ?? null,
     snapshot.gitCommit,
   ).lastInsertRowid;
 }
@@ -89,6 +126,23 @@ export function addSnapshotFile(store: Store, snapshotId: number, path: string, 
   store.run('INSERT INTO snapshot_file (snapshot_id, path, blob_id) VALUES (?, ?, ?)', snapshotId, path, blob.id);
 }
 
+/**
+ * Adds one file to a snapshot that is still being taken, or replaces it.
+ * Returns true if the snapshot held a file at the path already.
+ */
+export function putSnapshotFile(store: Store, snapshotId: number, path: string, content: Uint8Array): boolean {
+  const blob = putBlob(store, content);
+  const held = store.get('SELECT 1 FROM snapshot_file WHERE snapshot_id = ? AND path = ?', snapshotId, path);
+  store.run(
+    `INSERT INTO snapshot_file (snapshot_id, path, blob_id) VALUES (?, ?, ?)
+     ON CONFLICT (snapshot_id, path) DO UPDATE SET blob_id = excluded.blob_id`,
+    snapshotId,
+    path,
+    blob.id,
+  );
+  return held !== undefined;
+}
+
 export interface TypeCoverage {
   readonly type: string;
   /** How many components of the type the source says it has. */
@@ -97,17 +151,28 @@ export interface TypeCoverage {
   readonly retrieved: number;
   /** How many of them were analysed. */
   readonly analysed: number;
+  /**
+   * - `ok`: the source said which components of the type it has.
+   * - `failed`: it refused to. `listed` counts what it had said before, and the true number is not known.
+   * - `unlistable`: it never lists components of this type.
+   */
+  readonly listing: 'ok' | 'failed' | 'unlistable';
   readonly note: string | null;
 }
 
+/** Stores the coverage of a type, or replaces it while the snapshot is still being taken. */
 export function addCoverage(store: Store, snapshotId: number, coverage: TypeCoverage): void {
   store.run(
-    'INSERT INTO snapshot_type_coverage (snapshot_id, type, listed, retrieved, analysed, note) VALUES (?, ?, ?, ?, ?, ?)',
+    `INSERT INTO snapshot_type_coverage (snapshot_id, type, listed, retrieved, analysed, listing, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (snapshot_id, type) DO UPDATE SET listed = excluded.listed, retrieved = excluded.retrieved,
+       analysed = excluded.analysed, listing = excluded.listing, note = excluded.note`,
     snapshotId,
     coverage.type,
     coverage.listed,
     coverage.retrieved,
     coverage.analysed,
+    coverage.listing,
     coverage.note,
   );
 }
@@ -150,24 +215,16 @@ export interface SnapshotRecord {
 /** The value of a text column that may be empty. */
 const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
-/**
- * A snapshot of a source: the one with the given id, or the latest. Returns
- * `undefined` if the source has no snapshot, or none with that id.
- */
-export function readSnapshot(store: Store, source: string, id?: number): SnapshotRecord | undefined {
-  const select = `SELECT n.id AS id, s.name AS source, s.kind AS kind, n.status AS status, n.started_at AS started_at,
-            n.finished_at AS finished_at, n.engine_version AS engine_version, n.api_version AS api_version,
-            n.git_commit AS git_commit,
+const SELECT_SNAPSHOT = `SELECT n.id AS id, s.name AS source, s.kind AS kind, n.status AS status,
+            n.started_at AS started_at, n.finished_at AS finished_at, n.engine_version AS engine_version,
+            n.api_version AS api_version, n.git_commit AS git_commit,
             (SELECT COUNT(*) FROM snapshot_file f WHERE f.snapshot_id = n.id) AS files,
             (SELECT COALESCE(SUM(b.raw_size), 0) FROM snapshot_file f JOIN blob b ON b.id = f.blob_id
               WHERE f.snapshot_id = n.id) AS bytes
        FROM snapshot n JOIN source s ON s.id = n.source_id
       WHERE s.name = ?`;
-  const row =
-    id === undefined
-      ? store.get(`${select} ORDER BY n.id DESC LIMIT 1`, source)
-      : store.get(`${select} AND n.id = ?`, source, id);
-  if (row === undefined) return undefined;
+
+function record(row: Readonly<Record<string, unknown>>): SnapshotRecord {
   return {
     id: Number(row['id']),
     source: String(row['source']),
@@ -183,11 +240,31 @@ export function readSnapshot(store: Store, source: string, id?: number): Snapsho
   };
 }
 
+/**
+ * A snapshot of a source: the one with the given id, or the latest one
+ * that was finished. One that is still being taken, or that was given up,
+ * is not the latest: it is found by its id only. Returns `undefined` if
+ * the source has no such snapshot.
+ */
+export function readSnapshot(store: Store, source: string, id?: number): SnapshotRecord | undefined {
+  const row =
+    id === undefined
+      ? store.get(`${SELECT_SNAPSHOT} AND n.status IN ('complete', 'partial') ORDER BY n.id DESC LIMIT 1`, source)
+      : store.get(`${SELECT_SNAPSHOT} AND n.id = ?`, source, id);
+  return row === undefined ? undefined : record(row);
+}
+
+/** The snapshot of a source that is being taken, or that was interrupted. There is at most one. */
+export function readRunningSnapshot(store: Store, source: string): SnapshotRecord | undefined {
+  const row = store.get(`${SELECT_SNAPSHOT} AND n.status = 'running'`, source);
+  return row === undefined ? undefined : record(row);
+}
+
 /** The coverage of a snapshot, sorted by type. */
 export function readCoverage(store: Store, snapshotId: number): TypeCoverage[] {
   return store
     .all(
-      'SELECT type, listed, retrieved, analysed, note FROM snapshot_type_coverage WHERE snapshot_id = ? ORDER BY type',
+      'SELECT type, listed, retrieved, analysed, listing, note FROM snapshot_type_coverage WHERE snapshot_id = ? ORDER BY type',
       snapshotId,
     )
     .map((row) => ({
@@ -195,6 +272,7 @@ export function readCoverage(store: Store, snapshotId: number): TypeCoverage[] {
       listed: Number(row['listed']),
       retrieved: Number(row['retrieved']),
       analysed: Number(row['analysed']),
+      listing: String(row['listing']) as TypeCoverage['listing'],
       note: text(row['note']),
     }));
 }

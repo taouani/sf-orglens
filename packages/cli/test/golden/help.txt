@@ -14,7 +14,7 @@ Commands:
   source                       declare the orgs, sandboxes and repository
                                folders to read
   status                       show the workspace, its database and its sources
-  snapshot <source>            read a source and store what it holds
+  snapshot [options] <source>  read a source and store what it holds
   coverage [options] <source>  show what a snapshot holds and what it is missing
   doctor                       check that OrgLens can run here
 

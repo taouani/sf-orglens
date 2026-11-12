@@ -5,17 +5,21 @@ import {
   addCoverage,
   addIssue,
   addSnapshotFile,
+  checkSource,
   ensureSource,
   finishSnapshot,
   insertSnapshot,
+  putSnapshotFile,
   readCoverage,
   readIssues,
+  readRunningSnapshot,
   readSnapshot,
 } from '../src/store/snapshots.ts';
 import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 
 const T0 = '2026-01-31T09:30:00.000Z';
 const T1 = '2026-01-31T09:30:05.250Z';
+const ORG = '00Dxx0000000001EAA';
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
 
 describe.each(DRIVERS)('snapshots with $name', (driver) => {
@@ -23,10 +27,11 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
   afterEach(temp.cleanUp);
   const open = () => openStore({ path: join(temp.next(), 'orglens.sqlite'), driver });
 
-  const begin = (store: ReturnType<typeof open>, name = 'repo'): number =>
+  /** A snapshot that is finished, as every snapshot of a Git source is by the end of its transaction. */
+  const begin = (store: ReturnType<typeof open>, name = 'repo', status: 'running' | 'complete' = 'complete'): number =>
     insertSnapshot(store, {
       sourceId: ensureSource(store, { name, kind: 'git', createdAt: T0 }),
-      status: 'running',
+      status,
       startedAt: T0,
       finishedAt: null,
       engineVersion: '1.2.3',
@@ -54,11 +59,14 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
 
   it('stores a snapshot with its files, and reads it back with their number and size', () => {
     const store = open();
-    const id = begin(store);
+    const id = begin(store, 'repo', 'running');
     addSnapshotFile(store, id, 'force-app/classes/A.cls', text('class A {}'));
     addSnapshotFile(store, id, 'force-app/classes/B.cls', text('class B { }'));
     addSnapshotFile(store, id, 'force-app/classes/Empty.cls', new Uint8Array(0));
-    expect(readSnapshot(store, 'repo')).toEqual({
+    // Until it has ended, it is found by its number and as the snapshot that is being taken.
+    expect(readSnapshot(store, 'repo')).toBeUndefined();
+    expect(readRunningSnapshot(store, 'repo')).toEqual(readSnapshot(store, 'repo', id));
+    expect(readSnapshot(store, 'repo', id)).toEqual({
       id,
       source: 'repo',
       kind: 'git',
@@ -78,8 +86,79 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
       finishedAt: T1,
       gitCommit: 'c'.repeat(40),
     });
+    expect(readRunningSnapshot(store, 'repo')).toBeUndefined();
     finishSnapshot(store, id, { status: 'partial', finishedAt: T1, gitCommit: null });
     expect(readSnapshot(store, 'repo')).toMatchObject({ status: 'partial', gitCommit: null });
+    store.close();
+  });
+
+  it('takes the latest finished snapshot for the latest, not one that is being taken or was given up', () => {
+    const store = open();
+    const finished = begin(store);
+    const givenUp = begin(store, 'repo', 'running');
+    finishSnapshot(store, givenUp, { status: 'failed', finishedAt: T1, gitCommit: null });
+    const running = begin(store, 'repo', 'running');
+    expect(readSnapshot(store, 'repo')?.id).toBe(finished);
+    expect(readRunningSnapshot(store, 'repo')?.id).toBe(running);
+    expect(readSnapshot(store, 'repo', givenUp)?.status).toBe('failed');
+    // A source has one snapshot that is being taken at most. Another source has its own.
+    expect(codeOf(() => begin(store, 'repo', 'running'))).toBe('STORE_FAILED');
+    begin(store, 'other', 'running');
+    finishSnapshot(store, running, { status: 'complete', finishedAt: T1, gitCommit: null });
+    expect(readSnapshot(store, 'repo')?.id).toBe(running);
+    begin(store, 'repo', 'running');
+    store.close();
+  });
+
+  it('records the API version an org was read with', () => {
+    const store = open();
+    const id = insertSnapshot(store, {
+      sourceId: ensureSource(store, { name: 'prod', kind: 'org', createdAt: T0, orgId: ORG }),
+      status: 'complete',
+      startedAt: T0,
+      finishedAt: T1,
+      engineVersion: '1.2.3',
+      apiVersion: '66.0',
+      gitCommit: null,
+    });
+    expect(readSnapshot(store, 'prod', id)).toMatchObject({ kind: 'org', apiVersion: '66.0', gitCommit: null });
+    store.close();
+  });
+
+  it('ties the name of an org source to the org of its first snapshot', () => {
+    const store = open();
+    // Nothing is known about a name that has no row, and looking changes nothing.
+    expect(checkSource(store, { name: 'prod', kind: 'org', orgId: ORG })).toBeUndefined();
+    expect(store.get('SELECT COUNT(*) AS sources FROM source')).toEqual({ sources: 0 });
+
+    const id = ensureSource(store, { name: 'prod', kind: 'org', createdAt: T0, orgId: ORG });
+    expect(checkSource(store, { name: 'prod', kind: 'org', orgId: ORG })).toEqual({ id, orgId: ORG });
+    expect(ensureSource(store, { name: 'prod', kind: 'org', createdAt: T1, orgId: ORG })).toBe(id);
+    const other = '00Dxx0000000002EAA';
+    for (const refused of [
+      () => checkSource(store, { name: 'prod', kind: 'org', orgId: other }),
+      () => ensureSource(store, { name: 'prod', kind: 'org', createdAt: T1, orgId: other }),
+    ]) {
+      expect(codeOf(refused)).toBe('ORG_MISMATCH');
+    }
+    expect(store.get("SELECT org_id FROM source WHERE name = 'prod'")).toEqual({ org_id: ORG });
+
+    // A row that names no org yet takes the org of the first snapshot that states one.
+    const late = ensureSource(store, { name: 'uat', kind: 'sandbox', createdAt: T0 });
+    expect(checkSource(store, { name: 'uat', kind: 'sandbox', orgId: other })).toEqual({ id: late, orgId: null });
+    expect(ensureSource(store, { name: 'uat', kind: 'sandbox', createdAt: T1, orgId: other })).toBe(late);
+    expect(store.get("SELECT org_id FROM source WHERE name = 'uat'")).toEqual({ org_id: other });
+    expect(codeOf(() => checkSource(store, { name: 'uat', kind: 'org', orgId: other }))).toBe('SOURCE_INVALID');
+    store.close();
+  });
+
+  it('adds a file to a snapshot that is being taken, or replaces it, and says which', () => {
+    const store = open();
+    const id = begin(store, 'repo', 'running');
+    expect(putSnapshotFile(store, id, 'classes/A.cls', text('one'))).toBe(false);
+    expect(putSnapshotFile(store, id, 'classes/B.cls', text('one'))).toBe(false);
+    expect(putSnapshotFile(store, id, 'classes/A.cls', text('three'))).toBe(true);
+    expect(readSnapshot(store, 'repo', id)).toMatchObject({ files: 2, bytes: 8 });
     store.close();
   });
 
@@ -126,11 +205,18 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
   it('stores coverage and reads it sorted by type', () => {
     const store = open();
     const id = begin(store);
-    addCoverage(store, id, { type: 'CustomField', listed: 31, retrieved: 30, analysed: 0, note: null });
-    addCoverage(store, id, { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, note: 'a note' });
+    addCoverage(store, id, { type: 'CustomField', listed: 31, retrieved: 30, analysed: 0, listing: 'ok', note: null });
+    addCoverage(store, id, {
+      type: 'ApexClass',
+      listed: 12,
+      retrieved: 12,
+      analysed: 0,
+      listing: 'ok',
+      note: 'a note',
+    });
     expect(readCoverage(store, id)).toEqual([
-      { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, note: 'a note' },
-      { type: 'CustomField', listed: 31, retrieved: 30, analysed: 0, note: null },
+      { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, listing: 'ok', note: 'a note' },
+      { type: 'CustomField', listed: 31, retrieved: 30, analysed: 0, listing: 'ok', note: null },
     ]);
     expect(readCoverage(store, begin(store))).toEqual([]);
     store.close();
@@ -164,7 +250,7 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
     const store = open();
     const id = begin(store);
     addSnapshotFile(store, id, 'a.cls', text('content'));
-    addCoverage(store, id, { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, note: null });
+    addCoverage(store, id, { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null });
     addIssue(store, id, { severity: 'info', code: 'X', message: 'x', componentKey: null, details: null });
     store.run('DELETE FROM snapshot WHERE id = ?', id);
     expect(readCoverage(store, id)).toEqual([]);

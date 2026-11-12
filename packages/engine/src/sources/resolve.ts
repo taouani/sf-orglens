@@ -66,8 +66,18 @@ const VIRTUAL_ROOT = resolve(sep, 'orglens-source');
 const messageOf = (thrown: unknown): string =>
   (thrown instanceof Error ? thrown.message : String(thrown)).split(`${VIRTUAL_ROOT}${sep}`).join('');
 
-/** Resolves the components below the given folders of a tree. */
-export async function resolveComponents(tree: SourceTree, dirs: readonly string[]): Promise<Resolution> {
+/**
+ * Resolves the components below the given folders of a tree. The folder `''` is the tree itself.
+ *
+ * The library lets a project change how files are laid out, with settings in its `sfdx-project.json`.
+ * `projectDir` is the folder whose project file is asked. Without it, the library asks the project of the
+ * folder the process runs in.
+ */
+export async function resolveComponents(
+  tree: SourceTree,
+  dirs: readonly string[],
+  projectDir?: string,
+): Promise<Resolution> {
   const { MetadataResolver, RegistryAccess, TreeContainer } = await loadSourceLibrary();
 
   // Every folder of the tree with the names in it, from the list of files.
@@ -128,7 +138,7 @@ export async function resolveComponents(tree: SourceTree, dirs: readonly string[
     }
   }
 
-  const resolver = new MetadataResolver(new RegistryAccess(), new Container(), false);
+  const resolver = new MetadataResolver(new RegistryAccess(undefined, projectDir), new Container(), false);
   const problems: { at: string; message: string }[] = [];
   const owner = new Map<string, string>();
   const found = new Map<string, { type: string; fullName: string; files: string[] }>();
@@ -202,7 +212,7 @@ export async function resolveComponents(tree: SourceTree, dirs: readonly string[
       components = resolver.getComponentsFromPath(join(VIRTUAL_ROOT, ...path.split('/')));
     } catch (error) {
       const before = problems.length;
-      for (const name of [...(names ?? [])].sort(byCodeUnit)) resolveAt(`${path}/${name}`);
+      for (const name of [...(names ?? [])].sort(byCodeUnit)) resolveAt(path === '' ? name : `${path}/${name}`);
       if (problems.length === before) {
         // A file, or a folder in which nothing fails on its own: this is what the library cannot read.
         problems.push({ at: path, message: messageOf(error) });
@@ -217,7 +227,7 @@ export async function resolveComponents(tree: SourceTree, dirs: readonly string[
     if (folders.has(dir)) resolveAt(dir);
   }
 
-  const below = (file: string): boolean => dirs.some((dir) => file.startsWith(`${dir}/`));
+  const below = (file: string): boolean => dirs.some((dir) => dir === '' || file.startsWith(`${dir}/`));
   const inFailed = (file: string): boolean => failed.some((at) => file === at || file.startsWith(`${at}/`));
   return {
     components: [...found.values()]

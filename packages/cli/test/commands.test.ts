@@ -280,7 +280,7 @@ describe('orglens status', () => {
       [
         `Workspace  test (${dir})`,
         'Config     orglens.toml',
-        'Database   .orglens/orglens.db, schema version 1, N KiB, node:sqlite',
+        'Database   .orglens/orglens.db, schema version 2, N KiB, node:sqlite',
         '',
         'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT',
         'prod    org   0          none',
@@ -297,7 +297,7 @@ describe('orglens status', () => {
         root: dir,
         name: 'test',
         configFiles: ['orglens.toml'],
-        store: { state: 'ready', schemaVersion: 1, driver: 'node:sqlite' },
+        store: { state: 'ready', schemaVersion: 2, driver: 'node:sqlite' },
         sources: [{ name: 'prod', kind: 'org', snapshots: 0, latestSnapshot: null }],
       },
     });
@@ -455,11 +455,12 @@ describe('orglens snapshot and coverage', () => {
         startedAt: expect.stringMatching(/Z$/) as string,
         finishedAt: expect.stringMatching(/Z$/) as string,
         engineVersion: expect.any(String) as string,
+        apiVersion: null,
         commit: null,
         files: 2,
         bytes: PROJECT_BYTES,
       },
-      types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, note: null }],
+      types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null }],
       issues: [
         {
           severity: 'info',
@@ -512,7 +513,7 @@ describe('orglens snapshot and coverage', () => {
     });
   });
 
-  it('says what stands in the way: no such source, no snapshot, no project, an org', async () => {
+  it('says what stands in the way: no such source, no snapshot, no project, no login', async () => {
     const dir = projectWorkspace();
     expect(await orglens(dir, ['snapshot', 'nowhere'])).toMatchObject({
       code: 2,
@@ -530,14 +531,16 @@ describe('orglens snapshot and coverage', () => {
     // Asking for a report creates nothing.
     expect(existsSync(join(dir, '.orglens'))).toBe(false);
 
+    // An org is read only with a login, and the login is looked for before anything is created.
     const org = await orglensJson(dir, ['snapshot', 'prod']);
     expect(org).toMatchObject({
-      code: 1,
+      code: 4,
       command: 'snapshot',
       ok: false,
       data: null,
-      error: { code: 'SOURCE_READ_FAILED', details: { reason: 'KIND_NOT_READABLE', source: 'prod', kind: 'org' } },
+      error: { code: 'LOGIN_FAILED', details: { reason: 'NO_LOGIN', source: 'prod' } },
     });
+    expect(existsSync(join(dir, '.orglens'))).toBe(false);
 
     await orglens(dir, ['snapshot', 'work']);
     const missing = await orglensJson(dir, ['coverage', 'work', '--snapshot', '2']);
