@@ -252,7 +252,25 @@ importers:
         specifier: 2.9.1
         version: 2.9.1
 
+  trial/apex:
+    devDependencies:
+      '@apexdevtools/apex-parser':
+        specifier: 5.3.0
+        version: 5.3.0
+      web-tree-sitter:
+        specifier: 0.27.2
+        version: 0.27.2
+      web-tree-sitter-sfapex:
+        specifier: 3.0.2
+        version: 3.0.2
+
 packages:
+
+  '@apexdevtools/apex-parser@5.3.0':
+    resolution: {integrity: sha512-+5AjYajC/C1ch46BjGi4rTov/EcmEeEjzmSaXmb847G7myy9xk4ATYwRpCBPUIMPQkzjVpimDt7dZ/q5o3LcBw==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+    bundledDependencies:
+      - antlr4
 
   '@babel/helper-string-parser@7.29.13':
     resolution: {integrity: sha512-fWegr+WsEsiMVW4KUNdIIzzMTZSzNiqhy0//6+2MRi2d5NFNsL/AYwBQW8eBnRbTBVRnDVzjaJEUqKaCWjMMdQ==}
@@ -2465,6 +2483,12 @@ packages:
     engines: {node: ^22.13||^24||>=26}
     hasBin: true
 
+  web-tree-sitter-sfapex@3.0.2:
+    resolution: {integrity: sha512-avAvscrBYTeO0+k+kA0qrc+a8UXYMC6sVWZukxhIlfTGtvFyjv+uQhlrfxbuwkVahDY0dVVSMGKzQ+ZX+CdX0g==}
+
+  web-tree-sitter@0.27.2:
+    resolution: {integrity: sha512-ZRo86GKI4aOSBAqOrPmCtriExI3xIzu1sNw/V6v3b4QGxrEmO19FGwbMNdyhw3MJLAZIw0xAV0oSpqX361eAyQ==}
+
   websocket-driver@0.7.5:
     resolution: {integrity: sha512-ZL2+3c7kMBdIRCMz6l8jQMHyGVxj+UL+xVk74Ombiciboca8rHa15L86B19E5oh1pL9Ii/uj54gtsIrZGMo6zA==}
     engines: {node: '>=0.8.0'}
@@ -2518,6 +2542,8 @@ packages:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
+
+  '@apexdevtools/apex-parser@5.3.0': {}
 
   '@babel/helper-string-parser@7.29.13': {}
 
@@ -4718,6 +4744,12 @@ snapshots:
   walk-up-path@4.0.0: {}
 
   watskeburt@6.0.0: {}
+
+  web-tree-sitter-sfapex@3.0.2:
+    dependencies:
+      web-tree-sitter: 0.27.2
+
+  web-tree-sitter@0.27.2: {}
 
   websocket-driver@0.7.5:
     dependencies:

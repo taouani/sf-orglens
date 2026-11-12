@@ -480,6 +480,15 @@ If neither passes in the time box: the trial reports the measured gap by categor
 
 Deliverables: the trial code under `trial/apex/` (not shipped), the results table, and decision record 0018 filled in with the numbers. The resolver written here is a spike. Phase 3 builds the production version, informed by it.
 
+Status after the pull request of this work package (2026-11-12). The trial is done. The report is [`docs/research/phase-0/apex-trial.md`](../research/phase-0/apex-trial.md).
+
+- Both parsers reach every pass mark on the fixture with the one resolver: 181 of 181 references, none extra, none on a negative case. On apex-recipes, Nebula Logger and NPSP, about 395,000 lines, the resolver reports the same 59,845 references with either parser.
+- Of 100 references sampled from apex-recipes, all 100 are right. I checked them, not a second person. Where `apex-ls` on Java and the trial both record a call, they agree.
+- NPSP: `apex-parser` takes 16 to 17 seconds and 1,501 to 1,532 MB, which is over the mark of 1.5 GB. `web-tree-sitter-sfapex` takes 3 seconds and 440 MB.
+- By the decision rule above the parser is `web-tree-sitter-sfapex`. Record 0018 holds the numbers and stays `Proposed` until you confirm. The adapter for `apex-parser` is kept, and a test compares the two.
+- The score on the fixture is not a measure of the resolver on code it has not seen: I wrote the fixture, the key and the resolver. A check on NPSP found four kinds of code the resolver missed, which I added, and kinds it cannot judge without a complete description of the objects. The report lists them for Phase 3.
+- Not done: hours per candidate, which mean nothing for work done by an AI assistant in one session. Lines of adapter code and the surprises of each parser are recorded in their place. The check against the Tooling API of step 6 of the earlier research is replaced by your decision of 12 November 2026 that the Dependency API alone is the cross-check.
+
 Research measurements so far: on NPSP, `apex-parser` parsed 1,070 files in 18.5 s and `tree-sitter-sfapex` in 2.3 s. `apex-parser` kept more structure on badly broken code. Preliminary ranking puts `apex-parser` slightly ahead, and the trial is allowed to reverse that.
 
 ### WP10 Phase close

@@ -12,6 +12,10 @@
     "packages/cli": {
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "trial/apex": {
+      "entry": ["test/**/*.test.ts", "src/run-*.ts", "src/sample.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
     }
   }
 }

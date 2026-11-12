@@ -1,0 +1,16 @@
+{
+  "name": "@sf-orglens/trial-apex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Apex trial of Phase 0: one resolver, two parsers, scored against the answer key. Not shipped.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "devDependencies": {
+    "@apexdevtools/apex-parser": "5.3.0",
+    "web-tree-sitter": "0.27.2",
+    "web-tree-sitter-sfapex": "3.0.2"
+  }
+}
