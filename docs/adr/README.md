@@ -41,6 +41,7 @@ during the build.
 | [0028](0028-configuration-files.md)               | Configuration: two TOML files, strict reading, and edits that keep the file as written          | Accepted |            |
 | [0029](0029-fixture-and-answer-key.md)            | The fixture project and its hand-written answer key                                             | Accepted |            |
 | [0030](0030-reading-a-git-source.md)              | How a Git source is read into a snapshot                                                        | Accepted |            |
+| [0031](0031-logins-and-the-home-folder.md)        | How a source is logged in, and what that touches in the home folder                             | Accepted |            |
 
 ## Writing a record
 
@@ -61,7 +62,6 @@ These decisions are made while Phase 0 is built, and each is recorded with the w
 
 | Decision                                                                         | Recorded with             |
 | -------------------------------------------------------------------------------- | ------------------------- |
-| Salesforce connectivity, and every file it touches in the home directory         | Salesforce connectivity   |
 | What the cross-checks can prove, and with it the definition of the gate (0021)   | The live-org measurements |
 | The Apex analysis foundation: [0018](0018-apex-analysis-foundation.md) is filled | The Apex trial            |
 

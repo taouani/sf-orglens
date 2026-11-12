@@ -2,16 +2,15 @@
  * Turns a tree of files into metadata components, with the Salesforce
  * library that the Salesforce CLI uses for it.
  *
- * The library is loaded here and only when a tree is resolved: importing it
- * costs about half a second. It works on the tree it is handed and never
- * touches the disk for it. Files that `.forceignore` excludes are removed
- * from the tree before, so the library is told to apply no ignore file of
- * its own.
+ * The library is loaded only when a tree is resolved (`library.ts`). It
+ * works on the tree it is handed and never touches the disk for it. Files
+ * that `.forceignore` excludes are removed from the tree before, so the
+ * library is told to apply no ignore file of its own.
  */
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
-import type * as Library from '@salesforce/source-deploy-retrieve';
 import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
+import { loadSourceLibrary } from './library.ts';
 import { byCodeUnit, type SourceTree } from './tree.ts';
 
 /** A metadata component found in a tree. */
@@ -56,20 +55,6 @@ export interface Resolution {
   }[];
 }
 
-let library: Promise<typeof Library> | undefined;
-
-/**
- * Loads the Salesforce library once. It is told beforehand not to write a
- * log file into the home folder. The library reads that from the
- * environment and nowhere else, so the variable is set for this process and
- * stays set, whatever it was before.
- */
-function loadLibrary(): Promise<typeof Library> {
-  process.env['SF_DISABLE_LOG_FILE'] = 'true';
-  library ??= import('@salesforce/source-deploy-retrieve');
-  return library;
-}
-
 /**
  * The folder the library believes the tree is in. It is never read: the
  * library builds paths with the functions of the operating system, and an
@@ -83,7 +68,7 @@ const messageOf = (thrown: unknown): string =>
 
 /** Resolves the components below the given folders of a tree. */
 export async function resolveComponents(tree: SourceTree, dirs: readonly string[]): Promise<Resolution> {
-  const { MetadataResolver, RegistryAccess, TreeContainer } = await loadLibrary();
+  const { MetadataResolver, RegistryAccess, TreeContainer } = await loadSourceLibrary();
 
   // Every folder of the tree with the names in it, from the list of files.
   const folders = new Map<string, Set<string>>([['', new Set()]]);

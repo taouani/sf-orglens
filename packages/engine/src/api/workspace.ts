@@ -32,14 +32,17 @@ import {
   type StoreDriverName,
   type WorkspaceConfig,
 } from '../core/config/config.ts';
-import { addSourceText, removeSourceText } from '../core/config/edit.ts';
+import { addSourceText, linkLoginText, removeSourceText, unlinkLoginText } from '../core/config/edit.ts';
 import { EngineError, isEngineError } from '../core/errors.ts';
 import { createFileSink, createLogger, type Logger } from '../core/logger.ts';
+import { chooseCliLogin, listCliLogins, sameOrg } from '../sources/logins.ts';
+import { orgMismatch } from '../sources/org.ts';
 import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
 import { boundary } from './boundary.ts';
+import { checkSource, type SourceCheck } from './check.ts';
 import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
 import {
   DATABASE_FILE,
@@ -135,6 +138,18 @@ export interface WorkspaceStatus {
   readonly sources: readonly SourceStatus[];
 }
 
+/** The Salesforce CLI login that was set for a source. */
+export interface SourceLink {
+  readonly source: string;
+  /** What was written to the personal file: the alias or the user name that was given. */
+  readonly login: string;
+  readonly username: string;
+  /** The id of the org the login belongs to, if the Salesforce CLI knows it. */
+  readonly orgId: string | null;
+  /** The org id the source declares. With `null`, nothing says which org is meant. */
+  readonly declaredOrgId: string | null;
+}
+
 export interface Workspace {
   readonly root: string;
   readonly name: string | null;
@@ -144,8 +159,22 @@ export interface Workspace {
     list(): Promise<SourceDeclaration[]>;
     /** Declares a source in `orglens.toml`. Nothing is connected or read yet. */
     add(source: SourceInput): Promise<SourceDeclaration>;
-    /** Removes the declaration of a source from `orglens.toml`. Snapshots already taken stay in the database. */
+    /**
+     * Removes the declaration of a source from `orglens.toml`, and the login that was set for it from
+     * `.orglens/local.toml`. Snapshots already taken stay in the database.
+     */
     remove(name: string): Promise<{ readonly removed: string }>;
+    /**
+     * Sets the Salesforce CLI login this person uses for an org or a sandbox: an alias or a user name. It is
+     * written to `.orglens/local.toml`. The login has to exist, and it has to belong to the org the source
+     * declares. Nothing is connected.
+     */
+    link(name: string, login: string): Promise<SourceLink>;
+    /**
+     * Checks that a source can be read as things are: logs in to an org and asks it who is logged in, or reads
+     * the folders of a repository. Nothing is stored.
+     */
+    check(name: string): Promise<SourceCheck>;
   };
   /**
    * Reads a source now and stores what it holds as a new snapshot. Earlier snapshots stay as they are. The source
@@ -255,15 +284,16 @@ function workspaceLogger(paths: WorkspacePaths): Logger {
 }
 
 /**
- * Replaces the content of an existing file in one step, so that a crash never leaves half a configuration.
+ * Writes the content of a file in one step, so that a crash never leaves half a configuration.
  *
  * The new content is written to a file beside the old one, flushed to disk, and moved over it. A link is
  * followed first: the file it points at is replaced and the link stays. The new file gets the permissions of
- * the old one.
+ * the old one. A file that does not exist yet is created with the permissions the system gives a new file.
  */
 function writeFileAtomically(file: string, text: string): void {
-  const target = realpathSync(file);
-  const mode = statSync(target).mode & 0o777;
+  const exists = existsSync(file);
+  const target = exists ? realpathSync(file) : file;
+  const mode = exists ? statSync(target).mode & 0o777 : undefined;
   const temporary = `${target}.${randomBytes(6).toString('hex')}.tmp`;
   let descriptor: number | undefined;
   try {
@@ -273,7 +303,7 @@ function writeFileAtomically(file: string, text: string): void {
     closeSync(descriptor);
     descriptor = undefined;
     // The mode given to `open` is cut down by the umask of the process.
-    chmodSync(temporary, mode);
+    if (mode !== undefined) chmodSync(temporary, mode);
     renameSync(temporary, target);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
@@ -300,9 +330,9 @@ const pause = (milliseconds: number): void => {
 };
 
 /**
- * Runs one change of `orglens.toml` while no other command changes it.
+ * Runs one change of the configuration files while no other command changes them.
  *
- * A change reads the file, edits the text and writes it back. Two commands doing that at the same moment would
+ * A change reads a file, edits the text and writes it back. Two commands doing that at the same moment would
  * each write their own result, and one of the two changes would be lost without a word. The lock is a file that
  * only one process can create. A hand-made edit in an editor is not held off by it.
  */
@@ -318,7 +348,7 @@ function withConfigLock<T>(paths: WorkspacePaths, work: () => T): T {
       if (held !== undefined && Date.now() - held.mtimeMs > LOCK_STALE_MS) {
         rmSync(paths.configLockFile, { force: true });
       } else if (Date.now() >= deadline) {
-        throw new EngineError('WORKSPACE_IO', `Another OrgLens command is changing ${SHARED_CONFIG_FILE}.`, {
+        throw new EngineError('WORKSPACE_IO', 'Another OrgLens command is changing the configuration.', {
           hint: `Try again. If no other command is running, delete ${paths.configLockFile}.`,
           details: { reason: 'LOCKED', operation: 'lock' },
         });
@@ -428,14 +458,31 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
     }
     let config = loadConfig(paths, env);
 
-    const edit = (change: (text: string) => string): void => {
+    /**
+     * Changes the configuration files. `change` gets the text of the shared file and of the personal file, which
+     * may not exist, and returns the new text of each file it changes.
+     */
+    const edit = (
+      change: (shared: string, local: string | undefined) => { shared?: string; local?: string | undefined },
+    ): void => {
       // The folder may be a fresh clone that has the configuration and nothing else. The file that keeps the data
-      // folder out of Git comes first, before the lock and the log are written into it.
+      // folder out of Git comes first, before the lock, the log and the personal file are written into it.
       ensureDataDir(paths);
       withConfigLock(paths, () => {
-        const text = readText(paths.configFile, SHARED_CONFIG_FILE);
-        if (typeof text !== 'string') throw invalidConfig([text]);
-        writeFileAtomically(paths.configFile, change(text));
+        const shared = readText(paths.configFile, SHARED_CONFIG_FILE);
+        if (typeof shared !== 'string') throw invalidConfig([shared]);
+        const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
+        if (typeof local === 'object') throw invalidConfig([local]);
+        const changed = change(shared, local);
+        // The shared file first. If the second write fails, a login is left for a source that is no longer
+        // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
+        // of a source that is still there.
+        if (changed.shared !== undefined && changed.shared !== shared) {
+          writeFileAtomically(paths.configFile, changed.shared);
+        }
+        if (changed.local !== undefined && changed.local !== local) {
+          writeFileAtomically(paths.localConfigFile, changed.local);
+        }
       });
       config = loadConfig(paths, env);
     };
@@ -502,7 +549,7 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
             edit((text) => {
               const result = addSourceText(text, declaration(input));
               added = result.source;
-              return result.text;
+              return { shared: result.text };
             });
             if (added === undefined) throw new EngineError('INTERNAL', 'The source was not added.');
             workspaceLogger(paths).info('source.add', { source: added.name, kind: added.kind });
@@ -510,9 +557,54 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           }),
         remove: (name) =>
           boundary(() => {
-            edit((text) => removeSourceText(text, name));
+            edit((shared, local) => ({
+              shared: removeSourceText(shared, name),
+              // The login of a source that is no longer declared would make the personal file invalid.
+              local: local === undefined ? undefined : unlinkLoginText(shared, local, name),
+            }));
             workspaceLogger(paths).info('source.remove', { source: name });
             return { removed: name };
+          }),
+        link: (name, login) =>
+          boundary(() => {
+            const source = declared(name);
+            if (source.kind === 'git') {
+              throw new EngineError('SOURCE_INVALID', `The source "${name}" is of the kind "git" and has no login.`, {
+                details: { source: name, problems: [] },
+              });
+            }
+            const choice = chooseCliLogin(source, login, listCliLogins());
+            if (choice.via === 'none') {
+              throw new EngineError(
+                'LOGIN_FAILED',
+                `"${login}" is not a login of the Salesforce CLI on this machine.`,
+                {
+                  hint: 'The Salesforce CLI lists its logins with: sf org list. It adds one with: sf org login web --alias <alias>',
+                  details: { reason: 'LOGIN_UNKNOWN', source: name },
+                },
+              );
+            }
+            const { orgId, username } = choice.login;
+            if (source.orgId !== null && orgId !== null && !sameOrg(source.orgId, orgId)) {
+              throw orgMismatch(source, orgId, `login "${login}"`);
+            }
+            edit((shared, local) => ({ local: linkLoginText(shared, local, name, login) }));
+            workspaceLogger(paths).info('source.link', { source: name });
+            return { source: name, login, username, orgId, declaredOrgId: source.orgId };
+          }),
+        check: (name) =>
+          boundary(async () => {
+            const source = declared(name);
+            const checked = await checkSource(paths.root, source, config.logins[name], env);
+            // A job in a fresh clone is the main user of this command. The log must not be the first file of a
+            // data folder that Git does not ignore yet.
+            ensureDataDir(paths);
+            workspaceLogger(paths).info('source.check', {
+              source: name,
+              kind: checked.kind,
+              ...(checked.kind === 'git' ? { complete: checked.complete } : { via: checked.login.via }),
+            });
+            return checked;
           }),
       },
     };

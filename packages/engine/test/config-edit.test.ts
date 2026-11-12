@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readConfig, type SourceDeclaration } from '../src/core/config/config.ts';
-import { addSourceText, removeSourceText, verifyEdit } from '../src/core/config/edit.ts';
+import {
+  addSourceText,
+  linkLoginText,
+  removeSourceText,
+  unlinkLoginText,
+  verifyEdit,
+} from '../src/core/config/edit.ts';
 import { readLayout } from '../src/core/config/layout.ts';
 import { EngineError } from '../src/core/errors.ts';
 
@@ -300,6 +306,129 @@ describe('removeSourceText', () => {
     ['an inline table', 'schema_version = 1\n[sources]\na = { kind = "org" }\n'],
   ])('refuses a source written as %s, and changes nothing', (_label, text) => {
     expect(failure(() => removeSourceText(text, 'a')).code).toBe('CONFIG_NOT_EDITABLE');
+  });
+});
+
+describe('linkLoginText', () => {
+  const shared =
+    'schema_version = 1\n[sources.prod]\nkind = "org"\n[sources.uat]\nkind = "sandbox"\n[sources.repo]\nkind = "git"\n';
+  const logins = (local: string): Readonly<Record<string, string>> => {
+    const result = readConfig({ shared, local });
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    return result.config.logins;
+  };
+
+  it('starts the personal file with a comment that says what it is', () => {
+    const text = linkLoginText(shared, undefined, 'prod', 'main');
+    expect(text).toBe(
+      '# .orglens/local.toml: the personal settings of this OrgLens workspace. This file is not committed.\n' +
+        '# It never holds a password, a token or a key.\n\n[sources.prod]\nlogin = "main"\n',
+    );
+    expect(logins(text)).toEqual({ prod: 'main' });
+  });
+
+  it('appends a table to a file that has none for the source, after one blank line', () => {
+    expect(linkLoginText(shared, '', 'prod', 'main')).toBe('[sources.prod]\nlogin = "main"\n');
+    expect(linkLoginText(shared, '[store]\ndriver = "node:sqlite"', 'prod', 'main')).toBe(
+      '[store]\ndriver = "node:sqlite"\n\n[sources.prod]\nlogin = "main"\n',
+    );
+    expect(linkLoginText(shared, '# mine\n\n', 'uat', 'zoe@example.com')).toBe(
+      '# mine\n\n[sources.uat]\nlogin = "zoe@example.com"\n',
+    );
+  });
+
+  it('changes the value of a login that is set, and nothing else on its line or beside it', () => {
+    const local =
+      '# mine\n[sources.prod]\n  login = \'old one\'   # the admin login\n\n[store]\ndriver = "node:sqlite"\n';
+    expect(linkLoginText(shared, local, 'prod', 'new')).toBe(
+      '# mine\n[sources.prod]\n  login = "new"   # the admin login\n\n[store]\ndriver = "node:sqlite"\n',
+    );
+    const second = linkLoginText(shared, local, 'uat', 'other');
+    expect(second.startsWith(local)).toBe(true);
+    expect(logins(second)).toEqual({ prod: 'old one', uat: 'other' });
+  });
+
+  it('adds the line to a table of the source that has no login yet', () => {
+    expect(linkLoginText(shared, '[sources.prod]\n\n[store]\n', 'prod', 'main')).toBe(
+      '[sources.prod]\nlogin = "main"\n\n[store]\n',
+    );
+  });
+
+  it('keeps Windows line ends', () => {
+    expect(linkLoginText(shared, '[store]\r\n', 'prod', 'main')).toBe(
+      '[store]\r\n\r\n[sources.prod]\r\nlogin = "main"\r\n',
+    );
+    expect(linkLoginText(shared, '[sources.prod]\r\nlogin = "a"\r\n', 'prod', 'b')).toBe(
+      '[sources.prod]\r\nlogin = "b"\r\n',
+    );
+    expect(linkLoginText(shared, '[sources.prod]\r\n', 'prod', 'b')).toBe('[sources.prod]\r\nlogin = "b"\r\n');
+  });
+
+  it('writes a login with quotes and backslashes so that it reads back unchanged', () => {
+    const login = 'the "main" \\ one';
+    expect(logins(linkLoginText(shared, undefined, 'prod', login))).toEqual({ prod: login });
+  });
+
+  it('refuses a source that is not declared, a repository, and a login that cannot be one', () => {
+    expect(failure(() => linkLoginText(shared, undefined, 'dev', 'main')).code).toBe('SOURCE_NOT_FOUND');
+    expect(failure(() => linkLoginText(shared, undefined, 'repo', 'main')).code).toBe('SOURCE_INVALID');
+    for (const login of ['', ' main', 'main ', 'a\nb', 'x'.repeat(256)]) {
+      expect(failure(() => linkLoginText(shared, undefined, 'prod', login)).code, login).toBe('SOURCE_INVALID');
+    }
+    const secret = failure(() =>
+      linkLoginText(
+        shared,
+        undefined,
+        'prod',
+        'force://PlatformCLI::5Aep861abcdefghijklmnopqrstuvwxyz@acme.my.salesforce.com',
+      ),
+    );
+    expect(secret.code).toBe('SOURCE_INVALID');
+    expect(JSON.stringify(secret)).not.toContain('5Aep861');
+  });
+
+  it('does not change a login written in a form it cannot change safely', () => {
+    for (const local of [
+      'sources.prod.login = "main"\n',
+      'sources = { prod = { login = "main" } }\n',
+      '[sources]\nprod = { login = "main" }\n',
+      '[sources.prod]\nlogin = """main"""\n',
+      '[sources.prod]\n"login" = "main"\n',
+    ]) {
+      expect(failure(() => linkLoginText(shared, local, 'prod', 'other')).code, local).toBe('CONFIG_NOT_EDITABLE');
+    }
+  });
+
+  it('does not edit files that have problems of their own', () => {
+    expect(failure(() => linkLoginText(shared, 'colour = "red"\n', 'prod', 'main')).code).toBe('CONFIG_INVALID');
+    expect(failure(() => linkLoginText('schema_version = 9\n', undefined, 'prod', 'main')).code).toBe('CONFIG_INVALID');
+  });
+});
+
+describe('unlinkLoginText', () => {
+  const shared = 'schema_version = 1\n[sources.prod]\nkind = "org"\n[sources.uat]\nkind = "sandbox"\n';
+
+  it('removes the table of the source and keeps every other line', () => {
+    const local =
+      '# mine\n[store]\ndriver = "node:sqlite"\n\n[sources.prod]\nlogin = "main"\n\n[sources.uat]\nlogin = "other"\n';
+    expect(unlinkLoginText(shared, local, 'prod')).toBe(
+      '# mine\n[store]\ndriver = "node:sqlite"\n\n[sources.uat]\nlogin = "other"\n',
+    );
+    expect(unlinkLoginText(shared, local, 'uat')).toBe(
+      '# mine\n[store]\ndriver = "node:sqlite"\n\n[sources.prod]\nlogin = "main"\n',
+    );
+  });
+
+  it('returns a file without a table of the source as it is', () => {
+    const local = '[store]\ndriver = "node:sqlite"\n';
+    expect(unlinkLoginText(shared, local, 'prod')).toBe(local);
+    expect(unlinkLoginText(shared, '', 'prod')).toBe('');
+  });
+
+  it('does not remove a login written in a form it cannot change safely', () => {
+    expect(failure(() => unlinkLoginText(shared, 'sources.prod.login = "main"\n', 'prod')).code).toBe(
+      'CONFIG_NOT_EDITABLE',
+    );
   });
 });
 

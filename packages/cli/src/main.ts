@@ -6,6 +6,8 @@ import {
   init,
   snapshot,
   sourceAdd,
+  sourceCheck,
+  sourceLink,
   sourceList,
   sourceRemove,
   status,
@@ -107,7 +109,7 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
   const source = program
     .command('source')
     .summary('declare the orgs, sandboxes and repository folders to read')
-    .description('Declares the sources of the workspace in orglens.toml.')
+    .description('Declares the sources of the workspace in orglens.toml, and sets and checks how they are reached.')
     .helpCommand(false);
 
   source
@@ -148,12 +150,44 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .command('remove')
     .summary('remove the declaration of a source')
     .description(
-      'Removes a source from orglens.toml. Every other line of the file is kept. ' +
-        'Snapshots already taken of the source stay in the database.',
+      'Removes a source from orglens.toml, and the login that was set for it from .orglens/local.toml. ' +
+        'Every other line of the files is kept. Snapshots already taken of the source stay in the database.',
     )
     .argument('<name>', 'the name of the source')
     .action((name: string, _options: unknown, command: Command) =>
       run('source remove', (context) => sourceRemove(context, name))(command),
+    );
+
+  source
+    .command('link')
+    .summary('choose the Salesforce CLI login for an org or a sandbox')
+    .description(
+      'Sets which login of the Salesforce CLI you use for an org or a sandbox, by its alias or its user name. ' +
+        'The choice is personal and is written to .orglens/local.toml. No password, token or key is stored: ' +
+        'the login stays with the Salesforce CLI. Nothing is connected. ' +
+        'Without a link, OrgLens uses the one login that belongs to the org id the source declares.',
+    )
+    .argument('<name>', 'the name of the source')
+    .argument('<login>', 'the alias or the user name of a Salesforce CLI login (see: sf org list)')
+    .action((name: string, login: string, _options: unknown, command: Command) =>
+      run('source link', (context) => sourceLink(context, name, login))(command),
+    );
+
+  source
+    .command('check')
+    .summary('check that a source can be read')
+    .description(
+      'For an org or a sandbox: finds the login, connects, and asks the org which org it is. ' +
+        'The login is a private key in the variables ORGLENS_JWT_<SOURCE>_... if they are set, ' +
+        'else the linked Salesforce CLI login, else the one Salesforce CLI login of the declared org. ' +
+        'For folders of a repository: reads everything a snapshot would read. ' +
+        'Nothing is stored and the source is not changed. ' +
+        'The exit code is 4 if the login is missing or does not work or the org cannot be reached, ' +
+        'and 5 if folders can be read only in part.',
+    )
+    .argument('<name>', 'the name of the source')
+    .action((name: string, _options: unknown, command: Command) =>
+      run('source check', (context) => sourceCheck(context, name))(command),
     );
 
   program
@@ -193,8 +227,9 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .command('doctor')
     .summary('check that OrgLens can run here')
     .description(
-      'Checks Node.js, SQLite, the workspace, its configuration and its database, and reports every check. ' +
-        'It changes neither the configuration nor the data. The exit code is 1 if a check failed.',
+      'Checks Node.js, SQLite, Git, the workspace, its configuration, its database and the logins for its orgs, ' +
+        'and reports every check. It connects to nothing and changes neither the configuration nor the data. ' +
+        'The exit code is 1 if a check failed.',
     )
     .action((_options: unknown, command: Command) => run('doctor', doctorCommand)(command));
 

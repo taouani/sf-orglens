@@ -3,12 +3,24 @@
  *
  * It only reads. It never creates a workspace, migrates a database or
  * connects to an org. Every check is reported, also the ones that pass, so
- * that the report can be pasted into an issue as it is.
+ * that the report can be pasted into an issue as it is. For that reason it
+ * names no login and no user: it says how many logins there are, and by
+ * which route each org source would be logged in.
  */
-import { diagnosticsJson, formatDiagnostic, SHARED_CONFIG_FILE } from '../core/config/config.ts';
+import {
+  diagnosticsJson,
+  formatDiagnostic,
+  LOCAL_CONFIG_FILE,
+  SHARED_CONFIG_FILE,
+  type WorkspaceConfig,
+} from '../core/config/config.ts';
 import { isEngineError, type JsonValue } from '../core/errors.ts';
 import { redactText } from '../core/redact.ts';
 import { engineVersion } from '../core/version.ts';
+import { gitProgram } from '../sources/git.ts';
+import { jwtVariables } from '../sources/jwt.ts';
+import { listCliLogins } from '../sources/logins.ts';
+import { planLogin } from '../sources/org.ts';
 import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
@@ -20,7 +32,7 @@ import { inspectConfig, inspectStore, locateWorkspace, type WorkspaceLocator } f
 const MINIMUM_NODE = [24, 15] as const;
 
 export interface DoctorCheck {
-  /** A stable name: `node`, `sqlite`, `sqlite-fallback`, `workspace`, `config`, `store`. */
+  /** A stable name: `node`, `sqlite`, `sqlite-fallback`, `git`, `workspace`, `config`, `store`, `logins`. */
   readonly id: string;
   /**
    * - `ok`: nothing to do.
@@ -102,6 +114,105 @@ async function checkFallback(): Promise<DoctorCheck> {
   return check.status === 'failed' ? { ...check, status: 'warning' } : check;
 }
 
+/** Git is needed to read a branch, a tag or a commit. Folders on disk are read without it. */
+function checkGit(dir: string): DoctorCheck {
+  const git = gitProgram(dir);
+  const details = { installed: git.installed, version: git.version, required: git.required };
+  if (!git.installed) {
+    return {
+      id: 'git',
+      status: 'warning',
+      summary:
+        'No "git" program was found. Folders are read without it. A source that names a branch, a tag or a commit needs it.',
+      details,
+    };
+  }
+  if (!git.supported) {
+    return {
+      id: 'git',
+      status: 'warning',
+      summary: `Git ${git.version ?? ''} is too old to read a commit. OrgLens needs Git ${git.required} or newer for a source that names a branch, a tag or a commit.`,
+      details,
+    };
+  }
+  return {
+    id: 'git',
+    status: git.version === null ? 'warning' : 'ok',
+    summary: git.version === null ? 'Git is installed and does not say its version.' : `Git ${git.version}.`,
+    details,
+  };
+}
+
+type Environment = Readonly<Record<string, string | undefined>>;
+
+/**
+ * The logins: how many the Salesforce CLI has on this machine, and by which
+ * route each org and sandbox of the workspace would be logged in. Nothing
+ * connects, so a login that is found here can still have expired.
+ */
+function checkLogins(config: WorkspaceConfig | undefined, env: Environment): DoctorCheck {
+  const logins = listCliLogins();
+  const count = `${String(logins.length)} Salesforce CLI ${logins.length === 1 ? 'login' : 'logins'} on this machine.`;
+  const orgs = (config?.sources ?? []).filter((source) => source.kind !== 'git');
+
+  // Two mistakes that would otherwise go unnoticed, because what is not read is not an error: a variable for a
+  // login with a key that no source reads, such as a misspelled one, and a login in the personal file for a
+  // source that is no longer declared. Only names are shown, never what a variable holds.
+  // On Windows the name of a variable is found whatever its case.
+  const asRead = (name: string): string => (process.platform === 'win32' ? name.toUpperCase() : name);
+  const read = new Set(orgs.flatMap((source) => Object.values(jwtVariables(source.name))));
+  const unreadVariables =
+    config === undefined
+      ? []
+      : Object.keys(env)
+          .filter((name) => /^ORGLENS_JWT_/i.test(name) && (env[name] ?? '') !== '' && !read.has(asRead(name)))
+          .sort();
+  const unusedLogins = [...(config?.unusedLogins ?? [])].sort();
+  const notes = [
+    ...(unreadVariables.length === 0
+      ? []
+      : [
+          `No source reads ${unreadVariables.length === 1 ? 'the variable' : 'the variables'} ${unreadVariables.join(', ')}.`,
+        ]),
+    ...(unusedLogins.length === 0
+      ? []
+      : [
+          `${LOCAL_CONFIG_FILE} names a login for ${unusedLogins.map((name) => `"${name}"`).join(', ')}, which ${SHARED_CONFIG_FILE} does not declare. It is not used.`,
+        ]),
+  ];
+  const extra = { unreadVariables, unusedLogins };
+
+  if (config === undefined || orgs.length === 0) {
+    return {
+      id: 'logins',
+      status: notes.length === 0 ? 'ok' : 'warning',
+      summary: [
+        count,
+        config === undefined
+          ? 'No workspace configuration says which are needed.'
+          : 'The workspace declares no org or sandbox.',
+        ...notes,
+      ].join(' '),
+      details: { cliLogins: logins.length, sources: [], ...extra },
+    };
+  }
+  const plans = orgs.map((source) => planLogin(source, config.logins[source.name], logins, env));
+  const without = plans.filter((plan) => plan.problem !== null);
+  const first = without[0];
+  return {
+    id: 'logins',
+    status: first === undefined && notes.length === 0 ? 'ok' : 'warning',
+    summary: [
+      count,
+      first === undefined
+        ? 'Every org and sandbox of the workspace has a login. Whether it still works shows: orglens source check <name>'
+        : `${String(without.length)} of ${String(plans.length)} org and sandbox sources cannot be logged in. "${first.source}": ${first.problem ?? ''}`,
+      ...notes,
+    ].join(' '),
+    details: { cliLogins: logins.length, sources: plans.map((plan) => ({ ...plan })), ...extra },
+  };
+}
+
 /** Runs every check. The workspace checks are skipped where there is no workspace. */
 export function doctor(locator: WorkspaceLocator = {}): Promise<DoctorReport> {
   return boundary(() => examine(locator));
@@ -117,10 +228,12 @@ async function examine(locator: WorkspaceLocator): Promise<DoctorReport> {
       'Install the optional package better-sqlite3 and select it in .orglens/local.toml.',
     ),
     await checkFallback(),
+    checkGit(locator.cwd ?? process.cwd()),
   ];
   const skipped = (id: string, summary: string): DoctorCheck => ({ id, status: 'skipped', summary, details: {} });
 
   let paths: ReturnType<typeof locateWorkspace> = null;
+  let validConfig: WorkspaceConfig | undefined;
   try {
     paths = locateWorkspace(locator);
     checks.push(
@@ -158,6 +271,7 @@ async function examine(locator: WorkspaceLocator): Promise<DoctorReport> {
         skipped('store', 'The configuration has to be valid first.'),
       );
     } else if (config.ok) {
+      validConfig = config.config;
       const count = config.config.sources.length;
       checks.push({
         id: 'config',
@@ -193,6 +307,8 @@ async function examine(locator: WorkspaceLocator): Promise<DoctorReport> {
       );
     }
   }
+
+  checks.push(checkLogins(validConfig, env));
 
   return { ok: checks.every((check) => check.status !== 'failed'), engineVersion: engineVersion(), checks };
 }

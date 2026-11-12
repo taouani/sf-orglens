@@ -53,6 +53,8 @@
     "yaml": "2.9.1"
   },
   "dependencies": {
+    "@jsforce/jsforce-node": "3.13.1",
+    "@salesforce/core": "9.4.6",
     "@salesforce/source-deploy-retrieve": "13.12.0",
     "ignore": "5.3.2",
     "smol-toml": "1.9.1"

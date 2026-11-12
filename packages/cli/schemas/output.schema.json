@@ -12,7 +12,19 @@
     },
     "command": {
       "description": "The command that ran. Null when the command line was rejected before a command ran.",
-      "enum": ["init", "source add", "source list", "source remove", "status", "snapshot", "coverage", "doctor", null]
+      "enum": [
+        "init",
+        "source add",
+        "source list",
+        "source remove",
+        "source link",
+        "source check",
+        "status",
+        "snapshot",
+        "coverage",
+        "doctor",
+        null
+      ]
     },
     "ok": {
       "description": "True if `data` holds the result. False if `error` says why there is none. The exit code can be other than 0 when this is true.",
@@ -29,11 +41,7 @@
   "oneOf": [
     {
       "title": "A command that failed",
-      "properties": {
-        "ok": { "const": false },
-        "data": { "type": "null" },
-        "error": { "$ref": "#/$defs/error" }
-      }
+      "properties": { "ok": { "const": false }, "data": { "type": "null" }, "error": { "$ref": "#/$defs/error" } }
     },
     {
       "title": "init",
@@ -87,6 +95,24 @@
       }
     },
     {
+      "title": "source link",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "source link" },
+        "data": { "$ref": "#/$defs/sourceLink" },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "source check",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "source check" },
+        "data": { "$ref": "#/$defs/sourceCheck" },
+        "error": { "type": "null" }
+      }
+    },
+    {
       "title": "status",
       "properties": {
         "ok": { "const": true },
@@ -128,10 +154,7 @@
       "type": "object",
       "required": ["code", "message"],
       "additionalProperties": false,
-      "properties": {
-        "code": { "type": "string" },
-        "message": { "type": "string" }
-      }
+      "properties": { "code": { "type": "string" }, "message": { "type": "string" } }
     },
     "error": {
       "type": "object",
@@ -162,6 +185,8 @@
             "SOURCE_IN_USE",
             "SOURCE_READ_FAILED",
             "SNAPSHOT_NOT_FOUND",
+            "LOGIN_FAILED",
+            "ORG_MISMATCH",
             "INTERNAL"
           ]
         },
@@ -230,11 +255,7 @@
         }
       ]
     },
-    "source": {
-      "type": "object",
-      "$ref": "#/$defs/sourceFields",
-      "unevaluatedProperties": false
-    },
+    "source": { "type": "object", "$ref": "#/$defs/sourceFields", "unevaluatedProperties": false },
     "sourceStatus": {
       "type": "object",
       "$ref": "#/$defs/sourceFields",
@@ -360,19 +381,127 @@
         "issues": {
           "description": "Everything that was left out, went wrong or is uncertain. A snapshot with an issue of severity `error` is partial.",
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["severity", "code", "message", "details"],
-            "additionalProperties": false,
-            "properties": {
-              "severity": { "enum": ["error", "warning", "info"] },
-              "code": { "description": "A stable code in upper case. Codes can be added.", "type": "string" },
-              "message": { "type": "string" },
-              "details": { "description": "Facts about the issue. The fields depend on the code.", "type": "object" }
+          "items": { "$ref": "#/$defs/issue" }
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["severity", "code", "message", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": { "enum": ["error", "warning", "info"] },
+        "code": { "description": "A stable code in upper case. Codes can be added.", "type": "string" },
+        "message": { "type": "string" },
+        "details": { "description": "Facts about the issue. The fields depend on the code.", "type": "object" }
+      }
+    },
+    "sourceLink": {
+      "description": "The Salesforce CLI login that was set for a source.",
+      "type": "object",
+      "required": ["source", "login", "username", "orgId", "declaredOrgId"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "description": "The name of the source.", "type": "string" },
+        "login": {
+          "description": "What was written to .orglens/local.toml: the alias or the user name that was given.",
+          "type": "string"
+        },
+        "username": { "description": "The user name of the login.", "type": "string" },
+        "orgId": {
+          "description": "The id of the org the login belongs to, if the Salesforce CLI knows it.",
+          "type": ["string", "null"]
+        },
+        "declaredOrgId": {
+          "description": "The org id the source declares. With null, nothing says which org is meant.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "sourceCheck": {
+      "description": "What the check of a source found: of an org or a sandbox, or of folders of a repository. `kind` says which.",
+      "oneOf": [
+        {
+          "title": "An org or a sandbox",
+          "type": "object",
+          "required": ["source", "kind", "login", "org", "declaredOrgId"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "description": "The name of the source.", "type": "string" },
+            "kind": { "enum": ["org", "sandbox"] },
+            "login": {
+              "type": "object",
+              "required": ["via", "alias", "username"],
+              "additionalProperties": false,
+              "properties": {
+                "via": {
+                  "description": "`jwt-env`: a private key from the environment. `linked`: the Salesforce CLI login that `orglens source link` set for the source. `org-id`: the one Salesforce CLI login that belongs to the org the source declares.",
+                  "enum": ["jwt-env", "linked", "org-id"]
+                },
+                "alias": {
+                  "description": "The alias of the Salesforce CLI login, if it has one.",
+                  "type": ["string", "null"]
+                },
+                "username": {
+                  "description": "The user name of the Salesforce CLI login. Null for a login with a key: there it comes from a secret.",
+                  "type": ["string", "null"]
+                }
+              }
+            },
+            "org": {
+              "type": "object",
+              "required": ["id", "instanceUrl", "apiVersion"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "description": "The id of the org, as the org states it: 18 characters.", "type": "string" },
+                "instanceUrl": {
+                  "description": "The address of the org. Null for a login with a key.",
+                  "type": ["string", "null"]
+                },
+                "apiVersion": {
+                  "description": "The API version OrgLens uses with this org: the newest it offers, as in 66.0.",
+                  "type": "string"
+                }
+              }
+            },
+            "declaredOrgId": {
+              "description": "The org id the source declares. With null, nothing says which org is meant, and any login is accepted.",
+              "type": ["string", "null"]
+            }
+          }
+        },
+        {
+          "title": "Folders of a repository",
+          "type": "object",
+          "required": ["source", "kind", "complete", "commit", "dirs", "components", "files", "bytes", "issues"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "description": "The name of the source.", "type": "string" },
+            "kind": { "const": "git" },
+            "complete": {
+              "description": "True if a snapshot taken now would be complete. False: the exit code is 5.",
+              "type": "boolean"
+            },
+            "commit": {
+              "description": "The full id of the commit a snapshot taken now would name, or null if it would name none.",
+              "type": ["string", "null"]
+            },
+            "dirs": {
+              "description": "The folders of the source, relative to the repository. One that could not be read is named in an issue.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "components": { "type": "integer", "minimum": 0 },
+            "files": { "type": "integer", "minimum": 0 },
+            "bytes": { "description": "The size of the files together.", "type": "integer", "minimum": 0 },
+            "issues": {
+              "description": "Everything that was observed. One of severity `error` would make a snapshot partial.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/issue" }
             }
           }
         }
-      }
+      ]
     },
     "doctor": {
       "type": "object",

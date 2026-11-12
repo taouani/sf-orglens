@@ -1,10 +1,11 @@
 /**
- * Changes to `orglens.toml` made by commands.
+ * Changes to `orglens.toml` and to `.orglens/local.toml` made by commands.
  *
- * The file belongs to its authors: it has comments, an order and a layout
+ * A file belongs to its authors: it has comments, an order and a layout
  * they chose. So it is never written back from parsed data. A source is
  * added by appending lines, and removed by deleting the lines of its table.
- * Every other line stays byte for byte as it was.
+ * The login of a source is set by changing or adding one line of the
+ * personal file. Every other line stays byte for byte as it was.
  *
  * Each change is checked before it is returned: the new text is read again,
  * and the sources it declares must be exactly the old ones plus or minus the
@@ -16,8 +17,10 @@
  * caller's part.
  */
 import { EngineError } from '../errors.ts';
+import { hasSecretShape } from '../redact.ts';
 import {
   diagnosticsJson,
+  LOCAL_CONFIG_FILE,
   readConfig,
   SHARED_CONFIG_FILE,
   SOURCE_NAME,
@@ -153,6 +156,32 @@ export function addSourceText(text: string, source: SourceDeclaration): { text: 
 const isBlank = (line: string): boolean => line.trim() === '';
 
 /**
+ * The text without the lines of one table. `undefined` if no table header
+ * with this path is in the text.
+ *
+ * Comments and blank lines after the last value of the table are kept: they
+ * usually introduce what follows.
+ */
+function withoutTable(text: string, path: readonly string[]): string | undefined {
+  const lines = text.split('\n');
+  const remove = new Set<number>();
+  for (const block of readLayout(text).blocks) {
+    if (block.path.length !== path.length || block.path.some((part, index) => part !== path[index])) continue;
+    // The table ends with its last value. The layout knows that line: a line of a long text can look like a
+    // comment, and a comment after the table is not part of it.
+    const last = block.contentEndLine;
+    for (let line = block.startLine; line <= last; line += 1) remove.add(line);
+    // Where a blank line stood before the table and one follows it, the two would now meet. The one before the
+    // table is dropped. The one after it can be the end of the file, and that has to keep its line end.
+    const blankBefore = block.startLine > 1 && isBlank(lines[block.startLine - 2] ?? '');
+    const blankAfter = last < lines.length && isBlank(lines[last] ?? '');
+    if (blankBefore && blankAfter) remove.add(block.startLine - 1);
+  }
+  if (remove.size === 0) return undefined;
+  return lines.filter((_line, index) => !remove.has(index + 1)).join('\n');
+}
+
+/**
  * Returns the text of `orglens.toml` without the table of one source.
  *
  * Comments and blank lines after the last value of the table are kept: they
@@ -181,22 +210,8 @@ export function removeSourceText(text: string, name: string): string {
     });
   }
 
-  const lines = text.split('\n');
-  const remove = new Set<number>();
-  for (const block of readLayout(text).blocks) {
-    if (block.path[0] !== 'sources' || block.path[1] !== name) continue;
-    // The table ends with its last value. The layout knows that line: a line of a long text can look like a
-    // comment, and a comment after the table is not part of it.
-    const last = block.contentEndLine;
-    for (let line = block.startLine; line <= last; line += 1) remove.add(line);
-    // Where a blank line stood before the table and one follows it, the two would now meet. The one before the
-    // table is dropped. The one after it can be the end of the file, and that has to keep its line end.
-    const blankBefore = block.startLine > 1 && isBlank(lines[block.startLine - 2] ?? '');
-    const blankAfter = last < lines.length && isBlank(lines[last] ?? '');
-    if (blankBefore && blankAfter) remove.add(block.startLine - 1);
-  }
-  if (remove.size === 0) throw notEditable(name);
-  const changed = lines.filter((_line, index) => !remove.has(index + 1)).join('\n');
+  const changed = withoutTable(text, ['sources', name]);
+  if (changed === undefined) throw notEditable(name);
 
   verifyEdit(
     changed,
@@ -204,5 +219,142 @@ export function removeSourceText(text: string, name: string): string {
     before.sources.filter((source) => source.name !== name),
     name,
   );
+  return changed;
+}
+
+const LOCAL_TEMPLATE = `# ${LOCAL_CONFIG_FILE}: the personal settings of this OrgLens workspace. This file is not committed.
+# It never holds a password, a token or a key.
+`;
+
+const localNotEditable = (name: string): EngineError =>
+  new EngineError(
+    'CONFIG_NOT_EDITABLE',
+    `The login of the source "${name}" is written in ${LOCAL_CONFIG_FILE} in a form OrgLens does not change.`,
+    {
+      hint: `Edit ${LOCAL_CONFIG_FILE} by hand. OrgLens changes a login written as the key "login" of a [sources.${name}] table.`,
+    },
+  );
+
+/** Reads both files as they are before the personal file is changed. Files with problems are not edited. */
+function readBoth(shared: string, local: string | undefined): WorkspaceConfig {
+  const current = readConfig({ shared, local });
+  if (current.ok) return current.config;
+  throw new EngineError('CONFIG_INVALID', 'The configuration has problems. Fix them before changing a login.', {
+    details: { diagnostics: diagnosticsJson(current.diagnostics) },
+  });
+}
+
+const sameLogins = (a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): boolean => {
+  const sorted = (logins: Readonly<Record<string, string>>): string =>
+    JSON.stringify(Object.entries(logins).sort(([one], [other]) => (one < other ? -1 : 1)));
+  return sorted(a) === sorted(b);
+};
+
+/** The check after every edit of the personal file: it is valid, and the logins are exactly the expected ones. */
+function verifyLocalEdit(
+  shared: string,
+  changed: string,
+  before: WorkspaceConfig,
+  expected: Readonly<Record<string, string>>,
+  name: string,
+): void {
+  const after = readConfig({ shared, local: changed });
+  if (!after.ok || !sameLogins(after.config.logins, expected) || after.config.store.driver !== before.store.driver) {
+    throw localNotEditable(name);
+  }
+}
+
+// The value of a key on one line: text in double or in single quotes, and what follows it.
+const LOGIN_LINE = /^([ \t]*login[ \t]*=[ \t]*)(?:"(?:[^"\\]|\\.)*"|'[^']*')(.*)$/;
+
+/**
+ * Returns the text of `.orglens/local.toml` with the Salesforce CLI login
+ * of one source set. `local` is the present text of the file, or
+ * `undefined` if there is none yet.
+ *
+ * Fails with `SOURCE_NOT_FOUND`, with `SOURCE_INVALID` for a source of the
+ * kind `git` or a login that cannot be one, and with `CONFIG_NOT_EDITABLE`
+ * if the login is written in a form this module does not change.
+ */
+export function linkLoginText(shared: string, local: string | undefined, name: string, login: string): string {
+  const before = readBoth(shared, local);
+  const source = before.sources.find((one) => one.name === name);
+  if (source === undefined) {
+    const declared = before.sources.map((one) => one.name);
+    throw new EngineError('SOURCE_NOT_FOUND', `No source named "${name}" is declared.`, {
+      hint: declared.length === 0 ? 'No source is declared yet.' : `Declared sources: ${declared.join(', ')}.`,
+      details: { source: name },
+    });
+  }
+  if (source.kind === 'git') {
+    throw new EngineError('SOURCE_INVALID', `The source "${name}" is of the kind "git" and has no login.`, {
+      details: { source: name, problems: [] },
+    });
+  }
+  // eslint-disable-next-line no-control-regex -- control characters are what this expression is for
+  if (login === '' || login !== login.trim() || login.length > 255 || /[\u0000-\u001f\u007f]/.test(login)) {
+    throw new EngineError('SOURCE_INVALID', 'A login is the alias or the user name of a Salesforce CLI login.', {
+      details: { source: name, problems: [] },
+    });
+  }
+  if (hasSecretShape(login)) {
+    throw new EngineError('SOURCE_INVALID', 'This value looks like a credential. A login is an alias or a user name.', {
+      details: { source: name, problems: [] },
+    });
+  }
+
+  const text = local ?? LOCAL_TEMPLATE;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const line = `login = ${tomlString(login)}`;
+  const layout = readLayout(text);
+  const blocks = layout.blocks.filter(
+    (block) => block.path.length === 2 && block.path[0] === 'sources' && block.path[1] === name,
+  );
+  const lines = text.split('\n');
+  let changed: string;
+  if (blocks.length === 0) {
+    // A login that is set without a table of its own is written with dotted keys or as an inline table.
+    if (before.logins[name] !== undefined) throw localNotEditable(name);
+    let head = text;
+    if (head !== '' && !head.endsWith('\n')) head += eol;
+    if (head !== '' && !/\n[ \t]*\r?\n$/.test(head)) head += eol;
+    changed = `${head}[sources.${name}]${eol}${line}${eol}`;
+  } else {
+    const block = blocks[0];
+    if (blocks.length > 1 || block === undefined || block.arrayOfTables) throw localNotEditable(name);
+    const written = layout.keys.some(
+      (key) => key.length === 3 && key[0] === 'sources' && key[1] === name && key[2] === 'login',
+    );
+    if (written) {
+      const at = layout.positionOf(['sources', name, 'login']).line - 1;
+      const present = lines[at] ?? '';
+      const carriage = present.endsWith('\r') ? '\r' : '';
+      const match = LOGIN_LINE.exec(carriage === '' ? present : present.slice(0, -1));
+      if (match === null) throw localNotEditable(name);
+      lines[at] = `${match[1] ?? ''}${tomlString(login)}${match[2] ?? ''}${carriage}`;
+    } else {
+      const header = lines[block.startLine - 1] ?? '';
+      lines.splice(block.startLine, 0, `${line}${header.endsWith('\r') ? '\r' : ''}`);
+    }
+    changed = lines.join('\n');
+  }
+
+  verifyLocalEdit(shared, changed, before, { ...before.logins, [name]: login }, name);
+  return changed;
+}
+
+/**
+ * Returns the text of `.orglens/local.toml` without the table of one
+ * source, or the text as it is if the file has no such table.
+ */
+export function unlinkLoginText(shared: string, local: string, name: string): string {
+  const before = readBoth(shared, local);
+  const changed = withoutTable(local, ['sources', name]);
+  if (changed === undefined) {
+    if (before.logins[name] !== undefined) throw localNotEditable(name);
+    return local;
+  }
+  const expected = Object.fromEntries(Object.entries(before.logins).filter(([source]) => source !== name));
+  verifyLocalEdit(shared, changed, before, expected, name);
   return changed;
 }

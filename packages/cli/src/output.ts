@@ -49,6 +49,8 @@ const EXIT_OF_ERROR: Readonly<Record<OutputErrorCode, ExitCode>> = {
   SOURCE_INVALID: EXIT.usage,
   SOURCE_IN_USE: EXIT.usage,
   SNAPSHOT_NOT_FOUND: EXIT.usage,
+  LOGIN_FAILED: EXIT.connection,
+  ORG_MISMATCH: EXIT.connection,
   WORKSPACE_IO: EXIT.failure,
   SOURCE_READ_FAILED: EXIT.failure,
   REFERENCE_INVALID: EXIT.failure,

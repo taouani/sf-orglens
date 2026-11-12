@@ -11,9 +11,9 @@ The reasons for this design are in decision records [0016](adr/0016-commands-con
 ```
 orglens.toml             shared configuration. Commit it.
 .orglens/.gitignore      contains "*", so Git ignores the whole folder
-.orglens/local.toml      personal settings. Optional, written by hand, never committed.
+.orglens/local.toml      personal settings. Optional, never committed. Written by hand or by "source link".
 .orglens/orglens.db      the workspace database (plus the -wal and -shm files SQLite creates beside it)
-.orglens/config.lock     exists only while a command changes orglens.toml
+.orglens/config.lock     exists only while a command changes a configuration file
 .orglens/logs/           log files
 ```
 
@@ -22,7 +22,7 @@ orglens.toml             shared configuration. Commit it.
 itself.
 
 Deleting the folder `.orglens` loses two things that cannot be read again from the sources: the snapshots, which
-record an org at a past moment, and `local.toml`, which was written by hand.
+record an org at a past moment, and `local.toml` with your personal settings.
 
 Neither file ever holds a password, a token or a key. OrgLens refuses a file in which a value looks like one,
 whatever key it stands under.
@@ -96,8 +96,14 @@ A source name starts with a lower-case letter and has up to 32 lower-case letter
 | `sandbox_of`   | sandbox      | The name of the source of kind `org` that this is a sandbox of.                                                                                 |
 | `sandbox_name` | sandbox      | The name of the sandbox: 1 to 10 letters and digits.                                                                                            |
 
-All four are optional. No command connects to an org yet, so nothing reads `login_url` today beyond checking it.
-The commands that connect arrive with the second part of Salesforce connectivity, later in Phase 0.
+All four are optional.
+
+- `org_id` is what keeps a login from pointing at the wrong org. With it, OrgLens finds the Salesforce CLI login
+  of that org by itself, and refuses a login of another org (`ORG_MISMATCH`). Without it, a login has to be
+  linked with `orglens source link`, and any org is accepted. `orglens source check` prints the id to add.
+- `login_url` is read for a login with a key from the environment, when the variable for the login URL is not set
+  (see [Environment variables](#environment-variables)). A Salesforce CLI login carries its own address.
+- `sandbox_of` and `sandbox_name` are checked and not used by a command yet.
 
 ### A source of kind `git`
 
@@ -156,16 +162,26 @@ The source that is read can be a plain folder that is in no repository. Its snap
 
 ## `.orglens/local.toml`
 
-This file holds what differs from one machine to the next. It is optional.
+This file holds what differs from one machine or one person to the next. It is optional.
 
 ```toml
 [store]
 driver = "better-sqlite3"
+
+[sources.prod]
+login = "acme-prod"
 ```
 
-| Key            | Value                                                                                                                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `store.driver` | The SQLite binding: `"node:sqlite"` (default, built into Node.js) or `"better-sqlite3"` (an optional package that has to be installed). See [record 0025](adr/0025-sqlite-driver.md). |
+| Key                    | Value                                                                                                                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store.driver`         | The SQLite binding: `"node:sqlite"` (default, built into Node.js) or `"better-sqlite3"` (an optional package that has to be installed). See [record 0025](adr/0025-sqlite-driver.md).                                                             |
+| `sources.<name>.login` | The Salesforce CLI login you use for the org or sandbox `<name>`: its alias or its user name, as `sf org list` shows it. `orglens source link <name> <login>` writes it. It is a name, not a credential: the login stays with the Salesforce CLI. |
+
+`login` is accepted only for an org or a sandbox. `orglens source remove` removes the table together with the
+source. A table for a name that `orglens.toml` does not declare is not an error: the shared file is changed by
+others, and a source that a colleague removed or renamed must not stop every command of yours. Its login is not
+used, and `orglens doctor` names it until you remove the table. See [the logins](cli.md#logins) for the order in
+which a login is found.
 
 ## Environment variables
 
@@ -173,6 +189,39 @@ driver = "better-sqlite3"
 | ----------------------- | ------------------------------------------------------------------------------------------------------ |
 | `ORGLENS_WORKSPACE`     | The workspace folder. `--workspace` wins over it. An empty value counts as not set.                    |
 | `ORGLENS_SQLITE_DRIVER` | The SQLite binding, with the same two values as `store.driver`. It wins over the file. Empty: not set. |
+
+### A login with a key, for a job without a person
+
+A build server has no Salesforce CLI login. It logs in with a private key whose certificate is uploaded to an app
+in the org (the OAuth JWT bearer flow). OrgLens reads the login from variables that carry the name of the source:
+in upper case, with `_` for `-`. For a source `prod` the prefix is `ORGLENS_JWT_PROD_`, for `uat-eu` it is
+`ORGLENS_JWT_UAT_EU_`.
+
+| Variable                         | Meaning                                                                                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORGLENS_JWT_<SOURCE>_USERNAME`  | The user to log in as. Required.                                                                                                                                                  |
+| `ORGLENS_JWT_<SOURCE>_CLIENT_ID` | The consumer key of the app in the org. Required.                                                                                                                                 |
+| `ORGLENS_JWT_<SOURCE>_KEY`       | The private key in PEM form, without a passphrase. A value in one line may carry its line ends as `\n`. Blanks and line ends around the value are ignored.                        |
+| `ORGLENS_JWT_<SOURCE>_KEY_FILE`  | The path of a file that holds the key. Exactly one of the two key variables is set. A relative path starts at the folder the command runs in, not at the workspace.               |
+| `ORGLENS_JWT_<SOURCE>_LOGIN_URL` | Where to log in. Optional. Without it: the `login_url` of the source, and without that `https://login.salesforce.com` for an org and `https://test.salesforce.com` for a sandbox. |
+
+- As soon as one of the five is set, the source is logged in with the key, and no Salesforce CLI login is
+  considered for it. If a required one is missing, the command ends with `LOGIN_FAILED`.
+- An empty value counts as not set.
+- Only these five names are read. A variable with another name, such as `ORGLENS_JWT_PROD_CLIENTID` or
+  `ORGLENS_JWT_UAT-EU_USERNAME`, is not an error for the commands, and a source for which none of the five is set
+  uses a Salesforce CLI login. `orglens doctor` warns about every variable that starts with `ORGLENS_JWT_` and is
+  read by no source.
+- The user of the key must not also have a Salesforce CLI login on the machine. The Salesforce library would
+  take over the stored login of that user, and a login with a key would no longer be only that. The command ends
+  with `LOGIN_FAILED` (`JWT_USER_HAS_LOGIN`) before anything is sent. A build server has no such login.
+- The login URL starts with `https://`. Only for an address of this machine itself (`localhost`, `127.0.0.1`),
+  `http://` is accepted, which is what tests use.
+- The key is an RSA key. OrgLens signs the request with it, sends the request to Salesforce, and keeps the session
+  it gets in memory. Neither the key nor the session is written to a file or a log. The key never belongs in
+  `orglens.toml` or `local.toml`, and both files refuse it.
+- The app in the org needs the OAuth scope `api`, and the user has to be allowed to use it.
+  [live-org-setup.md](live-org-setup.md) walks through the set-up of such an app for the test org of this project.
 
 ## How the files are checked
 
@@ -192,10 +241,11 @@ driver = "better-sqlite3"
 With `--json`, the problems are in `error.details.diagnostics` of the output, one object per problem with `file`,
 `line`, `column`, `path`, `message` and `text` (the line a person would read). See [cli.md](cli.md).
 
-## How `source add` and `source remove` change the file
+## How the `source` commands change the files
 
-The two commands edit `orglens.toml` as text. They do not rewrite the file from parsed values, so comments, the
-order of keys and the layout of every other line stay exactly as they were.
+`source add` and `source remove` edit `orglens.toml` as text, and `source link` and `source remove` edit
+`.orglens/local.toml` the same way. They do not rewrite a file from parsed values, so comments, the order of keys
+and the layout of every other line stay exactly as they were.
 
 - `source add` appends a new table `[sources.NAME]` at the end of the file. A value that is the default, such as
   `repo = "."`, is not written.
@@ -203,13 +253,18 @@ order of keys and the layout of every other line stay exactly as they were.
   Comments above the header and comments after the last value are kept, because nothing tells whom they belong
   to. Where a blank line stood before the table and another after it, one of the two is removed with it. A source
   that another source refers to with `sandbox_of` or `tracks` is not removed.
+- `source link` changes the value of `login` in the table `[sources.NAME]` of `local.toml` and keeps a comment
+  after it. Where the table has no `login`, a line is added below its header. Where there is no such table, one is
+  appended, and where there is no file, it is created with a two-line comment at its top. `source remove` deletes
+  the source from `orglens.toml` first and the table from `local.toml` second. If the second step fails, a login
+  is left for a source that is no longer declared, which is a valid configuration and which `doctor` names.
 - After the change and before the file is written, the new text is read and checked like any configuration, and it
   must show exactly the intended difference. If it does not, nothing is written.
 - The new file is written next to the old one and then moved over it, so a crash never leaves half a file. It
   keeps the permissions of the old one. If `orglens.toml` is a link, the file it points at is replaced and the link
   stays.
-- While one command changes the file, a second one waits for it, for up to two seconds.
+- While one command changes a file, a second one waits for it, for up to two seconds.
 - The file has to be UTF-8. A file in another encoding is refused, not converted.
 - Some ways of writing TOML cannot be changed safely as text: sources written as inline tables or with dotted keys
-  such as `sources.prod.kind = "org"`, for example. The commands then stop with the error `CONFIG_NOT_EDITABLE` and
-  change nothing. The file can still be edited by hand, and every other command reads it.
+  such as `sources.prod.kind = "org"`, for example. That holds for both files. The commands then stop with the error
+  `CONFIG_NOT_EDITABLE` and change nothing. The file can still be edited by hand, and every other command reads it.

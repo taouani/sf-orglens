@@ -1,7 +1,8 @@
 Usage: orglens source remove [options] <name>
 
-Removes a source from orglens.toml. Every other line of the file is kept.
-Snapshots already taken of the source stay in the database.
+Removes a source from orglens.toml, and the login that was set for it from
+.orglens/local.toml. Every other line of the files is kept. Snapshots already
+taken of the source stay in the database.
 
 Arguments:
   name                  the name of the source

@@ -586,13 +586,15 @@ describe('orglens doctor', () => {
     const lines = run.stdout.trimEnd().split('\n');
     expect(lines[0]).toMatch(/^OrgLens engine \d+\.\d+\.\d+/);
     expect(lines[2]).toMatch(/^STATUS +CHECK +FINDING$/);
-    expect(lines.slice(3, 9).map((line) => line.split(/ +/).slice(0, 2))).toEqual([
+    expect(lines.slice(3, 11).map((line) => line.split(/ +/).slice(0, 2))).toEqual([
       ['ok', 'node'],
       ['ok', 'sqlite'],
       ['ok', 'sqlite-fallback'],
+      ['ok', 'git'],
       ['ok', 'workspace'],
       ['ok', 'config'],
       ['ok', 'store'],
+      ['ok', 'logins'],
     ]);
     expect(lines.at(-1)).toBe('OrgLens can run here.');
   });
@@ -675,7 +677,8 @@ describe('the --json contract', () => {
   });
 
   it('ends with the documented exit code for every error code', () => {
-    // The table of docs/cli.md, written out once more: what the user did wrong is 2, what failed is 1.
+    // The table of docs/cli.md, written out once more: what the user did wrong is 2, a problem with a login is 4,
+    // what failed is 1.
     const usage: readonly ErrorCode[] = [
       'KEY_INVALID',
       'CONFIG_INVALID',
@@ -688,9 +691,11 @@ describe('the --json contract', () => {
       'SOURCE_IN_USE',
       'SNAPSHOT_NOT_FOUND',
     ];
+    const connection: readonly ErrorCode[] = ['LOGIN_FAILED', 'ORG_MISMATCH'];
     const silent = createWriter({ stdout: () => undefined, stderr: () => undefined, cwd: '', env: {} }, true);
     for (const code of Object.keys(ERROR_CODES) as ErrorCode[]) {
-      expect(silent.fail('status', new EngineError(code, 'x')), code).toBe(usage.includes(code) ? 2 : 1);
+      const expected = usage.includes(code) ? 2 : connection.includes(code) ? 4 : 1;
+      expect(silent.fail('status', new EngineError(code, 'x')), code).toBe(expected);
     }
     // A code this version does not know, from a newer copy of the engine, is a failure and never a success.
     const unknown = Object.assign(new EngineError('INTERNAL', 'x'), { code: 'NOT_YET_KNOWN' });

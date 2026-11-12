@@ -65,7 +65,7 @@ describe('orglens binary', () => {
     const names = (command: ReturnType<typeof buildProgram>): string[] => command.commands.map((one) => one.name());
     const program = buildProgram(io, () => undefined);
     expect(names(program)).toEqual(['init', 'source', 'status', 'snapshot', 'coverage', 'doctor']);
-    expect(names(program.commands[1] ?? program)).toEqual(['add', 'list', 'remove']);
+    expect(names(program.commands[1] ?? program)).toEqual(['add', 'list', 'remove', 'link', 'check']);
   });
 
   it.each([
@@ -74,6 +74,8 @@ describe('orglens binary', () => {
     ['source add', 'help-source-add.txt'],
     ['source list', 'help-source-list.txt'],
     ['source remove', 'help-source-remove.txt'],
+    ['source link', 'help-source-link.txt'],
+    ['source check', 'help-source-check.txt'],
     ['status', 'help-status.txt'],
     ['snapshot', 'help-snapshot.txt'],
     ['coverage', 'help-coverage.txt'],

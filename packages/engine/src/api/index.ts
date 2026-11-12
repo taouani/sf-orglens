@@ -19,6 +19,7 @@ export type {
   InitResult,
   SnapshotSummary,
   SourceInput,
+  SourceLink,
   SourceStatus,
   StoreStatus,
   Workspace,
@@ -28,6 +29,7 @@ export type {
 export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
 
 export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
+export type { GitCheck, OrgCheck, SourceCheck } from './check.ts';
 
 export { doctor } from './doctor.ts';
 export type { DoctorCheck, DoctorReport } from './doctor.ts';
