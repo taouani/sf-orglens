@@ -1,6 +1,6 @@
 # 0008. Own static analysis is primary, Salesforce data is a cross-check
 
-- Status: Accepted
+- Status: Superseded by [0034](0034-dependency-api-is-the-cross-check.md)
 - Date: 2026-11-11
 - Decisions: A4
 - Supersedes: Legacy record 0005 (compiler symbol table as the primary Apex source). See [legacy.md](legacy.md).
