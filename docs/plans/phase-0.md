@@ -326,8 +326,12 @@ that worked. Everything else in the list below is not built.
   logs in.
 - In a copy of the repository the job is skipped. In the repository itself, missing secrets are a failure and not
   a clean skip: there they mean that the setup is broken, and a green run would hide that.
-- The step is tested against a mock org, including that it prints nothing that names the org or the user. It has
-  not run against Salesforce before the maintainer starts it for the first time.
+- The step prints no text that OrgLens, a Salesforce library or Salesforce wrote: only sentences of its own with
+  codes, and an answer of Salesforce if it is one of a list of known texts. The code review asked for this in
+  place of a filter that masks what looks like an address or a user name. It is tested against a mock org and
+  against a stand-in for `orglens` that answers with secrets in every field. The list of known texts is written
+  from the documentation of Salesforce and from memory. The step has not run against Salesforce before the
+  maintainer starts it for the first time.
 
 Run and record in `docs/research/phase-0/real-org.md`:
 
