@@ -1,4 +1,4 @@
-# 0021. A three-level proof of correctness and a gate before anything else
+# 0021. A three-level proof of correctness and a gate before riders and launch
 
 - Status: Accepted
 - Date: 2026-11-11
@@ -6,9 +6,9 @@
 
 ## Context
 
-For an impact tool, a missed dependency in front of a client destroys trust, and a wrong result is worse than no
-result. None of the prototypes could show that its results were correct. Research also found that Salesforce's own
-dependency data is weaker than assumed, so it cannot be the only yardstick.
+For an impact tool, a missed dependency in front of a client destroys trust, and a wrong result is worse than no result.
+None of the prototypes could show that its results were correct. Research also found that Salesforce's own dependency
+data may be weaker than assumed (it is in Beta and capped at 2,000 rows per query), so it cannot be the only yardstick.
 
 ## Decision
 
@@ -22,8 +22,11 @@ Correctness is proven at three levels.
    enters the repository, the benchmarks or the issue tracker.
 
 The gate: no dependency that Salesforce confirms is missing from OrgLens, and every difference between the two is
-explained. Riders, language-model features and any announcement wait for the gate
-([0002](0002-scope-and-release-order.md)).
+explained. Ingest and query times are measured at the gate and the benchmark is published. Riders, language-model
+features and any announcement wait for the gate ([0002](0002-scope-and-release-order.md)).
+
+The gate definition is revisited after the cross-check measurements of Phase 0, which may show that Salesforce
+confirms less than assumed. A change to the gate is a new record.
 
 ## Consequences
 

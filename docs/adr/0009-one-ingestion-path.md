@@ -11,9 +11,9 @@ prototypes had separate code paths for orgs and repositories, which gave differe
 
 ## Decision
 
-- **A5.** A live org is retrieved through the Metadata API and converted to source format, the same format a
-  Git repository holds. Both then go through the same parsers. The Tooling API is used only for the Dependency
-  API and compiler symbol data. Retrieves are chunked and resumable from the start.
+- **A5.** A live org is retrieved through the Metadata API and converted to source format, the same format a Git
+  repository holds. Both then go through the same parsers. The Tooling API supplies the Dependency API and compiler
+  symbol data. Retrieves are chunked and resumable from the start.
 - **S4.** Login, retrieval and reading of source-format folders use Salesforce's own open-source libraries,
   `@salesforce/core` and `@salesforce/source-deploy-retrieve`. Only the `sources` layer may import them.
 

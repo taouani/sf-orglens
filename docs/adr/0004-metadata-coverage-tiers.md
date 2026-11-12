@@ -12,11 +12,11 @@ lost depth. Some types, reports above all, can number in the tens of thousands a
 ## Decision
 
 The first release covers the logic tier: objects, fields including formulas, validation rules, Apex classes and
-triggers, flows, workflow rules, record types, custom metadata types and their records, profiles, permission sets
-and permission set groups, Lightning web components and Aura components, and named credentials.
+triggers, flows, workflow rules, record types, custom metadata types and their records, field sets, profiles, permission
+sets and permission set groups, Lightning web components and Aura components, and named credentials.
 
-The presentation tier is the next milestone: layouts, Lightning pages, list views, reports, email templates and
-sharing rules. Reports are opt-in.
+The presentation tier is the next coverage milestone, built after the correctness gate (phase 6 of the roadmap):
+layouts, Lightning pages, list views, reports, email templates and sharing rules. Reports are opt-in.
 
 Every snapshot records, per metadata type, what was listed, what was retrieved and what was analysed. Results are
 shown together with that coverage.

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-11
 - Decisions: F2, S5
+- Supersedes: Legacy record 0003 (LiteLLM as the language-model abstraction). See [legacy.md](legacy.md).
 
 ## Context
 
@@ -18,12 +19,12 @@ graph query gives a better answer than similarity search, and it gives the same 
 - **S5.** Access to language models goes through one small internal interface with two adapters to start: the
   OpenAI-compatible protocol, which covers most hosted and local providers, and Anthropic. The client library is
   chosen when the layer is built.
-- The language-model layer is a client of the engine API like the CLI. It never reads the store directly, and
-  anything it suggests is labelled and never counted as a fact.
+- The language-model layer is a client of the engine API like the CLI. It never reads the store directly.
 
 ## Consequences
 
-- OrgLens is fully usable with no model, no API key and no network.
+- OrgLens is fully usable with no model and no API key. Analysis of stored snapshots and of Git sources needs no
+  network.
 - Provider choice stays open, including local models.
 - Free-form questions arrive late, after the correctness gate. The `ask` command is not part of the first
   release.

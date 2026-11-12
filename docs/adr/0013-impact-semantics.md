@@ -15,8 +15,7 @@ breaks only comparisons against it.
 The impact engine first answers by reachability: every component that depends on the target, with the path of
 references that explains each one.
 
-Change-aware rules are added on top, one change type at a time, starting with delete and data-type change. They
-classify each affected component as will break, likely affected, or references only.
+Change-aware rules are added on top, one change type at a time, starting with delete and data-type change.
 
 ## Consequences
 

@@ -12,9 +12,9 @@ would have meant a rewrite.
 
 ## Decision
 
-OrgLens is one engine library with five architectural layers: sources, extraction, store, deterministic engines, and
-clients. Clients (the CLI now, a local HTTP server with a browser UI later, the optional language-model layer) use
-only the public API of the engine.
+OrgLens has five architectural layers: sources, extraction, store, deterministic engines, and clients. The first four
+form one engine library. Clients (the CLI now, a local HTTP server with a browser UI later, the optional language-model
+layer) use only the public API of the engine.
 
 In the repository the engine package has six folders in a fixed dependency order: `core`, `sources`, `extraction`,
 `store`, `engines`, `api`. `core` holds shared building blocks, and `api` is the public surface. A folder may import

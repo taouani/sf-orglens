@@ -16,11 +16,13 @@ before a change.
   four impact questions, comparison, and coverage reporting. Automation order, integration map and a basic
   security audit follow as riders over the same graph. No rider starts until impact analysis has passed the
   correctness gate ([0021](0021-correctness-proof.md)).
-- **F4.** Retrieval-augmented question answering, vector search, the standalone binary build and unused
-  dependencies are not carried over. OrgLens never queries record data from an org. Documentation and diagram
-  generation, dead-code detection and security posture audit are deferred.
-- **M3.** Build order is a thin slice through every layer first (objects, fields, formulas, validation rules),
-  then widening by metadata family: flows, Apex, permissions, comparison.
+- **F4.** Retrieval-augmented question answering, vector search, the standalone binary build and unused dependencies are
+  not carried over. By default OrgLens queries no record data from an org. The one exception is an explicit opt-in,
+  recorded in [0014](0014-access-impact.md). Documentation and diagram generation, dead-code detection and security
+  posture audit are deferred.
+- **M3.** Build order is a thin slice through every layer first (objects, fields, formulas, validation rules), then
+  widening by metadata family (flows and configuration, Apex, permissions), then comparison and access. The Apex trial
+  ([0018](0018-apex-analysis-foundation.md)) runs alongside.
 
 ## Consequences
 
@@ -28,4 +30,5 @@ before a change.
 - Requests for riders and for language-model features are recorded and wait. This is the main guard against
   scope creep by a solo developer.
 - A command is added to the CLI only when it does something. There are no stubs.
-- Not reading record data keeps the local-first promise simple: OrgLens reads metadata and code, nothing else.
+- Not reading record data keeps the local-first promise simple: by default OrgLens reads metadata and code, nothing
+  else.

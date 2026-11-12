@@ -1,7 +1,7 @@
 # 0023. Toolchain, and layer rules enforced by independent mechanisms
 
 - Status: Accepted
-- Date: 2026-11-11
+- Date: 2026-11-12
 - Decisions: none (made during the build)
 
 ## Context
@@ -25,13 +25,13 @@ exact versions, and a package version must have been public for a day before it 
    path before judging it, and covers static imports, re-exports, `import()`, type imports and `require`.
 2. dependency-cruiser, which checks the same rules on the resolved dependency graph and also forbids circular
    and unresolvable imports.
-3. For the boundary between a client and the engine only: the `exports` map of the engine package, which exposes
-   nothing but the entry point. The compiler and Node.js both honour it.
+3. For the boundary between a client and the engine only: the `exports` map of the engine package, which exposes only
+   the entry point and `package.json`. The compiler and Node.js both honour it.
 
-The rules: a layer never imports from a later layer or from the engine entry point; `packages/engine/src` holds only
-the layer folders and `index.ts`; the engine never imports a client; a client imports the engine only by its package
-name; only the `sources` layer imports the Salesforce libraries; a client never imports the database driver or the
-XML parser.
+The rules: a layer never imports from a later layer or from the engine entry point; `packages/engine/src` holds only the
+layer folders and `index.ts`; the engine never imports a client; a client imports the engine only by its package name;
+inside `packages/engine/src`, only the `sources` layer imports the Salesforce libraries; a client never imports the
+database driver or the XML parser.
 
 `scripts/check-boundaries.mjs` runs in CI. It writes probe files that break each rule, and control probes with
 allowed imports, runs the tools, and fails unless every probe gets the expected verdict. A rule without a probe
@@ -49,4 +49,6 @@ fails the script, and the layer order is stated a second time there so that loos
 
 ## Notes
 
-Evidence and version numbers are in the research note [toolchain.md](../research/phase-0/toolchain.md).
+Evidence and version numbers are in the research note [toolchain.md](../research/phase-0/toolchain.md). This record
+departs from that note in two places: it stays on TypeScript 6 alone where the note recommended running TypeScript 7
+beside it, and it uses its own lint rule where the note used a generic import restriction.

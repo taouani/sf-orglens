@@ -52,8 +52,8 @@ The rules are defined once in `layers.cjs` and enforced twice: by an ESLint rule
 between a client and the engine is guarded a third time by the `exports` map of the engine package, which the
 compiler and Node.js both honour. `pnpm run check:boundaries` fails if a rule has no probe.
 
-A decision that changes the architecture, the data model, the storage format or a public contract needs a decision
-record in [`docs/adr/`](docs/adr/).
+A decision that changes the architecture, the data model, the storage format, a public contract or the scope of a
+release needs a decision record in [`docs/adr/`](docs/adr/).
 
 ## Tests
 

@@ -7,13 +7,13 @@
 ## Context
 
 The CLI is the first client, and the web UI, CI pipelines and the later agent will all drive the same engine. In the
-prototypes, command names and output shapes changed freely, and configuration mixed shared settings with personal
-ones and with secrets.
+prototypes, command names and output shapes changed freely, and configuration mixed shared settings with personal ones.
 
 ## Decision
 
-- **Commands.** `source add|list|remove`, `snapshot`, `impact` (for a component, and for a change set with
-  `--diff base..head`), `compare`, `access`, `coverage`, `status`, `doctor`, `explain`, and later `ask`.
+- **Commands.** `init`, `source add|list|remove|link|check`, `snapshot`, `coverage`, `status` and `doctor` in Phase 0;
+  `impact` (for a component and for a change set), `compare` and `access` when their engines exist; `explain` and `ask`
+  after the correctness gate. Flags are not part of this record.
 - **Output.** Every command has a documented, stable `--json` output and documented exit codes for CI.
 - **Configuration.** `orglens.toml` is committable: it declares sources and how repository folders map to orgs.
   Data lives in a local `.orglens/` folder that is never committed. Neither holds secrets.

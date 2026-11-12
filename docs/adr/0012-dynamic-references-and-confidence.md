@@ -27,7 +27,7 @@ Every reference, static or dynamic, carries one of three confidence tiers:
 - **possible**: the object is known and the field is decided at run time.
 
 What remains unresolved is stored as an object-level `possible` dependency, never dropped. Reading custom settings
-records is opt-in. Suggestions from a language model are allowed but labelled, and never counted as facts.
+records is deferred.
 
 ## Consequences
 
@@ -35,5 +35,5 @@ records is opt-in. Suggestions from a language model are allowed but labelled, a
   tool.
 - Results are shown by tier, confirmed first, so a long `possible` list does not hide the certain results.
 - The false-positive rate of text matching has to be measured on public codebases and tuned.
-- Reading custom metadata records is the one place OrgLens reads records. They are configuration, not business
-  data, and they are part of the metadata retrieve.
+- Custom metadata records are read because they are configuration and arrive with the metadata retrieve. They are not
+  business data.

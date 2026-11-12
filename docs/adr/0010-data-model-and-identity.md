@@ -14,18 +14,19 @@ three. One prototype put the org id inside every identifier, which made that imp
 
 There are two core records.
 
-- **Component.** Anything that can be referenced or changed, down to a field, an Apex method or a flow element.
-  It has a type, a name and a flexible attributes column.
+- **Component.** Anything that can be referenced or changed, down to a field, an Apex method or a flow element. It has a
+  type and a name.
 - **Reference.** A directed link between two components with a kind from a fixed vocabulary (`contains`, `reads`,
   `writes`, `calls`, `extends`, `implements`, `uses-type`, `triggers-on`, `grants`, `references`), an origin, a
-  confidence tier, and a location (file and line).
+  confidence tier, a resolution and a source location (file, line and column).
 
 A component key is the metadata type plus the fully qualified API name including namespace, with an optional path to
 a sub-component: `Type:name[#kind:sub[/kind:sub]]`. Examples: `CustomField:account.industry`,
 `ApexClass:accountservice#method:run(account,boolean)`, `Flow:my_flow#element:decision_1`. Names are case-folded in
 the key and the original spelling is kept for display.
 
-The key never contains the org, the source or the snapshot. Those are separate columns.
+The key never contains the org, the source or the snapshot. The source and the snapshot are separate columns, and the
+org is a property of the source.
 
 ## Consequences
 

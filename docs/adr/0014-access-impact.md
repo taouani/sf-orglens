@@ -14,8 +14,7 @@ profile or permission set, and that is personal data held in records, not metada
 By default, access impact is computed from metadata only: which profiles, permission sets and permission set groups
 grant access to a component, and how those grants differ between two snapshots.
 
-Reading user assignments is an explicit opt-in. When enabled it returns counts only, unless names are requested
-explicitly.
+Reading user assignments is an explicit opt-in. When enabled it returns counts only.
 
 ## Consequences
 

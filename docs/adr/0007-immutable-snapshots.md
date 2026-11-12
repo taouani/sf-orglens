@@ -22,7 +22,9 @@ Impact analysis runs on one snapshot. A comparison is a diff of any two snapshot
 
 - All three comparisons are the same operation, and history comes free.
 - Results are reproducible: a snapshot never changes after it is written.
-- The database grows with every snapshot. Sharing content keeps that modest (research: ten snapshots of a large
-  org cost about 159 MB against 1,103 MB as full copies), and a retention policy is needed.
+- The database grows with every snapshot. Sharing content keeps that modest, and a retention policy is needed. Research
+  on a synthetic org of about 10,000 top-level components (Linux only): the component and reference rows of ten
+  snapshots took about 159 MB with shared versions against 1,103 MB as full copies. With file bodies the estimate is
+  about 0.2 GB against about 2.65 GB.
 - Incremental refresh has to produce a new snapshot that shares content with the previous one, not update in
   place.
