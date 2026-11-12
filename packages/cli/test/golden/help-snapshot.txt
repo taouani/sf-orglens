@@ -1,15 +1,19 @@
 Usage: orglens snapshot [options] <source>
 
 Reads a source now and stores its metadata files as a new snapshot in the
-workspace database. Earlier snapshots are kept. The source is not changed. Today
-a source of the kind "git" can be read. Orgs and sandboxes follow. The exit code
-is 5 if the snapshot is partial: something could not be read, and the output
-says what.
+workspace database. Earlier snapshots are kept. The source is not changed. An
+org or a sandbox is asked what it holds, and its components are retrieved in
+chunks, which takes minutes. If that is interrupted, the next run continues the
+same snapshot. Only metadata is read, never records. The exit code is 5 if the
+snapshot is partial: something could not be read, and the output says what. It
+is 4 if the login is missing or does not work or the org cannot be reached.
 
 Arguments:
   source                the name of the source
 
 Options:
+  --restart             org, sandbox: give up a snapshot that was interrupted,
+                        and take a new one
   -h, --help            show help and exit
 
 Global Options:

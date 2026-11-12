@@ -86,7 +86,18 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
       // One answer to "was JSON asked for" for the whole run: the one `main` took from the command line.
       const writer = createWriter(io, json);
       try {
-        finish(writer.succeed(name, await work({ io, workspace: globals.workspace })));
+        finish(
+          writer.succeed(
+            name,
+            await work({
+              io,
+              workspace: globals.workspace,
+              progress: (line) => {
+                writer.progress(line);
+              },
+            }),
+          ),
+        );
       } catch (error) {
         finish(writer.fail(name, error));
       }
@@ -202,12 +213,16 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .description(
       'Reads a source now and stores its metadata files as a new snapshot in the workspace database. ' +
         'Earlier snapshots are kept. The source is not changed. ' +
-        'Today a source of the kind "git" can be read. Orgs and sandboxes follow. ' +
-        'The exit code is 5 if the snapshot is partial: something could not be read, and the output says what.',
+        'An org or a sandbox is asked what it holds, and its components are retrieved in chunks, which takes ' +
+        'minutes. If that is interrupted, the next run continues the same snapshot. ' +
+        'Only metadata is read, never records. ' +
+        'The exit code is 5 if the snapshot is partial: something could not be read, and the output says what. ' +
+        'It is 4 if the login is missing or does not work or the org cannot be reached.',
     )
     .argument('<source>', 'the name of the source')
-    .action((name: string, _options: unknown, command: Command) =>
-      run('snapshot', (context) => snapshot(context, name))(command),
+    .option('--restart', 'org, sandbox: give up a snapshot that was interrupted, and take a new one')
+    .action((name: string, options: { restart?: boolean }, command: Command) =>
+      run('snapshot', (context) => snapshot(context, name, options))(command),
     );
 
   program

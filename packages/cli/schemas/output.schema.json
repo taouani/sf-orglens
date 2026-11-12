@@ -185,6 +185,7 @@
             "SOURCE_IN_USE",
             "SOURCE_READ_FAILED",
             "SNAPSHOT_NOT_FOUND",
+            "SNAPSHOT_RUNNING",
             "LOGIN_FAILED",
             "ORG_MISMATCH",
             "INTERNAL"
@@ -259,14 +260,36 @@
     "sourceStatus": {
       "type": "object",
       "$ref": "#/$defs/sourceFields",
-      "required": ["snapshots", "latestSnapshot"],
+      "required": ["snapshots", "latestSnapshot", "unfinishedSnapshot"],
       "properties": {
         "snapshots": {
-          "description": "How many snapshots of this source the database holds.",
+          "description": "How many finished snapshots of this source the database holds: complete ones and partial ones.",
           "type": "integer",
           "minimum": 0
         },
+        "unfinishedSnapshot": {
+          "description": "The snapshot of an org or a sandbox that is being taken, or that was interrupted. The next `snapshot` of the source continues it. Null if there is none.",
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["id", "startedAt", "chunksDone", "chunks"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "integer" },
+                "startedAt": { "type": "string" },
+                "chunksDone": {
+                  "description": "How many chunks of the retrieve are stored or were given up.",
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "chunks": { "description": "How many chunks the retrieve has.", "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        },
         "latestSnapshot": {
+          "description": "The latest finished snapshot, which is the one `coverage` shows. Null if there is none.",
           "anyOf": [
             { "type": "null" },
             {
@@ -326,6 +349,7 @@
             "startedAt",
             "finishedAt",
             "engineVersion",
+            "apiVersion",
             "commit",
             "files",
             "bytes"
@@ -340,12 +364,16 @@
             "source": { "description": "The name of the source.", "type": "string" },
             "kind": { "enum": ["org", "sandbox", "git"] },
             "status": {
-              "description": "`complete`: everything the source holds was read. `partial`: something is missing, and the issues of severity `error` say what. `running` and `failed`: a snapshot of an org that has not ended, or that ended without a result.",
+              "description": "`complete`: everything the source holds was read. `partial`: something is missing, and the issues of severity `error` say what. `running`: a snapshot of an org that is being taken, or that was interrupted and is continued by the next `snapshot`. `failed`: a snapshot of an org that was given up.",
               "enum": ["running", "complete", "partial", "failed"]
             },
             "startedAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
             "finishedAt": { "type": ["string", "null"] },
             "engineVersion": { "description": "The version of the engine that took it.", "type": "string" },
+            "apiVersion": {
+              "description": "The version of the Metadata API an org or a sandbox was read with, such as 66.0. Null for a source of the kind git.",
+              "type": ["string", "null"]
+            },
             "commit": {
               "description": "The full id of the commit whose content the snapshot holds. Null if the snapshot does not hold exactly that: a file that was read from disk differs from the commit that is checked out, or Git could not tell which commit that is. An issue says which.",
               "type": ["string", "null"]
@@ -359,7 +387,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["type", "listed", "retrieved", "analysed", "note"],
+            "required": ["type", "listed", "retrieved", "analysed", "listing", "note"],
             "additionalProperties": false,
             "properties": {
               "type": { "description": "The metadata type, as Salesforce names it.", "type": "string" },
@@ -374,6 +402,10 @@
                 "minimum": 0
               },
               "analysed": { "description": "How many of them were analysed.", "type": "integer", "minimum": 0 },
+              "listing": {
+                "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet.",
+                "enum": ["ok", "failed", "unlistable"]
+              },
               "note": { "type": ["string", "null"] }
             }
           }
