@@ -381,10 +381,15 @@ items of the list below: a run that is started by hand can deploy the fixture pr
 - The two steps are tools of the tests of the engine (`packages/engine/test/live`), written in TypeScript and run
   from source by Node.js. They call the engine in the process of the step, so "the first real `orglens snapshot`"
   is a snapshot taken through the API of the engine, which is what the command does, and not a run of the binary.
-- The rule for the public log was widened and is written down in `public-log.ts`, `docs/live-org-setup.md` and
-  `CLAUDE.md`: a step may print names of metadata types, of elements and of the fixture project. Without them a
-  real run could say nothing about types and files. It still prints no name of another component and no message
-  of Salesforce outside a list of known forms.
+- The rule for the public log was widened and is written down in decision record 0033, `public-log.ts`,
+  `docs/live-org-setup.md` and `CLAUDE.md`: a step may print names of metadata types, of elements and of the
+  fixture project. Without them a real run could say nothing about types and files. It still prints no name of
+  another component and no message of Salesforce outside a list of known forms.
+- The code review found that the first version could print the name of a folder of the org where a code was
+  expected. Three things changed for it. The engine keeps the code of a refusal of Salesforce in a field of its
+  own (`details.code` of an issue), and the step reads only that. A tool does its work in a second process
+  without output, which can only send lines of its log to the step. And the tests read a mock org that holds
+  components beside the fixture project.
 - The deploy does not go through the request code of the engine (record 0032) but through the Salesforce
   library, which has no time limit for a whole answer. The step has a time limit in the workflow.
 - The maintainer decided on 2026-11-12 that the automated author of this project starts the runs itself. The

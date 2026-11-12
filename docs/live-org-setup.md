@@ -141,7 +141,7 @@ after it has logged in"). The weekly run always logs in only.
 | login only      | Logs in. This is the default.                                                                                                                                                                              |
 | deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run. Nothing else is ever deployed. |
 | read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot is written to a temporary folder of the runner and deleted when the step ends.  |
-| deploy and read | Both, in this order.                                                                                                                                                                                       |
+| deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                         |
 
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
@@ -156,14 +156,24 @@ What the two steps print follows the same rule as the login step, with a wider l
 - names of metadata types (`CustomField`), of the elements of a metadata file (`trackHistory`) and of the folders
   of the source format (`classes`). They are the vocabulary of the Metadata API and the same in every org.
 - names and paths of the fixture project, which this repository holds anyway,
-- a problem Salesforce reports for a component of a deploy, if the whole text has one of the forms listed in
-  `deploy-fixture.ts`. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of
-  the org.
+- a problem Salesforce reports for a component of the fixture project in a deploy, if the whole text has one of
+  the forms listed in `deploy-fixture.ts` and every name in it is a word of the fixture project or of the
+  platform. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of the org.
 
 A step never prints the name of a component that is not of the fixture project, a message of Salesforce or of a
 library in another form, the address or the id of the org, or the user name. On top of the forms, a line that
-holds a word of the settings of the login is replaced as a whole. Everything a library writes to the output of
-the step is dropped. No file of the org is uploaded or kept.
+holds a word of the settings of the login is replaced as a whole.
+
+The work of a step is done in a second process that has no output of its own: its standard streams lead nowhere.
+The only way out of it is a channel to the first process, and only the lines of the log of the tool are sent over
+it (`packages/engine/test/live/own-output.ts`). So nothing a library writes or an error says can reach the log of
+the run, whichever way it is written. What is left to trust is the log of the tool itself.
+
+No file of the org is uploaded or kept. The temporary folder of a snapshot is removed when the step ends. If the
+step is killed from outside, for example by its time limit, the folder goes with the machine of the run, which
+GitHub throws away.
+
+With "deploy and read", the org is not read if the deploy failed. Start a run with "read" for that.
 
 The steps were tested against a mock org only before their first run. What the first runs showed is in
 `docs/research/phase-0/real-org.md`, once that report is written.

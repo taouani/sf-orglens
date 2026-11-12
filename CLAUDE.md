@@ -37,7 +37,7 @@ These rules come from the maintainer and apply to every phase.
   They hold numbers, codes, names of metadata types and of their elements, and names of the fixture project. They
   hold no name of another component of the org, and no message that OrgLens, a Salesforce library or Salesforce
   wrote, unless its whole text has a form the step lists (`packages/engine/test/live/public-log.ts` has the
-  rule). No file of the org is kept or uploaded.
+  rule, decision record 0033 the reasons). No file of the org is kept or uploaded.
 - The fixture project is the only thing that is ever deployed to an org, and only to the test org, by a tool of
   the tests (`packages/engine/test/live/deploy-fixture.ts`).
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
