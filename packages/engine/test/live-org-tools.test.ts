@@ -6,14 +6,15 @@
  */
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
+import { cpSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
-import { metadataFromSource, type MockMetadata } from './helpers/mock-metadata.ts';
+import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
-import { deployFixture, shownProblem } from './live/deploy-fixture.ts';
+import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
 import { publicLog, type PublicLog } from './live/public-log.ts';
 import { fileDifference, readOrg, remarkForm } from './live/read-org.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
@@ -111,6 +112,19 @@ describe('what a step of the live-org workflow may print', () => {
     expect(text()).toBe('The test org was read. abc');
   });
 
+  it('does not take the first word of an address that every org is logged in to for a word of the org', () => {
+    const { log, text } = collected();
+    log.forbid('https://login.salesforce.com', 'https://test.salesforce.com');
+    log.say('The login to the test org failed.');
+    expect(text()).toBe('The login to the test org failed.');
+  });
+
+  it('keeps one line one line', () => {
+    const { log, text } = collected();
+    log.say('first\n::error::second\r\nthird');
+    expect(text()).toBe('first ::error::second third');
+  });
+
   it('takes a value only in the form of its kind', () => {
     const { log } = collected();
     log.forbid('https://acme.example');
@@ -138,36 +152,60 @@ describe('what a step of the live-org workflow may print', () => {
 describe('a problem of a deploy, as it is printed', () => {
   const { log } = collected();
   log.forbid('https://acme.example');
+  const words = fixtureWords();
+  const where = 'The page "Deployment Status" in the Setup of the test org shows it.';
 
   it.each([
     'Variable does not exist: Amount__c',
-    'Invalid type: InvoiceLine',
+    'Invalid type: InvoiceSelector',
     'Method does not exist or incorrect signature: void post(List<Invoice__c>) from the type InvoiceService',
+    'Method does not exist or incorrect signature: void post(Map<Id, List<Invoice__c>>, String) from the type InvoiceService',
     "No such column 'Total__c' on entity 'Invoice__c'. If you are attempting to use a custom field, be sure to append the '__c' after the custom field name. Please reference your WSDL or the describe call for the appropriate names.",
     "Unexpected token '}'.",
     "Missing ';' at 'return'",
     'Field Amount__c does not exist. Check spelling.',
     'Illegal assignment from Decimal to String',
+    'Entity is not org-accessible',
   ])('shows the known form: %s', (problem) => {
-    expect(shownProblem(log, problem)).toBe(problem);
+    expect(shownProblem(log, problem, words)).toBe(problem);
   });
 
   it.each([
     'Something Salesforce never said before about https://other.example',
     'Variable does not exist: Amount__c and more that is not of the form',
-    'Invalid type: acme',
+    // A signature is not a place for prose.
+    'Invalid type: the quick brown fox of Initech Corp jumps over the lazy admin',
+    'Illegal assignment from everything the org said about Initech to nothing at all',
     '',
     undefined,
-  ])('does not show another text: %s', (problem) => {
-    expect(shownProblem(log, problem)).toBe(
-      'not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.',
+  ])('does not show a text of another form: %s', (problem) => {
+    expect(shownProblem(log, problem, words)).toBe(`not shown, because it is not of a known form. ${where}`);
+  });
+
+  it.each([
+    'Variable does not exist: Secret_Plan__c.Takeover_Date__c',
+    'Invalid type: SecretPlan',
+    'Invalid type: acme',
+    'Illegal assignment from Decimal to Initech',
+    "Unexpected token 'SecretPlan'.",
+    'Method does not exist or incorrect signature: void post(List<Secret_Plan__c>) from the type InvoiceService',
+  ])('does not show a known form that names something the fixture project does not hold: %s', (problem) => {
+    expect(shownProblem(log, problem, words)).toBe(
+      `not shown, because it names something that is not in the fixture project. ${where}`,
+    );
+  });
+
+  it('shows of a problem about something else than a component of the fixture project only a form without names', () => {
+    expect(shownProblem(log, 'Entity is not org-accessible', words, false)).toBe('Entity is not org-accessible');
+    expect(shownProblem(log, 'Variable does not exist: Amount__c', words, false)).toBe(
+      `not shown, because it is not of a known form. ${where}`,
     );
   });
 
   it('shows of a class that has to be compiled again only that it is one', () => {
-    expect(shownProblem(log, 'Dependent class is invalid and needs recompilation:\n Class Other : whatever')).toBe(
-      'Dependent class is invalid and needs recompilation. What follows it is not shown.',
-    );
+    expect(
+      shownProblem(log, 'Dependent class is invalid and needs recompilation:\n Class Other : whatever', words),
+    ).toBe('Dependent class is invalid and needs recompilation. What follows it is not shown.');
   });
 });
 
@@ -282,6 +320,22 @@ describe('deploying the fixture project', () => {
         fileName: 'objects/Secret_Plan__c.object',
         problem: 'Entity is not org-accessible',
       },
+      {
+        type: 'ApexClass',
+        fullName: 'SecretPlan',
+        fileName: 'classes/SecretPlan.cls',
+        line: 2,
+        column: 4,
+        problem: 'Variable does not exist: Amount__c',
+      },
+      {
+        type: 'ApexClass',
+        fullName: 'InvoiceBatch',
+        fileName: 'classes/InvoiceBatch.cls',
+        line: 5,
+        column: 2,
+        problem: 'Invalid type: SecretPlan',
+      },
     );
     const { log, text } = collected();
     await deployFixture(log, { env: environment(), pollMs: 5 });
@@ -294,16 +348,21 @@ describe('deploying the fixture project', () => {
         .concat(text().split('\n').slice(2)),
     ).toEqual([
       '::error::The deploy of the fixture project ended as Failed after N seconds.',
-      'Components of the fixture project: 52. Salesforce counted 16, deployed 0 and found errors in 3.',
+      'Components of the fixture project: 52. Salesforce counted 16, deployed 0 and found errors in 5.',
       '1. ApexClass InvoiceService, file classes/InvoiceService.cls, line 14, column 9',
       '   Problem: Variable does not exist: Amount__c',
       '2. ApexClass InvoiceSelector, file classes/InvoiceSelector.cls, line 3, column 1',
       '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.',
-      '3. CustomObject (a name that is not of the fixture project), line 0, column 0',
+      '3. CustomObject (a name that is not of the fixture project)',
       '   Problem: Entity is not org-accessible',
+      '4. ApexClass (a name that is not of the fixture project), line 2, column 4',
+      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.',
+      '5. ApexClass InvoiceBatch, file classes/InvoiceBatch.cls, line 5, column 2',
+      '   Problem: not shown, because it names something that is not in the fixture project. The page "Deployment Status" in the Setup of the test org shows it.',
     ]);
     expectNoSecret(text());
     expect(text()).not.toContain('Secret_Plan');
+    expect(text()).not.toContain('SecretPlan');
   });
 
   it('says which secrets are missing, and asks the org nothing', async () => {
@@ -350,17 +409,89 @@ describe('deploying the fixture project', () => {
     await deployFixture(log, { env: environment(), pollMs: 5 });
     expect(log.failed).toBe(true);
     expect(text()).toBe(
-      '::error::The deploy of the fixture project could not be made (INSUFFICIENT_ACCESS). What the org or the library said is not shown here.',
+      '::error::The deploy of the fixture project could not be started (INSUFFICIENT_ACCESS). What the org or the library said is not shown here.',
     );
+    expectNoSecret(text());
+  });
+
+  /** Answers the requests for the state of a deploy that `fails` says so of with "service unavailable". */
+  const stateUnavailable = (fails: (asked: number) => boolean): (() => number) => {
+    let asked = 0;
+    mock.intercept = (request) => {
+      if (!request.body.includes('checkDeployStatus')) return undefined;
+      asked += 1;
+      return fails(asked) ? { status: 503, type: 'text/plain', body: `No service for ${USERNAME}` } : undefined;
+    };
+    return () => asked;
+  };
+
+  it('asks for the state of the deploy until it has ended', async () => {
+    metadata.pollsBeforeDone = 3;
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(false);
+    expect(metadata.calls.map((call) => call.operation)).toEqual([
+      'deploy',
+      'checkDeployStatus',
+      'checkDeployStatus',
+      'checkDeployStatus',
+      'checkDeployStatus',
+    ]);
+    expect(text()).toContain('The fixture project is in the test org.');
+  });
+
+  it('gives up a deploy that does not end in time, and says that it may still run', async () => {
+    metadata.hold = true;
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 20, deployMs: 1_000 });
+    expect(log.failed).toBe(true);
+    expect(text()).toBe(
+      [
+        '::error::The deploy of the fixture project did not end within 1 second.',
+        'It may still be running in the test org.',
+      ].join('\n'),
+    );
+    expect(metadata.calls.filter((call) => call.operation === 'checkDeployStatus').length).toBeGreaterThan(5);
+  });
+
+  it('asks again when the org does not say how far the deploy is, and goes on when it does', async () => {
+    const asked = stateUnavailable((count) => count <= 4);
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(false);
+    expect(asked()).toBe(5);
+    expect(text()).toContain('The deploy of the fixture project ended as Succeeded');
+  });
+
+  it('says that the deploy was started when the org stops saying how far it is', async () => {
+    const asked = stateUnavailable(() => true);
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(true);
+    expect(asked()).toBe(5);
+    expect(text()).toBe(
+      [
+        '::error::The deploy of the fixture project was started, and the org did not say 5 times in a row how far it is (ERROR_HTTP_503).',
+        'It may still be running in the test org. What the org or the library said is not shown here.',
+      ].join('\n'),
+    );
+    expect(metadata.deploys).toHaveLength(1);
+    expectNoSecret(text());
   });
 });
 
 describe('reading the test org', () => {
   it('takes a snapshot and says in numbers what it holds, with the fixture project found in it', async () => {
     const { log, text } = collected();
-    await readOrg(log, { env: environment() });
+    const tmp = dirs.next();
+    await readOrg(log, { env: environment(), tmp });
+    // The workspace with the files of the org is gone.
+    expect(readdirSync(tmp)).toEqual([]);
     const output = text();
     expect(log.failed).toBe(false);
+    expect(output).toContain(
+      'Components: 53 listed by the org, 53 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+    );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
     expect(output).toMatch(/Requests to the Metadata API: [1-9]\d*\. Largest memory of the process: \d+ MB\./);
@@ -396,7 +527,7 @@ describe('reading the test org', () => {
     expect(output).toContain(
       '- error NOT_RETRIEVED: 1 observation, about 1 components, files or remarks. Types: ApexClass',
     );
-    expect(output).toContain("- 1 times: Entity of type 'ApexClass' named '(a name)' cannot be found");
+    expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
     expect(output).toContain('- ApexClass InvoiceSelector: listed, not retrieved');
     expect(output).toContain('- classes/InvoiceSelector.cls: not in the snapshot');
     expect(output.split('\n').slice(-2)).toEqual([
@@ -438,6 +569,103 @@ describe('reading the test org', () => {
   });
 });
 
+describe('reading an org that holds more than the fixture project', () => {
+  /** Names of components that are not of the fixture project. None may ever stand in the output. */
+  const FOREIGN = ['SecretPlan', 'SECRET_PLANS', 'Secret_Plan', 'Takeover', 'hidden_notes'];
+
+  /** A mock org that holds the fixture project and, beside it, a class, an object with a field, and a report in a folder. */
+  async function withMore(): Promise<MockMetadata> {
+    const dir = dirs.next();
+    cpSync(FIXTURE, join(dir, 'force-app'), { recursive: true });
+    const base = join(dir, 'force-app/main/default');
+    const xml = (type: string, inner: string): string =>
+      `<?xml version="1.0" encoding="UTF-8"?>\n<${type} xmlns="http://soap.sforce.com/2006/04/metadata">${inner}</${type}>\n`;
+    const write = (path: string, content: string): void => {
+      mkdirSync(join(base, path, '..'), { recursive: true });
+      writeFileSync(join(base, path), content);
+    };
+    write('classes/SecretPlan.cls', 'public class SecretPlan {}\n');
+    write('classes/SecretPlan.cls-meta.xml', xml('ApexClass', '<apiVersion>65.0</apiVersion><status>Active</status>'));
+    write(
+      'objects/Secret_Plan__c/Secret_Plan__c.object-meta.xml',
+      xml(
+        'CustomObject',
+        '<deploymentStatus>Deployed</deploymentStatus><label>Secret Plan</label><nameField><label>Name</label><type>Text</type></nameField><pluralLabel>Secret Plans</pluralLabel><sharingModel>ReadWrite</sharingModel>',
+      ),
+    );
+    write(
+      'objects/Secret_Plan__c/fields/Takeover_Date__c.field-meta.xml',
+      xml('CustomField', '<fullName>Takeover_Date__c</fullName><label>Takeover Date</label><type>Date</type>'),
+    );
+    write('reports/SECRET_PLANS.reportFolder-meta.xml', xml('ReportFolder', '<name>Secret plans</name>'));
+    write('reports/SECRET_PLANS/Takeover.report-meta.xml', xml('Report', '<name>Takeover</name>'));
+    const more = await metadataFromSource(join(dir, 'force-app'));
+    more.pollsBeforeDone = 0;
+    mock.metadata = more;
+    return more;
+  }
+
+  const expectNothingForeign = (output: string): void => {
+    for (const name of FOREIGN) expect(output).not.toContain(name);
+    expectNoSecret(output);
+  };
+
+  it('names no component of the org in a partial snapshot, whatever was observed', async () => {
+    const more = await withMore();
+    more.withheld.add('ApexClass:SecretPlan');
+    more.unlistedParents.add('CustomObject:Secret_Plan__c');
+    more.extraFiles.set('hidden_notes/Takeover.txt', 'not metadata');
+    // The org refuses to list one folder.
+    mock.intercept = (request) =>
+      request.body.includes('<folder>SECRET_PLANS</folder>')
+        ? soapFault('INSUFFICIENT_ACCESS', 'insufficient access rights on SECRET_PLANS')
+        : undefined;
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output).toContain('The snapshot of the test org is partial.');
+    // Each of these observations holds a name of the org in the database. The code is shown, the name is not.
+    expect(output).toContain(
+      '- error LISTING_FAILED: 1 observation. Types: Report. Codes of Salesforce: INSUFFICIENT_ACCESS (1)',
+    );
+    expect(output).toContain(
+      '- error NOT_RETRIEVED: 1 observation, about 1 components, files or remarks. Types: ApexClass',
+    );
+    expect(output).toContain(
+      '- info UNLISTED_COMPONENTS: 1 observation, about 1 components, files or remarks. Types: CustomObject',
+    );
+    // The file beside the metadata, whose place the engine keeps in the observation.
+    expect(output).toContain('- error RESOLVE_FAILED: 1 observation');
+    expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
+    expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
+    expect(output).toMatch(/^Report +0 +0 +failed$/m);
+    expect(output).toContain('Fixture project: 52 components. Listed by the org: 52. Retrieved: 52.');
+    expectNothingForeign(output);
+  });
+
+  it('names no component of the org when the retrieves fail one after the other', async () => {
+    const more = await withMore();
+    // Every component with more than one file fails, down to the single component, until the snapshot stops.
+    more.maxFiles = 1;
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output).toMatch(
+      /- error RETRIEVE_FAILED: \d+ observations, about \d+ components, files or remarks\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/,
+    );
+    expect(output).toMatch(/- info CHUNK_SPLIT: \d+ observations\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/);
+    expect(output.split('\n').slice(-4)).toEqual([
+      '::error::The snapshot of the test org did not end: SOURCE_READ_FAILED (RETRIEVES_FAILING).',
+      'Code of Salesforce: LIMIT_EXCEEDED',
+      'Unfinished snapshot: #1',
+      'The message is not shown here. docs/cli.md lists the codes.',
+    ]);
+    expectNothingForeign(output);
+  });
+});
+
 describe('a tool of the live-org workflow as a program', () => {
   /** Starts a tool from source, as the workflow does. It must not block this process, which is where the mock org answers. */
   const run = (
@@ -472,11 +700,11 @@ describe('a tool of the live-org workflow as a program', () => {
     expectNoSecret(read.stdout);
   });
 
-  it('prints only what the tool itself printed, whatever a library writes or throws', async () => {
+  it('lets only the lines of the log of the tool out, whatever else is written or thrown', async () => {
     const noisy = fileURLToPath(new URL('./helpers/noisy-tool.ts', import.meta.url));
     const start = (...args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> =>
       new Promise((resolve) => {
-        // Without --no-warnings, to see that a warning of Node.js itself is dropped as well.
+        // Without --no-warnings, to see that a warning of Node.js itself does not come out either.
         const child = spawn(process.execPath, [noisy, ...args], { env: process.env });
         let stdout = '';
         let stderr = '';
@@ -486,21 +714,28 @@ describe('a tool of the live-org workflow as a program', () => {
           resolve({ stdout, stderr, code });
         });
       });
+    // The tool writes to both streams and to their file descriptors, starts a process that writes, and warns.
+    const own = 'A line of the tool itself.\nTwo lines ::error::in one.\n';
+    expect(await start('the-secret-of-the-org', 'quiet')).toEqual({ code: 0, stderr: '', stdout: own });
     expect(await start('the-secret-of-the-org')).toEqual({
       code: 1,
       stderr: '',
-      stdout:
-        'A line of the tool itself.\n::error::The step ended with an error that was not handled (RangeError). Its message is not shown here.\n',
+      stdout: `${own}::error::The step ended with an error that was not handled (RangeError). Its message is not shown here.\n`,
     });
     expect(await start('the-secret-of-the-org', 'reject')).toEqual({
       code: 1,
       stderr: '',
-      stdout:
-        'A line of the tool itself.\n::error::The step ended with a failure that was not handled (TypeError). Its message is not shown here.\n',
+      stdout: `${own}::error::The step ended with a failure that was not handled (TypeError). Its message is not shown here.\n`,
+    });
+    // A tool that ends without a word, as one that is killed does, is still reported as failed.
+    expect(await start('the-secret-of-the-org', 'wait')).toEqual({
+      code: 1,
+      stderr: '',
+      stdout: `${own}::error::The step ended with the exit code 3 and said nothing about it.\n`,
     });
   });
 
-  it('ends with 1 and an error of its own when the step fails, and when something throws that nobody caught', async () => {
+  it('ends with 1 and an error of its own when the step fails', async () => {
     const home = dirs.next();
     const failed = await run('read-org.ts', {
       ...environment(),

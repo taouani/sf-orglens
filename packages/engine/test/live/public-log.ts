@@ -30,6 +30,9 @@ const VERSION = /^\d{1,3}\.\d$/;
 /** The form of the id of an org. */
 const ORG_ID = /00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?/;
 
+/** The addresses of Salesforce that are the same for every org. */
+const SHARED_HOSTS: ReadonlySet<string> = new Set(['login.salesforce.com', 'test.salesforce.com']);
+
 /** Decides what may be printed. One is made per run, from the settings of the login. */
 export interface PublicLog {
   /** Adds words that must not be printed, such as the address and the id of the org once they are known. */
@@ -47,7 +50,7 @@ export interface PublicLog {
   say(line: string): void;
   /** Prints the first line as an error of the run, and the others after it. The step has failed from then on. */
   fail(lines: readonly string[]): void;
-  /** True once `fail` was called. A tool that is run as a program ends with 1 then (`ended`). */
+  /** True once `fail` was called. A tool that is run as a program ends with 1 then (`own-output.ts`). */
   readonly failed: boolean;
   /** The lines printed so far. For tests. */
   readonly lines: readonly string[];
@@ -61,7 +64,8 @@ function wordsOf(value: string): string[] {
   const whole = value.trim().toLowerCase();
   const words = [whole];
   const host = /^[a-z][a-z0-9+.-]*:\/\/([^/:?#\s]+)/.exec(whole)?.[1];
-  if (host !== undefined) words.push(host, host.split('.')[0] ?? '');
+  // The two addresses every org can be logged in to give no org away, and their first part is an everyday word.
+  if (host !== undefined && !SHARED_HOSTS.has(host)) words.push(host, host.split('.')[0] ?? '');
   // Not the part before the @: it can be an everyday word, and a line with that word would be lost.
   if (host === undefined && whole.includes('@')) words.push(whole.slice(whole.indexOf('@') + 1));
   return words.filter((word) => word.length >= 4);
@@ -81,7 +85,9 @@ export function publicLog(print: (line: string) => void = console.log): PublicLo
     (form: RegExp) =>
     (value: unknown): string | null =>
       typeof value === 'string' && form.test(value) && clean(value) ? value : null;
-  const say = (line: string): void => {
+  const say = (text: string): void => {
+    // One line stays one line.
+    const line = text.replace(/[\r\n]+/g, ' ');
     const safe = clean(line) ? line : 'A line is not shown here, because it holds a word of the settings of the login.';
     lines.push(safe);
     print(safe);
@@ -109,9 +115,4 @@ export function publicLog(print: (line: string) => void = console.log): PublicLo
     },
     lines,
   };
-}
-
-/** Ends a tool that was run as a program: with 1 if it failed. */
-export function ended(log: PublicLog): void {
-  if (log.failed) process.exitCode = 1;
 }

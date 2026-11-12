@@ -18,13 +18,24 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import { loadSourceLibrary } from '../../src/sources/library.ts';
 import { connectToOrg } from '../../src/sources/org.ts';
-import { ownOutputOnly } from './own-output.ts';
-import { ended, publicLog, type PublicLog } from './public-log.ts';
-import { failureLines, FIXTURE_DIR, FIXTURE_PROJECT, fixtureComponents, loginEnvironment, SOURCE } from './test-org.ts';
+import { networkCode } from '../../src/sources/org-errors.ts';
+import { asStep } from './own-output.ts';
+import type { PublicLog } from './public-log.ts';
+import {
+  failureLines,
+  FIXTURE_DIR,
+  FIXTURE_PROJECT,
+  fixtureComponents,
+  fixtureFiles,
+  loginEnvironment,
+  SOURCE,
+} from './test-org.ts';
 
 /** How long a deploy may take, and how often its state is asked for. */
 const DEPLOY_MS = 20 * 60_000;
 const POLL_MS = 3_000;
+/** How often in a row the state of a deploy is asked for in vain before the step gives up. */
+const STATE_TRIES = 5;
 
 /** The states of a deploy, as the Metadata API names them. */
 const STATES: ReadonlySet<string> = new Set([
@@ -39,8 +50,10 @@ const STATES: ReadonlySet<string> = new Set([
 
 /** A name in Apex or in a formula, with dots: `Invoice__c.Amount__c`. */
 const NAME = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*`;
-/** A type or a signature in Apex: names, generics, brackets and commas. */
-const SIGNATURE = String.raw`[A-Za-z_][A-Za-z0-9_.<>,()\[\] ]{0,160}`;
+/** A type in Apex: a name, with generics and arrays. A space stands only after a comma, so prose has not this form. */
+const TYPE = String.raw`[A-Za-z_][A-Za-z0-9_.]*(?:(?:<|>|, ?|\[\])[A-Za-z0-9_.]*)*`;
+/** A type, or a method with its return type and its parameters: `void post(List<Invoice__c>)`. */
+const SIGNATURE = `(?:${TYPE} )?${TYPE}(?:\\((?:${TYPE})?\\))?`;
 /** A token of Apex or of a formula, as the compiler quotes it. */
 const TOKEN = String.raw`[A-Za-z0-9_.;:,(){}\[\]<>=!+*/&|?@-]{1,24}`;
 
@@ -104,17 +117,57 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   form("Can not specify 'NAME' for a CustomField of type SIG"),
   form('Entity is not org-accessible'),
   form('Not available for deploy for this organization'),
-  form('Dependent class is invalid and needs recompilation:[\\s\\S]*'),
 ];
 
-/** A problem as it may be printed: itself, if its whole text has a known form, else a sentence that says so. */
-export function shownProblem(log: PublicLog, problem: unknown): string {
+/**
+ * Words of Apex, of formulas and of the platform that a problem may name although the fixture project does not
+ * hold them, in lower case.
+ */
+const PLATFORM_WORDS: ReadonlySet<string> = new Set(
+  (
+    'void null true false this super string integer decimal double long boolean date datetime time id blob object ' +
+    'sobject list set map schema system database test exception type text number percent currency picklist checkbox ' +
+    'lookup formula apex class trigger interface enum select from where'
+  ).split(' '),
+);
+
+const WORD = /[A-Za-z_][A-Za-z0-9_]*/g;
+
+/** Every word of the files of the fixture project, in lower case: the names a problem of its deploy can be about. */
+export function fixtureWords(): Set<string> {
+  const words = new Set<string>();
+  for (const [path, content] of fixtureFiles()) {
+    for (const [word] of `${path} ${content.toString('utf8')}`.matchAll(WORD)) words.add(word.toLowerCase());
+  }
+  return words;
+}
+
+/**
+ * A problem as it may be printed: itself, if its whole text has a known form and every word at a name, a
+ * signature or a token is a word of the fixture project or of the platform. Else a sentence that says why not.
+ * With `names` false, a problem is only printed if its form holds no name at all: that is for a problem about
+ * something that is not a component of the fixture project.
+ */
+export function shownProblem(log: PublicLog, problem: unknown, words: ReadonlySet<string>, names = true): string {
   const text = typeof problem === 'string' ? problem.trim() : '';
   const dependent = 'Dependent class is invalid and needs recompilation';
   if (text.startsWith(`${dependent}:`)) return `${dependent}. What follows it is not shown.`;
-  return KNOWN_PROBLEMS.some((known) => known.test(text)) && log.clean(text)
-    ? text
-    : 'not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.';
+  const where = 'The page "Deployment Status" in the Setup of the test org shows it.';
+  for (const known of KNOWN_PROBLEMS) {
+    const found = known.exec(text);
+    if (found === null) continue;
+    // Every place of a form is filled when the form matches.
+    const named = found.slice(1).flatMap((part) => part.match(WORD) ?? []);
+    if (named.length > 0 && !names) break;
+    if (
+      !log.clean(text) ||
+      named.some((word) => !words.has(word.toLowerCase()) && !PLATFORM_WORDS.has(word.toLowerCase()))
+    ) {
+      return `not shown, because it names something that is not in the fixture project. ${where}`;
+    }
+    return text;
+  }
+  return `not shown, because it is not of a known form. ${where}`;
 }
 
 /** One message of a deploy about a component. */
@@ -139,6 +192,20 @@ const number = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+/** A length of time in words: minutes, or seconds if it is shorter than one. */
+const span = (ms: number): string => {
+  const [count, unit] = ms >= 60_000 ? [Math.round(ms / 60_000), 'minute'] : [Math.round(ms / 1000), 'second'];
+  return `${String(count)} ${unit}${count === 1 ? '' : 's'}`;
+};
+
+/**
+ * The code of a failed request, if it has one that may be printed: of a fault of the Metadata API, which carries
+ * its code with a prefix (`sf:INSUFFICIENT_ACCESS`), of an answer that is not one of the API, or of the network.
+ */
+function codeOf(log: PublicLog, error: unknown): string | null {
+  const said = (error as { errorCode?: unknown } | null)?.errorCode;
+  return log.code(typeof said === 'string' ? said.replace(/^.*:/, '') : undefined) ?? log.code(networkCode(error));
+}
 
 /** The fixture project in the form the Metadata API takes: a zip file with a manifest. Returns it with the names in it. */
 async function fixtureZip(): Promise<{ zip: Buffer; entries: Set<string> }> {
@@ -167,6 +234,7 @@ export async function deployFixture(
 
   const { zip, entries } = await fixtureZip();
   const fixture = new Set(fixtureComponents().map((one) => `${one.type}:${one.fullName}`));
+  const words = fixtureWords();
 
   let session: Awaited<ReturnType<typeof connectToOrg>>;
   try {
@@ -181,7 +249,8 @@ export async function deployFixture(
   const { metadata } = session.connection;
 
   const started = Date.now();
-  let result: Record<string, unknown>;
+  const limit = options.deployMs ?? DEPLOY_MS;
+  let id: string;
   try {
     // The whole project or nothing, and no test: Salesforce compiles the Apex and checks the fields.
     const job: { id?: unknown } = await metadata.deploy(zip, {
@@ -189,28 +258,41 @@ export async function deployFixture(
       singlePackage: true,
       testLevel: 'NoTestRun',
     });
-    const id = typeof job.id === 'string' ? job.id : '';
-    if (id === '') throw new Error('The org started a deploy and gave no id for it.');
-    for (;;) {
-      await pause(options.pollMs ?? POLL_MS);
-      result = await metadata.checkDeployStatus(id, true);
-      if (flag(result['done'])) break;
-      if (Date.now() - started > (options.deployMs ?? DEPLOY_MS)) {
-        log.fail([
-          `The deploy of the fixture project did not end within ${String(Math.round((options.deployMs ?? DEPLOY_MS) / 60_000))} minutes.`,
-          'It may still be running in the test org.',
-        ]);
-        return;
-      }
-    }
+    if (typeof job.id !== 'string' || job.id === '') throw new Error('The org started a deploy and gave no id for it.');
+    ({ id } = job as { id: string });
   } catch (error) {
-    // A fault of the Metadata API carries its code with a prefix: `sf:INSUFFICIENT_ACCESS`.
-    const said = (error as { errorCode?: unknown } | null)?.errorCode;
-    const fault = log.code(typeof said === 'string' ? said.replace(/^.*:/, '') : undefined);
+    const code = codeOf(log, error);
     log.fail([
-      `The deploy of the fixture project could not be made${fault === null ? '' : ` (${fault})`}. What the org or the library said is not shown here.`,
+      `The deploy of the fixture project could not be started${code === null ? '' : ` (${code})`}. What the org or the library said is not shown here.`,
     ]);
     return;
+  }
+
+  // The deploy runs in the org from here on, whatever becomes of this step.
+  let result: Record<string, unknown>;
+  for (let misses = 0; ;) {
+    await pause(options.pollMs ?? POLL_MS);
+    if (Date.now() - started > limit) {
+      log.fail([
+        `The deploy of the fixture project did not end within ${span(limit)}.`,
+        'It may still be running in the test org.',
+      ]);
+      return;
+    }
+    try {
+      result = await metadata.checkDeployStatus(id, true);
+    } catch (error) {
+      misses += 1;
+      if (misses < STATE_TRIES) continue;
+      const code = codeOf(log, error);
+      log.fail([
+        `The deploy of the fixture project was started, and the org did not say ${String(STATE_TRIES)} times in a row how far it is${code === null ? '' : ` (${code})`}.`,
+        'It may still be running in the test org. What the org or the library said is not shown here.',
+      ]);
+      return;
+    }
+    misses = 0;
+    if (flag(result['done'])) break;
   }
 
   const state = typeof result['status'] === 'string' && STATES.has(result['status']) ? result['status'] : 'unknown';
@@ -244,7 +326,7 @@ export async function deployFixture(
       `${String(index + 1)}. ${type ?? 'a type that is not shown'} ${known ? name : '(a name that is not of the fixture project)'}` +
         `${file === null ? '' : `, file ${file}`}${line === null ? '' : `, line ${String(line)}`}${column === null ? '' : `, column ${String(column)}`}` +
         (failure.problemType === 'Warning' ? ', a warning' : ''),
-      `   Problem: ${shownProblem(log, failure.problem)}`,
+      `   Problem: ${shownProblem(log, failure.problem, words, known)}`,
     );
   });
 
@@ -256,8 +338,4 @@ export async function deployFixture(
   }
 }
 
-if (import.meta.main) {
-  const log = publicLog(ownOutputOnly());
-  await deployFixture(log);
-  ended(log);
-}
+if (import.meta.main) await asStep(import.meta.filename, deployFixture);

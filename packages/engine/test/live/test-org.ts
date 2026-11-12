@@ -14,7 +14,7 @@ import type { OrgSource } from '../../src/core/config/config.ts';
 import { isEngineError } from '../../src/core/errors.ts';
 import type { PublicLog } from './public-log.ts';
 
-export const ROOT = join(import.meta.dirname, '../../../..');
+const ROOT = join(import.meta.dirname, '../../../..');
 /** The package directory of the fixture project. */
 export const FIXTURE_PROJECT = join(ROOT, 'fixtures/billing-sfdx');
 export const FIXTURE_DIR = join(FIXTURE_PROJECT, 'force-app');

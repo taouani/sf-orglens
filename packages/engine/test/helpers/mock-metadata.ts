@@ -372,10 +372,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
         const failures = metadata.deployProblems
           .map(
             (problem) =>
-              `<componentFailures><changed>false</changed><columnNumber>${String(problem.column ?? 0)}</columnNumber>` +
+              `<componentFailures><changed>false</changed>${problem.column === undefined ? '' : `<columnNumber>${String(problem.column)}</columnNumber>`}` +
               `<componentType>${problem.type}</componentType><created>false</created><createdDate>2026-03-01T09:00:00.000Z</createdDate>` +
               `<deleted>false</deleted><fileName>${escapeXml(problem.fileName)}</fileName><fullName>${escapeXml(problem.fullName)}</fullName>` +
-              `<lineNumber>${String(problem.line ?? 0)}</lineNumber><problem>${escapeXml(problem.problem)}</problem>` +
+              `${problem.line === undefined ? '' : `<lineNumber>${String(problem.line)}</lineNumber>`}<problem>${escapeXml(problem.problem)}</problem>` +
               `<problemType>Error</problemType><success>false</success></componentFailures>`,
           )
           .join('');

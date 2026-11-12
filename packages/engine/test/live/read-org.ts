@@ -4,7 +4,8 @@
  * it.
  *
  * The snapshot goes to a workspace in a temporary folder, which is deleted
- * at the end. Nothing of it is kept or uploaded: the files of a real org
+ * at the end, unless the process is killed from outside: then the folder
+ * goes with the machine of the run. Nothing of it is kept or uploaded: the files of a real org
  * stay out of everything a reader of the repository can get at. What is
  * printed is counted from the database of that workspace:
  *
@@ -24,11 +25,12 @@ import { join } from 'node:path';
 import { workspacePaths } from '../../src/api/layout.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
+import { connectToOrg } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
-import { ownOutputOnly } from './own-output.ts';
-import { ended, publicLog, type PublicLog } from './public-log.ts';
-import { failureLines, fixtureComponents, fixtureFiles, loginEnvironment, SOURCE_NAME } from './test-org.ts';
+import { asStep } from './own-output.ts';
+import type { PublicLog } from './public-log.ts';
+import { failureLines, fixtureComponents, fixtureFiles, loginEnvironment, SOURCE, SOURCE_NAME } from './test-org.ts';
 
 const CONFIG = `schema_version = 1\n\n[sources.${SOURCE_NAME}]\nkind = "org"\n`;
 
@@ -140,11 +142,6 @@ export function remarkForm(log: PublicLog, remark: unknown): string {
   return 'a remark of a form that is not known, and not shown';
 }
 
-/** The code a text of the engine begins with after a sentence of its own, such as `INVALID_TYPE` in `… INVALID_TYPE: …`. */
-function codeIn(log: PublicLog, said: unknown): string | null {
-  return log.code(/(?:^|[\s.])([A-Z][A-Z0-9_]{2,59}): /.exec(text(said))?.[1]);
-}
-
 /** Says what the database holds of a snapshot. */
 function describe(log: PublicLog, store: Store, snapshotId: number): void {
   const files = store.get(
@@ -153,13 +150,13 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
     snapshotId,
   );
   const inventory = store.get(
-    `SELECT COUNT(*) AS items, COALESCE(SUM(listed), 0) AS listed, COALESCE(SUM(retrieved), 0) AS retrieved,
-            COALESCE(SUM(listed = 0), 0) AS unlisted, COALESCE(SUM(namespace_prefix IS NOT NULL AND namespace_prefix <> ''), 0) AS packaged
+    `SELECT COUNT(*) AS items, COALESCE(SUM(listed), 0) AS listed,
+            COALESCE(SUM(listed = 1 AND retrieved = 1), 0) AS retrieved, COALESCE(SUM(listed = 0), 0) AS unlisted, COALESCE(SUM(namespace_prefix IS NOT NULL AND namespace_prefix <> ''), 0) AS packaged
        FROM inventory_item WHERE snapshot_id = ?`,
     snapshotId,
   );
   log.say(
-    `Components: ${log.count(count(inventory?.['listed']))} listed by the org, ${log.count(count(inventory?.['retrieved']))} retrieved, ` +
+    `Components: ${log.count(count(inventory?.['listed']))} listed by the org, ${log.count(count(inventory?.['retrieved']))} of them retrieved, ` +
       `${log.count(count(inventory?.['unlisted']))} retrieved that the org had not listed, ${log.count(count(inventory?.['packaged']))} of a package with a namespace.`,
   );
   log.say(`Files: ${log.count(count(files?.['files']))}, together ${log.count(count(files?.['bytes']))} bytes.`);
@@ -275,8 +272,8 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
       const name = log.name(type);
       if (name !== null) group.types.add(name);
     }
-    // What Salesforce said is kept by the engine in a text of its own. Only the code in it is shown.
-    const said = codeIn(log, code === 'LISTING_FAILED' ? issue['message'] : details['said']);
+    // What Salesforce said is kept by the engine in a text. Only its code is shown, which the engine keeps apart.
+    const said = log.code(details['code']);
     if (said !== null) group.codes.set(said, (group.codes.get(said) ?? 0) + 1);
     if (code === 'RETRIEVE_MESSAGES') {
       remarksInAll += count(details['count']);
@@ -301,8 +298,9 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
   }
   if (remarksInAll > 0) {
     log.say(`Remarks of Salesforce about retrieves: ${String(remarksInAll)}. By form, of the ones that were kept:`);
-    for (const [form, times] of [...remarks].sort(([, a], [, b]) => b - a))
-      log.say(`- ${String(times)} times: ${form}`);
+    for (const [form, times] of [...remarks].sort(([, a], [, b]) => b - a)) {
+      log.say(`- ${plural(times, 'time', 'times')}: ${form}`);
+    }
   }
 
   // The files, by the folder of the source format they are in.
@@ -370,12 +368,32 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
 
 export async function readOrg(
   log: PublicLog,
-  options: { env?: Readonly<Record<string, string | undefined>> } = {},
+  options: {
+    env?: Readonly<Record<string, string | undefined>>;
+    /** The folder the temporary workspace is made in. Default: the one of the system. */
+    tmp?: string;
+  } = {},
 ): Promise<void> {
   const env = loginEnvironment(log, options.env);
   if (env === undefined) return;
 
-  const root = mkdtempSync(join(tmpdir(), 'orglens-live-org-'));
+  // A login of its own, before the snapshot logs in: it tells this tool the address and the id of the org and the
+  // user, which the engine hands to no client. Nothing that holds a word of them is printed from here on.
+  try {
+    const session = await connectToOrg(SOURCE, undefined, env);
+    log.forbid(session.instanceUrl, session.orgId, session.orgId.slice(0, 15), session.username);
+  } catch (error) {
+    log.fail(failureLines(log, 'The test org was not read, because the login to it failed', error));
+    return;
+  }
+
+  const root = mkdtempSync(join(options.tmp ?? tmpdir(), 'orglens-live-org-'));
+  // The folder holds the metadata of the org. It is removed when this function ends, and also when the process
+  // is ended on the way by an error nobody caught.
+  const remove = (): void => {
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  };
+  process.once('exit', remove);
   writeFileSync(join(root, 'orglens.toml'), CONFIG);
 
   // Every request the engine sends to the Metadata API, counted where the HTTP library announces it.
@@ -456,12 +474,9 @@ export async function readOrg(
     }
   } finally {
     unsubscribe('undici:request:create', counted);
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    process.off('exit', remove);
+    remove();
   }
 }
 
-if (import.meta.main) {
-  const log = publicLog(ownOutputOnly());
-  await readOrg(log);
-  ended(log);
-}
+if (import.meta.main) await asStep(import.meta.filename, readOrg);
