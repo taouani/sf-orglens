@@ -12,9 +12,15 @@
  * - per metadata type: how many components the org listed and handed out,
  * - what was observed, by code,
  * - the retrieves: how many, how large, how long,
+ * - the components the org listed and did not hand out, and the other way
+ *   round: how many, and how their names are built, without a name,
  * - the components and the files of the fixture project: whether they are
  *   in the snapshot, and how a file that came back differs from the file
  *   of the repository.
+ *
+ * The step fails when the snapshot does not end, or when the fixture
+ * project is not whole in it. A real org lists components it does not hand
+ * out, so a snapshot that is partial for that reason is a warning.
  *
  *   node --no-warnings packages/engine/test/live/read-org.ts
  */
@@ -22,6 +28,7 @@ import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { registry } from '@salesforce/source-deploy-retrieve';
 import { workspacePaths } from '../../src/api/layout.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
@@ -130,20 +137,312 @@ export function fileDifference(log: PublicLog, path: string, ours: Uint8Array, t
 }
 
 /**
- * A remark of Salesforce about a retrieve, as it may be printed: its form,
- * without the name of the component it is about.
+ * Words a message of Salesforce or of a library is made of whatever it is about, in lower case. A message of a
+ * form that is not known is shown in these words only (`everydayWords`).
  */
-export function remarkForm(log: PublicLog, remark: unknown): string {
+const EVERYDAY_WORDS: ReadonlySet<string> = new Set(
+  (
+    'a an the of in on at to for from with without by into as and or not no nor is are was were be been being it ' +
+    'its this that these those there here if when while because than then so but all any each every some one ' +
+    'more most only also already still currently can cannot could may might must should will would do does did ' +
+    'done has have had please you your we our unable failed fail fails failure error errors warning warnings ' +
+    'problem invalid valid unknown known missing found find exist exists existing available unavailable ' +
+    'supported unsupported enabled disabled allowed required requires need needs ensure check correct ' +
+    'incorrect proper improper insufficient too many much large larger small limit limits exceeded maximum ' +
+    'minimum size number count during before after retrieve retrieved retrieving retrieval retrievable deploy ' +
+    'deployed load loaded loading read reading write access accessible permission permissions input output ' +
+    'received request requested result results entity entities type types name named names file files folder ' +
+    'folders metadata component components package packages packaged namespace managed unmanaged installed ' +
+    'organization org api version versions object objects field fields record records standard custom value ' +
+    'values set sets translation translations translated language languages setting settings feature features ' +
+    'license licenses user users profile profiles id ids db database capitalization member members wildcard ' +
+    'manifest zip xml parse parsed parsing resolve resolved element elements expected unexpected ' +
+    'duplicate empty null undefined defined registry suffix directory path content parent child children'
+  ).split(' '),
+);
+
+/** What stands in quotes or in brackets in a message is a name or a value: straight and curly quotes, backticks. */
+const QUOTED = /'[^']*'|"[^"]*"|\u2018[^\u2019]*\u2019|\u201C[^\u201D]*\u201D|`[^`]*`|\[[^\]]*\]/g;
+/** A quote that has no partner. */
+const QUOTE = /['"\u2018\u2019\u201C\u201D`[\]]/;
+/** The end of the name of a file: a dot and an ending. */
+const FILE_END = /\.[A-Za-z0-9]+(?:-meta\.xml)?[.,:;)]*$/;
+/** A path with spaces in it is looked for over this many words at most. */
+const PATH_WORDS = 12;
+
+/**
+ * A text that is not ours, in the words of a short list of everyday words and nothing else: every other word,
+ * every number, everything in quotes or brackets and every path of a file is left out and shown as `…`. `names`
+ * are words that are kept as well where they follow the word "type", such as the names of the metadata types.
+ *
+ * It says what kind of message it is. No word comes out that is not of the list. A name that stands in a message
+ * without quotes and holds words of the list can leave those words behind: "Error" of a layout that is called
+ * "Error Layout".
+ */
+export function everydayWords(said: unknown, names: ReadonlySet<string> = new Set()): string {
+  // The apostrophe of "can't" is no quote: the word is left out as a whole.
+  let plain = text(said)
+    .replace(/(?<=[A-Za-z])['\u2019](?=[A-Za-z])/g, '\u0001')
+    .replace(QUOTED, ' \u0000 ');
+  // A quote without a partner: what follows may be a name, so the text ends there.
+  const open = plain.search(QUOTE);
+  if (open !== -1) plain = `${plain.slice(0, open)} \u0000`;
+  const words = plain
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, 60);
+  const kept: string[] = [];
+  const leaveOut = (): void => {
+    if (kept.at(-1) !== '…') kept.push('…');
+  };
+  let afterType = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] ?? '';
+    if (/[/\\]/.test(word) && !FILE_END.test(word)) {
+      // A path whose folders or file have spaces in their names goes on to the word with the ending of the file.
+      const end = words.slice(index + 1, index + 1 + PATH_WORDS).findIndex((later) => FILE_END.test(later));
+      if (end !== -1) index += end + 1;
+      leaveOut();
+      afterType = false;
+      continue;
+    }
+    const [, opening = '', core = '', closing = ''] = /^(\(?)(.*?)([.,:;)]*)$/.exec(word) ?? [];
+    const letters = /^[A-Za-z]+$/.test(core);
+    if (letters && (EVERYDAY_WORDS.has(core.toLowerCase()) || (afterType && names.has(core)))) {
+      kept.push(`${opening}${core}${closing}`);
+    } else {
+      leaveOut();
+    }
+    afterType = letters && core.toLowerCase() === 'type';
+  }
+  return kept.join(' ');
+}
+
+/**
+ * A remark of Salesforce about a retrieve, as it may be printed: its form,
+ * without the name of the component it is about. A remark of a form that
+ * is not known is shown in everyday words.
+ */
+export function remarkForm(log: PublicLog, remark: unknown, names: ReadonlySet<string> = new Set()): string {
   const said = text(remark).trim();
   const notFound = /^Entity of type '([^']*)' named '[^']*' cannot be found$/.exec(said);
   if (notFound !== null) {
     return `Entity of type '${log.name(notFound[1]) ?? '(not shown)'}' named '(a name)' cannot be found`;
   }
-  return 'a remark of a form that is not known, and not shown';
+  return `a remark of a form that is not known. Its everyday words: ${everydayWords(said, names)}`;
 }
 
-/** Says what the database holds of a snapshot. */
-function describe(log: PublicLog, store: Store, snapshotId: number): void {
+/**
+ * The form of a name: every run of letters, digits and underscores is written as `a`, and what stands between
+ * them stays. `Account.My_View` and `Contact.Other` both have the form `a.a`. It says how a name is built and
+ * nothing of the name.
+ */
+export function nameForm(name: string): string {
+  // The folder of unfiled items has the same name in every org.
+  const form = name
+    .split('unfiled$public')
+    .map((part) =>
+      part
+        .replace(/%[0-9A-Fa-f]{2}/g, '%')
+        .replace(/[A-Za-z0-9_]+/g, 'a')
+        .replace(/[^a%./$ ()&'+,:-]/g, '?'),
+    )
+    .join('unfiled$public');
+  return form.length > 40 ? `${form.slice(0, 40)}…` : form;
+}
+
+/** The words of the source format, which are the same in every org: its folders, the endings of its files, its types. */
+let format: { folders: Set<string>; endings: Set<string>; types: Set<string> } | undefined;
+function sourceFormat(): { folders: Set<string>; endings: Set<string>; types: Set<string> } {
+  if (format !== undefined) return format;
+  interface Type {
+    readonly name?: string;
+    readonly directoryName?: string;
+    readonly suffix?: string;
+    readonly children?: { readonly types?: Readonly<Record<string, Type>> };
+  }
+  const found = {
+    folders: new Set<string>(),
+    // Endings a file has whatever it is about.
+    endings: new Set('xml txt json js css html htm png jpg jpeg gif svg ico pdf zip csv md'.split(' ')),
+    types: new Set<string>(),
+  };
+  const add = (type: Type): void => {
+    if (type.name !== undefined) found.types.add(type.name);
+    if (type.directoryName !== undefined) found.folders.add(type.directoryName);
+    if (type.suffix !== undefined) found.endings.add(type.suffix);
+    for (const child of Object.values(type.children?.types ?? {})) add(child);
+  };
+  for (const type of Object.values(registry.types as Readonly<Record<string, Type>>)) add(type);
+  for (const ending of Object.keys(registry.suffixes)) found.endings.add(ending);
+  format = found;
+  return found;
+}
+
+/**
+ * The place of something that could not be read as metadata, without a name of the org. The place is a path in
+ * what the org handed out, or a type and the name of a component. Of a path, the first folder and the ending of
+ * the file are shown if they are words of the source format, which the org cannot choose. Of a component, the
+ * type and the form of the name.
+ */
+export function placeForm(log: PublicLog, at: string): string {
+  const known = sourceFormat();
+  const component = /^([A-Za-z][A-Za-z0-9]*) (.+)$/.exec(at);
+  if (component !== null) {
+    const type = component[1] ?? '';
+    return `a component of the type ${known.types.has(type) ? (log.name(type) ?? '(not shown)') : '(not shown)'}, with a name of the form ${nameForm(component[2] ?? '')}`;
+  }
+  const parts = at.split('/');
+  const folder = parts[0] ?? '';
+  const [, ending = '', meta = ''] = /\.([A-Za-z0-9]+)(-meta\.xml)?$/.exec(parts.at(-1) ?? '') ?? [];
+  return (
+    `in ${parts.length > 1 && known.folders.has(folder) ? (log.name(folder) ?? '(a folder that is not shown)') : '(a folder that is not shown)'}, ` +
+    `${String(parts.length - 1)} ${parts.length === 2 ? 'level' : 'levels'} deep, ` +
+    `a name that ends in ${known.endings.has(ending) ? `.${ending}${meta}` : '(an ending that is not shown)'}`
+  );
+}
+
+/** A name without what an org is known to write in two ways: case, encoded characters, the prefix of a package. */
+const ALIKE: readonly { readonly how: string; readonly of: (name: string) => string }[] = [
+  { how: 'only in upper and lower case', of: (name) => name.toLowerCase() },
+  {
+    how: 'only in how a character is encoded',
+    of: (name) => {
+      try {
+        return decodeURIComponent(name).toLowerCase();
+      } catch {
+        return name.toLowerCase();
+      }
+    },
+  },
+  {
+    how: 'only in the prefix of a package',
+    // `ns__Name__c` and `Name__c`, not `Name__c` and `c`.
+    of: (name) => name.toLowerCase().replace(/(^|[./])[a-z0-9]+__(?![a-z]{1,7}(?:$|[./]))/g, '$1'),
+  },
+  {
+    how: 'in what stands before its last dot or slash',
+    of: (name) => name.toLowerCase().split(/[./]/).at(-1) ?? '',
+  },
+];
+
+/** The most forms of names that are shown for one type. */
+const FORMS_SHOWN = 4;
+
+const tallied = (counts: ReadonlyMap<string, number>, most = Infinity): string =>
+  [...counts]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .slice(0, most)
+    .map(([name, times]) => `${name} (${String(times)})`)
+    .join(', ') + (counts.size > most ? `, and ${String(counts.size - most)} more` : '');
+
+/** A component as the inventory of a snapshot has it. */
+export interface InventoryRow {
+  readonly type: string;
+  readonly fullName: string;
+  readonly listed: boolean;
+  readonly retrieved: boolean;
+  readonly namespacePrefix: string | null;
+  readonly manageableState: string | null;
+}
+
+/**
+ * What can be said about the components the org listed and did not hand out, and about the ones it handed out
+ * and had not listed, without a name: how many, of which package state, how their names are built, whether the
+ * object or the folder they belong to came back, and whether they came back under a name that is nearly the
+ * same.
+ */
+export function missingLines(log: PublicLog, items: readonly InventoryRow[]): string[] {
+  interface Item {
+    readonly name: string;
+    readonly packaged: boolean;
+    readonly state: string;
+  }
+  const types = new Map<string, { listed: number; missing: Item[]; unlisted: Item[] }>();
+  const states = new Map<string, 'retrieved' | 'not retrieved'>();
+  for (const row of items) {
+    const group = types.get(row.type) ?? { listed: 0, missing: [], unlisted: [] };
+    types.set(row.type, group);
+    states.set(`${row.type}\u0000${row.fullName}`, row.retrieved ? 'retrieved' : 'not retrieved');
+    const item: Item = {
+      name: row.fullName,
+      packaged: (row.namespacePrefix ?? '') !== '',
+      state: log.name(row.manageableState) ?? 'none',
+    };
+    if (row.listed) group.listed += 1;
+    if (row.listed && !row.retrieved) group.missing.push(item);
+    if (!row.listed && row.retrieved) group.unlisted.push(item);
+  }
+  const shown = (type: string): string => log.name(type) ?? '(a type that is not shown)';
+  const tally = (values: readonly string[]): Map<string, number> => {
+    const counts = new Map<string, number>();
+    for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+    return counts;
+  };
+  /** Whether what a name belongs to, an object or a folder, is in the snapshot. */
+  const owners = (names: readonly Item[], mark: string, ownerType: string): string | null => {
+    // A name in a folder can hold a dot of its own. It belongs to the folder, not to an object.
+    const owned = names.filter((item) => item.name.includes(mark) && (mark === '/' || !item.name.includes('/')));
+    if (owned.length === 0) return null;
+    const found = tally(
+      owned.map((item) => {
+        const owner = item.name.slice(0, item.name.indexOf(mark));
+        if (owner === 'unfiled$public') return 'is the folder of unfiled items';
+        const state = states.get(`${ownerType}\u0000${owner}`);
+        return state === undefined ? 'is not in the list' : state === 'retrieved' ? 'came back' : 'did not come back';
+      }),
+    );
+    return `${mark === '.' ? 'What stands before the dot, as' : 'The folder before the slash, as'} ${shown(ownerType)}: ${tallied(found)}`;
+  };
+  const about = (type: string, names: readonly Item[]): string[] => {
+    const parts: string[] = [];
+    const packaged = names.filter((item) => item.packaged).length;
+    if (packaged > 0) parts.push(`Of a package: ${String(packaged)}`);
+    const stated = tally(names.map((item) => item.state));
+    if (stated.size > 1 || !stated.has('none')) parts.push(`State: ${tallied(stated)}`);
+    parts.push(`Forms of the names: ${tallied(tally(names.map((item) => nameForm(item.name))), FORMS_SHOWN)}`);
+    const object = owners(names, '.', 'CustomObject');
+    if (object !== null) parts.push(object);
+    const folder = owners(names, '/', type === 'EmailTemplate' ? 'EmailFolder' : `${type}Folder`);
+    if (folder !== null) parts.push(folder);
+    return parts;
+  };
+
+  const lines: string[] = [];
+  const byName = ([a]: [string, unknown], [b]: [string, unknown]): number => a.localeCompare(b);
+  const withMissing = [...types].filter(([, group]) => group.missing.length > 0).sort(byName);
+  if (withMissing.length > 0) {
+    lines.push(
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+    );
+    for (const [type, group] of withMissing) {
+      const parts = [
+        `${String(group.missing.length)} of ${String(group.listed)} did not come back`,
+        ...about(type, group.missing),
+      ];
+      // A component that came back under a name that is nearly the one the org listed.
+      const twins = new Map<string, number>();
+      for (const item of group.missing) {
+        const rule = ALIKE.find(({ of }) => group.unlisted.some((other) => of(other.name) === of(item.name)));
+        if (rule !== undefined) twins.set(rule.how, (twins.get(rule.how) ?? 0) + 1);
+      }
+      if (twins.size > 0) parts.push(`Came back, not listed, under a name that differs ${tallied(twins)}`);
+      lines.push(`- ${shown(type)}: ${parts.join('. ')}.`);
+    }
+  }
+  const withUnlisted = [...types].filter(([, group]) => group.unlisted.length > 0).sort(byName);
+  if (withUnlisted.length > 0) {
+    lines.push('', 'Components the org handed out and had not listed, by type:');
+    for (const [type, group] of withUnlisted) {
+      lines.push(`- ${shown(type)}: ${[String(group.unlisted.length), ...about(type, group.unlisted)].join('. ')}.`);
+    }
+  }
+  return lines;
+}
+
+/** Says what the database holds of a snapshot. Returns whether every component and file of the fixture project is in it. */
+function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   const files = store.get(
     `SELECT COUNT(*) AS files, COALESCE(SUM(b.raw_size), 0) AS bytes
        FROM snapshot_file f JOIN blob b ON b.id = f.blob_id WHERE f.snapshot_id = ?`,
@@ -249,6 +548,8 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
     { issues: number; components: number; types: Set<string>; codes: Map<string, number> }
   >();
   const remarks = new Map<string, number>();
+  const unread = new Map<string, number>();
+  const typeNames = new Set(types.map((type) => log.name(type['type'])).filter((name) => name !== null));
   let remarksInAll = 0;
   for (const issue of issues) {
     const code = log.code(issue['code']) ?? 'UNKNOWN';
@@ -278,9 +579,13 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
     if (code === 'RETRIEVE_MESSAGES') {
       remarksInAll += count(details['count']);
       for (const remark of Array.isArray(details['messages']) ? (details['messages'] as unknown[]) : []) {
-        const form = remarkForm(log, remark);
+        const form = remarkForm(log, remark, typeNames);
         remarks.set(form, (remarks.get(form) ?? 0) + 1);
       }
+    }
+    if (code === 'RESOLVE_FAILED') {
+      const place = `${placeForm(log, text(details['at']))}. In everyday words: ${everydayWords(text(issue['message']).split(' could not be read as metadata: ')[1] ?? '', typeNames)}`;
+      unread.set(place, (unread.get(place) ?? 0) + 1);
     }
   }
   for (const [id, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
@@ -301,6 +606,29 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
     for (const [form, times] of [...remarks].sort(([, a], [, b]) => b - a)) {
       log.say(`- ${plural(times, 'time', 'times')}: ${form}`);
     }
+  }
+  if (unread.size > 0) {
+    log.say('What could not be read as metadata (RESOLVE_FAILED):');
+    for (const [place, times] of [...unread].sort(([, a], [, b]) => b - a)) {
+      log.say(`- ${plural(times, 'time', 'times')}: ${place}`);
+    }
+  }
+  const items = store.all(
+    'SELECT type, full_name, listed, retrieved, namespace_prefix, manageable_state FROM inventory_item WHERE snapshot_id = ?',
+    snapshotId,
+  );
+  for (const line of missingLines(
+    log,
+    items.map((row) => ({
+      type: text(row['type']),
+      fullName: text(row['full_name']),
+      listed: count(row['listed']) === 1,
+      retrieved: count(row['retrieved']) === 1,
+      namespacePrefix: text(row['namespace_prefix']) || null,
+      manageableState: text(row['manageable_state']) || null,
+    })),
+  )) {
+    log.say(line);
   }
 
   // The files, by the folder of the source format they are in.
@@ -364,6 +692,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): void {
   if (differences.length > DIFFERENCES_SHOWN) {
     log.say(`- and ${String(differences.length - DIFFERENCES_SHOWN)} more files that differ.`);
   }
+  return incomplete.length === 0 && missing.length === 0;
 }
 
 export async function readOrg(
@@ -452,6 +781,7 @@ export async function readOrg(
       `Requests to the Metadata API: ${String(requests)}. Largest memory of the process: ${String(Math.round(process.resourceUsage().maxRSS / 1024))} MB.`,
     );
 
+    let fixtureWhole = false;
     if (existsSync(database)) {
       const store = openStore({ path: database, readOnly: true });
       try {
@@ -459,7 +789,7 @@ export async function readOrg(
           `SELECT s.id FROM snapshot s JOIN source o ON o.id = s.source_id WHERE o.name = ? ORDER BY s.id DESC LIMIT 1`,
           SOURCE_NAME,
         );
-        if (row !== undefined) describe(log, store, count(row['id']));
+        if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
       } finally {
         store.close();
       }
@@ -468,9 +798,18 @@ export async function readOrg(
     if (failure !== undefined) {
       log.say('');
       log.fail(failureLines(log, 'The snapshot of the test org did not end', failure));
-    } else if (taken?.status !== 'complete') {
+    } else if (!fixtureWhole) {
       log.say('');
-      log.fail(['The snapshot of the test org is not complete. The observations above say what is missing.']);
+      log.fail([
+        'The fixture project is not whole in the snapshot of the test org. The lines above say what is missing.',
+      ]);
+    } else if (taken?.status !== 'complete') {
+      // A real org lists components it does not hand out. The step says so and does not fail for it: it fails
+      // when the snapshot did not end or when the fixture project is not whole in it.
+      log.say('');
+      log.say(
+        '::warning::The snapshot of the test org is not complete, and the fixture project is whole in it. The observations above say what is missing.',
+      );
     }
   } finally {
     unsubscribe('undici:request:create', counted);

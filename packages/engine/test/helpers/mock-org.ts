@@ -18,6 +18,8 @@ import { soapFault, type MockMetadata } from './mock-metadata.ts';
 interface MockRequest {
   readonly method: string;
   readonly path: string;
+  /** What stands after the question mark of the address. */
+  readonly query: URLSearchParams;
   /** The session the request was made with, or `null`. */
   readonly session: string | null;
   readonly form: URLSearchParams;
@@ -174,6 +176,7 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
       const request: MockRequest = {
         method: incoming.method ?? '',
         path: address.pathname,
+        query: address.searchParams,
         session: /^Bearer (.+)$/.exec(incoming.headers.authorization ?? '')?.[1] ?? null,
         form: new URLSearchParams(sent),
         body: sent,

@@ -16,6 +16,11 @@ name: Live org
 #   read    takes a snapshot of the test org with the engine, in a folder
 #           that is deleted when the step ends, and prints what it holds in
 #           numbers.
+#   probe   asks the org what Salesforce itself knows about references: the
+#           rows of the Dependency API and the symbol tables of the Apex
+#           compiler, both through the Tooling API. It writes nothing, and
+#           prints how much of the answer key of the fixture project each
+#           of the two reports.
 #
 # The secrets belong to the environment "live-org", which hands them only to
 # a run from the branch "main". The log of this workflow can be read by
@@ -24,9 +29,11 @@ name: Live org
 # fixture project. It prints no name of another component of the org, and
 # no message that orglens, a Salesforce library or Salesforce wrote, unless
 # the whole text has a form the step lists
-# (packages/engine/test/live/public-log.ts). The two tools do their work in
-# a process without output, which can only send such lines to the step
-# (own-output.ts). The files of the org are not kept and not uploaded.
+# (packages/engine/test/live/public-log.ts). Of a message in another form,
+# a step shows only the words of a short list of everyday words. The tools
+# do their work in a process without output, which can only send such lines
+# to the step (own-output.ts). The files of the org are not kept and not
+# uploaded.
 #
 # The steps before the login install and build with the development
 # dependencies of the repository. What they build and install is what the
@@ -46,6 +53,8 @@ on:
           - read
           - deploy
           - deploy and read
+          - probe
+          - read and probe
   schedule:
     # Mondays at 05:17 UTC.
     - cron: '17 5 * * 1'
@@ -92,7 +101,7 @@ jobs:
           # The Salesforce library keeps its own encryption key in a file, not in a keychain that a runner may lack.
           SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
         run: node scripts/live-org-login.mjs
-      # The two steps below are tools of the tests of the engine. Node.js runs them from source.
+      # The steps below are tools of the tests of the engine. Node.js runs them from source.
       - name: Deploy the fixture project
         if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'deploy')
         timeout-minutes: 30
@@ -114,3 +123,13 @@ jobs:
           ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
           SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
         run: node --no-warnings packages/engine/test/live/read-org.ts
+      - name: Ask Salesforce about references
+        if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'probe')
+        timeout-minutes: 30
+        env:
+          ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
+          ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
+          ORGLENS_JWT_TEST_ORG_CLIENT_ID: ${{ secrets.ORGLENS_TEST_ORG_CLIENT_ID }}
+          ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
+          SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+        run: node --no-warnings packages/engine/test/live/probe-org.ts
