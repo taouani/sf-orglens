@@ -3,14 +3,21 @@
  * types the org has, which components of a type, start a retrieve, and how
  * far a retrieve is.
  *
- * Every request has a time limit and follows no redirect. The session is
- * sent to the address that issued it and to no other: an answer that
- * points elsewhere is a failure, not a place to go.
+ * Every request has a time limit for the whole answer and follows no
+ * redirect. The session is sent to the address that issued it and to no
+ * other: an answer that points elsewhere is a failure, not a place to go.
+ * A request is sent with the HTTP client directly, not the way the SOAP
+ * client would send it.
+ *
+ * One thing is not sent from here: when the session of a Salesforce CLI
+ * login has expired, the Salesforce library renews it with requests of
+ * its own (decision record 0031).
  *
  * Nothing here reads records. The Metadata API has no request that could.
  */
+import { PassThrough } from 'node:stream';
 import type { Connection } from '@salesforce/core';
-import { loadSoap } from './library.ts';
+import { loadSoap, loadUndici } from './library.ts';
 import { isFailedRenewal, networkCode, saidBy } from './org-errors.ts';
 
 /** A metadata type, as the org describes it. */
@@ -84,10 +91,12 @@ export interface MetadataApi {
   /** Starts a retrieve of the members and returns the id of the job. */
   startRetrieve(members: readonly Member[]): Promise<string>;
   retrieveState(jobId: string, withZip: boolean): Promise<RetrieveState>;
+  /** Ends the connections to the org. A request that is under way fails, and no further one is made. */
+  close(): Promise<void>;
 }
 
 export interface MetadataApiLimits {
-  /** The time limit of a request, in milliseconds. */
+  /** The time limit of a request, from sending it to the end of its answer, in milliseconds. */
   readonly requestMs: number;
   /** The time limit of the request that fetches the zip file of a retrieve. */
   readonly zipMs: number;
@@ -120,36 +129,112 @@ function faultCode(thrown: unknown): string | null {
   return /^[A-Z][A-Z0-9_]*$/.test(bare) ? bare : null;
 }
 
+/** One HTTP request, as the SOAP client hands it to what sends it. */
+interface HttpRequest {
+  readonly method: string;
+  readonly url: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: string;
+}
+
+/**
+ * The answers of a gateway before the org, and of an org that is not there for the moment. They are failures to
+ * reach the org, not answers of it, and the request is made again.
+ */
+const NOT_THERE = /^(?:ERROR_HTTP_(?:420|429|5\d\d)|SERVER_UNAVAILABLE)$/;
+
+/**
+ * Codes with which a request is refused for a reason that holds for the whole org, whatever was asked for: the
+ * limit of requests is used up, the API is closed to the org or to the user, or the address of the org sends
+ * requests elsewhere. They are taken from the list of status codes in the documentation of the API. None of them
+ * was seen in the answer of a real org yet.
+ */
+const ABOUT_THE_ORG: ReadonlySet<string> = new Set([
+  'REDIRECT',
+  'REQUEST_LIMIT_EXCEEDED',
+  'API_DISABLED_FOR_ORG',
+  'API_CURRENTLY_DISABLED',
+  'ORG_LOCKED',
+  'ORG_IN_MAINTENANCE',
+  'INVALID_OPERATION_WITH_EXPIRED_PASSWORD',
+]);
+
+/** True if the org refused for a reason that holds for every request, so that asking for something else is pointless. */
+export function isAboutTheOrg(error: MetadataRequestError): boolean {
+  return error.kind === 'refused' && error.code !== null && ABOUT_THE_ORG.has(error.code);
+}
+
+/**
+ * The proxy the Salesforce libraries use for their requests. They take the first of these variables that is set,
+ * also if it is set to nothing, which stands for no proxy.
+ */
+function proxyOfProcess(): string | undefined {
+  const { env } = process;
+  const value = env['https_proxy'] ?? env['http_proxy'] ?? env['HTTPS_PROXY'] ?? env['HTTP_PROXY'];
+  return value === undefined || value === '' ? undefined : value;
+}
+
 /** The Metadata API of the org a connection is logged in to, at one API version. */
 export async function metadataApi(
   connection: Connection,
   apiVersion: string,
   limits: MetadataApiLimits = DEFAULT_LIMITS,
 ): Promise<MetadataApi> {
-  const { SOAP, ApiSchemas } = await loadSoap();
+  const [{ SOAP, ApiSchemas }, { fetch, Agent, ProxyAgent }] = await Promise.all([loadSoap(), loadUndici()]);
   const endpointUrl = `${connection.instanceUrl}/services/Soap/m/${apiVersion}`;
+  // The connections of this API. They go the way the connections of the Salesforce libraries go.
+  const proxy = proxyOfProcess();
+  const dispatcher =
+    proxy === undefined
+      ? new Agent({ connect: { allowH2: false } })
+      : new ProxyAgent({ uri: proxy, requestTls: { allowH2: false } });
+  let closed = false;
+
+  /**
+   * Sends one HTTP request for the SOAP client and reads the whole answer, within one time limit. The client's own
+   * way of sending limits only the time until an answer starts, follows redirects, and lets a connection that
+   * breaks in the middle of an answer end the process.
+   */
+  const transport = (timeout: number): { httpRequest: (request: HttpRequest) => unknown } => ({
+    httpRequest: (request) => {
+      const answer = (async () => {
+        const response = await fetch(request.url, {
+          method: request.method,
+          ...(request.headers === undefined ? {} : { headers: { ...request.headers } }),
+          ...(request.body === undefined ? {} : { body: request.body }),
+          // The session is sent to the address that issued it and to no other.
+          redirect: 'manual',
+          signal: AbortSignal.timeout(timeout),
+          dispatcher,
+        });
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          throw new MetadataRequestError('refused', 'REDIRECT', 'The org answered with a redirect.');
+        }
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, name) => {
+          headers[name.toLowerCase()] = value;
+        });
+        return { statusCode: response.status, headers, body: await response.text() };
+      })();
+      // The client asks for a stream beside the answer, and reads nothing from it.
+      return Object.assign(answer, { stream: () => new PassThrough() });
+    },
+  });
 
   /** Sends one request, once. */
   const send = async (method: string, message: object, schema: unknown, timeout: number): Promise<unknown> => {
-    // An object, because the answer is seen in a function that is called later.
-    const seen = { redirect: false };
+    if (closed) throw new MetadataRequestError('unreachable', 'CLOSED', 'The connection to the org was closed.');
     try {
-      // The options beyond the address reach the HTTP client as they are. The class does not declare them.
-      const options = { xmlns: NAMESPACE, endpointUrl, timeout, followRedirect: false };
+      // The class takes what sends its requests as an option. Its declaration of the options does not say so.
+      const options = { xmlns: NAMESPACE, endpointUrl, transport: transport(timeout) };
       const endpoint = new SOAP(connection, options);
-      endpoint.on('response', (response: { statusCode?: number }) => {
-        const status = response.statusCode ?? 0;
-        if (status >= 300 && status < 400) seen.redirect = true;
-      });
       const answer = (await endpoint.invoke(method, message, { result: schema } as never, ApiSchemas)) as {
         result?: unknown;
       } | null;
-      if (seen.redirect) throw new MetadataRequestError('refused', 'REDIRECT', 'The org answered with a redirect.');
       return answer?.result;
     } catch (error) {
       if (error instanceof MetadataRequestError) throw error;
-      if (seen.redirect)
-        throw new MetadataRequestError('refused', 'REDIRECT', 'The org answered with a redirect.', error);
       const network = networkCode(error);
       if (network !== null) {
         throw new MetadataRequestError(
@@ -162,6 +247,10 @@ export async function metadataApi(
       const code = faultCode(error);
       if (code === 'INVALID_SESSION_ID' || isFailedRenewal(error)) {
         throw new MetadataRequestError('session', code, 'The org does not accept the session.', error);
+      }
+      if (code !== null && NOT_THERE.test(code)) {
+        const status = code.replace('ERROR_HTTP_', 'HTTP_');
+        throw new MetadataRequestError('unreachable', status, `The org could not be reached (${status}).`, error);
       }
       // Salesforce begins the sentence of a fault with its code. The code has a field of its own here.
       const said = saidBy(error);
@@ -181,7 +270,8 @@ export async function metadataApi(
       try {
         return await send(method, message, schema, timeout);
       } catch (error) {
-        const again = error instanceof MetadataRequestError && error.kind === 'unreachable' && attempt < limits.repeats;
+        const again =
+          error instanceof MetadataRequestError && error.kind === 'unreachable' && attempt < limits.repeats && !closed;
         if (!again) throw error;
         await pause(limits.repeatAfterMs * 2 ** attempt);
       }
@@ -277,6 +367,11 @@ export async function metadataApi(
         }),
         zip: zip === null ? null : Buffer.from(zip, 'base64'),
       };
+    },
+
+    close: async () => {
+      closed = true;
+      await dispatcher.destroy();
     },
   };
 }

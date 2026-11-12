@@ -238,6 +238,9 @@ importers:
       smol-toml:
         specifier: 1.9.1
         version: 1.9.1
+      undici:
+        specifier: 8.12.4
+        version: 8.12.4
     devDependencies:
       better-sqlite3:
         specifier: 13.0.3

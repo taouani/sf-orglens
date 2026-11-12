@@ -30,6 +30,11 @@ interface MockAnswer {
   readonly body: string;
   readonly type?: string;
   readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * What happens after the first half of the body is sent. `cut`: the connection is closed. `stall`: nothing more
+   * is sent, and the answer never ends.
+   */
+  readonly halfway?: 'cut' | 'stall';
 }
 
 export interface MockOrg {
@@ -37,6 +42,8 @@ export interface MockOrg {
   readonly url: string;
   /** The id of the org, with 18 characters. */
   readonly orgId: string;
+  /** The API versions the org says it has. A test changes them to make the org one release newer. */
+  readonly versions: string[];
   readonly requests: MockRequest[];
   /** The sessions the org accepts. A test adds the session of a login it has seeded, and removes one to let it expire. */
   readonly sessions: Set<string>;
@@ -55,7 +62,7 @@ export interface MockOrg {
   /** While this is true, the org takes every request and answers none. */
   stall: boolean;
   /** Set by a test to answer a request in another way. Returning `undefined` leaves the request to the org. */
-  intercept: ((request: MockRequest) => MockAnswer | Promise<MockAnswer> | undefined) | null;
+  intercept: ((request: MockRequest) => MockAnswer | Promise<MockAnswer | undefined> | undefined) | null;
   /** The requests so far as `METHOD path`, without the ones for the list of versions. */
   asked(): string[];
   close(): Promise<void>;
@@ -68,7 +75,7 @@ const refused = (description: string): MockAnswer =>
 export async function startMockOrg(options: { orgId?: string; versions?: readonly string[] } = {}): Promise<MockOrg> {
   const orgId = options.orgId ?? '00Dxx0000000001EAA';
   const userId = '005xx000000001AAAA';
-  const versions = options.versions ?? ['65.0', '66.0', '9.0'];
+  const versions = [...(options.versions ?? ['65.0', '66.0', '9.0'])];
   let issued = 0;
   let url = '';
 
@@ -116,7 +123,7 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
   };
 
   const answer = async (request: MockRequest): Promise<MockAnswer> => {
-    const intercepted = org.intercept?.(request);
+    const intercepted = await org.intercept?.(request);
     if (intercepted !== undefined) return intercepted;
     if (request.path.startsWith('/services/Soap/m/') && request.method === 'POST' && org.metadata !== null) {
       // A request to the Metadata API carries the session in its body.
@@ -174,9 +181,15 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
       org.requests.push(request);
       if (org.stall) return;
       void answer(request).then(
-        ({ status, body, type, headers }) => {
+        ({ status, body, type, headers, halfway }) => {
           outgoing.writeHead(status, { 'content-type': type ?? 'application/json', ...headers });
-          outgoing.end(body);
+          if (halfway === undefined) {
+            outgoing.end(body);
+            return;
+          }
+          outgoing.write(body.slice(0, Math.ceil(body.length / 2)), () => {
+            if (halfway === 'cut') outgoing.destroy();
+          });
         },
         (error: unknown) => {
           outgoing.writeHead(500, { 'content-type': 'text/plain' });
@@ -191,6 +204,7 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
       return url;
     },
     orgId,
+    versions,
     requests: [],
     sessions: new Set(),
     refreshTokens: new Set(),

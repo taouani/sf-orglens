@@ -12,11 +12,13 @@ import type * as MetadataSchema from '@jsforce/jsforce-node/lib/api/metadata/sch
 import type * as Soap from '@jsforce/jsforce-node/lib/soap.js';
 import type * as Core from '@salesforce/core';
 import type * as SourceLibrary from '@salesforce/source-deploy-retrieve';
+import type * as Undici from 'undici';
 
 let core: Promise<typeof Core> | undefined;
 let sourceLibrary: Promise<typeof SourceLibrary> | undefined;
 let jsforce: Promise<typeof Jsforce> | undefined;
 let soap: Promise<SoapLibrary> | undefined;
+let undici: Promise<typeof Undici> | undefined;
 
 const quiet = (): void => {
   process.env['SF_DISABLE_LOG_FILE'] = 'true';
@@ -66,4 +68,15 @@ export function loadSoap(): Promise<SoapLibrary> {
     import('@jsforce/jsforce-node/lib/api/metadata/schema.js'),
   ]).then(([client, schema]) => ({ SOAP: client.SOAP, ApiSchemas: schema.ApiSchemas }));
   return soap;
+}
+
+/**
+ * `undici`: the HTTP client below the Salesforce libraries. The requests
+ * to the Metadata API are sent with it directly, so that one time limit
+ * covers a whole answer and a connection that breaks is a failure of the
+ * request and not of the process.
+ */
+export function loadUndici(): Promise<typeof Undici> {
+  undici ??= import('undici');
+  return undici;
 }
