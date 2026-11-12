@@ -235,6 +235,54 @@ Accepted when:
 - A test proves `jwt-env` leaves no credential file and works twice in a row.
 - A fixture-folder snapshot and an org snapshot of the same content produce the same file list.
 
+Status after the first of two pull requests for this work package (2026-11-12). The work package is built in two
+parts, because the part that needs no org is useful and reviewable on its own. The scope of the work package is
+unchanged. Two pull requests where the table below had one is a change to the plan the maintainer approved, and it
+is named as such in the first of the two:
+
+- **Part one, built: the snapshot of a Git source.** Reading folders from disk and a commit from the repository
+  into one shape, `sfdx-project.json` and `.forceignore`, component resolution through the Salesforce library,
+  storage as content-addressed blobs in one transaction, coverage per metadata type, issues, and the commands
+  `snapshot` and `coverage`. The decisions are in record [0030](../adr/0030-reading-a-git-source.md).
+- **Part two, not built: everything that needs an org.** Both login modes, `source link` and `source check`, the
+  logins in `doctor`, the inventory, the chunk planner, the journalled retrieve, the tests against a mock
+  Salesforce server, and the decision record on the files touched in the home folder.
+
+The code review of part one left these for part two, where they have to be decided before an org snapshot is
+stored:
+
+- A snapshot does not record what was read: not `repo`, the name of the `ref`, the folders, nor which file belongs
+  to which component. Only the counts per type survive. Phase 1 needs the components.
+- A source is known to the database by its name and kind only. A name that is removed and declared again for
+  another repository continues the old row.
+- `coverage` refuses a source that is no longer declared, although its snapshots are kept.
+- The latest snapshot is the one with the highest number. With org snapshots that can be one that is still
+  running or that failed.
+- `doctor` does not check that Git is there and new enough.
+- Taking a snapshot blocks the process from start to end. That is fine for the CLI and not for a local web UI.
+- A Git LFS pointer file is stored as the content of the file when a commit is read.
+- A package directory inside another one is read with the outer one, and its own `.forceignore` is not consulted.
+- A component that is defined in two places is one component with the files of both. How it is analysed is a
+  question for Phase 1.
+
+What differs from the list above in part one, or is not done:
+
+- The completeness test for Apex files exists twice. As planned, a test fails the build when an Apex file of the
+  fixture project is missing from the snapshot. Beyond the plan, the same check is part of every snapshot: an
+  Apex file that belongs to no component is an issue of the severity `error` and makes the snapshot partial.
+- Coverage has the columns listed, retrieved and analysed. For a Git source, listed is what the resolver found and
+  retrieved is what could be stored. A failed type cannot occur before the inventory of an org exists.
+- A snapshot of the folders names its commit only if every file that was read is the same as in the commit, byte
+  for byte. On a machine where Git converts line endings on checkout it therefore names none.
+- Components and their files are compared with the Salesforce library's own reading by a test on the fixture
+  project, which runs in CI. The same test on the three public codebases is skipped where they are not
+  downloaded, which includes CI. By hand, 20 public codebases were compared once.
+- Not run: Windows and macOS beyond what CI runs, and any Git older than 2.43.
+- The acceptance criterion "a fixture-folder snapshot and an org snapshot produce the same file list" waits for
+  part two and the test org.
+- Measured once by hand, not held by CI: NPSP (11,707 components in 12,056 files) is read and stored in about 3
+  seconds, from disk and from a commit.
+
 ### WP8 Real-org run and cross-check probes
 
 Depends on Q3. Build `live-org.yml`, a workflow that runs only on manual trigger or schedule, never on pull requests from forks, and skips cleanly when secrets are absent.
@@ -284,18 +332,19 @@ Research measurements so far: on NPSP, `apex-parser` parsed 1,070 files in 18.5 
 
 About ten pull requests, in this order. Each is small enough to review in one sitting.
 
-| PR  | Content                                                                     | Work package |
-| --- | --------------------------------------------------------------------------- | ------------ |
-| 1   | Scaffold, CI, licence and contribution files, plans and research notes      | WP1, WP2     |
-| 2   | Decision records                                                            | WP2          |
-| 3   | Engine core: keys, reference vocabulary, errors, logger                     | WP3          |
-| 4   | Store: drivers, migrations, schema 0001, benchmark                          | WP4          |
-| 5   | Config, workspace, CLI shell, JSON contract, `doctor`                       | WP5          |
-| 6   | Fixture v0, answer key, key check, test codebase manifest                   | WP6          |
-| 7   | Connectivity: login, inventory, chunk planner, retrieve, snapshot, coverage | WP7          |
-| 8   | Live-org workflow, real-org report, cross-check probes                      | WP8          |
-| 9   | Apex trial code, results, decision record 0018                              | WP9          |
-| 10  | Phase close: updated plan, test plan, phase report                          | WP10         |
+| PR  | Content                                                                | Work package |
+| --- | ---------------------------------------------------------------------- | ------------ |
+| 1   | Scaffold, CI, licence and contribution files, plans and research notes | WP1, WP2     |
+| 2   | Decision records                                                       | WP2          |
+| 3   | Engine core: keys, reference vocabulary, errors, logger                | WP3          |
+| 4   | Store: drivers, migrations, schema 0001, benchmark                     | WP4          |
+| 5   | Config, workspace, CLI shell, JSON contract, `doctor`                  | WP5          |
+| 6   | Fixture v0, answer key, key check, test codebase manifest              | WP6          |
+| 7a  | Snapshot of a Git source, `snapshot` and `coverage`                    | WP7          |
+| 7b  | Connectivity: login, inventory, chunk planner, retrieve, org snapshot  | WP7          |
+| 8   | Live-org workflow, real-org report, cross-check probes                 | WP8          |
+| 9   | Apex trial code, results, decision record 0018                         | WP9          |
+| 10  | Phase close: updated plan, test plan, phase report                     | WP10         |
 
 PRs 3, 4 and 6 do not depend on each other. PR 9 needs PR 6. PR 8 needs PR 7 and your org setup.
 

@@ -32,6 +32,8 @@ export const ERROR_CODES = {
   SOURCE_EXISTS: 'A source with this name is already declared in orglens.toml.',
   SOURCE_INVALID: 'The declaration of a source breaks a rule of the configuration.',
   SOURCE_IN_USE: 'The source cannot be removed, because another source refers to it.',
+  SOURCE_READ_FAILED: 'A source could not be read: its repository, its folders or the commit it names.',
+  SNAPSHOT_NOT_FOUND: 'The source has no snapshot yet, or none with the given number.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',
 } as const;
 

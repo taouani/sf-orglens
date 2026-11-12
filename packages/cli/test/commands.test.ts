@@ -1,8 +1,9 @@
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EngineError, ERROR_CODES, type ErrorCode } from '@sf-orglens/engine';
 import { createWriter, EXIT, printable, table } from '../src/output.ts';
+import { commitAll as commitAllIn, withoutGit } from './helpers/git.ts';
 import { matchesSchema, orglens, orglensJson, outputSchema, tempDirs } from './helpers/run.ts';
 
 const dirs = tempDirs();
@@ -349,6 +350,233 @@ describe('orglens status', () => {
   });
 });
 
+/** The files of a small Salesforce project: one class and its description, and the project file. */
+const PROJECT: Readonly<Record<string, string>> = {
+  'force-app/main/default/classes/Greeter.cls': 'public class Greeter {}\n',
+  'force-app/main/default/classes/Greeter.cls-meta.xml':
+    '<?xml version="1.0" encoding="UTF-8"?>\n<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n    <apiVersion>65.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n',
+  'sfdx-project.json': '{ "packageDirectories": [{ "path": "force-app" }] }\n',
+};
+const PROJECT_BYTES = 23 + 175;
+
+/** A folder with the small project and a configuration that declares it as `work`, and an org as `prod`. */
+function projectWorkspace(extra: Readonly<Record<string, string>> = {}): string {
+  const dir = dirs.next();
+  const files = {
+    ...PROJECT,
+    'orglens.toml': 'schema_version = 1\n[sources.work]\nkind = "git"\n[sources.prod]\nkind = "org"\n',
+    ...extra,
+  };
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(join(dir, ...path.split('/').slice(0, -1)), { recursive: true });
+    writeFileSync(join(dir, ...path.split('/')), content);
+  }
+  return dir;
+}
+
+/** Makes the folder a Git repository with one commit of everything in it, and returns the id of the commit. */
+const commitAll = (dir: string): string => commitAllIn(dir, dirs.next());
+
+const NO_COMMIT = 'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository.';
+
+describe('orglens snapshot and coverage', () => {
+  it('takes a snapshot of a folder, says what it holds, and shows it again', async () => {
+    const dir = projectWorkspace();
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    expect(taken.stderr).toBe('');
+    expect(taken.stdout.split('\n')).toEqual([
+      `Snapshot #1 of "work" is complete: 1 component in 2 files (${String(PROJECT_BYTES)} bytes).`,
+      '',
+      'TYPE       LISTED  RETRIEVED  ANALYSED',
+      'ApexClass  1       1          0',
+      '',
+      'SEVERITY  CODE            WHAT',
+      NO_COMMIT,
+      '',
+    ]);
+    expect(taken.code).toBe(0);
+
+    const shown = await orglens(dir, ['coverage', 'work']);
+    const lines = shown.stdout.split('\n');
+    expect(lines[0]).toMatch(
+      /^Snapshot #1 of "work", taken \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z, is complete: 1 component in 2 files \(198 bytes\)\.$/,
+    );
+    expect(lines.slice(1)).toEqual(taken.stdout.split('\n').slice(1));
+    expect(shown).toMatchObject({ code: 0, stderr: '' });
+
+    const status = await orglens(dir, ['status']);
+    expect(status.stdout).toMatch(/^work +git +1 +#1 complete, finished /m);
+  });
+
+  it('names the commit a snapshot holds', async () => {
+    const dir = projectWorkspace({ '.gitignore': '.orglens/\n' });
+    const commit = commitAll(dir);
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    expect(taken.stdout).toBe(
+      [
+        `Snapshot #1 of "work" is complete: 1 component in 2 files (198 bytes), commit ${commit.slice(0, 10)}.`,
+        '',
+        'TYPE       LISTED  RETRIEVED  ANALYSED',
+        'ApexClass  1       1          0',
+        '',
+      ].join('\n'),
+    );
+    expect((await orglensJson(dir, ['coverage', 'work'])).data).toMatchObject({ snapshot: { commit }, issues: [] });
+  });
+
+  it('takes a snapshot of a folder on a machine without Git, and says that a commit needs it', async () => {
+    const dir = projectWorkspace({
+      'orglens.toml': 'schema_version = 1\n[sources.work]\nkind = "git"\n[sources.main]\nkind = "git"\nref = "main"\n',
+    });
+    commitAll(dir);
+    const taken = await withoutGit(dirs.next(), () => orglens(dir, ['snapshot', 'work']));
+    expect(taken).toMatchObject({ code: 0, stderr: '' });
+    expect(taken.stdout).toContain('Snapshot #1 of "work" is complete: 1 component in 2 files');
+    expect(taken.stdout).toContain('COMMIT_UNKNOWN  The snapshot names no commit: no "git" program was found.');
+
+    const byName = await withoutGit(dirs.next(), () => orglensJson(dir, ['snapshot', 'main']));
+    expect(byName).toMatchObject({
+      code: 1,
+      error: { code: 'SOURCE_READ_FAILED', details: { reason: 'GIT_NOT_INSTALLED' } },
+    });
+    expect(byName.error?.message).toBe('Git is needed to read "main", and no "git" program was found.');
+  });
+
+  it('writes the report as JSON that matches the schema, the same from both commands', async () => {
+    const dir = projectWorkspace();
+    const taken = await orglensJson(dir, ['snapshot', 'work']);
+    expect(taken).toMatchObject({ code: 0, command: 'snapshot', ok: true, warnings: [], error: null });
+    expect(taken.data).toEqual({
+      snapshot: {
+        id: 1,
+        source: 'work',
+        kind: 'git',
+        status: 'complete',
+        startedAt: expect.stringMatching(/Z$/) as string,
+        finishedAt: expect.stringMatching(/Z$/) as string,
+        engineVersion: expect.any(String) as string,
+        commit: null,
+        files: 2,
+        bytes: PROJECT_BYTES,
+      },
+      types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, note: null }],
+      issues: [
+        {
+          severity: 'info',
+          code: 'COMMIT_UNKNOWN',
+          message: expect.any(String) as string,
+          details: { reason: 'NOT_A_REPOSITORY' },
+        },
+      ],
+    });
+    const shown = await orglensJson(dir, ['coverage', 'work', '--snapshot', '1']);
+    expect(shown).toMatchObject({ code: 0, command: 'coverage', ok: true });
+    expect(shown.data).toEqual(taken.data);
+  });
+
+  it('ends with 5 for a snapshot that is partial, keeps it, and shows it with 0', async () => {
+    const dir = projectWorkspace({
+      'sfdx-project.json': '{ "packageDirectories": [{ "path": "force-app" }, { "path": "gone" }] }\n',
+      'force-app/main/default/classes/notes.txt': 'not metadata',
+    });
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    expect(taken.stdout.split('\n')).toEqual([
+      'Snapshot #1 of "work" is partial, something is missing: 1 component in 2 files (198 bytes).',
+      '',
+      'TYPE       LISTED  RETRIEVED  ANALYSED',
+      'ApexClass  1       1          0',
+      '',
+      'SEVERITY  CODE                WHAT',
+      'error     FOLDER_MISSING      1 folder of the source does not exist, or is a link, a submodule or a file: gone.',
+      'warning   FILES_NOT_METADATA  1 file is not part of a metadata component and not in the snapshot.',
+      NO_COMMIT.replace('COMMIT_UNKNOWN  ', 'COMMIT_UNKNOWN      '),
+      '',
+    ]);
+    expect(taken).toMatchObject({ code: 5, stderr: '' });
+
+    // The result is there: `ok` is true, and the exit code says that it is incomplete.
+    const again = await orglensJson(dir, ['snapshot', 'work']);
+    expect(again).toMatchObject({ code: 5, ok: true, error: null, data: { snapshot: { id: 2, status: 'partial' } } });
+    expect((again.data as { issues: unknown[] }).issues).toContainEqual({
+      severity: 'warning',
+      code: 'FILES_NOT_METADATA',
+      message: '1 file is not part of a metadata component and not in the snapshot.',
+      details: { count: 1, paths: ['force-app/main/default/classes/notes.txt'] },
+    });
+
+    // Reading a report is not a failure, whatever the report says.
+    const shown = await orglensJson(dir, ['coverage', 'work']);
+    expect(shown).toMatchObject({ code: 0, ok: true, data: { snapshot: { id: 2, status: 'partial' } } });
+    expect((await orglensJson(dir, ['coverage', 'work', '--snapshot', '1'])).data).toMatchObject({
+      snapshot: { id: 1 },
+    });
+  });
+
+  it('says what stands in the way: no such source, no snapshot, no project, an org', async () => {
+    const dir = projectWorkspace();
+    expect(await orglens(dir, ['snapshot', 'nowhere'])).toMatchObject({
+      code: 2,
+      stdout: '',
+      stderr:
+        'error: No source "nowhere" is declared in orglens.toml.\nhint: See the sources with: orglens source list\n',
+    });
+    expect((await orglensJson(dir, ['coverage', 'nowhere'])).error?.code).toBe('SOURCE_NOT_FOUND');
+
+    expect(await orglens(dir, ['coverage', 'work'])).toEqual({
+      code: 2,
+      stdout: '',
+      stderr: 'error: There is no snapshot of the source "work" yet.\nhint: Take one with: orglens snapshot work\n',
+    });
+    // Asking for a report creates nothing.
+    expect(existsSync(join(dir, '.orglens'))).toBe(false);
+
+    const org = await orglensJson(dir, ['snapshot', 'prod']);
+    expect(org).toMatchObject({
+      code: 1,
+      command: 'snapshot',
+      ok: false,
+      data: null,
+      error: { code: 'SOURCE_READ_FAILED', details: { reason: 'KIND_NOT_READABLE', source: 'prod', kind: 'org' } },
+    });
+
+    await orglens(dir, ['snapshot', 'work']);
+    const missing = await orglensJson(dir, ['coverage', 'work', '--snapshot', '2']);
+    expect(missing).toMatchObject({
+      code: 2,
+      error: { code: 'SNAPSHOT_NOT_FOUND', details: { source: 'work', snapshot: 2 } },
+    });
+
+    rmSync(join(dir, 'sfdx-project.json'));
+    const unreadable = await orglensJson(dir, ['snapshot', 'work']);
+    expect(unreadable).toMatchObject({
+      code: 1,
+      error: { code: 'SOURCE_READ_FAILED', details: { reason: 'PROJECT_FILE_MISSING' } },
+    });
+    expect(unreadable.error?.hint).not.toBeNull();
+    // The snapshot that was taken is still the latest.
+    expect((await orglensJson(dir, ['coverage', 'work'])).data).toMatchObject({ snapshot: { id: 1 } });
+  });
+
+  it.each(['0', '-1', '1.5', '01', 'latest', '1e3', '9999999999999999', ''])(
+    'rejects "%s" as the number of a snapshot, before anything is read',
+    async (value) => {
+      // Not a workspace: the option is looked at first.
+      const run = await orglensJson(dirs.next(), ['coverage', 'work', `--snapshot=${value}`]);
+      expect(run).toMatchObject({ code: 2, command: 'coverage', ok: false, error: { code: 'USAGE' } });
+      expect(run.error?.message).toContain('--snapshot');
+    },
+  );
+
+  it('needs the name of a source, and a workspace', async () => {
+    for (const command of ['snapshot', 'coverage']) {
+      const bare = await orglens(dirs.next(), [command]);
+      expect(bare).toMatchObject({ code: 2, stdout: '' });
+      expect(bare.stderr).toMatch(/^error: missing required argument 'source'/);
+      expect((await orglensJson(dirs.next(), [command, 'work'])).error?.code).toBe('WORKSPACE_NOT_FOUND');
+    }
+  });
+});
+
 describe('orglens doctor', () => {
   it('reports every check and exits with 0 when none failed', async () => {
     const dir = await workspace();
@@ -458,6 +686,7 @@ describe('the --json contract', () => {
       'SOURCE_EXISTS',
       'SOURCE_INVALID',
       'SOURCE_IN_USE',
+      'SNAPSHOT_NOT_FOUND',
     ];
     const silent = createWriter({ stdout: () => undefined, stderr: () => undefined, cwd: '', env: {} }, true);
     for (const code of Object.keys(ERROR_CODES) as ErrorCode[]) {

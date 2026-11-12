@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadBetterSqlite3Driver } from '../../src/store/better-sqlite3.ts';
@@ -33,3 +33,22 @@ export function codeOf(run: () => unknown): string {
   }
   return 'did not throw';
 }
+
+/**
+ * True if taking the permissions of a file away keeps this process from reading it. It does not on Windows, and
+ * not for the administrator, who reads every file.
+ */
+export const canLoseAccess = ((): boolean => {
+  const dir = mkdtempSync(join(tmpdir(), 'orglens-access-'));
+  try {
+    const file = join(dir, 'probe');
+    writeFileSync(file, 'x');
+    chmodSync(file, 0o000);
+    readFileSync(file);
+    return false;
+  } catch {
+    return true;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();

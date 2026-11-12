@@ -27,5 +27,7 @@ export type {
 } from './workspace.ts';
 export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
 
+export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
+
 export { doctor } from './doctor.ts';
 export type { DoctorCheck, DoctorReport } from './doctor.ts';

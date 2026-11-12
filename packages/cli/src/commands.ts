@@ -8,6 +8,7 @@ import {
   doctor,
   initWorkspace,
   openWorkspace,
+  type CoverageReport,
   type SourceDeclaration,
   type SourceInput,
   type SourceStatus,
@@ -202,6 +203,85 @@ export async function status(context: Context): Promise<Outcome> {
             report.sources.map((source) => [source.name, source.kind, String(source.snapshots), latest(source)]),
           )),
     ],
+  };
+}
+
+/** The first characters of a commit id, as Git shows it. */
+const shortCommit = (commit: string): string => commit.slice(0, 10);
+
+function count(number: number, one: string, many: string): string {
+  return `${String(number)} ${number === 1 ? one : many}`;
+}
+
+/** The lines that describe a snapshot: one sentence, the types, and the issues. */
+function coverageLines(report: CoverageReport, headline: string): string[] {
+  const { snapshot, types, issues } = report;
+  const components = types.reduce((sum, type) => sum + type.listed, 0);
+  const lines = [
+    `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
+      snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
+    }.`,
+  ];
+  if (types.length > 0) {
+    lines.push(
+      '',
+      ...table(
+        ['TYPE', 'LISTED', 'RETRIEVED', 'ANALYSED'],
+        types.map((type) => [type.type, String(type.listed), String(type.retrieved), String(type.analysed)]),
+      ),
+    );
+  }
+  if (issues.length > 0) {
+    lines.push(
+      '',
+      ...table(
+        ['SEVERITY', 'CODE', 'WHAT'],
+        issues.map((issue) => [issue.severity, issue.code, issue.message]),
+      ),
+    );
+  }
+  return lines;
+}
+
+const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], string>> = {
+  complete: 'is complete:',
+  partial: 'is partial, something is missing:',
+  running: 'has not ended:',
+  failed: 'failed:',
+};
+
+export async function snapshot(context: Context, source: string): Promise<Outcome> {
+  const workspace = await openWorkspace(locator(context));
+  const report = await workspace.snapshot(source);
+  const { id, status } = report.snapshot;
+  return {
+    data: report,
+    lines: coverageLines(report, `Snapshot #${String(id)} of "${source}" ${SNAPSHOT_VERDICT[status]}`),
+    exitCode: status === 'complete' ? EXIT.ok : EXIT.partial,
+  };
+}
+
+export async function coverage(
+  context: Context,
+  source: string,
+  options: { snapshot?: string | undefined },
+): Promise<Outcome> {
+  let id: number | undefined;
+  if (options.snapshot !== undefined) {
+    if (!/^[1-9][0-9]{0,14}$/.test(options.snapshot)) {
+      throw new UsageError(`--snapshot takes the number of a snapshot, and "${options.snapshot}" is not one.`);
+    }
+    id = Number(options.snapshot);
+  }
+  const workspace = await openWorkspace(locator(context));
+  const report = await workspace.coverage(source, { snapshot: id });
+  const { status, finishedAt, startedAt } = report.snapshot;
+  return {
+    data: report,
+    lines: coverageLines(
+      report,
+      `Snapshot #${String(report.snapshot.id)} of "${source}", ${finishedAt === null ? `started ${startedAt}` : `taken ${finishedAt}`}, ${SNAPSHOT_VERDICT[status]}`,
+    ),
   };
 }
 

@@ -97,7 +97,7 @@ A source name starts with a lower-case letter and has up to 32 lower-case letter
 | `sandbox_name` | sandbox      | The name of the sandbox: 1 to 10 letters and digits.                                                                                            |
 
 All four are optional. No command connects to an org yet, so nothing reads `login_url` today beyond checking it.
-The commands that connect arrive with Salesforce connectivity, later in Phase 0.
+The commands that connect arrive with the second part of Salesforce connectivity, later in Phase 0.
 
 ### A source of kind `git`
 
@@ -114,6 +114,45 @@ holds several orgs in sub-folders is declared as several git sources.
 Paths are written with forward slashes on every system. They are relative, and they contain no `..`, no `.` segment
 and no `~`. In `repo` only, `..` may lead the path, also on its own: `repo = ".."` is the folder above the
 workspace. A slash at the end of a folder is ignored.
+
+### How a git source is read
+
+`orglens snapshot` reads a git source as follows. The reasons are in
+[record 0030](adr/0030-reading-a-git-source.md).
+
+- **Without `ref`** the folders are read from disk as they are, changes that are not committed included. Git is
+  not needed for it: on a machine without Git the snapshot is taken and names no commit. **With `ref`** the commit
+  is read from the repository, whatever is checked out. This needs the `git` program, version 2.30 or newer. The
+  repository is never changed and nothing is fetched: a branch of a remote is named with the remote, as in
+  `origin/main`, and has to be fetched before. A partial clone that lacks files of the commit cannot be read.
+- **Git reads the repository of `repo`, whatever the environment says.** Variables such as `GIT_DIR`, which point
+  Git at another repository and which Git sets for the hooks it runs, are not handed on to it.
+- **The folders** are those of `paths`. Without `paths`, they are the package directories of the
+  `sfdx-project.json` at the top of `repo`, which is read from disk or from the commit like everything else. A
+  package directory inside another one is read with that one. A project whose package directory is the folder of
+  the project file itself (`"path": "."`) needs `paths`.
+- **`.forceignore` is honoured.** Each folder follows the nearest `.forceignore`: its own, or the one of the
+  nearest folder above it, up to the top of `repo`. A `.forceignore` above `repo` is not read. The rules are those
+  of the Salesforce CLI, including the ones it always adds, such as leaving out files whose name starts with a
+  dot. Without a `.forceignore`, no file is left out.
+- **Symbolic links are not followed**, and submodules and other Git repositories inside a folder are not read.
+  Each is reported. A folder of the source that is itself a link, a submodule or a file counts as missing. A
+  `.forceignore` that is a link is not applied, and a `sfdx-project.json` that is a link is not read. One case is
+  not covered: Git for Windows can be set to check a link out as a small text file, and from disk that file is
+  read as the file it is.
+- **Names are UTF-8.** A file or folder whose name is not UTF-8, which only Linux allows, is not read and is
+  reported as an error.
+- **Only metadata is stored.** A file that belongs to no metadata component is not part of the snapshot. It is
+  counted in an issue.
+- **One file that cannot be placed costs one file.** The Salesforce library stops at a `-meta.xml` file without
+  its content, such as the file of a class that was deleted. OrgLens reports that file and reads everything
+  beside it.
+- **A component in two places is reported.** If two package directories of one source define a class or a field
+  of the same name, the files of both are stored and a warning names them. OrgLens does not decide which one
+  counts.
+- **Paths in a snapshot** are relative to `repo`, with forward slashes.
+
+The source that is read can be a plain folder that is in no repository. Its snapshots then name no commit.
 
 ## `.orglens/local.toml`
 

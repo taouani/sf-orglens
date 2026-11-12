@@ -21,12 +21,10 @@ import { doctor } from '../src/api/doctor.ts';
 import { workspacePaths } from '../src/api/layout.ts';
 import { initWorkspace, inspectConfig, inspectStore, openWorkspace } from '../src/api/workspace.ts';
 import { openStore } from '../src/store/open.ts';
-import { DRIVERS, tempDirs } from './helpers/store.ts';
+import { canLoseAccess, DRIVERS, tempDirs } from './helpers/store.ts';
 
 /** Links and file permissions as on Linux and macOS. Windows has neither in this form. */
 const posix = process.platform !== 'win32';
-/** The administrator reads every file, so a file cannot be made unreadable for it. */
-const canLoseAccess = posix && process.getuid?.() !== 0;
 
 const dirs = tempDirs();
 afterEach(dirs.cleanUp);

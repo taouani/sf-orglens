@@ -40,6 +40,7 @@ during the build.
 | [0027](0027-json-envelope-and-exit-codes.md)      | One JSON envelope for every command, and six exit codes                                         | Accepted |            |
 | [0028](0028-configuration-files.md)               | Configuration: two TOML files, strict reading, and edits that keep the file as written          | Accepted |            |
 | [0029](0029-fixture-and-answer-key.md)            | The fixture project and its hand-written answer key                                             | Accepted |            |
+| [0030](0030-reading-a-git-source.md)              | How a Git source is read into a snapshot                                                        | Accepted |            |
 
 ## Writing a record
 
