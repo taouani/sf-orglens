@@ -4,21 +4,24 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration, and take snapshots of
-repository folders. No command connects to an org or analyses anything yet.
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, take snapshots of
+repository folders, and check the login for an org. No command reads the metadata of an org or analyses anything
+yet.
 
 ## Commands
 
-| Command                        | What it does                                                                              | Changes        |
-| ------------------------------ | ----------------------------------------------------------------------------------------- | -------------- |
-| `orglens init [folder]`        | Makes a folder a workspace: writes `orglens.toml` and creates the data folder `.orglens`. | The folder     |
-| `orglens source add <name>`    | Declares an org, a sandbox or a set of repository folders in `orglens.toml`.              | `orglens.toml` |
-| `orglens source list`          | Lists the declared sources.                                                               | Nothing        |
-| `orglens source remove <name>` | Removes the declaration of a source. Snapshots already taken stay in the database.        | `orglens.toml` |
-| `orglens status`               | Shows the workspace, the state of its database and the latest snapshot of every source.   | No data        |
-| `orglens snapshot <source>`    | Reads a source now and stores its metadata files as a new snapshot.                       | The database   |
-| `orglens coverage <source>`    | Shows what a snapshot holds per metadata type, and what was left out or went wrong.       | No data        |
-| `orglens doctor`               | Checks Node.js, SQLite, the workspace, its configuration and its database.                | No data        |
+| Command                              | What it does                                                                                | Changes                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------ |
+| `orglens init [folder]`              | Makes a folder a workspace: writes `orglens.toml` and creates the data folder `.orglens`.   | The folder               |
+| `orglens source add <name>`          | Declares an org, a sandbox or a set of repository folders in `orglens.toml`.                | `orglens.toml`           |
+| `orglens source list`                | Lists the declared sources.                                                                 | Nothing                  |
+| `orglens source remove <name>`       | Removes the declaration of a source. Snapshots already taken stay in the database.          | Both configuration files |
+| `orglens source link <name> <login>` | Chooses the Salesforce CLI login you use for an org or a sandbox.                           | `.orglens/local.toml`    |
+| `orglens source check <name>`        | Checks that a source can be read: logs in to an org, or reads the folders of a repository.  | No data                  |
+| `orglens status`                     | Shows the workspace, the state of its database and the latest snapshot of every source.     | No data                  |
+| `orglens snapshot <source>`          | Reads a source now and stores its metadata files as a new snapshot.                         | The database             |
+| `orglens coverage <source>`          | Shows what a snapshot holds per metadata type, and what was left out or went wrong.         | No data                  |
+| `orglens doctor`                     | Checks Node.js, SQLite, Git, the workspace, its configuration, its database and the logins. | No data                  |
 
 `status`, `coverage` and `doctor` change neither the configuration nor the content of the database. They open the
 database to read it, and SQLite can then create its two helper files beside it (`orglens.db-wal` and
@@ -37,8 +40,15 @@ What the help texts do not say:
   reports a database that is missing, outdated, newer, foreign or busy as the `state` of the store, and still exits
   with `0`: the command did what it was asked to do. `doctor` is the command that turns a problem into an exit
   code.
-- `source add` and `source remove` take a lock while they change `orglens.toml`, so two of them at the same moment
-  do not lose each other's change. A command that cannot get the lock within two seconds ends with `WORKSPACE_IO`.
+- `source add`, `source remove` and `source link` take a lock while they change a configuration file, so two of
+  them at the same moment do not lose each other's change. A command that cannot get the lock within two seconds
+  ends with `WORKSPACE_IO`.
+- `source remove` also removes the login that `source link` set for the source from `.orglens/local.toml`. A
+  login for a source that is not declared would make that file invalid.
+- `doctor` connects to nothing. Its check `logins` says how many logins the Salesforce CLI has on this machine and
+  by which route each org and sandbox of the workspace would be logged in. It names no login and no user, so the
+  report can be pasted into an issue. Whether a login still works shows `source check`. Its check `git` is a
+  warning, not a failure, when Git is missing or older than 2.30: folders on disk are read without Git.
 - A reader that closes the pipe early, as in `orglens status | head -1`, ends the command quietly with the exit
   code `1`.
 
@@ -98,12 +108,49 @@ An issue about several files carries their number in `details.count` and at most
 with its `type`, its `fullName` and the `paths` of its definitions. Only components without parts are looked at:
 a class or a field in two package directories is reported, an object whose file is in two of them is not.
 
+### Logins
+
+OrgLens never asks for a password and stores no credential. For an org or a sandbox it uses a login that exists
+already, found in this order:
+
+1. **A private key in the environment**, for a job that runs without a person. The variables carry the name of
+   the source in upper case, with `_` for `-`. For a source `prod`: `ORGLENS_JWT_PROD_USERNAME`,
+   `ORGLENS_JWT_PROD_CLIENT_ID`, and the key in `ORGLENS_JWT_PROD_KEY` or the path of its file in
+   `ORGLENS_JWT_PROD_KEY_FILE`. [configuration.md](configuration.md#environment-variables) describes them. As soon
+   as one of them is set, the source is logged in with the key. Half a set is an error and never a reason to use
+   the login of whoever runs the job.
+2. **The Salesforce CLI login that is linked to the source**: `orglens source link prod my-alias`. The login is
+   named by its alias or its user name, as `sf org list` shows it. The choice is personal and goes into
+   `.orglens/local.toml`. The login itself stays with the Salesforce CLI.
+3. **The one Salesforce CLI login of the declared org**: a source that declares its `org_id` needs no link when
+   exactly one login on this machine belongs to that org.
+
+The Salesforce CLI does not have to be installed for a login with a key. For the other two, a person has logged in
+with it before (`sf org login web`). OrgLens does not start the `sf` program.
+
+`orglens source link <name> <login>` checks that the login exists and that it belongs to the org the source
+declares, and connects to nothing. `orglens source check <name>` logs in, asks the org which org it is, and
+reports the route (`login.via`: `jwt-env`, `linked` or `org-id`), the id of the org and the API version OrgLens
+uses, which is the newest the org offers. For a login with a key, the user name and the address of the org are
+`null` in the output and absent from the text: they come from secrets, and the output of a job is read by others.
+
+- A login that belongs to another org than the `org_id` of the source is refused with `ORG_MISMATCH`, by `link`
+  from what the Salesforce CLI knows and by `check` from what the org itself says. A source without `org_id`
+  accepts any login, and both commands say which `org_id` to add.
+- `source check` ends with the exit code `4` when no login is found, the login no longer works, or the org does
+  not answer within 30 seconds (`LOGIN_FAILED`, with the cause in `details.reason`), and for `ORG_MISMATCH`.
+- A Salesforce CLI login whose session has expired is renewed by the Salesforce library, which writes the new
+  session into the login file of the Salesforce CLI, as the CLI itself does. Nothing else is written outside the
+  workspace. [Record 0031](adr/0031-logins-and-the-home-folder.md) lists every file that is touched.
+- For a source of the kind `git`, `source check` reads everything a snapshot would read and stores nothing. It
+  reports the commit, the number of components and files, and the issues, and ends with `5` if a snapshot taken
+  now would be partial.
+
 ### Not available yet
 
-The plan of Phase 0 lists more commands for the workspace: `source link` and `source check`, snapshots of orgs
-and sandboxes, and a check of the Salesforce logins in `doctor`. All of them need a connection to an org. They
-arrive with the second part of Salesforce connectivity, later in Phase 0, because a command is added only once it
-does something.
+The plan of Phase 0 lists snapshots of orgs and sandboxes. They arrive with the third part of Salesforce
+connectivity, later in Phase 0. Until then `orglens snapshot` ends with `SOURCE_READ_FAILED` for an org or a
+sandbox, also when `source check` succeeds for it.
 
 ### Global options
 
@@ -234,35 +281,38 @@ release, the contract can still change with a pull request that says so.
 | `4`  | connection | A login is missing or has expired, or the org cannot be reached.              |
 | `5`  | partial    | The result is there and it is incomplete.                                     |
 
-`snapshot` ends with `5` when the snapshot it stored is partial. No command ends with `3` or `4` yet. The codes
-are fixed now, so that scripts written today keep their meaning when the commands that use them arrive.
+`snapshot` ends with `5` when the snapshot it stored is partial, and `source check` when a snapshot of the folders
+would be. `source check` and `source link` end with `4` for a problem with a login. No command ends with `3` yet.
+The code is fixed now, so that scripts written today keep their meaning when the commands that use it arrive.
 
 ## Error codes
 
-| Code                     | Exit | Situation                                                                                |
-| ------------------------ | ---- | ---------------------------------------------------------------------------------------- |
-| `USAGE`                  | 2    | The command line cannot be understood: an unknown command or option, a missing argument. |
-| `CONFIG_INVALID`         | 2    | A configuration file, or an environment variable that overrides it, has a problem.       |
-| `CONFIG_NOT_EDITABLE`    | 2    | `orglens.toml` is written in a way OrgLens cannot change safely. Edit it by hand.        |
-| `WORKSPACE_NOT_FOUND`    | 2    | No workspace: no `orglens.toml` in this folder or in a folder above it.                  |
-| `WORKSPACE_EXISTS`       | 2    | A workspace cannot be created here, because the folder already belongs to one.           |
-| `SOURCE_NOT_FOUND`       | 2    | No source with this name is declared.                                                    |
-| `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                             |
-| `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                          |
-| `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                       |
-| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                           |
-| `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                         |
-| `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                          |
-| `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders or the commit it names.          |
-| `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                           |
-| `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.              |
-| `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                  |
-| `STORE_OUTDATED`         | 1    | The database needs a migration, and the command only reads.                              |
-| `STORE_BUSY`             | 1    | Another process holds the write lock of the database.                                    |
-| `STORE_MIGRATION_FAILED` | 1    | A migration of the database failed and was rolled back.                                  |
-| `STORE_FAILED`           | 1    | The database could not be opened, read or written.                                       |
-| `REFERENCE_INVALID`      | 1    | A reference record breaks a rule of the reference vocabulary. This points at a bug.      |
-| `INTERNAL`               | 1    | An unexpected failure. This is a bug in OrgLens.                                         |
+| Code                     | Exit | Situation                                                                                 |
+| ------------------------ | ---- | ----------------------------------------------------------------------------------------- |
+| `USAGE`                  | 2    | The command line cannot be understood: an unknown command or option, a missing argument.  |
+| `CONFIG_INVALID`         | 2    | A configuration file, or an environment variable that overrides it, has a problem.        |
+| `CONFIG_NOT_EDITABLE`    | 2    | `orglens.toml` is written in a way OrgLens cannot change safely. Edit it by hand.         |
+| `WORKSPACE_NOT_FOUND`    | 2    | No workspace: no `orglens.toml` in this folder or in a folder above it.                   |
+| `WORKSPACE_EXISTS`       | 2    | A workspace cannot be created here, because the folder already belongs to one.            |
+| `SOURCE_NOT_FOUND`       | 2    | No source with this name is declared.                                                     |
+| `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                              |
+| `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                           |
+| `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                        |
+| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                            |
+| `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                          |
+| `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent. |
+| `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                        |
+| `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                           |
+| `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders or the commit it names.           |
+| `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                            |
+| `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.               |
+| `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                   |
+| `STORE_OUTDATED`         | 1    | The database needs a migration, and the command only reads.                               |
+| `STORE_BUSY`             | 1    | Another process holds the write lock of the database.                                     |
+| `STORE_MIGRATION_FAILED` | 1    | A migration of the database failed and was rolled back.                                   |
+| `STORE_FAILED`           | 1    | The database could not be opened, read or written.                                        |
+| `REFERENCE_INVALID`      | 1    | A reference record breaks a rule of the reference vocabulary. This points at a bug.       |
+| `INTERNAL`               | 1    | An unexpected failure. This is a bug in OrgLens.                                          |
 
 `USAGE` is raised by the command line itself. All other codes come from the engine, so the local web UI and other
 clients of the engine see the same codes.
@@ -274,6 +324,24 @@ For `SOURCE_READ_FAILED`, `details.reason` is one of `REPO_NOT_FOUND`, `PROJECT_
 `PROJECT_FILE_INVALID`, `FILE_UNREADABLE`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`,
 `GIT_NOT_INSTALLED`, `GIT_TOO_OLD`, `GIT_FAILED` and `KIND_NOT_READABLE`. With `GIT_FAILED`, the message carries
 what Git said, which can include paths of this machine.
+
+For `LOGIN_FAILED`, `details.reason` is one of:
+
+| Reason            | Situation                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `NO_LOGIN`        | Nothing says which login the source uses, or no Salesforce CLI login belongs to its org.            |
+| `LOGIN_AMBIGUOUS` | Several Salesforce CLI logins belong to the org of the source. Choose one with `source link`.       |
+| `LOGIN_UNKNOWN`   | The login that is linked, or that was given to `source link`, is not on this machine.               |
+| `JWT_INCOMPLETE`  | Some of the variables for a login with a key are set and others are missing (`details.missing`).    |
+| `JWT_INVALID`     | A variable holds something that cannot be used (`details.variable`): no key, no login URL.          |
+| `JWT_REJECTED`    | Salesforce refused the login with the key. `details.error` is its error code, the message its text. |
+| `SESSION_EXPIRED` | The login is no longer valid and could not be renewed. Log in again with the Salesforce CLI.        |
+| `ORG_UNREACHABLE` | No answer came from the org. `details.network` is the code of the failure, or `TIMEOUT`.            |
+| `REQUEST_FAILED`  | The org, or what answers at its address, answered with something else than expected.                |
+
+`details.source` is the name of the source. For `ORG_MISMATCH`, `details.declared` and `details.found` are the two
+org ids. No message and no detail holds a token or a key. A message about a login with a key holds no user name
+and no address either.
 
 ## Start-up time
 

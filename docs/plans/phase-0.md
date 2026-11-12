@@ -235,21 +235,39 @@ Accepted when:
 - A test proves `jwt-env` leaves no credential file and works twice in a row.
 - A fixture-folder snapshot and an org snapshot of the same content produce the same file list.
 
-Status after the first of two pull requests for this work package (2026-11-12). The work package is built in two
-parts, because the part that needs no org is useful and reviewable on its own. The scope of the work package is
-unchanged. Two pull requests where the table below had one is a change to the plan the maintainer approved, and it
-is named as such in the first of the two:
+Status after the second of three pull requests for this work package (2026-11-12). The work package is built in
+three parts, because each is useful and reviewable on its own: what needs no org, the logins, and reading an org.
+The scope of the work package is unchanged. Three pull requests where the table below had one is a change to the
+plan the maintainer approved, and each split is named as such in the pull request that makes it:
 
 - **Part one, built: the snapshot of a Git source.** Reading folders from disk and a commit from the repository
   into one shape, `sfdx-project.json` and `.forceignore`, component resolution through the Salesforce library,
   storage as content-addressed blobs in one transaction, coverage per metadata type, issues, and the commands
   `snapshot` and `coverage`. The decisions are in record [0030](../adr/0030-reading-a-git-source.md).
-- **Part two, not built: everything that needs an org.** Both login modes, `source link` and `source check`, the
-  logins in `doctor`, the inventory, the chunk planner, the journalled retrieve, the tests against a mock
-  Salesforce server, and the decision record on the files touched in the home folder.
+- **Part two, built: the logins.** Both login modes, `source link` and `source check`, the checks `git` and
+  `logins` in `doctor`, and tests against a mock org with the home folder redirected. The decisions, and every
+  file that is read or written in the home folder, are in record
+  [0031](../adr/0031-logins-and-the-home-folder.md).
+- **Part three, not built: reading an org.** The inventory, the chunk planner, the journalled retrieve, the org
+  snapshot, and the tests for kill and resume and for a chunk that is split.
 
-The code review of part one left these for part two, where they have to be decided before an org snapshot is
-stored:
+What differs from the list above in part two, or is not done:
+
+- Of the acceptance criteria, part two meets two halves: login by alias against the mock, and the test that a
+  login with a key leaves no credential file and works twice in a row, in one process and in two. Strictly, that
+  login leaves two files without secrets, which the Salesforce library creates. Record 0031 says what they hold.
+- A login with a key is found by variables that carry the name of the source (`ORGLENS_JWT_<SOURCE>_…`), so that
+  one job can read several orgs.
+- `source check` also works for a source of the kind `git`: it reads everything a snapshot would read and stores
+  nothing.
+- When the session of a Salesforce CLI login has expired, the Salesforce library renews it and then makes two
+  queries of its own about the org. Record 0031 names them and why they are accepted.
+- Not verified: the keychains of macOS, Linux and Windows (the tests use the file-based one on all three), a
+  login written by the real Salesforce CLI, and a real org. The live-org workflow is the first check against
+  Salesforce itself.
+
+The code review of part one left these for part three, where they have to be decided before an org snapshot is
+stored. One of them is done:
 
 - A snapshot does not record what was read: not `repo`, the name of the `ref`, the folders, nor which file belongs
   to which component. Only the counts per type survive. Phase 1 needs the components.
@@ -258,7 +276,7 @@ stored:
 - `coverage` refuses a source that is no longer declared, although its snapshots are kept.
 - The latest snapshot is the one with the highest number. With org snapshots that can be one that is still
   running or that failed.
-- `doctor` does not check that Git is there and new enough.
+- `doctor` does not check that Git is there and new enough. Done in part two.
 - Taking a snapshot blocks the process from start to end. That is fine for the CLI and not for a local web UI.
 - A Git LFS pointer file is stored as the content of the file when a commit is read.
 - A package directory inside another one is read with the outer one, and its own `.forceignore` is not consulted.
@@ -279,7 +297,7 @@ What differs from the list above in part one, or is not done:
   downloaded, which includes CI. By hand, 20 public codebases were compared once.
 - Not run: Windows and macOS beyond what CI runs, and any Git older than 2.43.
 - The acceptance criterion "a fixture-folder snapshot and an org snapshot produce the same file list" waits for
-  part two and the test org.
+  part three and the test org.
 - Measured once by hand, not held by CI: NPSP (11,707 components in 12,056 files) is read and stored in about 3
   seconds, from disk and from a commit.
 
@@ -341,7 +359,8 @@ About ten pull requests, in this order. Each is small enough to review in one si
 | 5   | Config, workspace, CLI shell, JSON contract, `doctor`                  | WP5          |
 | 6   | Fixture v0, answer key, key check, test codebase manifest              | WP6          |
 | 7a  | Snapshot of a Git source, `snapshot` and `coverage`                    | WP7          |
-| 7b  | Connectivity: login, inventory, chunk planner, retrieve, org snapshot  | WP7          |
+| 7b  | Logins: `source link`, `source check`, logins in `doctor`              | WP7          |
+| 7c  | Reading an org: inventory, chunk planner, retrieve, org snapshot       | WP7          |
 | 8   | Live-org workflow, real-org report, cross-check probes                 | WP8          |
 | 9   | Apex trial code, results, decision record 0018                         | WP9          |
 | 10  | Phase close: updated plan, test plan, phase report                     | WP10         |

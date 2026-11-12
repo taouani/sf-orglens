@@ -7,6 +7,10 @@ export default defineConfig({
   ssr: { resolve: { conditions: ['@sf-orglens/source'] } },
   test: {
     include: ['packages/*/test/**/*.test.ts'],
+    // Gives every test file an empty home folder. The tests of the logins rely on it, and no test may see the
+    // real one. It needs a process per test file: the home folder is a property of the process.
+    setupFiles: ['./tools/vitest-setup.js'],
+    pool: 'forks',
     // Many tests start Git or a second Node.js process several times. On the Windows runners of CI one such test
     // takes up to 4 seconds, which leaves no room below the default of 5.
     testTimeout: 20_000,

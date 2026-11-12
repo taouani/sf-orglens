@@ -223,6 +223,12 @@ importers:
 
   packages/engine:
     dependencies:
+      '@jsforce/jsforce-node':
+        specifier: 3.13.1
+        version: 3.13.1
+      '@salesforce/core':
+        specifier: 9.4.6
+        version: 9.4.6
       '@salesforce/source-deploy-retrieve':
         specifier: 13.12.0
         version: 13.12.0(supports-color@7.2.0)

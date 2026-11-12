@@ -1,8 +1,9 @@
 Usage: orglens doctor [options]
 
-Checks Node.js, SQLite, the workspace, its configuration and its database, and
-reports every check. It changes neither the configuration nor the data. The exit
-code is 1 if a check failed.
+Checks Node.js, SQLite, Git, the workspace, its configuration, its database and
+the logins for its orgs, and reports every check. It connects to nothing and
+changes neither the configuration nor the data. The exit code is 1 if a check
+failed.
 
 Options:
   -h, --help            show help and exit

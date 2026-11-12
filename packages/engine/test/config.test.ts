@@ -62,6 +62,7 @@ describe('readConfig', () => {
           },
         ],
         store: { driver: 'node:sqlite', driverSetBy: 'default' },
+        logins: {},
       },
     });
   });
@@ -69,7 +70,7 @@ describe('readConfig', () => {
   it('reads the smallest file there is', () => {
     expect(readConfig({ shared: 'schema_version = 1\n' })).toEqual({
       ok: true,
-      config: { name: null, sources: [], store: { driver: 'node:sqlite', driverSetBy: 'default' } },
+      config: { name: null, sources: [], store: { driver: 'node:sqlite', driverSetBy: 'default' }, logins: {} },
     });
   });
 
@@ -541,12 +542,81 @@ describe('readConfig', () => {
         '.orglens/local.toml:2:1: store.path: Unknown key "path". Known keys: driver.',
       ],
       [
-        'a key of the shared file',
-        '[sources.prod]\nkind = "org"\n',
-        '.orglens/local.toml:1:1: sources: Unknown key "sources". Known keys: store.',
+        'a source the shared file does not declare',
+        '[sources.prod]\nlogin = "main"\n',
+        '.orglens/local.toml:1:1: sources.prod: orglens.toml declares no source "prod". Remove this table, or correct the name.',
       ],
     ])('refuses %s in the local file', (_label, local, expected) => {
       expect(diagnosticsOf({ shared, local }).map(formatDiagnostic)).toEqual([expected]);
+    });
+
+    describe('the login of a source', () => {
+      const sources =
+        'schema_version = 1\n[sources.prod]\nkind = "org"\n[sources.uat]\nkind = "sandbox"\n[sources.repo]\nkind = "git"\n';
+      const read = (local: string): string[] => diagnosticsOf({ shared: sources, local }).map(formatDiagnostic);
+
+      it('is read for an org and a sandbox, by alias or by user name', () => {
+        const local = '[sources.prod]\nlogin = "acme prod"\n\n[sources.uat]\nlogin = "zoe@example.com"\n';
+        expect(readConfig({ shared: sources, local })).toMatchObject({
+          ok: true,
+          config: { logins: { prod: 'acme prod', uat: 'zoe@example.com' } },
+        });
+        expect(readConfig({ shared: sources, local: '[sources.prod]\n' })).toMatchObject({ config: { logins: {} } });
+        expect(readConfig({ shared: sources, local: 'sources.prod.login = "a"\n' })).toMatchObject({
+          config: { logins: { prod: 'a' } },
+        });
+      });
+
+      it.each([
+        [
+          'a repository',
+          '[sources.repo]\nlogin = "main"\n',
+          '.orglens/local.toml:2:1: sources.repo.login: A source of kind "git" has no login. Remove this key.',
+        ],
+        [
+          'a key of the shared file',
+          '[sources.prod]\nkind = "org"\n',
+          '.orglens/local.toml:2:1: sources.prod.kind: Unknown key "kind". Known keys: login.',
+        ],
+        [
+          'a login that is empty',
+          '[sources.prod]\nlogin = ""\n',
+          '.orglens/local.toml:2:1: sources.prod.login: A login is the alias or the user name of a Salesforce CLI login.',
+        ],
+        [
+          'a login with a blank at its end',
+          '[sources.prod]\nlogin = "main "\n',
+          '.orglens/local.toml:2:1: sources.prod.login: A login is the alias or the user name of a Salesforce CLI login.',
+        ],
+        [
+          'a login that is not text',
+          '[sources.prod]\nlogin = 7\n',
+          '.orglens/local.toml:2:1: sources.prod.login: This must be text in quotes.',
+        ],
+        [
+          'a name no source can have',
+          '[sources.Prod]\nlogin = "main"\n',
+          '.orglens/local.toml:1:1: sources.Prod: orglens.toml declares no source "Prod". Remove this table, or correct the name.',
+        ],
+        ['sources that are not tables', 'sources = 1\n', '.orglens/local.toml:1:1: sources: This must be a table.'],
+      ])('is refused for %s', (_label, local, expected) => {
+        expect(read(local)).toEqual([expected]);
+      });
+
+      it('is refused when it holds what looks like a credential', () => {
+        const local =
+          '[sources.prod]\nlogin = "force://PlatformCLI::5Aep861abcdefghijklmnopqrstuvwxyz@acme.my.salesforce.com"\n';
+        const diagnostics = read(local);
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0]).toContain('sources.prod.login');
+        expect(diagnostics[0]).not.toContain('5Aep861');
+      });
+
+      it('is not held against a shared file that has problems of its own', () => {
+        const broken = sources.replace('kind = "org"', 'kind = "organisation"');
+        const diagnostics = diagnosticsOf({ shared: broken, local: '[sources.prod]\nlogin = "main"\n' });
+        expect(diagnostics.map((one) => one.file)).toEqual(['orglens.toml']);
+      });
     });
 
     it('refuses a local file that is not valid TOML', () => {

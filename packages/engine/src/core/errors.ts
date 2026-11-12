@@ -34,6 +34,8 @@ export const ERROR_CODES = {
   SOURCE_IN_USE: 'The source cannot be removed, because another source refers to it.',
   SOURCE_READ_FAILED: 'A source could not be read: its repository, its folders or the commit it names.',
   SNAPSHOT_NOT_FOUND: 'The source has no snapshot yet, or none with the given number.',
+  LOGIN_FAILED: 'No login for the org of a source was found, or the login did not work, or the org did not answer.',
+  ORG_MISMATCH: 'The login belongs to another org than the one the source declares.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',
 } as const;
 

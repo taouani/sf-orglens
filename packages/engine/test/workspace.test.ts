@@ -190,12 +190,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       ['node', 'ok'],
       ['sqlite', 'ok'],
       ['sqlite-fallback', 'ok'],
+      ['git', 'ok'],
       ['workspace', 'ok'],
       ['config', 'ok'],
       ['store', 'ok'],
+      ['logins', 'ok'],
     ]);
-    expect(report.checks[4]?.details).toEqual({ sources: [], driver: driverName });
-    expect(report.checks[5]?.summary).toBe('The database is at schema version 1.');
+    expect(report.checks[5]?.details).toEqual({ sources: [], driver: driverName });
+    expect(report.checks[6]?.summary).toBe('The database is at schema version 1.');
     // The report is plain data.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });
@@ -498,7 +500,10 @@ describe('workspace sources', () => {
     const lock = join(dir, '.orglens', 'config.lock');
     writeFileSync(lock, '1\n');
     const error = await failure(() => workspace.sources.add({ name: 'prod', kind: 'org' }));
-    expect(error).toMatchObject({ code: 'WORKSPACE_IO', message: 'Another OrgLens command is changing orglens.toml.' });
+    expect(error).toMatchObject({
+      code: 'WORKSPACE_IO',
+      message: 'Another OrgLens command is changing the configuration.',
+    });
     expect(error.hint).toContain(lock);
     expect(read(dir, 'orglens.toml')).toBe(before);
 
@@ -569,10 +574,17 @@ describe('doctor', () => {
     const report = await doctor({ cwd: dirs.next(), env: {} });
     expect(report.ok).toBe(true);
     expect(report.checks.slice(3).map((check) => [check.id, check.status])).toEqual([
+      ['git', 'ok'],
       ['workspace', 'skipped'],
       ['config', 'skipped'],
       ['store', 'skipped'],
+      ['logins', 'ok'],
     ]);
+    expect(report.checks[3]?.details).toMatchObject({ installed: true, required: '2.30' });
+    expect(report.checks[7]).toMatchObject({
+      summary: '0 Salesforce CLI logins on this machine. No workspace configuration says which are needed.',
+      details: { cliLogins: 0, sources: [] },
+    });
     expect(report.checks[0]?.details).toMatchObject({ version: process.versions.node, required: '24.15' });
   });
 

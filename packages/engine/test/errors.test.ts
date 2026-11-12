@@ -39,6 +39,8 @@ describe('EngineError', () => {
       'CONFIG_NOT_EDITABLE',
       'INTERNAL',
       'KEY_INVALID',
+      'LOGIN_FAILED',
+      'ORG_MISMATCH',
       'REFERENCE_INVALID',
       'SNAPSHOT_NOT_FOUND',
       'SOURCE_EXISTS',

@@ -13,9 +13,16 @@ May import from: `core`.
 | `forceignore.ts` | The rules of `.forceignore`, evaluated on a tree                                         |
 | `resolve.ts`     | Files to metadata components, with the Salesforce source library                         |
 | `local.ts`       | `readLocalSource`: all of the above for a source of the kind `git`                       |
+| `library.ts`     | Loads the Salesforce libraries on first use, with their log file switched off            |
+| `logins.ts`      | The logins of the Salesforce CLI, listed by reading files, and which one a source uses   |
+| `jwt.ts`         | A login with a key from the environment: the variables, the assertion, the exchange      |
+| `org.ts`         | `connectToOrg`: login, newest API version, and the check that the org is the one meant   |
+| `org-errors.ts`  | What a failed login is reported as, and how a failed connection is told from a refusal   |
 
-Reading an org is not built yet. Decision record:
-[0030](../../../../docs/adr/0030-reading-a-git-source.md) for how a Git source is read.
+Logging in to an org is built. Reading one is not: no inventory, no retrieve. Decision records:
+[0030](../../../../docs/adr/0030-reading-a-git-source.md) for how a Git source is read,
+[0031](../../../../docs/adr/0031-logins-and-the-home-folder.md) for logins and the files they touch in the home
+folder.
 
 The order of the layers is `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer may import from
 layers earlier in that list and never from later ones, nor from the engine entry point `src/index.ts`. The rule is

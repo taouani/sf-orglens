@@ -8,7 +8,9 @@ May import from: every other layer.
 | -------------- | -------------------------------------------------------------------------------------------------- |
 | `index.ts`     | The list of what is public. `test/golden/api-surface.json` pins the names it exports.              |
 | `workspace.ts` | `initWorkspace` and `openWorkspace`: the workspace, its status and the sources it declares         |
-| `doctor.ts`    | `doctor`: the checks of the environment, the workspace, the configuration and the database         |
+| `doctor.ts`    | `doctor`: the checks of the environment, the workspace, the configuration, the database and logins |
+| `snapshot.ts`  | Taking a snapshot of a source, and the coverage of one                                             |
+| `check.ts`     | Checking a source: can it be logged in to, or read, as things are now?                             |
 | `layout.ts`    | Where a workspace keeps its files, and how the workspace of a folder is found                      |
 | `boundary.ts`  | Turns everything that is thrown inside the engine into an `EngineError` before it reaches a client |
 

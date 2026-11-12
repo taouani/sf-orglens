@@ -1,0 +1,21 @@
+Usage: orglens source link [options] <name> <login>
+
+Sets which login of the Salesforce CLI you use for an org or a sandbox, by its
+alias or its user name. The choice is personal and is written to
+.orglens/local.toml. No password, token or key is stored: the login stays with
+the Salesforce CLI. Nothing is connected. Without a link, OrgLens uses the one
+login that belongs to the org id the source declares.
+
+Arguments:
+  name                  the name of the source
+  login                 the alias or the user name of a Salesforce CLI login
+                        (see: sf org list)
+
+Options:
+  -h, --help            show help and exit
+
+Global Options:
+  -V, --version         print the version and exit
+  --json                write the result as one line of JSON
+  --workspace <folder>  the workspace folder (default: found from the current
+                        folder upwards)

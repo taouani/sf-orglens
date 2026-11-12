@@ -196,6 +196,31 @@ export function commitOf(repoDir: string, ref: string): string {
 const byVersion = (a: readonly number[], b: readonly number[]): number =>
   (a[0] ?? 0) - (b[0] ?? 0) || (a[1] ?? 0) - (b[1] ?? 0);
 
+/** What is known about the `git` program on this machine. */
+export interface GitProgram {
+  readonly installed: boolean;
+  /** Such as `2.43`. `null` if there is no Git, or if it does not say its version. */
+  readonly version: string | null;
+  /** False if the version is known and too old to read a commit. */
+  readonly supported: boolean;
+  /** The oldest version that can read a commit, such as `2.30`. */
+  readonly required: string;
+}
+
+/** Asks the `git` program for its version. `dir` is the folder it is started in. */
+export function gitProgram(dir: string): GitProgram {
+  const required = MINIMUM_GIT.join('.');
+  const result = git(dir, ['version']);
+  if (result.status !== 0) return { installed: !result.notInstalled, version: null, supported: false, required };
+  const version = parseGitVersion(result.stdout.toString('utf8'));
+  return {
+    installed: true,
+    version: version === null ? null : version.join('.'),
+    supported: version === null || byVersion(version, MINIMUM_GIT) >= 0,
+    required,
+  };
+}
+
 /**
  * What Git says is checked out: a commit, or why it names none.
  *

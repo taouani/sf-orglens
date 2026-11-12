@@ -52,7 +52,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
 
 - A layer imports only from layers above it in this list. The list is defined once, in `layers.cjs`.
 - `packages/engine/src/index.ts` re-exports `api/` and nothing else. Clients never reach into the engine.
-- Only `sources/` may import `@salesforce/*`. This is about the code of the engine. A test may import it.
+- Only `sources/` may import `@salesforce/*` and `@jsforce/*`. This is about the code of the engine. A test may
+  import them.
 - The rules are enforced twice: by the ESLint rule `orglens/layers` (`tools/eslint-plugin-orglens.js`, which
   resolves every static import, `import()`, type import and `require`) and by dependency-cruiser. The boundary
   between a client and the engine is guarded a third time by the `exports` map of the engine package.
@@ -105,6 +106,10 @@ Run `pnpm run check` before every push.
   package (`packages/engine/test/helpers/git-repo.ts`, `packages/cli/test/helpers/git.ts`). The helpers start Git
   without the `GIT_` variables and the Git settings of the machine, so that a test run from a hook cannot write
   into the repository of the developer. `git` is the only program a test starts besides Node.js.
+- Every test process runs with an empty home folder of its own and without the Salesforce and proxy variables of
+  the machine (`tools/vitest-setup.js`). A test that needs an org starts a mock on this machine
+  (`test/helpers/mock-org.ts`) and writes the logins it needs with `test/helpers/cli-logins.ts`. A test that
+  starts a second process while a mock runs in the first must not block: use `spawn`, not `spawnSync`.
 - Every store test runs against both SQLite drivers (`test/helpers/store.ts`). The store uses only what the driver
   port in `store/driver.ts` offers.
 - Dependencies are pinned to exact versions. A new runtime dependency needs a reason in the pull request, and a

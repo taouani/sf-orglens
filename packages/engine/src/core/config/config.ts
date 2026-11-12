@@ -12,6 +12,10 @@
  *
  * A key exists here only once a feature reads it. Keys for later features
  * (metadata scope, retention, retrieve limits) are added with those features.
+ *
+ * The variables of the environment that carry a login for a job without a
+ * person (`ORGLENS_JWT_...`) are not read here. They hold a key, and only
+ * the code that logs in looks at them.
  */
 import { parse, TomlError } from 'smol-toml';
 import type { JsonValue } from '../errors.ts';
@@ -80,6 +84,12 @@ export interface WorkspaceConfig {
     /** Where the choice of driver comes from. */
     readonly driverSetBy: 'default' | 'local' | 'environment';
   };
+  /**
+   * The Salesforce CLI login this person uses for a source, by the name of
+   * the source: an alias or a user name. From the personal file. A source
+   * without an entry is matched to a login by its org id.
+   */
+  readonly logins: Readonly<Record<string, string>>;
 }
 
 /** One problem in a configuration file. */
@@ -489,13 +499,56 @@ function readShared(table: Table, report: FileReport): { name: string | null; so
   return { name: name ?? null, sources };
 }
 
-function readLocal(table: Table, report: FileReport): StoreDriverName | undefined {
+interface LocalSettings {
+  readonly driver: StoreDriverName | undefined;
+  readonly logins: Readonly<Record<string, string>>;
+}
+
+/**
+ * Reads the personal file. `declared` are the sources of the shared file,
+ * or `undefined` if that file has problems of its own: a table for a source
+ * is then not held against a list that is incomplete.
+ */
+function readLocal(
+  table: Table,
+  report: FileReport,
+  declared: readonly SourceDeclaration[] | undefined,
+): LocalSettings {
   const root = new TableReader(table, [], report);
   const store = root.table('store');
   const driver = store?.oneOf('driver', STORE_DRIVERS);
   store?.finish();
+
+  const logins = new Map<string, string>();
+  const sourceTables = root.table('sources');
+  if (sourceTables !== undefined) {
+    for (const sourceName of Object.keys(table['sources'] as Table)) {
+      const reader = sourceTables.table(sourceName);
+      if (reader === undefined) continue;
+      const source = declared?.find((one) => one.name === sourceName);
+      if (!SOURCE_NAME.test(sourceName) || (declared !== undefined && source === undefined)) {
+        report.add(
+          reader.path,
+          `${SHARED_CONFIG_FILE} declares no source "${sourceName}". Remove this table, or correct the name.`,
+        );
+        continue;
+      }
+      const login = reader.string('login');
+      if (login !== undefined) {
+        if (source?.kind === 'git') {
+          reader.fail('login', 'A source of kind "git" has no login. Remove this key.');
+        } else if (login === '' || login !== login.trim() || login.length > 255) {
+          reader.fail('login', 'A login is the alias or the user name of a Salesforce CLI login.');
+        } else {
+          logins.set(sourceName, login);
+        }
+      }
+      reader.finish();
+    }
+    sourceTables.finish();
+  }
   root.finish();
-  return driver;
+  return { driver, logins: Object.fromEntries(logins) };
 }
 
 /**
@@ -516,16 +569,19 @@ export function readConfig(input: ConfigInput): ConfigResult {
   } else {
     diagnostics.push(shared);
   }
+  const sharedIsSound = diagnostics.length === 0;
 
   let driver: StoreDriverName = 'node:sqlite';
   let driverSetBy: WorkspaceConfig['store']['driverSetBy'] = 'default';
+  let logins: Readonly<Record<string, string>> = {};
   if (input.local !== undefined) {
     const local = parseToml(LOCAL_CONFIG_FILE, input.local);
     if ('table' in local) {
       scanForSecrets(local.table, [], local.report);
-      const chosen = readLocal(local.table, local.report);
-      if (chosen !== undefined) {
-        driver = chosen;
+      const settings = readLocal(local.table, local.report, sharedIsSound ? sources : undefined);
+      ({ logins } = settings);
+      if (settings.driver !== undefined) {
+        driver = settings.driver;
         driverSetBy = 'local';
       }
       diagnostics.push(...local.report.diagnostics);
@@ -551,7 +607,7 @@ export function readConfig(input: ConfigInput): ConfigResult {
   }
 
   if (diagnostics.length > 0) return { ok: false, diagnostics };
-  return { ok: true, config: { name, sources, store: { driver, driverSetBy } } };
+  return { ok: true, config: { name, sources, store: { driver, driverSetBy }, logins } };
 }
 
 /** The problems as they appear in the details of an error and in a report: each with the line a person reads. */

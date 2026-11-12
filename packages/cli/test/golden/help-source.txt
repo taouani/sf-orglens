@@ -1,6 +1,7 @@
 Usage: orglens source [options] [command]
 
-Declares the sources of the workspace in orglens.toml.
+Declares the sources of the workspace in orglens.toml, and sets and checks how
+they are reached.
 
 Options:
   -h, --help            show help and exit
@@ -15,3 +16,5 @@ Commands:
   add [options] <name>  declare a source
   list                  list the declared sources
   remove <name>         remove the declaration of a source
+  link <name> <login>   choose the Salesforce CLI login for an org or a sandbox
+  check <name>          check that a source can be read

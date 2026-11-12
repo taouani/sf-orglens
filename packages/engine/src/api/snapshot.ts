@@ -9,7 +9,7 @@
 import type { SourceDeclaration } from '../core/config/config.ts';
 import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
-import { readLocalSource } from '../sources/local.ts';
+import { readLocalSource, type LocalReading } from '../sources/local.ts';
 import { byCodeUnit, pathDetails, systemCode } from '../sources/tree.ts';
 import type { Store } from '../store/open.ts';
 import {
@@ -127,6 +127,66 @@ export function coverageOf(store: Store, source: string, id?: number): CoverageR
 
 const now = (): string => new Date().toISOString();
 
+/** What reading every file of a source once has shown. */
+interface FilesRead {
+  /** Everything that was observed: what the reading of the source found, then what was found here. */
+  readonly issues: StoredIssue[];
+  /** The files that were listed and could not be read. */
+  readonly unreadable: ReadonlySet<string>;
+  /** True if folders that named a commit no longer hold exactly that commit. */
+  readonly moved: boolean;
+}
+
+/**
+ * Reads every file of a source once and hands each content on. This is
+ * what a snapshot stores, and what a check of the source goes through
+ * without storing anything.
+ */
+export function readEveryFile(reading: LocalReading, each: (path: string, content: Uint8Array) => void): FilesRead {
+  const issues: StoredIssue[] = reading.issues.map((issue) => ({
+    ...issue,
+    componentKey: null,
+    details: issue.details ?? null,
+  }));
+  const unreadable = new Set<string>();
+  const changed: string[] = [];
+  for (const path of reading.tree.files) {
+    try {
+      const content = reading.tree.read(path);
+      // The file was compared with the commit earlier and is read again here. What is handed on decides.
+      if (reading.holds?.(path, content) === false) changed.push(path);
+      each(path, content);
+    } catch (error) {
+      // A file that was listed and cannot be read: it was deleted in the meantime, or may not be read.
+      if (error instanceof EngineError) throw error;
+      unreadable.add(path);
+      const reason = systemCode(error);
+      issues.push({
+        severity: 'error',
+        code: 'FILE_UNREADABLE',
+        // The message of the system names the file by its path on this machine, so only its code is kept.
+        message: `${path} could not be read${reason === null ? '' : ` (${reason})`}.`,
+        componentKey: null,
+        details: { path, reason },
+      });
+    }
+  }
+
+  // Folders that named a commit hold it only if every file that was read is still the file of the commit.
+  const moved = reading.holds !== null && (changed.length > 0 || unreadable.size > 0);
+  if (moved) {
+    const count = changed.length + unreadable.size;
+    issues.push({
+      severity: 'info',
+      code: 'CHANGED_WHILE_READ',
+      message: `The snapshot names no commit: ${String(count)} ${count === 1 ? 'file was' : 'files were'} changed or removed while the snapshot was taken.`,
+      componentKey: null,
+      details: pathDetails([...changed, ...unreadable].sort(byCodeUnit)),
+    });
+  }
+  return { issues, unreadable, moved };
+}
+
 /**
  * Reads a source and stores what was read as a new snapshot.
  *
@@ -165,47 +225,10 @@ export async function takeSnapshot(
         gitCommit: null,
       });
 
-      const issues: StoredIssue[] = reading.issues.map((issue) => ({
-        ...issue,
-        componentKey: null,
-        details: issue.details ?? null,
-      }));
-      const unreadable = new Set<string>();
-      const changed: string[] = [];
-      for (const path of reading.tree.files) {
-        try {
-          const content = reading.tree.read(path);
-          // The file was compared with the commit earlier and is read again here. What is stored decides.
-          if (reading.holds?.(path, content) === false) changed.push(path);
-          addSnapshotFile(store, snapshotId, path, content);
-        } catch (error) {
-          // A file that was listed and cannot be read: it was deleted in the meantime, or may not be read.
-          if (error instanceof EngineError) throw error;
-          unreadable.add(path);
-          const reason = systemCode(error);
-          issues.push({
-            severity: 'error',
-            code: 'FILE_UNREADABLE',
-            // The message of the system names the file by its path on this machine, so only its code is kept.
-            message: `${path} could not be read${reason === null ? '' : ` (${reason})`}.`,
-            componentKey: null,
-            details: { path, reason },
-          });
-        }
-      }
-
-      // Folders that named a commit hold it only if every file that was stored is still the file of the commit.
-      const moved = reading.holds !== null && (changed.length > 0 || unreadable.size > 0);
-      if (moved) {
-        const count = changed.length + unreadable.size;
-        issues.push({
-          severity: 'info',
-          code: 'CHANGED_WHILE_READ',
-          message: `The snapshot names no commit: ${String(count)} ${count === 1 ? 'file was' : 'files were'} changed or removed while the snapshot was taken.`,
-          componentKey: null,
-          details: pathDetails([...changed, ...unreadable].sort(byCodeUnit)),
-        });
-      }
+      const read = readEveryFile(reading, (path, content) => {
+        addSnapshotFile(store, snapshotId, path, content);
+      });
+      const { issues, unreadable, moved } = read;
 
       const types = new Map<string, { listed: number; retrieved: number }>();
       for (const component of reading.components) {

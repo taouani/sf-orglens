@@ -165,6 +165,65 @@ export async function sourceRemove(context: Context, name: string): Promise<Outc
   };
 }
 
+export async function sourceLink(context: Context, name: string, login: string): Promise<Outcome> {
+  const workspace = await openWorkspace(locator(context));
+  const link = await workspace.sources.link(name, login);
+  const lines = [`The source "${link.source}" now uses the Salesforce CLI login "${link.login}" on this machine.`];
+  if (link.declaredOrgId === null && link.orgId !== null) {
+    lines.push(
+      `The source declares no org id, so OrgLens cannot tell when a login points at another org. Add org_id = "${link.orgId}" to the source in orglens.toml.`,
+    );
+  }
+  lines.push(`Check the login with: orglens source check ${link.source}`);
+  return { data: link, lines };
+}
+
+const LOGIN_VIA: Readonly<Record<'jwt-env' | 'linked' | 'org-id', string>> = {
+  'jwt-env': 'a private key from the environment',
+  linked: 'the Salesforce CLI login linked to the source',
+  'org-id': 'the Salesforce CLI login of the declared org',
+};
+
+export async function sourceCheck(context: Context, name: string): Promise<Outcome> {
+  const workspace = await openWorkspace(locator(context));
+  const check = await workspace.sources.check(name);
+  if (check.kind === 'git') {
+    const lines = [
+      `The source "${check.source}" ${check.complete ? 'can be read:' : 'can be read in part, something is missing:'} ${count(check.components, 'component', 'components')} in ${count(check.files, 'file', 'files')} (${size(check.bytes)})${
+        check.commit === null ? '' : `, commit ${shortCommit(check.commit)}`
+      }. Nothing was stored.`,
+    ];
+    if (check.issues.length > 0) {
+      lines.push(
+        '',
+        ...table(
+          ['SEVERITY', 'CODE', 'WHAT'],
+          check.issues.map((issue) => [issue.severity, issue.code, issue.message]),
+        ),
+      );
+    }
+    return { data: check, lines, exitCode: check.complete ? EXIT.ok : EXIT.partial };
+  }
+  const { login, org } = check;
+  const who = [login.alias, login.username].filter((part) => part !== null).join(', ');
+  const lines = [
+    `The source "${check.source}" can be reached.`,
+    ...table(
+      ['Login', `${LOGIN_VIA[login.via]}${who === '' ? '' : ` (${who})`}`],
+      [
+        ['Org', org.instanceUrl === null ? org.id : `${org.id} at ${org.instanceUrl}`],
+        ['API version', org.apiVersion],
+      ],
+    ),
+  ];
+  if (check.declaredOrgId === null) {
+    lines.push(
+      `The source declares no org id, so OrgLens cannot tell when a login points at another org. Add org_id = "${org.id}" to the source in orglens.toml.`,
+    );
+  }
+  return { data: check, lines };
+}
+
 function size(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} bytes`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KiB`;
