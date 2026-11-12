@@ -7,6 +7,9 @@ export default defineConfig({
   ssr: { resolve: { conditions: ['@sf-orglens/source'] } },
   test: {
     include: ['packages/*/test/**/*.test.ts'],
+    // Many tests start Git or a second Node.js process several times. On the Windows runners of CI one such test
+    // takes up to 4 seconds, which leaves no room below the default of 5.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       include: ['packages/*/src/**/*.ts'],

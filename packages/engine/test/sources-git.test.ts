@@ -98,13 +98,14 @@ describe('reading a commit', () => {
 
   it('gives the same contents when it reads in many small batches and keeps almost none of them', () => {
     const repo = createRepo(temp.next());
-    const paths = Array.from({ length: 40 }, (_, index) => `app/f${String(index).padStart(2, '0')}.cls`);
+    // One file per batch, and Git is started once per batch. Starting a program is slow on Windows, so few files.
+    const paths = Array.from({ length: 8 }, (_, index) => `app/f${String(index)}.cls`);
     for (const path of paths) repo.write(path, `content of ${path}\n`.repeat(3));
     const commit = repo.commit();
 
     const { tree } = readCommit(repo.dir, commit, ['app'], { batchBytes: 100, cacheBytes: 150 });
     // Forwards, backwards and one file twice: every batch is read again after it left the cache.
-    for (const path of [...paths, ...paths.toReversed(), paths[7] ?? '']) {
+    for (const path of [...paths, ...paths.toReversed(), paths[3] ?? '']) {
       expect(text(tree.read(path))).toBe(`content of ${path}\n`.repeat(3));
     }
   });

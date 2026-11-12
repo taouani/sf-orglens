@@ -20,11 +20,12 @@ function write(root: string, path: string, content: string | Uint8Array = ''): v
 describe('reading folders', () => {
   it('lists every file below the folders, sorted by code unit, and nothing else', () => {
     const root = temp.next();
-    for (const path of ['app/b.cls', 'app/B.cls', 'app/a/deep/x.xml', 'app/é.cls', 'other/y.cls', 'outside.txt']) {
+    // No two names differ only in case: on Windows and macOS they would be one file.
+    for (const path of ['app/c.cls', 'app/B.cls', 'app/a/deep/x.xml', 'app/é.cls', 'other/y.cls', 'outside.txt']) {
       write(root, path);
     }
     const reading = readFolders(root, ['other', 'app']);
-    expect(reading.tree.files).toEqual(['app/B.cls', 'app/a/deep/x.xml', 'app/b.cls', 'app/é.cls', 'other/y.cls']);
+    expect(reading.tree.files).toEqual(['app/B.cls', 'app/a/deep/x.xml', 'app/c.cls', 'app/é.cls', 'other/y.cls']);
     expect(reading).toMatchObject({ missing: [], skipped: [] });
   });
 
