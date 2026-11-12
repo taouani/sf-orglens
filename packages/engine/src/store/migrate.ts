@@ -4,7 +4,7 @@
  * The schema version is the `user_version` field of the database file, and
  * the `application_id` field marks the file as an OrgLens workspace. Each
  * migration runs in one transaction together with its version bump, so a
- * failed migration leaves the file exactly as it was.
+ * failed migration changes nothing.
  */
 import { EngineError } from '../core/errors.ts';
 import type { SqlDatabase, SqlDriver } from './driver.ts';
@@ -32,14 +32,38 @@ const pragmaNumber = (database: SqlDatabase, name: string): number => {
   return value;
 };
 
-/** Reads what the file says about itself. It writes nothing. */
-export function readSchemaState(database: SqlDatabase): SchemaState {
+/** Reads what the file says about itself, inside the transaction the caller holds. */
+function readState(database: SqlDatabase): SchemaState {
   const objects = database.prepare('SELECT count(*) AS n FROM sqlite_schema').get()?.['n'];
   return {
     applicationId: pragmaNumber(database, 'application_id'),
     version: pragmaNumber(database, 'user_version'),
     empty: objects === 0,
   };
+}
+
+/**
+ * Reads what the file says about itself. It writes nothing.
+ *
+ * The three values are read in one read transaction. Without it, a
+ * migration that another process commits between two of the reads would
+ * show a state that never existed, such as a version without the mark of
+ * OrgLens.
+ */
+export function readSchemaState(database: SqlDatabase): SchemaState {
+  database.exec('BEGIN');
+  try {
+    const state = readState(database);
+    database.exec('COMMIT');
+    return state;
+  } catch (cause) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // The transaction is already gone. The original failure is the one to report.
+    }
+    throw cause;
+  }
 }
 
 /**
@@ -76,6 +100,7 @@ function checkMigrations(migrations: readonly Migration[]): void {
 }
 
 export interface MigrationResult {
+  /** The schema version before the first migration this call applied. Equal to `to` if it applied none. */
   readonly from: number;
   readonly to: number;
 }
@@ -84,6 +109,13 @@ export interface MigrationResult {
  * Brings the database to the latest schema version. Each migration takes
  * the write lock, checks that no other process got there first, runs, and
  * commits together with its version bump.
+ *
+ * Foreign keys are switched off while migrations run, and are left off:
+ * `openStore` switches them on afterwards. SQLite changes a table by
+ * building a new one and dropping the old one, and with foreign keys on,
+ * the drop would delete every row that refers to the old table. The setting
+ * cannot be changed inside a transaction, so a migration cannot do this
+ * itself. Before a migration commits, the references are checked as a whole.
  */
 export function migrate(
   database: SqlDatabase,
@@ -92,9 +124,13 @@ export function migrate(
   migrations: readonly Migration[] = MIGRATIONS,
 ): MigrationResult {
   checkMigrations(migrations);
-  const from = readSchemaState(database).version;
+  let version = readSchemaState(database).version;
+  if (version >= migrations.length) return { from: version, to: version };
+
+  let from: number | undefined;
+  database.exec('PRAGMA foreign_keys = OFF');
   for (const migration of migrations) {
-    if (migration.version <= from) continue;
+    if (migration.version <= version) continue;
     try {
       database.exec('BEGIN IMMEDIATE');
     } catch (cause) {
@@ -103,14 +139,22 @@ export function migrate(
     }
     try {
       // Another process may have migrated while this one waited for the lock.
-      const state = readSchemaState(database);
+      const state = readState(database);
       checkSchemaState(state, migrations.length, path);
       if (state.version < migration.version) {
         database.exec(migration.sql);
         if (migration.version === 1) database.exec(`PRAGMA application_id = ${String(APPLICATION_ID)}`);
+        const dangling = database.prepare('PRAGMA foreign_key_check').all();
+        if (dangling.length > 0) {
+          throw new Error(
+            `${String(dangling.length)} rows refer to a row that does not exist, the first one in table "${String(dangling[0]?.['table'])}".`,
+          );
+        }
         database.exec(`PRAGMA user_version = ${String(migration.version)}`);
+        from ??= state.version;
       }
       database.exec('COMMIT');
+      version = Math.max(state.version, migration.version);
     } catch (cause) {
       try {
         database.exec('ROLLBACK');
@@ -118,14 +162,19 @@ export function migrate(
         // The transaction is already gone. The original failure is the one to report.
       }
       if (cause instanceof EngineError) throw cause;
+      if (driver.isBusy(cause)) throw busy(path, cause);
       throw new EngineError(
         'STORE_MIGRATION_FAILED',
-        `Migration ${String(migration.version)} ("${migration.name}") of the workspace database failed. The database was not changed.`,
-        { details: { path, migration: migration.version }, cause },
+        `Migration ${String(migration.version)} ("${migration.name}") of the workspace database failed and was rolled back. The database is at schema version ${String(version)}.`,
+        {
+          hint: 'Nothing was lost. This is a defect in OrgLens unless another program changed the database: please report it.',
+          details: { path, migration: migration.version, schemaVersion: version },
+          cause,
+        },
       );
     }
   }
-  return { from, to: Math.max(from, migrations.length) };
+  return { from: from ?? version, to: version };
 }
 
 /** The error for a write lock that another process holds. */

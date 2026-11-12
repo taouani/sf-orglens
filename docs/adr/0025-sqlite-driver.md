@@ -18,15 +18,25 @@ It is about what happens if either one breaks.
 ## Decision
 
 - The store reaches SQLite only through a small driver port (`packages/engine/src/store/driver.ts`): open, run
-  statements, prepare a statement and run it or read its rows, close, and tell whether an error means "busy".
+  statements, prepare a statement and run it or read its rows, close, and tell whether an error means "busy",
+  "not a database" or "cannot be written".
 - The default driver is `node:sqlite`. The engine therefore has no runtime dependency for storage.
 - `better-sqlite3` is the fallback. It is an optional peer dependency of the engine, it is never installed by
   default, and it is loaded only when it is asked for.
 - Both drivers pass one shared contract test suite, and every store test runs against both, on all three operating
   systems in CI.
 - The store uses only what both drivers do the same way: positional `?` parameters; values that are null, numbers,
-  strings or bytes; integers that fit a JavaScript number. Blobs come back as plain byte arrays.
-- The two drivers never open the same file in one process.
+  bigints, strings or bytes. Blobs come back as plain byte arrays.
+- Where the two bindings differ on their own, the port makes them the same, and the contract suite holds each
+  case. A prepared statement is one statement. It takes exactly as many values as it has parameters: on its own,
+  `node:sqlite` binds NULL for a missing value. `run` is refused on a statement that returns rows, and `get` and
+  `all` on one that does not. An integer is read exactly, and one that does not fit a JavaScript number is refused:
+  on its own, `better-sqlite3` rounds it.
+- Both bindings bind a JavaScript number as a floating-point value. A STRICT integer column stores it as an
+  integer, but an expression such as `? / 2` divides as a fraction. SQL that needs integer arithmetic on a
+  parameter casts it.
+- The two drivers must not open the same file in one process. Nothing enforces that: the engine loads one driver
+  for a workspace.
 - What the SQLite library at hand can do (STRICT tables, full-text search with the trigram tokenizer, JSON
   functions, recursive queries) is probed and never assumed. `doctor` will report it.
 
@@ -38,8 +48,10 @@ later lacks it, or if Node.js builds that link a system SQLite cause defects tha
 - Switching driver is a change of adapter. Nothing above the port knows which one is in use.
 - The port is deliberately small. A feature only one driver has, such as user-defined functions, is not available to
   the store.
-- `better-sqlite3` is pinned to an exact version for the tests. A version published the day before was not taken:
-  the release-age guard of the toolchain applies ([0023](0023-toolchain-and-layer-enforcement.md)).
+- `better-sqlite3` is pinned to an exact version for the tests, and the optional peer dependency of the engine
+  names the same patch line (`~13.0.3`), because no other version is tested. A version published the day before
+  was not taken: the release-age guard of the toolchain applies
+  ([0023](0023-toolchain-and-layer-enforcement.md)).
 - A user cannot select the fallback from the command line yet. That setting comes with the configuration file.
 - With the default driver, behaviour can differ between Node.js builds. The probe catches a missing feature, not a
   subtle difference.

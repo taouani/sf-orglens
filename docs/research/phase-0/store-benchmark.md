@@ -1,23 +1,26 @@
 # store-benchmark
 
 Numbers from the benchmark in [`bench/`](../../../bench/README.md), recorded on 12 November 2026 when the store was
-built. They repeat the measurements of [sqlite-store.md](sqlite-store.md) with the code that is now in the
-repository, and they agree with it.
+built. They repeat the measurements of [sqlite-store.md](sqlite-store.md) with the benchmark that is now in the
+repository, and they agree with it. The benchmark uses the SQLite bindings directly, with its own tables. It does
+not go through the store of the engine, so these are figures for the storage layout, not for the engine.
 
 ## Conditions
 
 - One machine: Linux x64, a 4-core virtual machine, warm file cache. Node.js v24.22.3, SQLite 3.54.1 with
   the default driver, SQLite 3.53.4 with `better-sqlite3` 13.0.3. Windows and macOS were not measured.
-- A synthetic org from a fixed seed: 147,323 components (about 10,000 of them top-level) and
-  602,458 references in the first snapshot. Between snapshots 2 percent of the top-level
+- A synthetic org from a fixed seed: 147,323 components (about 10,000 of them top-level) in the first snapshot,
+  with 602,458 references in the shared-version layout and 587,246 in the full-copy layout. The full-copy layout
+  stores a reference only when both of its ends exist in the snapshot. The shared-version layout stores every
+  reference of a version, also one to a component that the snapshot does not hold. Between snapshots 2 percent of the top-level
   components change, 0.3 percent are removed and 0.3 percent are added.
 - The benchmark uses its own tables. The engine has no tables for components and references yet.
-- Times are the median of five runs unless stated otherwise. Each command was run once, so the figures are
-  indications, not statistics.
+- Times are the median of five runs, and of three for the lookup with `LIKE`. Each command was run once, so the
+  figures are indications, not statistics.
 
 ## Ten snapshots: shared versions against full copies
 
-`pnpm run bench -- node cas 10` and `pnpm run bench -- node int 10`.
+`pnpm run bench node cas 10` and `pnpm run bench node int 10`.
 
 | Measurement | Shared versions (`cas`) | Full copy per snapshot (`int`) |
 | --- | --- | --- |
@@ -40,7 +43,7 @@ The ordinary field has one direct reference.
 
 ## The two drivers
 
-`pnpm run bench -- node cas 2` and `pnpm run bench -- bs3 cas 2`.
+`pnpm run bench node cas 2` and `pnpm run bench bs3 cas 2`.
 
 | Measurement | `node:sqlite` | `better-sqlite3` |
 | --- | --- | --- |
@@ -52,13 +55,16 @@ The ordinary field has one direct reference.
 | Diff of two snapshots | 124.28 ms | 131.72 ms |
 
 The two drivers carry different SQLite versions here, which is the likely reason the file sizes differ by a few
-megabytes. The research note compared them on the same SQLite version and found identical sizes.
+megabytes. That reason was not checked. The research note compared them on the same SQLite version and found
+identical sizes.
 
 ## What the numbers say
 
 - Sharing unchanged versions between snapshots makes ten snapshots about 7 times smaller than full copies, and
   later snapshots load in a fraction of the time of the first.
-- An impact query from an ordinary field is far below a millisecond either way. From a hub field the recursive query
+- An impact query from an ordinary field is far below a millisecond either way. In the shared-version layout it
+  took 0.19 ms in this run, which is above the 0.1 ms that the phase plan quotes from the research, and a second
+  run measured 0.03 to 0.07 ms: at this size the figure is noise. From a hub field the recursive query
   takes most of a second, and the same traversal in memory takes a few milliseconds once the adjacency list is loaded.
   Which of the two a command uses is decided with the impact engine.
 - The driver makes little difference.

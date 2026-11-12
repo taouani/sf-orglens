@@ -5,7 +5,8 @@
  * carries, so the features OrgLens needs are probed and not assumed. The
  * probe uses a database in memory and touches no file.
  */
-import type { SqlDriver } from './driver.ts';
+import { EngineError } from '../core/errors.ts';
+import type { SqlDatabase, SqlDriver } from './driver.ts';
 
 export interface SqliteCapabilities {
   readonly driver: string;
@@ -24,7 +25,15 @@ export interface SqliteCapabilities {
 }
 
 export function probeSqlite(driver: SqlDriver): SqliteCapabilities {
-  const database = driver.open(':memory:', { readOnly: false, busyTimeoutMs: 0 });
+  let database: SqlDatabase;
+  try {
+    database = driver.open(':memory:', { readOnly: false, busyTimeoutMs: 0 });
+  } catch (cause) {
+    throw new EngineError('STORE_FAILED', `SQLite cannot be used through ${driver.name}.`, {
+      details: { driver: driver.name, reason: cause instanceof Error ? cause.message : String(cause) },
+      cause,
+    });
+  }
   const works = (check: () => boolean): boolean => {
     try {
       return check();

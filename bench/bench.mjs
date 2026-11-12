@@ -8,8 +8,14 @@
  *              text (full copy per snapshot, text keys)
  *   snapshots  how many snapshots to load, default 2
  *
- * It builds the database in a temporary folder, prints the measurements as JSON and removes the folder.
- * The layouts are the ones compared in docs/research/phase-0/sqlite-store.md.
+ * It builds the database in a temporary folder, prints the measurements as JSON and removes the folder,
+ * also when it fails. A run that is interrupted cannot clean up, because its work is one synchronous
+ * stretch: the next run removes what such a run left more than an hour ago. The layouts are the ones
+ * compared in docs/research/phase-0/sqlite-store.md.
+ *
+ * It uses the two SQLite bindings directly, not the store of the engine: the engine has no tables for
+ * components and references yet, and the benchmark reads rows as arrays and binds named parameters, which
+ * the driver port of the engine does not offer.
  */
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -17,16 +23,35 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildUniverse, initialState, evolve, contentHash } from './generate.mjs';
 
-const args = process.argv.slice(2);
+// Some versions of pnpm pass the "--" of "pnpm run bench -- node cas 2" on to the script.
+const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === '--'));
 const outAt = args.indexOf('--out');
 const outFile = outAt === -1 ? undefined : args.splice(outAt, 2)[1];
 const [driver = 'node', schema = 'cas', snapsArg = '2'] = args;
-if (!['node', 'bs3'].includes(driver) || !['cas', 'int', 'text'].includes(schema) || !(Number(snapsArg) >= 1)) {
+if (
+  !['node', 'bs3'].includes(driver) ||
+  !['cas', 'int', 'text'].includes(schema) ||
+  !(Number.isInteger(Number(snapsArg)) && Number(snapsArg) >= 1) ||
+  args.length > 3 ||
+  (outAt !== -1 && (outFile === undefined || outFile.startsWith('--')))
+) {
   console.error('usage: node bench/bench.mjs [node|bs3] [cas|int|text] [snapshots] [--out file.json]');
   process.exit(2);
 }
 const K = Number(snapsArg);
+const remove = (folder) => fs.rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+// The database is large. Folders that interrupted runs left behind are removed first.
+for (const name of fs.readdirSync(os.tmpdir())) {
+  const leftover = path.join(os.tmpdir(), name);
+  try {
+    if (name.startsWith('orglens-bench-') && Date.now() - fs.statSync(leftover).mtimeMs > 3_600_000) remove(leftover);
+  } catch {
+    // Somebody else's folder, or one that is just being removed.
+  }
+}
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orglens-bench-'));
+const removeDir = () => remove(dir);
+process.on('exit', removeDir);
 const file = path.join(dir, `bench-${driver}-${schema}-${String(K)}.sqlite`);
 let db, raw;
 if (driver === 'node') {
@@ -484,6 +509,6 @@ R.query_plans = {
     .map((r) => r.detail),
 };
 db.close();
-fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+removeDir();
 console.log(JSON.stringify(R, null, 1));
 if (outFile) fs.writeFileSync(outFile, `${JSON.stringify(R, null, 1)}\n`);

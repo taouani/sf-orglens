@@ -4,11 +4,13 @@
  */
 declare module 'better-sqlite3' {
   interface Statement {
-    run(...parameters: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+    run(...parameters: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
     get(...parameters: unknown[]): Record<string, unknown> | undefined;
     all(...parameters: unknown[]): Record<string, unknown>[];
     /** True if the statement returns rows. */
     readonly reader: boolean;
+    /** Makes the statement return integers as bigint. */
+    safeIntegers(on: boolean): this;
   }
   class Database {
     constructor(path: string, options?: { readonly?: boolean; fileMustExist?: boolean; timeout?: number });

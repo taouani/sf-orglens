@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { normaliseRow, type SqlOpenOptions } from '../src/store/driver.ts';
+import { countParameters, normaliseRow, type SqlOpenOptions } from '../src/store/driver.ts';
 import { probeSqlite } from '../src/store/probe.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 
@@ -46,10 +46,67 @@ describe.each(DRIVERS)('driver contract: $name', (driver) => {
     db.close();
   });
 
-  it('accepts run on a statement that returns rows', () => {
+  it('refuses run on a statement that returns rows, and get or all on one that does not', () => {
     const db = driver.open(':memory:', options);
-    expect(() => db.prepare('PRAGMA user_version').run()).not.toThrow();
-    expect(() => db.prepare('SELECT 1').run()).not.toThrow();
+    db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT) STRICT');
+    expect(() => db.prepare('PRAGMA user_version').run()).toThrow(TypeError);
+    expect(() => db.prepare('SELECT 1').run()).toThrow(/returns rows/);
+    expect(() => db.prepare('INSERT INTO t (name) VALUES (?) RETURNING id').run('a')).toThrow(TypeError);
+    expect(() => db.prepare('INSERT INTO t (name) VALUES (?)').get('a')).toThrow(/returns no rows/);
+    expect(() => db.prepare('DELETE FROM t').all()).toThrow(TypeError);
+    // None of the refused calls ran.
+    expect(db.prepare('SELECT count(*) AS n FROM t').get()).toEqual({ n: 0 });
+    expect(db.prepare('INSERT INTO t (name) VALUES (?) RETURNING id, name').get('b')).toEqual({ id: 1, name: 'b' });
+    db.close();
+  });
+
+  it('refuses a wrong number of values', () => {
+    const db = driver.open(':memory:', options);
+    db.exec('CREATE TABLE t (a INTEGER, b TEXT) STRICT');
+    const insert = db.prepare('INSERT INTO t (a, b) VALUES (?, ?)');
+    expect(() => insert.run(1)).toThrow(RangeError);
+    expect(() => insert.run(1, 'x', 'y')).toThrow(/2 parameters and was given 3 values/);
+    expect(() => db.prepare('SELECT a FROM t WHERE a = ?').all()).toThrow(RangeError);
+    expect(db.prepare('SELECT count(*) AS n FROM t').get()).toEqual({ n: 0 });
+    // A question mark inside text is not a parameter.
+    expect(db.prepare("SELECT '?' AS mark, ? AS value").get(1)).toEqual({ mark: '?', value: 1 });
+    db.close();
+  });
+
+  it('prepares one statement at a time, with plain parameters only', () => {
+    const db = driver.open(':memory:', options);
+    db.exec('CREATE TABLE t (n INTEGER) STRICT');
+    expect(() => db.prepare('INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)')).toThrow(/one statement/);
+    expect(() => db.prepare('SELECT ?1')).toThrow(/numbered/);
+    expect(() => db.prepare('SELECT :name')).toThrow(/named/);
+    expect(db.prepare('SELECT count(*) AS n FROM t; -- done').get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  it('refuses an integer that does not fit a number instead of rounding it', () => {
+    const db = driver.open(':memory:', options);
+    db.exec('CREATE TABLE t (n INTEGER) STRICT');
+    db.prepare('INSERT INTO t VALUES (?)').run(9007199254740993n);
+    expect(() => db.prepare('SELECT n FROM t').get()).toThrow(RangeError);
+    expect(() => db.prepare('SELECT n FROM t').all()).toThrow(/does not fit/);
+    expect(db.prepare('SELECT CAST(n AS TEXT) AS n FROM t').get()).toEqual({ n: '9007199254740993' });
+    expect(db.prepare('SELECT -9007199254740991 AS low, 1.5 AS real').get()).toEqual({
+      low: -9007199254740991,
+      real: 1.5,
+    });
+    db.close();
+  });
+
+  it('binds a number as a floating-point value, which a STRICT integer column stores as an integer', () => {
+    const db = driver.open(':memory:', options);
+    expect(db.prepare('SELECT typeof(?) AS number, typeof(?) AS big, ? / 2 AS half').get(5, 5n, 5)).toEqual({
+      number: 'real',
+      big: 'integer',
+      half: 2.5,
+    });
+    db.exec('CREATE TABLE t (n INTEGER) STRICT');
+    db.prepare('INSERT INTO t VALUES (?)').run(5);
+    expect(db.prepare('SELECT typeof(n) AS type, n / 2 AS half FROM t').get()).toEqual({ type: 'integer', half: 2 });
     db.close();
   });
 
@@ -69,7 +126,11 @@ describe.each(DRIVERS)('driver contract: $name', (driver) => {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(Error);
-    const classifiers = [(error: unknown) => driver.isBusy(error), (error: unknown) => driver.isNotADatabase(error)];
+    const classifiers = [
+      (error: unknown) => driver.isBusy(error),
+      (error: unknown) => driver.isNotADatabase(error),
+      (error: unknown) => driver.isReadOnly(error),
+    ];
     for (const classify of classifiers) {
       expect(classify(thrown)).toBe(false);
       expect(classify(undefined)).toBe(false);
@@ -105,6 +166,7 @@ describe.each(DRIVERS)('driver contract: $name', (driver) => {
     }
     expect(driver.isBusy(thrown)).toBe(true);
     expect(driver.isNotADatabase(thrown)).toBe(false);
+    expect(driver.isReadOnly(thrown)).toBe(false);
     // A reader is not blocked by the writer.
     expect(second.prepare('SELECT count(*) AS n FROM t').get()).toEqual({ n: 0 });
     first.exec('COMMIT');
@@ -124,9 +186,14 @@ describe.each(DRIVERS)('driver contract: $name', (driver) => {
 
     const reader = driver.open(file, { readOnly: true, busyTimeoutMs: 50 });
     expect(reader.prepare('SELECT n FROM t').get()).toEqual({ n: 7 });
-    expect(() => {
+    let thrown: unknown;
+    try {
       reader.exec('INSERT INTO t VALUES (8)');
-    }).toThrow();
+    } catch (error) {
+      thrown = error;
+    }
+    expect(driver.isReadOnly(thrown)).toBe(true);
+    expect(driver.isBusy(thrown)).toBe(false);
     reader.close();
 
     expect(() => driver.open(join(dir, 'missing.sqlite'), { readOnly: true, busyTimeoutMs: 50 })).toThrow();
@@ -146,6 +213,26 @@ describe.each(DRIVERS)('driver contract: $name', (driver) => {
     }
     expect(driver.isNotADatabase(thrown)).toBe(true);
     expect(driver.isBusy(thrown)).toBe(false);
+  });
+
+  it('waits for the busy timeout before it gives up', () => {
+    const file = join(temp.next(), 'wait.sqlite');
+    const holder = driver.open(file, options);
+    holder.exec('PRAGMA journal_mode = WAL; CREATE TABLE t (n INTEGER) STRICT; BEGIN IMMEDIATE;');
+    const waited = (busyTimeoutMs: number): number => {
+      const other = driver.open(file, { readOnly: false, busyTimeoutMs });
+      const start = performance.now();
+      expect(() => {
+        other.exec('BEGIN IMMEDIATE');
+      }).toThrow();
+      other.close();
+      return performance.now() - start;
+    };
+    const patient = waited(300);
+    expect(patient).toBeGreaterThanOrEqual(250);
+    expect(waited(0)).toBeLessThan(patient);
+    holder.exec('ROLLBACK');
+    holder.close();
   });
 
   it('can be closed twice', () => {
@@ -174,6 +261,39 @@ describe('normaliseRow', () => {
   it('refuses a value the port does not know', () => {
     expect(() => normaliseRow({ flag: true })).toThrow(TypeError);
   });
+
+  it('turns a bigint into a number when that is exact, and refuses it otherwise', () => {
+    expect(normaliseRow({ n: 9007199254740991n, m: -5n })).toEqual({ n: 9007199254740991, m: -5 });
+    expect(() => normaliseRow({ n: 9007199254740992n })).toThrow(RangeError);
+    expect(() => normaliseRow({ n: -9007199254740992n })).toThrow(RangeError);
+  });
+
+  it('hands a plain byte array on as it is, and copies a Buffer into one', () => {
+    const plain = new Uint8Array([1, 2]);
+    expect(normaliseRow({ b: plain })['b']).toBe(plain);
+    const fromBuffer = normaliseRow({ b: Buffer.from([1, 2]) })['b'];
+    expect(fromBuffer).toEqual(plain);
+    expect(Object.getPrototypeOf(fromBuffer)).toBe(Uint8Array.prototype);
+  });
+});
+
+describe('countParameters', () => {
+  it('counts question marks outside text, names and comments', () => {
+    expect(countParameters('SELECT 1')).toBe(0);
+    expect(countParameters('SELECT ?, ? FROM t WHERE a = ?')).toBe(3);
+    expect(countParameters(`SELECT '?', 'it''s ?', "a?b", [c?d], \`e?\` -- ? here\n, ? /* ? and ; */`)).toBe(1);
+    expect(countParameters('SELECT ? ;  \n -- the end')).toBe(1);
+    expect(countParameters("SELECT 'never closed ?")).toBe(0);
+  });
+
+  it('refuses a second statement and parameters that are not plain', () => {
+    expect(() => countParameters('SELECT 1; SELECT 2')).toThrow(TypeError);
+    expect(() => countParameters('SELECT ?2')).toThrow(TypeError);
+    for (const named of ['SELECT :a', 'SELECT @a', 'SELECT $a'])
+      expect(() => countParameters(named)).toThrow(TypeError);
+    // A JSON path in text is not a named parameter.
+    expect(countParameters(`SELECT json_extract(?, '$.a')`)).toBe(1);
+  });
 });
 
 describe('probeSqlite', () => {
@@ -194,5 +314,23 @@ describe('probeSqlite', () => {
       },
     };
     expect(probeSqlite(withoutFullText)).toMatchObject({ fts5Trigram: false, strictTables: true, ok: false });
+  });
+
+  it('reports a binding that cannot open a database as a store error', () => {
+    const real = DRIVERS[0];
+    if (!real) throw new Error('no driver');
+    const broken = {
+      ...real,
+      open: () => {
+        throw new Error('the native module is missing');
+      },
+    };
+    let thrown: unknown;
+    try {
+      probeSqlite(broken);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ code: 'STORE_FAILED', message: `SQLite cannot be used through ${real.name}.` });
   });
 });

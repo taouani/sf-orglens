@@ -42,7 +42,7 @@ describe.each(DRIVERS)('two processes with $name', (driver) => {
 
     const setup = openStore({ path, driver });
     setup.write(() =>
-      setup.run("INSERT INTO source (name, kind, created_at) VALUES ('first', 'org', '2026-01-01T00:00:00Z')"),
+      setup.run("INSERT INTO source (name, kind, created_at) VALUES ('first', 'org', '2026-01-01T00:00:00.000Z')"),
     );
     setup.close();
 

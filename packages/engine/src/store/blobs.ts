@@ -25,19 +25,24 @@ export interface StoredBlob {
 export function putBlob(store: Store, content: Uint8Array): StoredBlob {
   const digest = createHash('sha256').update(content).digest();
   const sha256 = digest.toString('hex');
-  const existing = store.get('SELECT id FROM blob WHERE sha256 = ?', digest)?.['id'];
+  const find = (): unknown => store.get('SELECT id FROM blob WHERE sha256 = ?', digest)?.['id'];
+  // Looked up first, because most files of a snapshot are already stored and need not be compressed again.
+  const existing = find();
   if (typeof existing === 'number') return { id: existing, sha256, created: false };
 
   const deflated = deflateSync(content);
   const compress = deflated.byteLength < content.byteLength;
-  const { lastInsertRowid } = store.run(
-    'INSERT INTO blob (sha256, encoding, raw_size, body) VALUES (?, ?, ?, ?)',
+  // Another process can have stored the same content since the look-up. Then this insert does nothing.
+  const { changes } = store.run(
+    'INSERT INTO blob (sha256, encoding, raw_size, body) VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO NOTHING',
     digest,
     compress ? ENCODING_DEFLATE : ENCODING_RAW,
     content.byteLength,
     compress ? deflated : content,
   );
-  return { id: lastInsertRowid, sha256, created: true };
+  const id = find();
+  if (typeof id !== 'number') throw new EngineError('INTERNAL', 'A blob was stored and cannot be found.');
+  return { id, sha256, created: changes === 1 };
 }
 
 /** Returns the content of a blob, checked against its hash. */
@@ -55,7 +60,9 @@ export function getBlob(store: Store, id: number): Uint8Array {
 
   let content: Uint8Array;
   try {
-    content = encoding === ENCODING_DEFLATE ? new Uint8Array(inflateSync(body)) : body;
+    // The recorded size bounds the result, so a damaged body cannot inflate to more than was stored.
+    const limit = typeof rawSize === 'number' ? Math.max(rawSize, 1) : 1;
+    content = encoding === ENCODING_DEFLATE ? new Uint8Array(inflateSync(body, { maxOutputLength: limit })) : body;
   } catch (cause) {
     throw corrupt(cause);
   }

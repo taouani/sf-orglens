@@ -1,15 +1,9 @@
 /** The default driver: the SQLite binding that is built into Node.js. */
 import { DatabaseSync } from 'node:sqlite';
-import {
-  normaliseRow,
-  type SqlDatabase,
-  type SqlDriver,
-  type SqlOpenOptions,
-  type SqlStatement,
-  type SqlValue,
-} from './driver.ts';
+import { adaptStatement, countParameters, type SqlDatabase, type SqlDriver, type SqlOpenOptions } from './driver.ts';
 
 const SQLITE_BUSY = 5;
+const SQLITE_READONLY = 8;
 const SQLITE_NOTADB = 26;
 
 // node:sqlite reports the SQLite result code as `errcode`. Its low byte is the primary code.
@@ -25,19 +19,16 @@ function open(path: string, options: SqlOpenOptions): SqlDatabase {
     exec: (sql) => {
       database.exec(sql);
     },
-    prepare: (sql): SqlStatement => {
+    prepare: (sql) => {
+      const expected = countParameters(sql);
       const statement = database.prepare(sql);
-      return {
-        run: (...parameters: SqlValue[]) => {
-          const { changes, lastInsertRowid } = statement.run(...parameters);
-          return { changes: Number(changes), lastInsertRowid: Number(lastInsertRowid) };
-        },
-        get: (...parameters: SqlValue[]) => {
-          const row = statement.get(...parameters);
-          return row === undefined ? undefined : normaliseRow(row);
-        },
-        all: (...parameters: SqlValue[]) => statement.all(...parameters).map(normaliseRow),
-      };
+      statement.setReadBigInts(true);
+      return adaptStatement(expected, {
+        returnsRows: statement.columns().length > 0,
+        run: (parameters) => statement.run(...parameters),
+        get: (parameters) => statement.get(...parameters),
+        all: (parameters) => statement.all(...parameters),
+      });
     },
     close: () => {
       if (closed) return;
@@ -52,4 +43,5 @@ export const nodeSqliteDriver: SqlDriver = {
   open,
   isBusy: (error) => primaryCode(error) === SQLITE_BUSY,
   isNotADatabase: (error) => primaryCode(error) === SQLITE_NOTADB,
+  isReadOnly: (error) => primaryCode(error) === SQLITE_READONLY,
 };

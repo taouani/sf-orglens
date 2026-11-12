@@ -20,7 +20,7 @@ const pause = new Int32Array(new SharedArrayBuffer(4));
 const deadline = Date.now() + 30_000;
 
 store.write(() => {
-  store.run("INSERT INTO source (name, kind, created_at) VALUES ('second', 'git', '2026-01-02T00:00:00Z')");
+  store.run("INSERT INTO source (name, kind, created_at) VALUES ('second', 'git', '2026-01-02T00:00:00.000Z')");
   process.stdout.write('locked\n');
   while (!existsSync(releaseFile)) {
     if (Date.now() > deadline) throw new Error('nobody released the lock');

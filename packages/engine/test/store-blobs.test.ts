@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getBlob, putBlob } from '../src/store/blobs.ts';
@@ -68,6 +69,53 @@ describe.each(DRIVERS)('blobs with $name', (driver) => {
     for (const blob of [compressed, plain, truncated]) {
       expect(codeOf(() => getBlob(store, blob.id))).toBe('STORE_FAILED');
     }
+    store.close();
+  });
+
+  it('does not unpack more than the size that was recorded', () => {
+    const store = open();
+    const content = text('public class A {}\n'.repeat(1000));
+    const honest = putBlob(store, content);
+    // A body that unpacks to far more than its row says: the row is damaged, and the bytes are not produced.
+    const bomb = deflateSync(new Uint8Array(4 * 1024 * 1024));
+    store.run('UPDATE blob SET body = ? WHERE id = ?', bomb, honest.id);
+    let thrown: unknown;
+    try {
+      getBlob(store, honest.id);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ code: 'STORE_FAILED' });
+    expect(String((thrown as { cause?: unknown }).cause)).toMatch(/larger than|buffer|length/i);
+    store.close();
+  });
+
+  it('returns the blob another process stored between the look-up and the insert', () => {
+    const path = join(temp.next(), 'orglens.sqlite');
+    const store = openStore({ path, driver });
+    const other = openStore({ path, driver });
+    const content = text('the same file, read by two snapshots at once');
+    let raced = false;
+    // The other process stores the content right after this one has looked for it and found nothing.
+    const racing = {
+      ...store,
+      get: (sql: string, ...parameters: Parameters<typeof store.get> extends [string, ...infer P] ? P : never) => {
+        const row = store.get(sql, ...parameters);
+        if (!raced) {
+          raced = true;
+          expect(row).toBeUndefined();
+          expect(putBlob(other, content).created).toBe(true);
+        }
+        return row;
+      },
+    };
+    const blob = putBlob(racing, content);
+    expect(raced).toBe(true);
+    expect(blob.created).toBe(false);
+    expect(blob.id).toBe(putBlob(other, content).id);
+    expect(store.get('SELECT count(*) AS n FROM blob')).toEqual({ n: 1 });
+    expect(getBlob(store, blob.id)).toEqual(content);
+    other.close();
     store.close();
   });
 
