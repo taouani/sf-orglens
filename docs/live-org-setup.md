@@ -4,7 +4,8 @@ OrgLens is tested against one real Salesforce org: a free Developer Edition org 
 project. This page is the checklist for the maintainer who owns that org. It takes about 20 minutes and is done once.
 
 At the end, four secrets exist in a protected environment of the GitHub repository. Only the workflow `live-org.yml`
-reads them, when a maintainer starts it by hand. Nobody else, and no tool, ever holds the key.
+reads them: when a maintainer starts it by hand, and once a week by itself, to log in and do nothing else. Nobody
+else, and no tool, ever holds the key.
 
 These steps follow the Salesforce documentation as of November 2026. They were written without access to an org, so
 a label on the screen may differ. If one does, note it and correct this page.
@@ -95,10 +96,34 @@ goes through, and your approval of each run if you choose step 3.
 
 ## 5. Check it
 
-Nothing can be checked before the workflow exists. Once `live-org.yml` is merged: open **Actions**, choose **Live
-org**, click **Run workflow**, and approve the run if you made yourself a required reviewer. Its first step logs in
-and prints only whether the login worked. It never prints the address of the org, the user name or a token.
+Open **Actions**, choose **Live org**, click **Run workflow** on the branch `main`, and approve the run if you made
+yourself a required reviewer. The step **Log in** logs in to the org and says whether that worked, and prints the
+API version of the org.
 
+The log of the step can be read by everyone. The step therefore prints no text that Salesforce, a Salesforce
+library or OrgLens wrote: not the address of the org, the id of the org, the user name, a token, or a message. It
+prints sentences of its own with error codes, names of variables, and the answer of Salesforce to a refused login
+if that answer is word for word one of a list of known texts in `scripts/live-org-login.mjs`. Anything else is
+"not shown".
+
+If the login fails, the step names codes. This is what they mean:
+
+| What the step says                | What it means                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| secrets are missing               | A secret is not set in the environment `live-org`, or has another name than in the table above.                                                                                                                                                                                                                              |
+| `JWT_INVALID`                     | A secret holds something that cannot be used. The line "Variable" names it: the key is not the whole key file, or the login URL is not an `https` address.                                                                                                                                                                   |
+| `JWT_REJECTED`                    | Salesforce refused the login. The line "Answer of Salesforce" gives its error code, and its description if it is a known one. Usual causes: a wrong consumer key or user name, the certificate is not the one of the key, the user is not allowed to use the app (step 3, 11 to 12), or the app is younger than ten minutes. |
+| `ORG_UNREACHABLE`                 | No answer came. The line "Network" says how: `ENOTFOUND` means that the login URL names no host, so check the secret `ORGLENS_TEST_ORG_LOGIN_URL` against step 1. `TIMEOUT` or `ECONNRESET` can also be a failure of the network of the runner, so start the workflow again first.                                           |
+| `REQUEST_FAILED`                  | Something answered, and not as Salesforce does. The login URL may lead to another site.                                                                                                                                                                                                                                      |
+| `SESSION_EXPIRED`                 | Salesforce issued a session and does not accept it. The app needs the OAuth scope `api` (step 3).                                                                                                                                                                                                                            |
+| "orglens init" failed, or similar | OrgLens itself failed before it tried to log in. That is a bug in OrgLens or in the workflow, not in the set-up.                                                                                                                                                                                                             |
+| anything else                     | The line names an error code. `docs/cli.md` lists them.                                                                                                                                                                                                                                                                      |
+
+A run that is started from another branch than `main` never reaches the step: GitHub refuses the job, because the
+environment `live-org` only accepts `main`. That is the behaviour GitHub documents for an environment with a
+branch rule. It was not tried here.
+
+When the step shows too little to find the cause, the full message is seen by logging in on a machine of your own.
 If you have the Salesforce CLI, you can check the login on your own machine before you delete the key:
 
 ```sh
@@ -107,12 +132,29 @@ sf org login jwt --client-id <consumer key> --jwt-key-file orglens-ci.key --user
 
 ## Keeping the org alive
 
-Salesforce may deactivate a Developer Edition org that nobody logs in to for a long time. Until the workflow
-exists, log in to the org yourself every few months. The plan of Phase 0 gives the workflow a weekly run that logs
-in and does nothing else. That would be a run with the secrets that nobody started, so whether the workflow gets
-it is the maintainer's decision when the workflow is built. Whether a login through the API counts for Salesforce
-as a login was not verified either. If the org is lost anyway, sign up for a new one, repeat this page, and run
-the workflow: it deploys the fixture again.
+Salesforce may deactivate a Developer Edition org that nobody logs in to for a long time. The workflow therefore
+also runs by itself every Monday. That run logs in and does nothing else, as the maintainer decided on
+2026-11-12. It also shows within a week when the key or the app has stopped working.
+
+What follows is how GitHub documents schedules, as far as this project knows it. None of it was verified.
+
+- A failed run on a schedule is reported to one person: according to the documentation of GitHub, the user who
+  last changed the schedule in the workflow file, or the user who switched the workflow on again after it was
+  switched off. The workflow file of this project was committed by an automated author, so who that person is
+  here is not known. The first weekly run shows it: the page of the run names who it runs as. Until then, look at
+  the page of the workflow now and then.
+- If you made yourself a required reviewer of the environment, the weekly run waits for your approval like every
+  other run. A run that waits may hold up the next one, because the workflow runs one at a time.
+- GitHub stops the schedule of a public repository that has had no activity for 60 days. The schedule is switched
+  on again on the page of the workflow under **Actions**. From then on, the notices about failed runs go to
+  whoever switched it on.
+- Whether a login through the API counts for Salesforce as a login was not verified. Logging in to the org yourself
+  every few months is the safe addition.
+- The job is skipped in a repository of another name. If this repository is renamed or moved, the name in
+  `live-org.yml` has to follow, or the weekly run shows as skipped and logs in to nothing.
+
+If the org is lost anyway, sign up for a new one and repeat this page. The fixture project is deployed again by
+the same workflow, once that part of it is built.
 
 ## If the key may have leaked
 

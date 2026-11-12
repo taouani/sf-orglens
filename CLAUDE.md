@@ -32,7 +32,9 @@ These rules come from the maintainer and apply to every phase.
   data is written for the purpose, or fetched from public repositories pinned by commit.
 - Never copy fixtures, recordings or code from the earlier private OrgLens prototypes into this repository.
 - No credentials anywhere: not in code, tests, fixtures, logs, workflow files or pull request text. Credentials for
-  the test org exist only as GitHub Actions secrets and are used only by the manually started live-org workflow.
+  the test org exist only as GitHub Actions secrets and are used only by the live-org workflow, which a maintainer
+  starts and which logs in once a week by itself. Its log is public: a step of it prints codes and sentences of
+  its own, and no text that OrgLens, a Salesforce library or Salesforce wrote.
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
   the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031
   names those requests, and a test pins them.

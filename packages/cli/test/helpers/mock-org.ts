@@ -14,6 +14,8 @@ export interface MockOrg {
   readonly orgId: string;
   /** The paths that were asked for. */
   readonly paths: string[];
+  /** If set, every login is refused, and this is what the org says about it. */
+  refusal: string | null;
   close(): Promise<void>;
 }
 
@@ -22,6 +24,19 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
   const orgId = '00Dxx0000000001EAA';
   const paths: string[] = [];
   let url = '';
+  const org: MockOrg = {
+    url: '',
+    orgId,
+    paths,
+    refusal: null,
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
   const server = createServer((incoming, outgoing) => {
     const chunks: Buffer[] = [];
     incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -36,8 +51,8 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
         const assertion = new URLSearchParams(Buffer.concat(chunks).toString('utf8')).get('assertion') ?? '';
         const [head = '', claims = '', signature = ''] = assertion.split('.');
         const signed = createVerify('RSA-SHA256').update(`${head}.${claims}`).verify(publicKey, signature, 'base64url');
-        if (!signed) {
-          answer(400, { error: 'invalid_grant', error_description: 'invalid assertion' });
+        if (!signed || org.refusal !== null) {
+          answer(400, { error: 'invalid_grant', error_description: org.refusal ?? 'invalid assertion' });
           return;
         }
         answer(200, { access_token: 'the-session', instance_url: url, id: `${url}/id/${orgId}/005xx000000001AAAA` });
@@ -54,16 +69,5 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     server.listen(0, '127.0.0.1', resolve);
   });
   url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
-  return {
-    url,
-    orgId,
-    paths,
-    close: () =>
-      new Promise((resolve) => {
-        server.closeAllConnections();
-        server.close(() => {
-          resolve();
-        });
-      }),
-  };
+  return Object.assign(org, { url });
 }

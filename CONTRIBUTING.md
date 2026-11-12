@@ -65,8 +65,8 @@ release needs a decision record in [`docs/adr/`](docs/adr/).
   `test/golden/` and are compared byte for byte.
 - All text files use LF line endings on every platform (see `.gitattributes`), because fixtures record line and
   column positions.
-- Tests never need network access or a Salesforce org. Checks against a live org run in a separate, manually
-  started workflow.
+- Tests never need network access or a Salesforce org. Checks against a live org run in a separate workflow,
+  which a maintainer starts and which logs in once a week by itself.
 
 ## Commits and pull requests
 

@@ -318,6 +318,21 @@ What differs from the list above in part one, or is not done:
 
 Depends on Q3. Build `live-org.yml`, a workflow that runs only on manual trigger or schedule, never on pull requests from forks, and skips cleanly when secrets are absent.
 
+Status on 2026-11-12. The workflow exists with its first step, ahead of the rest of this work package, so that the
+setup of the test org is checked as early as possible: it logs in with the key from the secrets and says whether
+that worked. Everything else in the list below is not built.
+
+- The maintainer decided on 2026-11-12 that the workflow also runs once a week by itself, and that this run only
+  logs in.
+- In a copy of the repository the job is skipped. In the repository itself, missing secrets are a failure and not
+  a clean skip: there they mean that the setup is broken, and a green run would hide that.
+- The step prints no text that OrgLens, a Salesforce library or Salesforce wrote: only sentences of its own with
+  codes, and an answer of Salesforce if it is one of a list of known texts. The code review asked for this in
+  place of a filter that masks what looks like an address or a user name. It is tested against a mock org and
+  against a stand-in for `orglens` that answers with secrets in every field. The list of known texts is written
+  from the documentation of Salesforce and from memory. The step has not run against Salesforce before the
+  maintainer starts it for the first time.
+
 Run and record in `docs/research/phase-0/real-org.md`:
 
 1. Deploy fixture v0 to the Developer Edition org with a script kept in the repository.
@@ -374,7 +389,8 @@ About ten pull requests, in this order. Each is small enough to review in one si
 | 7a  | Snapshot of a Git source, `snapshot` and `coverage`                    | WP7          |
 | 7b  | Logins: `source link`, `source check`, logins in `doctor`              | WP7          |
 | 7c  | Reading an org: inventory, chunk planner, retrieve, org snapshot       | WP7          |
-| 8   | Live-org workflow, real-org report, cross-check probes                 | WP8          |
+| 8a  | Live-org workflow with its login step, ahead of 7c                     | WP8          |
+| 8   | Rest of the live-org workflow, real-org report, cross-check probes     | WP8          |
 | 9   | Apex trial code, results, decision record 0018                         | WP9          |
 | 10  | Phase close: updated plan, test plan, phase report                     | WP10         |
 

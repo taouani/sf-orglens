@@ -1,0 +1,68 @@
+name: Live org
+
+# The one workflow that reaches a real Salesforce org: the test org of the
+# project, a Developer Edition org that holds nothing but the fixture project.
+# docs/live-org-setup.md says how the org and its secrets are set up.
+#
+# It runs when a maintainer starts it, and once a week by itself. The weekly
+# run logs in and does nothing else: an org that nobody logs in to can be
+# deactivated by Salesforce, and a key that stopped working is noticed within
+# a week.
+#
+# The secrets belong to the environment "live-org", which hands them only to
+# a run from the branch "main". The log of this workflow can be read by
+# everyone, so no step prints text that orglens, a Salesforce library or
+# Salesforce wrote. The login step prints whether the login worked, the API
+# version and error codes, in sentences of its own.
+#
+# The steps before the login install and build with the development
+# dependencies of the repository. What they build is what the login step
+# runs with the secrets, so those dependencies are trusted with them. They
+# are pinned in the lockfile. pnpm runs the install script of a dependency
+# only if the repository allows it, and this one allows none.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays at 05:17 UTC.
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-org
+  cancel-in-progress: false
+
+jobs:
+  login:
+    name: Log in to the test org
+    # A copy of this repository has no test org. There the job is skipped. If the repository is renamed or
+    # moved, this name has to follow: a skipped weekly run logs in to nothing.
+    if: github.repository == 'taouani/sf-orglens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: live-org
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # No cache: this job holds the secrets, and a weekly run gains little from one.
+        with:
+          node-version-file: .node-version
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # Only this step gets the secrets. The test org is the source "test-org", which gives the variables their names.
+      - name: Log in
+        env:
+          ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
+          ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
+          ORGLENS_JWT_TEST_ORG_CLIENT_ID: ${{ secrets.ORGLENS_TEST_ORG_CLIENT_ID }}
+          ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
+          # The Salesforce library keeps its own encryption key in a file, not in a keychain that a runner may lack.
+          SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+        run: node scripts/live-org-login.mjs
