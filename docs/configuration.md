@@ -14,6 +14,8 @@ orglens.toml             shared configuration. Commit it.
 .orglens/local.toml      personal settings. Optional, never committed. Written by hand or by "source link".
 .orglens/orglens.db      the workspace database (plus the -wal and -shm files SQLite creates beside it)
 .orglens/config.lock     exists only while a command changes a configuration file
+.orglens/snapshot-<source>.lock   exists only while a snapshot of an org or a sandbox is taken
+.orglens/tmp/            files of a retrieve on their way into the database. Emptied when a snapshot starts and ends.
 .orglens/logs/           log files
 ```
 
@@ -220,7 +222,12 @@ in upper case, with `_` for `-`. For a source `prod` the prefix is `ORGLENS_JWT_
 - The key is an RSA key. OrgLens signs the request with it, sends the request to Salesforce, and keeps the session
   it gets in memory. Neither the key nor the session is written to a file or a log. The key never belongs in
   `orglens.toml` or `local.toml`, and both files refuse it.
-- The app in the org needs the OAuth scope `api`, and the user has to be allowed to use it.
+- A session that was opened with a key is not renewed. If it expires while a snapshot is taken, the command ends
+  with `LOGIN_FAILED` (`SESSION_EXPIRED`), and the next run logs in again and continues the snapshot.
+- The app in the org needs the OAuth scope `api`, and the user has to be allowed to use it. To take a snapshot,
+  the user also needs a permission for the Metadata API. Salesforce documents two that give it: "Modify Metadata
+  Through Metadata API Functions" and "Modify All Data". Salesforce has no permission that only reads metadata.
+  OrgLens itself sends no request that changes an org. Which permission is enough was not verified against an org.
   [live-org-setup.md](live-org-setup.md) walks through the set-up of such an app for the test org of this project.
 - On a Linux machine without a desktop, set `SF_USE_GENERIC_UNIX_KEYCHAIN=true` for the job. The Salesforce library
   that OrgLens connects with creates an encryption key of its own on first use, and with this setting it keeps

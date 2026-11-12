@@ -4,9 +4,9 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration, take snapshots of
-repository folders, and check the login for an org. No command reads the metadata of an org or analyses anything
-yet.
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
+org, and take snapshots of orgs, sandboxes and repository folders. No command analyses anything yet. Reading an
+org has been tested against a mock org only, not yet against Salesforce itself.
 
 ## Commands
 
@@ -35,6 +35,8 @@ What the help texts do not say:
 - `init` in a folder that already has an `orglens.toml` never changes that file. It creates what is missing in
   `.orglens` and says so. With `--name` it is refused there, because the name is set in the file. `init` in a folder
   below an existing workspace is refused too. Both end with `WORKSPACE_EXISTS`.
+- `snapshot` of an org or a sandbox takes minutes and says on the standard error stream how far it is. With
+  `--json` it says nothing there.
 - Only `init` and `snapshot` create the database. `status`, `coverage` and the `source` commands never create or
   migrate it. `status`
   reports a database that is missing, outdated, newer, foreign or busy as the `state` of the store, and still exits
@@ -58,26 +60,31 @@ What the help texts do not say:
 
 ### Snapshots
 
-`orglens snapshot <source>` reads a source of the kind `git`: the folders of a repository as they are on disk, or
-a commit when the source has a `ref`. [configuration.md](configuration.md#how-a-git-source-is-read) says which
-folders and files are read. A source of the kind `org` or `sandbox` cannot be read yet and ends with
-`SOURCE_READ_FAILED`.
+`orglens snapshot <source>` reads a source now and stores its metadata files. What holds for every kind of source:
 
 - A snapshot never changes the source. A repository is only read: no checkout, no fetch, no file is written into
-  it.
+  it. From an org only metadata is read, never a record.
 - Every snapshot gets a number that is never used again. Earlier snapshots stay as they are. A file that did not
   change between two snapshots is stored once.
-- A snapshot is `complete` or `partial`. It is partial when something the source should hold could not be read: a
-  folder that is declared and does not exist or is not a folder, a folder that cannot be listed, a file that
-  cannot be opened, a file or folder with a name that is not UTF-8, a `-meta.xml` file the Salesforce library
-  cannot place, an Apex file that belongs to no component. Each of these is an issue of the severity `error`,
-  and it costs the snapshot that one file or folder and nothing beside it. The snapshot is stored either way,
-  `ok` is `true`, and the exit code is `5`, so that a script does not take an incomplete picture for a complete
-  one.
-- Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing: symbolic links
-  that were not followed, files that `.forceignore` excludes, files that belong to no metadata component, a
-  component that is defined in two places, a working tree that differs from its commit. They do not make a
-  snapshot partial.
+- A snapshot is `complete` or `partial`. It is partial when something the source should hold could not be read.
+  Each such thing is an issue of the severity `error`, and it costs the snapshot that one file, folder, component
+  or type and nothing beside it. The snapshot is stored either way, `ok` is `true`, and the exit code is `5`, so
+  that a script does not take an incomplete picture for a complete one.
+- Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing. They do not
+  make a snapshot partial.
+
+#### A source of the kind `git`
+
+The folders of a repository are read as they are on disk, or from a commit when the source has a `ref`.
+[configuration.md](configuration.md#how-a-git-source-is-read) says which folders and files are read. The snapshot
+is stored in one step: it is there with all its files, or not at all.
+
+- The snapshot is partial for: a folder that is declared and does not exist or is not a folder, a folder that
+  cannot be listed, a file that cannot be opened, a file or folder with a name that is not UTF-8, a `-meta.xml`
+  file the Salesforce library cannot place, an Apex file that belongs to no component.
+- Warnings and notes: symbolic links that were not followed, files that `.forceignore` excludes, files that
+  belong to no metadata component, a component that is defined in two places, a working tree that differs from
+  its commit.
 - `snapshot.commit` is the full id of the commit the snapshot was read from, or `null`.
   - For a source with a `ref` it is the commit that name stood for when the snapshot was taken. Everything in the
     snapshot comes from that commit. If the snapshot is partial, it does not hold all of it.
@@ -95,17 +102,102 @@ folders and files are read. A source of the kind `org` or `sandbox` cannot be re
   `sfdx-project.json`, an unknown branch, no folder that can be read, a project file or a `.forceignore` that may
   not be opened. `details.reason` says which it was.
 
+#### A source of the kind `org` or `sandbox`
+
+The org is read through the Metadata API, with the login described [below](#logins), in three steps:
+
+1. **The inventory.** The org is asked which metadata types it has, and for every type which components. Types
+   whose components lie in folders, such as reports, are asked folder by folder. The inventory is what the
+   snapshot is measured against.
+2. **The retrieve.** Every component is asked for by its name, never by a wildcard, because a wildcard leaves out
+   standard objects and components of installed packages without a word. The components are retrieved in chunks
+   of about 3,000 files, one chunk after the other. The files of a chunk are stored as soon as they arrive. A
+   chunk that Salesforce fails, which is how it says that a chunk is too large, is tried again in two halves, down
+   to the one component that cannot be handed out.
+3. **The count.** What came back is counted against the inventory, type by type.
+
+The files are stored in the form a repository holds them in (an object with one file per field), under the paths
+they have below a package directory, such as `classes/Foo.cls`.
+
+- The snapshot is partial for: a type whose components the org refused to list (`LISTING_FAILED`), a retrieve
+  that Salesforce failed for a single component (`RETRIEVE_FAILED`), a component the org listed that did not come
+  back (`NOT_RETRIEVED`), a file that came back and cannot be read as metadata (`RESOLVE_FAILED`). The other types
+  and components are in the snapshot.
+- Warnings: a type Salesforce describes and never lists, which today is `StandardValueSet` (`TYPE_NOT_READ`), what
+  Salesforce remarked about a retrieve (`RETRIEVE_MESSAGES`), files of a retrieve that belong to no component
+  (`FILES_NOT_METADATA`), and a file that came back in two retrieves (`FILE_RETRIEVED_TWICE`).
+- **Profiles and permission sets are incomplete.** Salesforce hands out a profile or a permission set with the
+  access to the components of the same retrieve only. Because the org is retrieved in chunks, such a file holds a
+  part of the access settings. The snapshot says so with the warning `ACCESS_INCOMPLETE` and a note on both
+  types. Reading access completely is not built yet.
+- Notes: a chunk that was split (`CHUNK_SPLIT`), components that came back although the org had not listed them,
+  such as a standard object that came with its custom fields (`UNLISTED_COMPONENTS`), a snapshot that was
+  continued (`SNAPSHOT_RESUMED`) or given up (`SNAPSHOT_GIVEN_UP`).
+- **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
+  the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
+  stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
+  The next `orglens snapshot <source>` picks it up where it stopped. It asks Salesforce for the retrieve that was
+  running, and does not ask again what the org holds. A snapshot that was continued was read from the org at more
+  than one time, and an issue says so.
+- `--restart` gives the unfinished snapshot up and takes a new one. The snapshot that was given up keeps its
+  number and gets the status `failed`. An unfinished snapshot that another version of OrgLens began is given up in
+  the same way, without the option.
+- One snapshot of a source is taken at a time. A second command for the same source ends with `SNAPSHOT_RUNNING`.
+  The lock is the file `.orglens/snapshot-<source>.lock`, which holds the id of the process. A lock whose process
+  no longer exists is taken over.
+- The name of a source stands for one org. The first snapshot ties the name to the org that answered, also when
+  the source declares no `org_id`. A later login that reaches another org is refused with `ORG_MISMATCH`.
+- A snapshot is read with one API version from start to end: the newest the org offers when the snapshot is
+  begun. `snapshot.apiVersion` says which.
+- Every request gives up when no answer starts within 60 seconds, or 10 minutes for the request that fetches the
+  files of a chunk, and is made again twice. No request follows a redirect. A retrieve that Salesforce does not
+  end within 30 minutes stops the command, and the next run asks for the same retrieve again.
+- What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
+  `SESSION_EXPIRED` or `ORG_UNREACHABLE`, and `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org
+  said no to a request, and `details.code` is its code), `RETRIEVE_TOO_SLOW`, or `RETRIEVES_FAILING` (Salesforce
+  failed 20 retrieves in a row). `details.snapshot` is the number of the unfinished snapshot.
+- A login that fails before anything was read ends with `LOGIN_FAILED` or `ORG_MISMATCH` and stores nothing.
+- The user of the login needs a permission for the Metadata API. Without it the org refuses the first request,
+  and the command ends with `SOURCE_READ_FAILED` (`REQUEST_REFUSED`).
+  [configuration.md](configuration.md#a-login-with-a-key-for-a-job-without-a-person) names the permissions.
+
+While an org is read, lines like these go to the standard error stream:
+
+```
+Logged in to the org of "prod". It is read with API version 66.0.
+Asking the org what it holds: 240 of 312 requests answered.
+Snapshot #4: the org lists 11,862 components. They are retrieved in 9 chunks.
+Snapshot #4: 1 of 9 chunks is stored.
+```
+
+The files of an org are always in the standard form of a Salesforce project, whatever `sfdx-project.json` of the
+folder the command runs in says about the form of labels or permission sets.
+
+Not verified against a real org yet: which types real orgs refuse to list, how Salesforce words the failure of a
+retrieve that is too large, folders inside folders, and whether the names in a retrieve always equal the names
+the org listed. The mock org the tests use is built from the fixture project, and was also built once from each
+of three public codebases.
+
 `orglens coverage <source>` shows the latest snapshot of a source, or the one given with `--snapshot <number>`.
 It ends with `0` also when that snapshot is partial: showing the report is what it was asked to do. The column
 `ANALYSED` is `0` for every type until the analysers arrive.
 
+The table of `coverage` has one line per metadata type that has components. For an org, the column `LISTED` says
+`not listed` for a type Salesforce never lists, and adds `(listing failed)` to the number of a type the org
+refused to list in whole or in part.
+
 The issue codes of today:
 
-| Severity  | Codes                                                                                                               |
-| --------- | ------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`                                                     |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                  |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`                                                     | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                           |
+
+An issue about several components of an org carries their number in `details.count` and at most the first 50
+names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
+the type in `details.type`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
+`RETRIEVE_MESSAGES` its remarks in `details.messages`.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -155,12 +247,6 @@ uses, which is the newest the org offers. For a login with a key, the user name 
 - For a source of the kind `git`, `source check` reads everything a snapshot would read and stores nothing. It
   reports the commit, the number of components and files, and the issues, and ends with `5` if a snapshot taken
   now would be partial.
-
-### Not available yet
-
-The plan of Phase 0 lists snapshots of orgs and sandboxes. They arrive with the third part of Salesforce
-connectivity, later in Phase 0. Until then `orglens snapshot` ends with `SOURCE_READ_FAILED` for an org or a
-sandbox, also when `source check` succeeds for it.
 
 ### Global options
 
@@ -256,18 +342,18 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                      |
-| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                           |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                 |
-| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                     |
-| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                        |
-| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`. |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, snapshot count, latest snapshot).                                                                                                               |
-| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `note`), `issues` (`severity`, `code`, `message`, `details`).                    |
-| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                          |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                             |
+| Command         | `data`                                                                                                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                 |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                      |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                            |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                |
+| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                   |
+| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                            |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`). |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `issues` (`severity`, `code`, `message`, `details`).                                      |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                     |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                        |
 
 A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace
@@ -298,37 +384,38 @@ release, the contract can still change with a pull request that says so.
 | `5`  | partial    | The result is there and it is incomplete.                                     |
 
 `snapshot` ends with `5` when the snapshot it stored is partial, and `source check` when a snapshot of the folders
-would be. `source check` and `source link` end with `4` for a problem with a login. No command ends with `3` yet.
+would be. `source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends with `3` yet.
 The code is fixed now, so that scripts written today keep their meaning when the commands that use it arrive.
 
 ## Error codes
 
-| Code                     | Exit | Situation                                                                                 |
-| ------------------------ | ---- | ----------------------------------------------------------------------------------------- |
-| `USAGE`                  | 2    | The command line cannot be understood: an unknown command or option, a missing argument.  |
-| `CONFIG_INVALID`         | 2    | A configuration file, or an environment variable that overrides it, has a problem.        |
-| `CONFIG_NOT_EDITABLE`    | 2    | `orglens.toml` is written in a way OrgLens cannot change safely. Edit it by hand.         |
-| `WORKSPACE_NOT_FOUND`    | 2    | No workspace: no `orglens.toml` in this folder or in a folder above it.                   |
-| `WORKSPACE_EXISTS`       | 2    | A workspace cannot be created here, because the folder already belongs to one.            |
-| `SOURCE_NOT_FOUND`       | 2    | No source with this name is declared.                                                     |
-| `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                              |
-| `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                           |
-| `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                        |
-| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                            |
-| `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                          |
-| `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent. |
-| `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                        |
-| `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                           |
-| `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders or the commit it names.           |
-| `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                            |
-| `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.               |
-| `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                   |
-| `STORE_OUTDATED`         | 1    | The database needs a migration, and the command only reads.                               |
-| `STORE_BUSY`             | 1    | Another process holds the write lock of the database.                                     |
-| `STORE_MIGRATION_FAILED` | 1    | A migration of the database failed and was rolled back.                                   |
-| `STORE_FAILED`           | 1    | The database could not be opened, read or written.                                        |
-| `REFERENCE_INVALID`      | 1    | A reference record breaks a rule of the reference vocabulary. This points at a bug.       |
-| `INTERNAL`               | 1    | An unexpected failure. This is a bug in OrgLens.                                          |
+| Code                     | Exit | Situation                                                                                                          |
+| ------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------ |
+| `USAGE`                  | 2    | The command line cannot be understood: an unknown command or option, a missing argument.                           |
+| `CONFIG_INVALID`         | 2    | A configuration file, or an environment variable that overrides it, has a problem.                                 |
+| `CONFIG_NOT_EDITABLE`    | 2    | `orglens.toml` is written in a way OrgLens cannot change safely. Edit it by hand.                                  |
+| `WORKSPACE_NOT_FOUND`    | 2    | No workspace: no `orglens.toml` in this folder or in a folder above it.                                            |
+| `WORKSPACE_EXISTS`       | 2    | A workspace cannot be created here, because the folder already belongs to one.                                     |
+| `SOURCE_NOT_FOUND`       | 2    | No source with this name is declared.                                                                              |
+| `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                                                       |
+| `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                                                    |
+| `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                                                 |
+| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                                                     |
+| `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                                                   |
+| `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent.                          |
+| `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                                                 |
+| `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                                                    |
+| `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders, its commit, or an org that stopped answering as expected. |
+| `SNAPSHOT_RUNNING`       | 1    | Another process is taking a snapshot of this source.                                                               |
+| `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                                                     |
+| `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.                                        |
+| `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                                            |
+| `STORE_OUTDATED`         | 1    | The database needs a migration, and the command only reads.                                                        |
+| `STORE_BUSY`             | 1    | Another process holds the write lock of the database.                                                              |
+| `STORE_MIGRATION_FAILED` | 1    | A migration of the database failed and was rolled back.                                                            |
+| `STORE_FAILED`           | 1    | The database could not be opened, read or written.                                                                 |
+| `REFERENCE_INVALID`      | 1    | A reference record breaks a rule of the reference vocabulary. This points at a bug.                                |
+| `INTERNAL`               | 1    | An unexpected failure. This is a bug in OrgLens.                                                                   |
 
 `USAGE` is raised by the command line itself. All other codes come from the engine, so the local web UI and other
 clients of the engine see the same codes.
@@ -338,8 +425,10 @@ For `CONFIG_INVALID`, `details.diagnostics` lists every problem: objects with `f
 
 For `SOURCE_READ_FAILED`, `details.reason` is one of `REPO_NOT_FOUND`, `PROJECT_FILE_MISSING`,
 `PROJECT_FILE_INVALID`, `FILE_UNREADABLE`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`,
-`GIT_NOT_INSTALLED`, `GIT_TOO_OLD`, `GIT_FAILED` and `KIND_NOT_READABLE`. With `GIT_FAILED`, the message carries
-what Git said, which can include paths of this machine.
+`GIT_NOT_INSTALLED`, `GIT_TOO_OLD` and `GIT_FAILED` for a source of the kind `git`, and `REQUEST_REFUSED`,
+`RETRIEVE_TOO_SLOW` and `RETRIEVES_FAILING` for an org or a sandbox. With `GIT_FAILED`, the message carries what
+Git said, which can include paths of this machine. With `REQUEST_REFUSED` and `RETRIEVES_FAILING`, it carries what
+Salesforce said, filtered as described below.
 
 For `LOGIN_FAILED`, `details.reason` is one of:
 
