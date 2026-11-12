@@ -7,3 +7,9 @@ LICENSE
 # Research notes and exported plans are kept as written.
 docs/research/**
 docs/plans/re-architecture-plan.md
+# Fixture files are test data. Their layout is part of the tests: the answer key records lines and columns.
+fixtures/billing-sfdx/**
+fixtures/parser-negative/**
+fixtures/expected/**
+# Public test codebases, downloaded on demand.
+.corpora

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Owner_Manager_Email__c</fullName>
+    <formula>Owner:User.Manager.Email</formula>
+    <label>Owner Manager Email</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Text</type>
+</CustomField>

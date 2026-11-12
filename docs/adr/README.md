@@ -39,6 +39,7 @@ during the build.
 | [0026](0026-workspace-database.md)                | The workspace database: how it is opened, migrated and what its first schema holds              | Accepted |            |
 | [0027](0027-json-envelope-and-exit-codes.md)      | One JSON envelope for every command, and six exit codes                                         | Accepted |            |
 | [0028](0028-configuration-files.md)               | Configuration: two TOML files, strict reading, and edits that keep the file as written          | Accepted |            |
+| [0029](0029-fixture-and-answer-key.md)            | The fixture project and its hand-written answer key                                             | Accepted |            |
 
 ## Writing a record
 
@@ -59,7 +60,6 @@ These decisions are made while Phase 0 is built, and each is recorded with the w
 
 | Decision                                                                         | Recorded with             |
 | -------------------------------------------------------------------------------- | ------------------------- |
-| The format of the fixture and of its answer key                                  | The fixture               |
 | Salesforce connectivity, and every file it touches in the home directory         | Salesforce connectivity   |
 | What the cross-checks can prove, and with it the definition of the gate (0021)   | The live-org measurements |
 | The Apex analysis foundation: [0018](0018-apex-analysis-foundation.md) is filled | The Apex trial            |

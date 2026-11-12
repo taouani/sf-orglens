@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Amount_Within_Credit_Limit</fullName>
+    <active>true</active>
+    <errorConditionFormula>Amount__c &gt; Account__r.Credit_Limit__c</errorConditionFormula>
+    <errorMessage>The amount is above the credit limit of the account.</errorMessage>
+</ValidationRule>

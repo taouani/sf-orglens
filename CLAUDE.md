@@ -52,7 +52,7 @@ packages/cli   the `orglens` binary                            imports only `@sf
 
 - A layer imports only from layers above it in this list. The list is defined once, in `layers.cjs`.
 - `packages/engine/src/index.ts` re-exports `api/` and nothing else. Clients never reach into the engine.
-- Only `sources/` may import `@salesforce/*`.
+- Only `sources/` may import `@salesforce/*`. This is about the code of the engine. A test may import it.
 - The rules are enforced twice: by the ESLint rule `orglens/layers` (`tools/eslint-plugin-orglens.js`, which
   resolves every static import, `import()`, type import and `require`) and by dependency-cruiser. The boundary
   between a client and the engine is guarded a third time by the `exports` map of the engine package.
@@ -81,6 +81,7 @@ pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
 pnpm run check:startup      # start-up time of the built binary, needs a build first, not part of check
 pnpm run bench              # storage benchmark on a synthetic org, not part of check
+pnpm run corpora:fetch      # downloads the public test codebases of fixtures/corpora.toml into .corpora
 ```
 
 Run `pnpm run check` before every push.
@@ -94,6 +95,9 @@ Run `pnpm run check` before every push.
 - Expected outputs larger than a few lines are golden files in `test/golden/`, compared byte for byte with
   `toMatchFileSnapshot`. Review a changed golden file like code. Never regenerate one just to make a test pass.
 - All text is LF on every platform. Fixtures record line and column positions.
+- `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v0.yaml` belong together
+  (`fixtures/README.md`). The key is written by hand and is never changed to make an analyser pass. Change a fixture
+  file and its entries in the key in the same pull request. `fixture-key.test.ts` says which entries moved.
 - Tests need no network and no org.
 - Every store test runs against both SQLite drivers (`test/helpers/store.ts`). The store uses only what the driver
   port in `store/driver.ts` offers.

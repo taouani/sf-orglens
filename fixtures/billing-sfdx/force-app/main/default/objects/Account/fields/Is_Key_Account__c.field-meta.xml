@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Is_Key_Account__c</fullName>
+    <formula>AND(
+  ISPICKVAL(Tier__c, 'Gold'),
+  Credit_Limit__c &gt; 100000
+)</formula>
+    <label>Key Account</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Checkbox</type>
+</CustomField>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Price_Not_Negative</fullName>
+    <active>true</active>
+    <description>The message names Quantity__c. That is text, not a reference.</description>
+    <errorConditionFormula>Unit_Price__c &lt; 0</errorConditionFormula>
+    <errorMessage>The unit price must not be negative. Check Quantity__c as well.</errorMessage>
+</ValidationRule>
