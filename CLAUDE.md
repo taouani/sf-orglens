@@ -76,6 +76,7 @@ pnpm run lint
 pnpm run format:write
 pnpm run depcruise
 pnpm run knip
+pnpm run check:adr          # format and coverage of docs/adr
 pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
 ```

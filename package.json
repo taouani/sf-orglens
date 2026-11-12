@@ -20,9 +20,10 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "knip": "knip",
     "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:adr": "node scripts/check-adr.mjs",
     "publint": "pnpm -r --filter \"./packages/*\" exec publint --strict",
     "smoke:pack": "node scripts/pack-smoke.mjs",
-    "check": "pnpm run build && pnpm run typecheck:tests && pnpm run lint && pnpm run format && pnpm run depcruise && pnpm run knip && pnpm run check:boundaries && pnpm run coverage"
+    "check": "pnpm run build && pnpm run typecheck:tests && pnpm run lint && pnpm run format && pnpm run depcruise && pnpm run knip && pnpm run check:adr && pnpm run check:boundaries && pnpm run coverage"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",

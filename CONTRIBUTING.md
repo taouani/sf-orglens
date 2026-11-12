@@ -36,6 +36,7 @@ pnpm run check
 | `pnpm run format`                            | Prettier formatting (`pnpm run format:write` fixes it)                               |
 | `pnpm run depcruise`                         | Layer rules and circular imports                                                     |
 | `pnpm run knip`                              | Unused files, exports and dependencies                                               |
+| `pnpm run check:adr`                         | The decision records are well formed and cover every plan decision once              |
 | `pnpm run check:boundaries`                  | Writes probe files that break the layer rules and checks that each tool rejects them |
 | `pnpm run coverage`                          | Tests with coverage thresholds                                                       |
 | `pnpm run publint` and `pnpm run smoke:pack` | The packages install and run outside the workspace                                   |
