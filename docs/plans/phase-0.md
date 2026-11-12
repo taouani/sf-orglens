@@ -398,6 +398,26 @@ items of the list below: a run that is started by hand can deploy the fixture pr
 - Nothing of this has met Salesforce when the pull request is merged. The runs follow it, because the secrets
   are handed only to a run from `main`.
 
+Status after the first real runs and the third pull request of this work package (2026-11-12).
+
+- Items 1 to 3 have run against Salesforce. The deploy was accepted on the first try: all 52 components of the
+  fixture project, in 16 seconds. The first real snapshot took 197 seconds, used 387 requests to the Metadata
+  API and 402 MB of memory, and read 1,668 listed components into 5,010 files. All 52 components of the fixture
+  project came back, in 65 files, of which 17 are the same byte for byte as in the repository.
+- The snapshot was "partial": the org did not hand out 223 of the components it listed, in 15 types, and the
+  listing of one type failed. None of them is of the fixture project. A Developer Edition org that holds
+  "nothing but the fixture project" holds 1,600 components of its own. The first version of the step could not
+  say why they are missing, because it prints no name of the org. The step now describes them without a name,
+  and shows a message of an unknown form in everyday words (record 0033).
+- The step that reads the org no longer fails for a partial snapshot. It fails when the snapshot does not end or
+  when the fixture project is not whole in it.
+- The two probes are built as one tool, `packages/engine/test/live/probe-org.ts`, and a choice of the workflow.
+  It reads the Dependency API per type of component and per pair of types where a query is at the limit of
+  2,000 rows, and compares the rows with the 137 pairs of the answer key. It reads `ApexClass.SymbolTable` as
+  the org holds it. The variant that compiles a class in the org to get references is not built: it writes to
+  the org.
+- Not done yet: the runs of the probe, and the report `docs/research/phase-0/real-org.md`, which follows them.
+
 Run and record in `docs/research/phase-0/real-org.md`:
 
 1. Deploy fixture v0 to the Developer Edition org with a script kept in the repository.
@@ -456,7 +476,8 @@ About ten pull requests, in this order. Each is small enough to review in one si
 | 7c  | Reading an org: inventory, chunk planner, retrieve, org snapshot       | WP7          |
 | 8a  | Live-org workflow with its login step, ahead of 7c                     | WP8          |
 | 8b  | Live-org workflow: deploy of the fixture project, first real snapshot  | WP8          |
-| 8c  | Cross-check probes, real-org report                                    | WP8          |
+| 8c  | Cross-check probes, what the read step says about missing components   | WP8          |
+| 8d  | Real-org report, fixes from the real runs                              | WP8          |
 | 9   | Apex trial code, results, decision record 0018                         | WP9          |
 | 10  | Phase close: updated plan, test plan, phase report                     | WP10         |
 

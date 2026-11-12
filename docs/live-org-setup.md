@@ -136,12 +136,14 @@ sf org login jwt --client-id <consumer key> --jwt-key-file orglens-ci.key --user
 A run that is started by hand asks what it should do after the login (**Run workflow**, field "What the run does
 after it has logged in"). The weekly run always logs in only.
 
-| Choice          | What the run does                                                                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| login only      | Logs in. This is the default.                                                                                                                                                                              |
-| deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run. Nothing else is ever deployed. |
-| read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot is written to a temporary folder of the runner and deleted when the step ends.  |
-| deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                         |
+| Choice          | What the run does                                                                                                                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| login only      | Logs in. This is the default.                                                                                                                                                                                                                              |
+| deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run. Nothing else is ever deployed.                                                 |
+| read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot is written to a temporary folder of the runner and deleted when the step ends.                                                  |
+| deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                                                                         |
+| probe           | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports. Nothing is written to the org. |
+| read and probe  | Both, in this order.                                                                                                                                                                                                                                       |
 
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
@@ -149,7 +151,13 @@ two custom objects, custom fields and validation rules on them and on the standa
 classes and one trigger. It removes nothing. To take the fixture project out of the org again, delete those
 components in Setup, or start over with a new org.
 
-What the two steps print follows the same rule as the login step, with a wider list of what a sentence may hold
+The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for
+describe metadata: `MetadataComponentDependency`, `ApexClass` with its symbol table, and `CustomObject`,
+`CustomField`, `ValidationRule` and `ApexTrigger` for the names behind the ids. No record of the data of the org is
+read. A symbol table with references to other classes can only be had by compiling a copy of a class in the org,
+which writes to the org, so the probe does not do that.
+
+What the steps print follows the same rule as the login step, with a wider list of what a sentence may hold
 (`packages/engine/test/live/public-log.ts`):
 
 - numbers, and codes of OrgLens, of Salesforce and of the network,
@@ -159,6 +167,12 @@ What the two steps print follows the same rule as the login step, with a wider l
 - a problem Salesforce reports for a component of the fixture project in a deploy, if the whole text has one of
   the forms listed in `deploy-fixture.ts` and every name in it is a word of the fixture project or of the
   platform. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of the org.
+- of a remark of Salesforce about a retrieve in a form the step does not know, and of what a library says about
+  a file it cannot read: the words of a short list of everyday words (`read-org.ts`). Every other word, every
+  number and everything in quotes is left out. That says what kind of message it is. It can hold a name only if
+  the name is made of such words alone and stands without quotes.
+- about a component that is not of the fixture project: how its name is built, with `a` in the place of every run
+  of letters, digits and underscores (`a.a`, `a/a`), and whether the object or the folder it belongs to came back.
 
 A step never prints the name of a component that is not of the fixture project, a message of Salesforce or of a
 library in another form, the address or the id of the org, or the user name. On top of the forms, a line that
@@ -174,6 +188,11 @@ step is killed from outside, for example by its time limit, the folder goes with
 GitHub throws away.
 
 With "deploy and read", the org is not read if the deploy failed. Start a run with "read" for that.
+
+The step "Read the org" fails when the snapshot does not end, or when a component or a file of the fixture project
+is missing in it. A real org lists components that it does not hand out, so the snapshot of the test org is
+"partial" for reasons that have nothing to do with the fixture project. The step says so in a warning and does not
+fail for it.
 
 The steps were tested against a mock org only before their first run. What the first runs showed is in
 `docs/research/phase-0/real-org.md`, once that report is written.
