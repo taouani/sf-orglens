@@ -67,10 +67,10 @@ describe('the inventory of an org', () => {
     });
     const inventory = await takeInventory(api);
     expect(inventory.types).toEqual([
-      { type: 'ApexClass', role: 'top', of: null, listing: 'ok', reason: null },
-      { type: 'CustomField', role: 'part', of: 'CustomObject', listing: 'ok', reason: null },
-      { type: 'CustomObject', role: 'top', of: null, listing: 'ok', reason: null },
-      { type: 'ValidationRule', role: 'part', of: 'CustomObject', listing: 'ok', reason: null },
+      { type: 'ApexClass', role: 'top', of: null, listing: 'ok', reason: null, code: null },
+      { type: 'CustomField', role: 'part', of: 'CustomObject', listing: 'ok', reason: null, code: null },
+      { type: 'CustomObject', role: 'top', of: null, listing: 'ok', reason: null, code: null },
+      { type: 'ValidationRule', role: 'part', of: 'CustomObject', listing: 'ok', reason: null, code: null },
     ]);
     expect(names(inventory)).toEqual([
       'ApexClass:A',
@@ -90,13 +90,14 @@ describe('the inventory of an org', () => {
     });
     const inventory = await takeInventory(api);
     expect(inventory.types).toEqual([
-      { type: 'ApexClass', role: 'top', of: null, listing: 'ok', reason: null },
+      { type: 'ApexClass', role: 'top', of: null, listing: 'ok', reason: null, code: null },
       {
         type: 'Flow',
         role: 'top',
         of: null,
         listing: 'failed',
         reason: 'INVALID_TYPE: Cannot use: Flow in this organization',
+        code: 'INVALID_TYPE',
       },
     ]);
     expect(names(inventory)).toEqual(['ApexClass:A']);
@@ -168,6 +169,7 @@ describe('the inventory of an org', () => {
     expect(one.types.find((entry) => entry.type === 'Report')).toMatchObject({
       listing: 'failed',
       reason: 'Folder Finance: INSUFFICIENT_ACCESS: insufficient access rights',
+      code: 'INSUFFICIENT_ACCESS',
     });
     expect(names(one)).toContain('Report:Sales/Pipeline');
 
@@ -192,6 +194,7 @@ describe('the inventory of an org', () => {
         of: null,
         listing: 'unlistable',
         reason: 'Salesforce does not list standard value sets. They are not read yet.',
+        code: null,
       },
     ]);
   });

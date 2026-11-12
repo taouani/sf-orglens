@@ -404,7 +404,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
               'error',
               'LISTING_FAILED',
               `The org did not say which components of the type ${type.type} it has. ${type.reason ?? ''}`.trimEnd(),
-              { type: type.type },
+              { type: type.type, code: type.code },
             );
           } else if (type.listing === 'unlistable') {
             issue(
@@ -487,8 +487,8 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
  */
 type Outcome =
   | { readonly kind: 'stored' }
-  | { readonly kind: 'failed'; readonly said: string }
-  | { readonly kind: 'lost'; readonly said: string };
+  | { readonly kind: 'failed'; readonly said: string; readonly code: string | null }
+  | { readonly kind: 'lost'; readonly said: string; readonly code: string | null };
 
 /**
  * Retrieves one chunk and stores its files. Throws what stops the whole snapshot: an org that cannot be reached,
@@ -516,7 +516,7 @@ async function retrieveChunk(
     } catch (error) {
       if (!isRefusal(error)) throw error;
       if (attempt >= tuning.startsPerChunk) {
-        return { kind: 'failed', said: `Salesforce did not start the retrieve. ${saidIn(error)}` };
+        return { kind: 'failed', said: `Salesforce did not start the retrieve. ${saidIn(error)}`, code: error.code };
       }
       await pause(tuning.pollMaxMs);
       continue;
@@ -542,6 +542,7 @@ async function retrieveChunk(
           error.code === 'INVALID_CROSS_REFERENCE_KEY'
             ? 'Salesforce no longer knows the retrieve.'
             : `Salesforce did not say how far the retrieve is. ${saidIn(error)}`,
+        code: error.code,
       };
     }
     // A job that did not end in an earlier run and does not end in this one either is not waited for a third time.
@@ -549,12 +550,15 @@ async function retrieveChunk(
       return {
         kind: 'lost',
         said: `The retrieve did not end within ${minutes(tuning.jobMs)}, also after the snapshot was continued.`,
+        code: null,
       };
     }
     throw error;
   }
-  if (!state.succeeded) return { kind: 'failed', said: saidAbout(state) };
-  if (zip === null) return { kind: 'lost', said: 'Salesforce gave no zip file for a retrieve that succeeded.' };
+  if (!state.succeeded) return { kind: 'failed', said: saidAbout(state), code: state.errorCode };
+  if (zip === null) {
+    return { kind: 'lost', said: 'Salesforce gave no zip file for a retrieve that succeeded.', code: null };
+  }
 
   const dir = join(workDir, `chunk-${String(seq)}`);
   mkdirSync(dir, { recursive: true });
@@ -565,7 +569,7 @@ async function retrieveChunk(
     if (isEngineError(error) || isSystemFailure(error)) throw error;
     // Something that is not a zip file, for example. The next run would get the same, so the chunk does not stay
     // in the way: it is handled like a retrieve that Salesforce failed.
-    return { kind: 'failed', said: `What Salesforce handed out could not be read. ${saidBy(error)}` };
+    return { kind: 'failed', said: `What Salesforce handed out could not be read. ${saidBy(error)}`, code: null };
   }
   const owned = new Set(unpacked.components.flatMap((component) => component.files));
   const messages = state.problems.map((problem) => saidBy(problem));
@@ -637,7 +641,7 @@ async function retrieveChunks(
   for (let chunk = nextChunk(store, snapshotId); chunk !== undefined; chunk = nextChunk(store, snapshotId)) {
     const { seq, members } = chunk;
     /** Gives the chunk up: its components are not in the snapshot, and an issue says why. */
-    const fail = (said: string): void => {
+    const fail = (said: string, code: string | null): void => {
       store.write(() => {
         chunkEnded(store, snapshotId, seq, { status: 'failed', at: now(), error: said });
         const first = members[0];
@@ -649,7 +653,7 @@ async function retrieveChunks(
           members.length === 1 && first !== undefined
             ? `Salesforce did not hand out ${first.type} ${first.fullName}. ${said}`
             : `Salesforce did not hand out ${plural(members.length, 'component', 'components')}. ${said}`,
-          { ...named(members.map((member) => `${member.type} ${member.fullName}`)), said },
+          { ...named(members.map((member) => `${member.type} ${member.fullName}`)), said, code },
         );
       });
     };
@@ -659,7 +663,10 @@ async function retrieveChunks(
     const outcome = await retrieveChunk(store, snapshotId, chunk, api, source, workDir, tuning);
     if (outcome.kind === 'lost') {
       if (starts >= tuning.startsPerChunk) {
-        fail(`The retrieve was started ${plural(starts, 'time', 'times')} and gave no result. ${outcome.said}`);
+        fail(
+          `The retrieve was started ${plural(starts, 'time', 'times')} and gave no result. ${outcome.said}`,
+          outcome.code,
+        );
       } else {
         store.write(() => {
           chunkForgotten(store, snapshotId, seq);
@@ -670,10 +677,10 @@ async function retrieveChunks(
       failures = 0;
     } else {
       failures += 1;
-      const { said } = outcome;
+      const { said, code } = outcome;
       const [first, second] = splitMembers(members);
       if (second.length === 0) {
-        fail(said);
+        fail(said, code);
       } else {
         // Salesforce says how large a retrieve is only by failing it. Half of it is tried, down to the one
         // component that cannot be handed out.
@@ -685,7 +692,7 @@ async function retrieveChunks(
             'info',
             'CHUNK_SPLIT',
             `A retrieve of ${plural(members.length, 'component', 'components')} failed and was tried again in two halves. ${said}`,
-            { members: members.length, said },
+            { members: members.length, said, code },
           );
         });
       }
@@ -693,7 +700,7 @@ async function retrieveChunks(
         throw new EngineError(
           'SOURCE_READ_FAILED',
           `${String(failures)} retrieves in a row from the org of the source "${source}" failed. The last: ${said}`,
-          { details: { reason: 'RETRIEVES_FAILING', source, said } },
+          { details: { reason: 'RETRIEVES_FAILING', source, said, code } },
         );
       }
     }

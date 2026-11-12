@@ -33,8 +33,13 @@ These rules come from the maintainer and apply to every phase.
 - Never copy fixtures, recordings or code from the earlier private OrgLens prototypes into this repository.
 - No credentials anywhere: not in code, tests, fixtures, logs, workflow files or pull request text. Credentials for
   the test org exist only as GitHub Actions secrets and are used only by the live-org workflow, which a maintainer
-  starts and which logs in once a week by itself. Its log is public: a step of it prints codes and sentences of
-  its own, and no text that OrgLens, a Salesforce library or Salesforce wrote.
+  starts and which logs in once a week by itself. Its log is public: a step of it prints sentences of its own.
+  They hold numbers, codes, names of metadata types and of their elements, and names of the fixture project. They
+  hold no name of another component of the org, and no message that OrgLens, a Salesforce library or Salesforce
+  wrote, unless its whole text has a form the step lists (`packages/engine/test/live/public-log.ts` has the
+  rule, decision record 0033 the reasons). No file of the org is kept or uploaded.
+- The fixture project is the only thing that is ever deployed to an org, and only to the test org, by a tool of
+  the tests (`packages/engine/test/live/deploy-fixture.ts`).
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
   the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031
   names those requests, and a test pins them.

@@ -43,6 +43,7 @@ during the build.
 | [0030](0030-reading-a-git-source.md)              | How a Git source is read into a snapshot                                                        | Accepted |            |
 | [0031](0031-logins-and-the-home-folder.md)        | How a source is logged in, and what that touches in the home folder                             | Accepted |            |
 | [0032](0032-reading-an-org.md)                    | How an org is read into a snapshot                                                              | Accepted |            |
+| [0033](0033-the-test-org.md)                      | What the live-org workflow may do in the test org, and what it may print                        | Accepted |            |
 
 ## Writing a record
 

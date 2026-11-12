@@ -9,20 +9,43 @@ name: Live org
 # deactivated by Salesforce, and a key that stopped working is noticed within
 # a week.
 #
+# A run that a maintainer starts can do more, by the choice "steps":
+#
+#   deploy  puts the fixture project (fixtures/billing-sfdx) into the test
+#           org. Nothing else is ever deployed, and no Apex test is run.
+#   read    takes a snapshot of the test org with the engine, in a folder
+#           that is deleted when the step ends, and prints what it holds in
+#           numbers.
+#
 # The secrets belong to the environment "live-org", which hands them only to
 # a run from the branch "main". The log of this workflow can be read by
-# everyone, so no step prints text that orglens, a Salesforce library or
-# Salesforce wrote. The login step prints whether the login worked, the API
-# version and error codes, in sentences of its own.
+# everyone. A step prints sentences of its own with numbers, codes, names
+# of metadata types and of their elements, and names and paths of the
+# fixture project. It prints no name of another component of the org, and
+# no message that orglens, a Salesforce library or Salesforce wrote, unless
+# the whole text has a form the step lists
+# (packages/engine/test/live/public-log.ts). The two tools do their work in
+# a process without output, which can only send such lines to the step
+# (own-output.ts). The files of the org are not kept and not uploaded.
 #
 # The steps before the login install and build with the development
-# dependencies of the repository. What they build is what the login step
-# runs with the secrets, so those dependencies are trusted with them. They
-# are pinned in the lockfile. pnpm runs the install script of a dependency
-# only if the repository allows it, and this one allows none.
+# dependencies of the repository. What they build and install is what the
+# steps with the secrets run, so those dependencies are trusted with them.
+# They are pinned in the lockfile. pnpm runs the install script of a
+# dependency only if the repository allows it, and this one allows none.
 
 on:
   workflow_dispatch:
+    inputs:
+      steps:
+        description: What the run does after it has logged in
+        type: choice
+        default: login only
+        options:
+          - login only
+          - read
+          - deploy
+          - deploy and read
   schedule:
     # Mondays at 05:17 UTC.
     - cron: '17 5 * * 1'
@@ -41,7 +64,8 @@ jobs:
     # moved, this name has to follow: a skipped weekly run logs in to nothing.
     if: github.repository == 'taouani/sf-orglens'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A snapshot of an org takes its time. Each step has a limit of its own.
+    timeout-minutes: 150
     environment: live-org
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,8 +80,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm run build
-      # Only this step gets the secrets. The test org is the source "test-org", which gives the variables their names.
+      # Only the steps from here on get the secrets. The test org is the source "test-org", which gives the
+      # variables their names.
       - name: Log in
+        timeout-minutes: 10
         env:
           ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
           ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
@@ -66,3 +92,25 @@ jobs:
           # The Salesforce library keeps its own encryption key in a file, not in a keychain that a runner may lack.
           SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
         run: node scripts/live-org-login.mjs
+      # The two steps below are tools of the tests of the engine. Node.js runs them from source.
+      - name: Deploy the fixture project
+        if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'deploy')
+        timeout-minutes: 30
+        env:
+          ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
+          ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
+          ORGLENS_JWT_TEST_ORG_CLIENT_ID: ${{ secrets.ORGLENS_TEST_ORG_CLIENT_ID }}
+          ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
+          SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+        run: node --no-warnings packages/engine/test/live/deploy-fixture.ts
+      # After a deploy that failed, the org is not read.
+      - name: Read the org
+        if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'read')
+        timeout-minutes: 75
+        env:
+          ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
+          ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
+          ORGLENS_JWT_TEST_ORG_CLIENT_ID: ${{ secrets.ORGLENS_TEST_ORG_CLIENT_ID }}
+          ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
+          SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+        run: node --no-warnings packages/engine/test/live/read-org.ts
