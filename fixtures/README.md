@@ -31,8 +31,10 @@ that an analyser can get wrong:
 - `Unused_Field__c`, which nothing refers to. Its name stands in comments and in text only.
 
 The project is valid as far as the Salesforce source library can tell: the check resolves every file to a component.
-**It has not been deployed to an org yet**, so nothing proves that the Apex compiles or that its test passes. The
-live-org workflow, which is built later in Phase 0, will deploy it. What that finds is fixed here.
+The live-org workflow deployed it to a Developer Edition org on 12 November 2026. Salesforce accepted all 52
+components on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves that it
+passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md). No file of the project
+had to be changed.
 
 ## The answer key
 
