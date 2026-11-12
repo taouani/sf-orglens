@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "The output of orglens with --json",
+  "description": "One line of JSON on the standard output: an envelope with the result of the command in `data`, or with `error` when the command failed. A consumer ignores fields it does not know. This file describes the output of the version of OrgLens it ships with.",
+  "type": "object",
+  "required": ["schemaVersion", "command", "ok", "data", "warnings", "error"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "description": "The version of the envelope. It changes only when a field is removed or changes its meaning.",
+      "const": 1
+    },
+    "command": {
+      "description": "The command that ran. Null when the command line was rejected before a command ran.",
+      "enum": ["init", "source add", "source list", "source remove", "status", "doctor", null]
+    },
+    "ok": {
+      "description": "True if `data` holds the result. False if `error` says why there is none. The exit code can be other than 0 when this is true.",
+      "type": "boolean"
+    },
+    "data": {},
+    "warnings": {
+      "description": "What the user should know although the command did its work.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/warning" }
+    },
+    "error": {}
+  },
+  "oneOf": [
+    {
+      "title": "A command that failed",
+      "properties": {
+        "ok": { "const": false },
+        "data": { "type": "null" },
+        "error": { "$ref": "#/$defs/error" }
+      }
+    },
+    {
+      "title": "init",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "init" },
+        "data": { "$ref": "#/$defs/init" },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "source add",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "source add" },
+        "data": {
+          "type": "object",
+          "required": ["source"],
+          "additionalProperties": false,
+          "properties": { "source": { "$ref": "#/$defs/source" } }
+        },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "source list",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "source list" },
+        "data": {
+          "type": "object",
+          "required": ["sources"],
+          "additionalProperties": false,
+          "properties": { "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } } }
+        },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "source remove",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "source remove" },
+        "data": {
+          "type": "object",
+          "required": ["removed"],
+          "additionalProperties": false,
+          "properties": { "removed": { "description": "The name of the source.", "type": "string" } }
+        },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "status",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "status" },
+        "data": { "$ref": "#/$defs/status" },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "doctor",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "doctor" },
+        "data": { "$ref": "#/$defs/doctor" },
+        "error": { "type": "null" }
+      }
+    }
+  ],
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "hint", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "A stable code. A code is never renamed or reused. New codes are added with new features.",
+          "enum": [
+            "USAGE",
+            "KEY_INVALID",
+            "REFERENCE_INVALID",
+            "STORE_NOT_FOUND",
+            "STORE_FOREIGN",
+            "STORE_NEWER",
+            "STORE_OUTDATED",
+            "STORE_BUSY",
+            "STORE_MIGRATION_FAILED",
+            "STORE_FAILED",
+            "WORKSPACE_NOT_FOUND",
+            "WORKSPACE_EXISTS",
+            "WORKSPACE_IO",
+            "CONFIG_INVALID",
+            "CONFIG_NOT_EDITABLE",
+            "SOURCE_NOT_FOUND",
+            "SOURCE_EXISTS",
+            "SOURCE_INVALID",
+            "SOURCE_IN_USE",
+            "INTERNAL"
+          ]
+        },
+        "message": { "description": "What went wrong, for a person.", "type": "string" },
+        "hint": { "description": "What the user can do about it.", "type": ["string", "null"] },
+        "details": { "description": "Facts about the failure. The fields depend on the code.", "type": "object" }
+      }
+    },
+    "init": {
+      "type": "object",
+      "required": ["root", "created", "existing"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "description": "The absolute path of the workspace folder.", "type": "string" },
+        "created": {
+          "description": "The files this call created, relative to the workspace, with forward slashes.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "existing": { "description": "True if orglens.toml was already there.", "type": "boolean" }
+      }
+    },
+    "sourceFields": {
+      "description": "A declared source. A field that is not set in orglens.toml is null.",
+      "type": "object",
+      "required": ["name", "kind", "description"],
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["org", "sandbox", "git"] },
+        "description": { "type": ["string", "null"] }
+      },
+      "oneOf": [
+        {
+          "title": "org",
+          "required": ["orgId", "loginUrl"],
+          "properties": {
+            "kind": { "const": "org" },
+            "orgId": { "type": ["string", "null"] },
+            "loginUrl": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "title": "sandbox",
+          "required": ["orgId", "loginUrl", "sandboxOf", "sandboxName"],
+          "properties": {
+            "kind": { "const": "sandbox" },
+            "orgId": { "type": ["string", "null"] },
+            "loginUrl": { "type": ["string", "null"] },
+            "sandboxOf": { "description": "The name of an org source.", "type": ["string", "null"] },
+            "sandboxName": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "title": "git",
+          "required": ["repo", "ref", "paths", "tracks"],
+          "properties": {
+            "kind": { "const": "git" },
+            "repo": { "description": "The repository folder, relative to the workspace.", "type": "string" },
+            "ref": { "description": "Null means the working tree.", "type": ["string", "null"] },
+            "paths": {
+              "description": "The folders of the repository that belong to this source. Null means all of it.",
+              "anyOf": [{ "type": "null" }, { "type": "array", "items": { "type": "string" } }]
+            },
+            "tracks": { "description": "The name of an org or sandbox source.", "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "$ref": "#/$defs/sourceFields",
+      "unevaluatedProperties": false
+    },
+    "sourceStatus": {
+      "type": "object",
+      "$ref": "#/$defs/sourceFields",
+      "required": ["snapshots", "latestSnapshot"],
+      "properties": {
+        "snapshots": {
+          "description": "How many snapshots of this source the database holds.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "latestSnapshot": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["id", "status", "startedAt", "finishedAt"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "integer" },
+                "status": { "enum": ["running", "complete", "partial", "failed"] },
+                "startedAt": { "type": "string" },
+                "finishedAt": { "type": ["string", "null"] }
+              }
+            }
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "store": {
+      "type": "object",
+      "required": ["file", "state", "driver", "schemaVersion", "sizeBytes", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "description": "The database file, relative to the workspace.", "type": "string" },
+        "state": { "enum": ["ready", "missing", "outdated", "newer", "foreign", "busy", "unusable"] },
+        "driver": { "enum": ["node:sqlite", "better-sqlite3"] },
+        "schemaVersion": { "type": ["integer", "null"] },
+        "sizeBytes": { "type": ["integer", "null"] },
+        "problem": { "description": "What is wrong, when the state is not `ready`.", "type": ["string", "null"] }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": ["root", "name", "configFiles", "store", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string" },
+        "name": { "type": ["string", "null"] },
+        "configFiles": { "type": "array", "items": { "type": "string" } },
+        "store": { "$ref": "#/$defs/store" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/sourceStatus" } }
+      }
+    },
+    "doctor": {
+      "type": "object",
+      "required": ["ok", "engineVersion", "checks"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": { "description": "False if a check failed. The exit code is then 1.", "type": "boolean" },
+        "engineVersion": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "status", "summary", "details"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "description": "A stable name of the check.", "type": "string" },
+              "status": { "enum": ["ok", "warning", "failed", "skipped"] },
+              "summary": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

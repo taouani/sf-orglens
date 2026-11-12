@@ -70,7 +70,7 @@ Node.js 24.15 or newer and pnpm 12 are required.
 pnpm install
 pnpm run build              # tsc -b
 pnpm run typecheck:tests    # tsc on the test projects
-pnpm run check              # everything CI runs except the package smoke test
+pnpm run check              # everything CI runs except the package smoke test and the start-up check
 pnpm run test               # vitest, from source, no build needed
 pnpm run lint
 pnpm run format:write
@@ -79,6 +79,7 @@ pnpm run knip
 pnpm run check:adr          # format and coverage of docs/adr
 pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
+pnpm run check:startup      # start-up time of the built binary, needs a build first, not part of check
 pnpm run bench              # storage benchmark on a synthetic org, not part of check
 ```
 
@@ -98,6 +99,10 @@ Run `pnpm run check` before every push.
   port in `store/driver.ts` offers.
 - Dependencies are pinned to exact versions. A new runtime dependency needs a reason in the pull request, and a
   decision record if it is structural.
-- Machine-readable output is a contract: `--json` shapes and exit codes are documented and change only with a
-  version bump.
+- Machine-readable output is a contract: `--json` shapes and exit codes are documented in `docs/cli.md` and change
+  only with a version bump. A change to the output of a command changes `packages/cli/schemas/output.schema.json`
+  and `docs/cli.md` in the same pull request. The configuration files are documented in `docs/configuration.md`.
+- A command returns its data and its lines of text (`packages/cli/src/commands.ts`). Only `output.ts` writes to the
+  terminal and knows exit codes. Every engine error code has a line in `EXIT_OF_ERROR`.
+- A configuration key is added only with the feature that reads it. Unknown keys are errors.
 - Writing style for documents and messages: plain, direct, full sentences. Say what is not done or not verified.

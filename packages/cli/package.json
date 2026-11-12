@@ -13,12 +13,14 @@
     "orglens": "./dist/bin.js"
   },
   "exports": {
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./schemas/output.schema.json": "./schemas/output.schema.json"
   },
   "files": [
     "dist",
     "!dist/.tsbuildinfo",
     "!dist/**/*.d.ts.map",
+    "schemas",
     "NOTICE"
   ],
   "scripts": {

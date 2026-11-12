@@ -1,9 +1,17 @@
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 import { engineVersion } from '@sf-orglens/engine';
+import {
+  doctorCommand,
+  init,
+  sourceAdd,
+  sourceList,
+  sourceRemove,
+  status,
+  type Context,
+  type SourceAddOptions,
+} from './commands.ts';
+import { createWriter, EXIT, UsageError, type ExitCode, type Io, type Outcome } from './output.ts';
 import { cliVersion } from './version.ts';
-
-/** Exit code for a command line that cannot be understood: unknown option, unknown command, bad argument. */
-export const EXIT_USAGE = 2;
 
 /** The one-line answer to `orglens --version`. */
 export function versionLine(): string {
@@ -15,39 +23,189 @@ export function versionLine(): string {
   ].join(' ');
 }
 
+const processIo = (): Io => {
+  // A reader that closes the pipe early, such as `head`, ends the command quietly. Without this, Node.js prints
+  // a stack trace, also with --json.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (error: Error & { code?: string }) => {
+      if (error.code === 'EPIPE') process.exit(EXIT.failure);
+      throw error;
+    });
+  }
+  return {
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+    cwd: process.cwd(),
+    env: process.env,
+  };
+};
+
+/** True if the command line asks for JSON. It has to be known before the parser runs, to report what the parser rejects. */
+function wantsJson(argv: readonly string[]): boolean {
+  const args = argv.slice(2);
+  const end = args.indexOf('--');
+  return (end === -1 ? args : args.slice(0, end)).includes('--json');
+}
+
 /**
  * Builds the command tree.
  *
  * A command is registered only once it does something. The commands planned
- * for later phases are listed in `docs/plans/`, not stubbed here.
+ * for later are listed in `docs/plans/`, not stubbed here. `finish` receives
+ * the exit code of the command that ran.
  */
-export function buildProgram(): Command {
-  return new Command('orglens')
+export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json = false): Command {
+  const program = new Command('orglens')
     .description('Local-first impact analysis for Salesforce orgs and repositories.')
     .version(versionLine(), '-V, --version', 'print the version and exit')
     .helpOption('-h, --help', 'show help and exit')
-    .addHelpText('after', '\nPre-release: no analysis commands are available yet.')
-    .action((_options: unknown, command: Command) => {
-      // `orglens` on its own shows help instead of exiting silently.
-      command.outputHelp();
+    .option('--json', 'write the result as one line of JSON')
+    .option('--workspace <folder>', 'the workspace folder (default: found from the current folder upwards)')
+    .addHelpText('after', '\nPre-release: the analysis commands are not available yet.')
+    .helpCommand(false)
+    .configureHelp({ showGlobalOptions: true })
+    .exitOverride()
+    .configureOutput({
+      writeOut: (text) => {
+        io.stdout(text);
+      },
+      // With --json the rejection is reported as an envelope by `main`, and nothing else is written.
+      writeErr: (text) => {
+        if (!json) io.stderr(text);
+      },
     });
+
+  /** Wraps a command: finds the global options, runs it, writes its result or its failure. */
+  const run = (name: string, work: (context: Context) => Promise<Outcome>) => {
+    return async (command: Command): Promise<void> => {
+      const globals = command.optsWithGlobals<{ workspace?: string }>();
+      // One answer to "was JSON asked for" for the whole run: the one `main` took from the command line.
+      const writer = createWriter(io, json);
+      try {
+        finish(writer.succeed(name, await work({ io, workspace: globals.workspace })));
+      } catch (error) {
+        finish(writer.fail(name, error));
+      }
+    };
+  };
+
+  program
+    .command('init')
+    .summary('create a workspace')
+    .description(
+      'Makes a folder an OrgLens workspace: writes orglens.toml and creates the data folder .orglens. ' +
+        'In a folder that already has an orglens.toml, only what is missing in .orglens is created.',
+    )
+    .argument('[folder]', 'the folder (default: the current folder)')
+    .option('--name <name>', 'the label of the workspace (default: the name of the folder)')
+    .action((folder: string | undefined, options: { name?: string }, command: Command) =>
+      run('init', (context) => init(context, folder, options))(command),
+    );
+
+  const source = program
+    .command('source')
+    .summary('declare the orgs, sandboxes and repository folders to read')
+    .description('Declares the sources of the workspace in orglens.toml.')
+    .helpCommand(false);
+
+  source
+    .command('add')
+    .summary('declare a source')
+    .description(
+      'Adds a source to orglens.toml. Nothing is connected or read yet. ' +
+        'Comments and the layout of the file are kept.',
+    )
+    .argument('<name>', 'a short name: lower-case letters, digits and hyphens')
+    .addOption(
+      new Option('--kind <kind>', 'the kind, required').choices(['org', 'sandbox', 'git']).makeOptionMandatory(),
+    )
+    .option('--description <text>', 'a note for people')
+    .option('--org-id <id>', 'org, sandbox: the 15 or 18 character org id')
+    .option('--login-url <url>', 'org, sandbox: the login URL, if it is not the default')
+    .option('--sandbox-of <source>', 'sandbox: the org source it is a sandbox of')
+    .option('--sandbox-name <name>', 'sandbox: the name of the sandbox')
+    .option('--repo <folder>', 'git: the repository, relative to the workspace (default: ".")')
+    .option('--ref <ref>', 'git: the branch, tag or commit to read (default: the working tree)')
+    .option(
+      '--path <folder>',
+      'git: a folder of the repository that belongs to this source; repeat for several',
+      (value: string, previous: string[] | undefined) => [...(previous ?? []), value],
+    )
+    .option('--tracks <source>', 'git: the org or sandbox source this repository describes')
+    .action((name: string, options: SourceAddOptions, command: Command) =>
+      run('source add', (context) => sourceAdd(context, name, options))(command),
+    );
+
+  source
+    .command('list')
+    .summary('list the declared sources')
+    .description('Lists the sources declared in orglens.toml.')
+    .action((_options: unknown, command: Command) => run('source list', sourceList)(command));
+
+  source
+    .command('remove')
+    .summary('remove the declaration of a source')
+    .description(
+      'Removes a source from orglens.toml. Every other line of the file is kept. ' +
+        'Snapshots already taken of the source stay in the database.',
+    )
+    .argument('<name>', 'the name of the source')
+    .action((name: string, _options: unknown, command: Command) =>
+      run('source remove', (context) => sourceRemove(context, name))(command),
+    );
+
+  program
+    .command('status')
+    .summary('show the workspace, its database and its sources')
+    .description('Shows the workspace, the state of its database and the latest snapshot of every source. Reads only.')
+    .action((_options: unknown, command: Command) => run('status', status)(command));
+
+  program
+    .command('doctor')
+    .summary('check that OrgLens can run here')
+    .description(
+      'Checks Node.js, SQLite, the workspace, its configuration and its database, and reports every check. ' +
+        'It changes neither the configuration nor the data. The exit code is 1 if a check failed.',
+    )
+    .action((_options: unknown, command: Command) => run('doctor', doctorCommand)(command));
+
+  return program;
 }
 
 /**
  * Runs the CLI and returns the process exit code.
  *
- * Help and version are successes. Anything else the argument parser rejects
- * is a usage error, which has its own exit code so that scripts can tell it
- * from a failure of the tool. The parser has already printed its message.
+ * Help and version are successes. What the argument parser rejects is a
+ * usage error: the parser has printed its message, or with `--json` the
+ * message is written as an envelope here.
  */
-export async function main(argv: readonly string[]): Promise<number> {
+export async function main(argv: readonly string[], io: Io = processIo()): Promise<ExitCode> {
+  const json = wantsJson(argv);
+  let exitCode: ExitCode = EXIT.ok;
   try {
-    await buildProgram()
-      .exitOverride()
-      .parseAsync([...argv]);
-    return 0;
+    const program = buildProgram(
+      io,
+      (code) => {
+        exitCode = code;
+      },
+      json,
+    );
+    if (argv.length <= 2) {
+      // `orglens` on its own shows help, as a success.
+      program.outputHelp();
+      return EXIT.ok;
+    }
+    await program.parseAsync([...argv]);
+    return exitCode;
   } catch (error) {
-    if (error instanceof CommanderError) return error.exitCode === 0 ? 0 : EXIT_USAGE;
-    throw error;
+    if (!(error instanceof CommanderError)) return createWriter(io, json).fail(null, error);
+    if (error.exitCode === 0) return EXIT.ok;
+    if (!json) return EXIT.usage;
+    // The parser shows help for a group of commands that was named without one of its commands.
+    const usage =
+      error.code === 'commander.help'
+        ? new UsageError('The command is not complete.', 'Add --help to see the commands.')
+        : new UsageError(error.message.replace(/^error: /, ''));
+    return createWriter(io, true).fail(null, usage);
   }
 }

@@ -26,7 +26,7 @@ pnpm run build
 pnpm run check
 ```
 
-`pnpm run check` runs everything CI runs except the package smoke test:
+`pnpm run check` runs everything CI runs except the package smoke test and the start-up check:
 
 | Script                                       | What it checks                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -40,6 +40,7 @@ pnpm run check
 | `pnpm run check:boundaries`                  | Writes probe files that break the layer rules and checks that each tool rejects them |
 | `pnpm run coverage`                          | Tests with coverage thresholds                                                       |
 | `pnpm run publint` and `pnpm run smoke:pack` | The packages install and run outside the workspace                                   |
+| `pnpm run check:startup`                     | The built binary starts within its time budget (enforced on Linux)                   |
 
 `pnpm run bench` runs the storage benchmark on a synthetic org. It is not part of `check`. See
 [`bench/README.md`](bench/README.md).

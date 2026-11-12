@@ -99,6 +99,34 @@ try {
   const help = run('npm', ['exec', '--offline', '--', 'orglens', '--help'], app);
   if (!help.includes('Usage: orglens')) fail('help output has no usage line');
 
+  // The installed binary creates a workspace and reports on it, and its output matches the envelope.
+  const workspace = join(app, 'workspace');
+  mkdirSync(workspace);
+  const orglens = (...args) =>
+    run('npm', ['exec', '--offline', '--', 'orglens', '--workspace', workspace, ...args], app).trim();
+  const lastLine = (text) => text.split('\n').at(-1) ?? '';
+  orglens('init', '--json');
+  orglens('source', 'add', 'repo', '--kind', 'git', '--json');
+  const status = JSON.parse(lastLine(orglens('status', '--json')));
+  if (status.ok !== true || status.data?.store?.state !== 'ready' || status.data?.sources?.[0]?.name !== 'repo') {
+    fail(`unexpected status of a new workspace: ${JSON.stringify(status)}`);
+  }
+  const doctor = JSON.parse(lastLine(orglens('doctor', '--json')));
+  if (doctor.data?.ok !== true) fail(`doctor found a problem in a new workspace: ${JSON.stringify(doctor.data)}`);
+
+  // The schema of the JSON output is shipped and can be found by its package path.
+  writeFileSync(
+    join(app, 'schema-probe.mjs'),
+    "import { readFileSync } from 'node:fs';\n" +
+      "import { fileURLToPath } from 'node:url';\n" +
+      "const file = fileURLToPath(import.meta.resolve('sf-orglens/schemas/output.schema.json'));\n" +
+      "console.log(JSON.parse(readFileSync(file, 'utf8')).properties.schemaVersion.const);\n",
+  );
+  const schemaVersion = run(process.execPath, ['schema-probe.mjs'], app).trim();
+  if (schemaVersion !== String(status.schemaVersion)) {
+    fail(`the shipped schema is for version ${schemaVersion}, the output says ${String(status.schemaVersion)}`);
+  }
+
   // The engine must be importable by its package name from a plain program.
   writeFileSync(
     join(app, 'probe.mjs'),

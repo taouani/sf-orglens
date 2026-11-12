@@ -22,6 +22,7 @@
     "bench": "node bench/bench.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:adr": "node scripts/check-adr.mjs",
+    "check:startup": "node scripts/check-startup.mjs",
     "publint": "pnpm -r --filter \"./packages/*\" exec publint --strict",
     "smoke:pack": "node scripts/pack-smoke.mjs",
     "check": "pnpm run build && pnpm run typecheck:tests && pnpm run lint && pnpm run format && pnpm run depcruise && pnpm run knip && pnpm run check:adr && pnpm run check:boundaries && pnpm run coverage"
@@ -31,6 +32,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "5.1.0",
+    "ajv": "8.20.0",
     "dependency-cruiser": "18.7.2",
     "eslint": "10.14.0",
     "fast-check": "4.10.2",
