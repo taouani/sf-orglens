@@ -23,7 +23,9 @@ May import from: `core`.
 | `chunks.ts`       | Which components are asked for by name, and in which chunks                              |
 | `retrieved.ts`    | The zip file of a retrieve, converted to the form a repository holds                     |
 
-Reading an org has been tested against a mock org only. Decision records:
+Reading an org is tested against a mock org. It was also run against one real Developer Edition org, by a tool
+of the tests: [`real-org.md`](../../../../docs/research/phase-0/real-org.md) says what that showed. Decision
+records:
 [0030](../../../../docs/adr/0030-reading-a-git-source.md) for how a Git source is read,
 [0031](../../../../docs/adr/0031-logins-and-the-home-folder.md) for logins and the files they touch in the home
 folder, [0032](../../../../docs/adr/0032-reading-an-org.md) for how an org is read.

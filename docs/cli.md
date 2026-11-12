@@ -6,7 +6,9 @@ The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exi
 
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
 org, and take snapshots of orgs, sandboxes and repository folders. No command analyses anything yet. Reading an
-org has been tested against a mock org only, not yet against Salesforce itself.
+org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
+org, by a tool of the tests ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot`
+itself has not been run against Salesforce.
 
 ## Commands
 

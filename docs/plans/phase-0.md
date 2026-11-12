@@ -420,22 +420,32 @@ Status after the first real runs and the third pull request of this work package
 
 Status after the run of the probes and the fourth pull request of this work package (2026-11-12).
 
-- Items 1 to 5 are done, and the report is written: [`docs/research/phase-0/real-org.md`](../research/phase-0/real-org.md).
+- Items 1 to 5 were run, and the report is written: [`docs/research/phase-0/real-org.md`](../research/phase-0/real-org.md).
+  Two things of them were not done in full. Item 2: the report gives components per type for the largest and for
+  the incomplete types, and files for the folder `objects` only. Item 4: the cut-off at 2,000 rows was never
+  met, because the org has 224 rows. That path ran against the mock org only.
 - **The Dependency API is usable for field-level verification of custom fields, within known limits.** It reports
-  100 of the 137 pairs of the answer key, and nothing that is wrong. Every static reference from Apex, from a
-  formula and from an active validation rule to a custom field or a custom object is reported. It has no row
-  for a standard field, for a name in text, for the target of a lookup, for a roll-up summary or for an inactive
-  rule. The source of a row is a component, not a method, and a row says neither where nor whether it reads or
-  writes.
+  100 of the 137 pairs of the answer key. Of the 117 rows it has between two components of the fixture project,
+  none is wrong. The 107 other rows were counted and not checked. Of the static references from Apex to a
+  custom field it reports 58 of 59: it has no row for a field that a class names only in a describe call and
+  through a token kept in another class. The formulas of fields and of active validation rules are all
+  reported. It has no row for a standard field, for a name in text, for the target of a lookup, for a roll-up
+  summary or for an inactive rule. The source of a row is a component, not a method, and a row says neither
+  where nor whether it reads or writes.
 - **The symbol tables of the compiler are not usable as a cross-check for references.** The table the org keeps
   for a saved class holds declarations and no reference. A table with references needs a compile in the org,
   which writes to it. This is the negative answer the acceptance rule below names. It touches decision A4 of
-  the overall plan and is brought to the maintainer as a decision.
+  the overall plan and was brought to the maintainer as a decision. **The maintainer decided on 2026-11-12 that
+  the Dependency API alone is the cross-check for Apex.** The overall plan and the decision records that name
+  the symbol data are changed when the phase is closed.
 - A second read of the org took 120 seconds, the first 197, for the same content. The step is green with a
-  warning. For 12 of the 223 components the org lists and does not hand out, the reason is known.
-- No fix to the engine came out of the runs. Two things are left for the phase that builds the reading of an
-  org in full: a bundle of an installed package is listed with the prefix of the package and handed out without
-  it, and what "complete" should mean for a snapshot of a real org is not decided.
+  warning. Of the 223 components the org lists and does not hand out, 179 are parts such as list views, which
+  the engine does not ask for by name. For 12 more the run gives a reason or a remark. 32 are not explained.
+- No fix to the engine came out of the runs. These are left for the phase that builds the reading of an org in
+  full: whether a part such as a list view has to be named in a retrieve, why reports and dashboards do not come
+  back, a bundle of an installed package that is listed with the prefix of the package and handed out without
+  it, three files of the org that the engine could not read as metadata, and what "complete" should mean for a
+  snapshot of a real org, which is not decided.
 - Item 6 was not run. It is for the maintainer to choose.
 
 Run and record in `docs/research/phase-0/real-org.md`:
