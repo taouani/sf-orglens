@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EngineError, ERROR_CODES, type ErrorCode } from '@sf-orglens/engine';
@@ -85,15 +85,17 @@ describe('orglens init', () => {
   it('refuses a folder inside a workspace', async () => {
     const dir = await workspace();
     mkdirSync(join(dir, 'inner'));
+    // The workspace above is named by its real path: on macOS the folder for temporary files is a link.
+    const root = realpathSync(dir);
     const run = await orglens(join(dir, 'inner'), ['init']);
     expect(run).toEqual({
       code: 2,
       stdout: '',
-      stderr: `error: This folder is inside the workspace at ${dir}.\nhint: One workspace covers all folders below it. Declare the sources there.\n`,
+      stderr: `error: This folder is inside the workspace at ${root}.\nhint: One workspace covers all folders below it. Declare the sources there.\n`,
     });
     const json = await orglensJson(join(dir, 'inner'), ['init']);
     expect(json).toMatchObject({ code: 2, ok: false, data: null, command: 'init' });
-    expect(json.error).toMatchObject({ code: 'WORKSPACE_EXISTS', details: { root: dir } });
+    expect(json.error).toMatchObject({ code: 'WORKSPACE_EXISTS', details: { root } });
   });
 });
 

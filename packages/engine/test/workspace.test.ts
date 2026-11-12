@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -210,7 +211,8 @@ describe('initWorkspace', () => {
     mkdirSync(inner, { recursive: true });
     const error = await failure(() => initWorkspace({ dir: inner }));
     expect(error.code).toBe('WORKSPACE_EXISTS');
-    expect(error.message).toBe(`This folder is inside the workspace at ${outer}.`);
+    // The workspace above is named by its real path: on macOS the folder for temporary files is a link.
+    expect(error.message).toBe(`This folder is inside the workspace at ${realpathSync(outer)}.`);
     expect(existsSync(join(inner, 'orglens.toml'))).toBe(false);
   });
 
