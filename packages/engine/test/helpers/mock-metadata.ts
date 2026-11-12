@@ -89,6 +89,8 @@ export interface MockMetadata {
   hold: boolean;
   /** Jobs the org has forgotten: asking for one is answered with a fault. */
   readonly forgotten: Set<string>;
+  /** Files the org puts into the zip file of every retrieve beside what was asked for: path below `unpackaged`, and content. */
+  readonly extraFiles: Map<string, string>;
   /** Every request to the Metadata API, in order. */
   readonly calls: MetadataCall[];
   /** The members of every retrieve that was started, in order, each as `Type:FullName`. */
@@ -203,6 +205,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     } else {
       out.file('unpackaged/package.xml', `<?xml version="1.0" encoding="UTF-8"?><Package xmlns="${NAMESPACE}"/>`);
     }
+    for (const [path, text] of metadata.extraFiles) out.file(`unpackaged/${path}`, text);
     return { zip: await out.generateAsync({ type: 'nodebuffer' }), files, problems, found };
   };
 
@@ -221,6 +224,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     pollsBeforeDone: 1,
     hold: false,
     forgotten: new Set(),
+    extraFiles: new Map(),
     calls: [],
     retrieves: [],
     answer: async (body) => {

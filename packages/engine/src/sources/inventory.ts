@@ -9,7 +9,7 @@
  * One request lists one type. Salesforce takes three types per request,
  * and then one type it refuses loses the answer for the other two.
  */
-import { MetadataRequestError, type ListedComponent, type MetadataApi } from './metadata-api.ts';
+import { isAboutTheOrg, MetadataRequestError, type ListedComponent, type MetadataApi } from './metadata-api.ts';
 import { byCodeUnit } from './tree.ts';
 
 /**
@@ -46,6 +46,12 @@ export interface Inventory {
 
 /** How many listings are asked for at the same time. */
 const DEFAULT_CONCURRENCY = 6;
+
+/**
+ * When the org refuses more than half of at least this many listings, the refusals are not about the types: the
+ * inventory fails, with what the org said first.
+ */
+const REFUSALS_COUNT_FROM = 10;
 
 /**
  * Types whose folders are a type of another name than the type with `Folder` added. Taken from the documentation
@@ -87,8 +93,9 @@ async function pool<T>(tasks: readonly T[], limit: number, work: (task: T) => Pr
 /**
  * Asks the org what it holds.
  *
- * Throws a `MetadataRequestError` if the org cannot be reached or does not accept the session: then nothing the
- * org would say about a single type means anything.
+ * Throws a `MetadataRequestError` if the org cannot be reached, does not accept the session, or refuses for a
+ * reason that holds for the whole org, such as a used-up limit of requests: then nothing the org would say about
+ * a single type means anything. The same holds when it refuses most of the listings, whatever its reason.
  */
 export async function takeInventory(
   api: MetadataApi,
@@ -121,13 +128,17 @@ export async function takeInventory(
   const items = new Map<string, ListedComponent>();
   let done = 0;
   let total = 0;
+  let refusals = 0;
+  let firstRefusal: MetadataRequestError | undefined;
   const list = async (type: string, folder?: string): Promise<ListedComponent[]> => {
     requests += 1;
     let listed: ListedComponent[] = [];
     try {
       listed = await api.list(type, folder);
     } catch (error) {
-      if (!(error instanceof MetadataRequestError) || error.kind !== 'refused') throw error;
+      if (!(error instanceof MetadataRequestError) || error.kind !== 'refused' || isAboutTheOrg(error)) throw error;
+      refusals += 1;
+      firstRefusal ??= error;
       const said = `${error.code === null ? '' : `${error.code}: `}${error.message}`;
       types.get(type)?.failures.push(folder === undefined ? said : `Folder ${folder}: ${said}`);
     }
@@ -161,6 +172,15 @@ export async function takeInventory(
   await pool(inFolder, concurrency, async ({ type, folder }) => {
     await list(type, folder);
   });
+
+  if (firstRefusal !== undefined && done >= REFUSALS_COUNT_FROM && refusals * 2 > done) {
+    throw new MetadataRequestError(
+      'refused',
+      firstRefusal.code,
+      `${firstRefusal.message} The org refused ${String(refusals)} of ${String(done)} requests for the components of a type.`,
+      firstRefusal,
+    );
+  }
 
   return {
     types: [...types]

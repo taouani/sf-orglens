@@ -4,7 +4,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -71,6 +71,8 @@ beforeEach(async () => {
 afterEach(async () => {
   mock.requests.length = 0;
   mock.sessions.clear();
+  mock.refreshTokens.clear();
+  mock.versions.splice(0, Infinity, '65.0', '66.0', '9.0');
   mock.key = null;
   mock.intercept = null;
   mock.stall = false;
@@ -101,6 +103,10 @@ function workspaceDir(config = CONFIG): string {
 
 const databaseOf = (dir: string): string => join(dir, '.orglens', 'orglens.db');
 const lockOf = (dir: string): string => join(dir, '.orglens', 'snapshot-prod.lock');
+const workFolderOf = (dir: string): string => join(dir, '.orglens', 'tmp', 'snapshot-prod');
+
+/** The job a request asks about, if it asks about one. */
+const jobOf = (body: string): string | undefined => /<asyncProcessId>([^<]+)<\/asyncProcessId>/.exec(body)?.[1];
 
 /** The operations the Metadata API of the mock org was asked for, without the listings. */
 const operations = (): string[] =>
@@ -343,7 +349,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(stoppedWith).toEqual({
         code: 'SOURCE_READ_FAILED',
         message:
-          'Salesforce failed 3 retrieves in a row from the org of the source "prod". The last: LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1.',
+          '3 retrieves in a row from the org of the source "prod" failed. The last: LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1.',
         hint: 'Run the command again: snapshot #1 is picked up where it stopped. With --restart it is given up and a new one is taken.',
         details: {
           reason: 'RETRIEVES_FAILING',
@@ -605,7 +611,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(second.issues[0]).toMatchObject({
         severity: 'error',
         code: 'RETRIEVE_FAILED',
-        message: 'Salesforce did not hand out 16 components. Salesforce lost the retrieve 3 times.',
+        message:
+          'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. Salesforce no longer knows the retrieve.',
       });
       expect(second.issues.filter((issue) => issue.code === 'NOT_RETRIEVED')).toHaveLength(5);
     });
@@ -726,6 +733,369 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const refused = both.find((one) => one.status === 'rejected');
       expect((refused?.reason as { code?: string }).code).toBe('SNAPSHOT_RUNNING');
       expect(existsSync(lockOf(dir))).toBe(false);
+    });
+
+    it('goes on counting failures in a row from zero after a retrieve that worked', async () => {
+      // The whole fails, its first half fails, a quarter works: never three failures in a row.
+      metadata.maxFiles = 10;
+      const dir = workspaceDir();
+      const report = await snap(dir, { tuning: { failuresInARow: 3 } });
+      expect(report.snapshot.status).toBe('complete');
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+    });
+
+    it('handles a start that Salesforce refuses like a retrieve that failed, and does not ask without end', async () => {
+      const dir = workspaceDir();
+      // Also with the code Salesforce has for a job it does not know.
+      mock.intercept = (request) =>
+        request.body.includes('<retrieve>')
+          ? soapFault('INVALID_CROSS_REFERENCE_KEY', 'invalid cross reference id')
+          : undefined;
+      const refused = await failure(() => snap(dir, { tuning: { failuresInARow: 3, pollMaxMs: 5 } }));
+      expect(refused).toMatchObject({
+        code: 'SOURCE_READ_FAILED',
+        message:
+          '3 retrieves in a row from the org of the source "prod" failed. The last: Salesforce did not start the retrieve. INVALID_CROSS_REFERENCE_KEY: invalid cross reference id',
+        details: { reason: 'RETRIEVES_FAILING', snapshot: 1 },
+      });
+      // Each start was asked for three times before the refusal was taken for one of the retrieve.
+      expect(mock.requests.filter((request) => request.body.includes('<retrieve>'))).toHaveLength(9);
+      // Each failure halved the chunk: the journal went forward, and no job was noted.
+      expect(chunks(dir, 1)).toEqual(['0 pending - 0', '1 pending - 0', '2 pending - 0', '3 pending - 0']);
+
+      // The org starts retrieves again: the snapshot is continued and loses nothing.
+      mock.intercept = null;
+      const report = await snap(dir);
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+
+      // An org that is busy for a moment: the start is asked for again, and nothing is halved.
+      const busy = workspaceDir();
+      let starts = 0;
+      mock.intercept = (request) => {
+        if (!request.body.includes('<retrieve>')) return undefined;
+        starts += 1;
+        return starts < 3 ? soapFault('UNKNOWN_EXCEPTION', 'The org is busy') : undefined;
+      };
+      const later = await snap(busy, { tuning: { pollMaxMs: 5 } });
+      expect(later.snapshot.status).toBe('complete');
+      expect(later.issues).toEqual([]);
+      expect(chunks(busy, 1)).toEqual(['0 done - 1']);
+    });
+
+    it('stops at once when the org refuses for a reason that holds for the whole org', async () => {
+      const limit = (): ReturnType<typeof soapFault> =>
+        soapFault('REQUEST_LIMIT_EXCEEDED', 'TotalRequests Limit exceeded.');
+      const expected = {
+        code: 'SOURCE_READ_FAILED',
+        message:
+          'The org of the source "prod" refused a request for its metadata. REQUEST_LIMIT_EXCEEDED: TotalRequests Limit exceeded.',
+      };
+
+      // While it lists: no snapshot is stored, and nothing is taken for a type that failed.
+      const listing = workspaceDir();
+      let listings = 0;
+      mock.intercept = (request) => {
+        if (!request.body.includes('<listMetadata>')) return undefined;
+        listings += 1;
+        return listings > 3 ? limit() : undefined;
+      };
+      expect(await failure(() => snap(listing))).toMatchObject({
+        ...expected,
+        details: { reason: 'REQUEST_REFUSED', source: 'prod', code: 'REQUEST_LIMIT_EXCEEDED' },
+      });
+      expect(reading(listing, (store) => store.get('SELECT COUNT(*) AS snapshots FROM snapshot'))).toEqual({
+        snapshots: 0,
+      });
+
+      // While it retrieves: the snapshot stays as it is and is continued later.
+      const retrieving = workspaceDir();
+      mock.intercept = (request) => (request.body.includes('<retrieve>') ? limit() : undefined);
+      expect(await failure(() => snap(retrieving))).toMatchObject({
+        ...expected,
+        details: { reason: 'REQUEST_REFUSED', code: 'REQUEST_LIMIT_EXCEEDED', snapshot: 1 },
+      });
+      expect(chunks(retrieving, 1)).toEqual(['0 pending - 0']);
+      mock.intercept = (request) => (jobOf(request.body) === undefined ? undefined : limit());
+      expect(await failure(() => snap(retrieving))).toMatchObject(expected);
+      expect(chunks(retrieving, 1)).toEqual(['0 running job 1']);
+
+      mock.intercept = null;
+      const report = await snap(retrieving);
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+      expect(metadata.retrieves).toHaveLength(1);
+    });
+
+    it('starts a retrieve again when the org refuses to say how far it is, and gives the chunk up after three starts', async () => {
+      const dir = workspaceDir();
+      mock.intercept = (request) =>
+        jobOf(request.body) === undefined
+          ? undefined
+          : soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred. Please include this ErrorId: 123-456');
+      const report = await snap(dir);
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'partial', files: 0 });
+      expect(metadata.retrieves).toHaveLength(3);
+      expect(chunks(dir, 1)).toEqual(['0 failed - 3']);
+      expect(report.issues[0]).toMatchObject({
+        severity: 'error',
+        code: 'RETRIEVE_FAILED',
+        message:
+          'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. Salesforce did not say how far the retrieve is. UNKNOWN_EXCEPTION: An unexpected error occurred. Please include this ErrorId: 123-456',
+      });
+    });
+
+    it('does not wait for ever for a retrieve that never ends: it is started again, and given up after three starts', async () => {
+      metadata.hold = true;
+      const dir = workspaceDir();
+      const tuning = { jobMs: 30 };
+      const slow = { code: 'SOURCE_READ_FAILED', details: { reason: 'RETRIEVE_TOO_SLOW' } };
+      // The job of this run is waited for, and kept for the next run.
+      expect(await failure(() => snap(dir, { tuning }))).toMatchObject(slow);
+      expect(chunks(dir, 1)).toEqual(['0 running job 1']);
+      // The job of an earlier run that still does not end is given up, and a new one is started and waited for.
+      expect(await failure(() => snap(dir, { tuning }))).toMatchObject(slow);
+      expect(chunks(dir, 1)).toEqual(['0 running job 2']);
+      expect(await failure(() => snap(dir, { tuning }))).toMatchObject(slow);
+      expect(chunks(dir, 1)).toEqual(['0 running job 3']);
+      // After three starts the chunk is given up, and the snapshot ends.
+      const report = await snap(dir, { tuning });
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'partial' });
+      expect(metadata.retrieves).toHaveLength(3);
+      expect(report.issues.find((issue) => issue.code === 'RETRIEVE_FAILED')?.message).toBe(
+        'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. The retrieve did not end within 0 minutes, also after the snapshot was continued.',
+      );
+    });
+
+    it('handles something that is not a zip file like a retrieve that failed, and is not blocked by it', async () => {
+      const dir = workspaceDir();
+      let zips = 0;
+      const held = metadata;
+      mock.intercept = async (request) => {
+        if (!request.body.includes('<includeZip>true</includeZip>')) return undefined;
+        zips += 1;
+        const real = await held.answer(request.body);
+        const broken = Buffer.from('this is no zip file').toString('base64');
+        return zips === 1
+          ? { ...real, body: real.body.replace(/<zipFile>[^<]*<\/zipFile>/, `<zipFile>${broken}</zipFile>`) }
+          : real;
+      };
+      const report = await snap(dir);
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      expect(report.issues).toEqual([
+        {
+          severity: 'info',
+          code: 'CHUNK_SPLIT',
+          message:
+            'A retrieve of 16 components failed and was tried again in two halves. What Salesforce handed out could not be read. It is not a zip file that can be read.',
+          details: {
+            members: 16,
+            said: 'What Salesforce handed out could not be read. It is not a zip file that can be read.',
+          },
+        },
+      ]);
+    });
+
+    it('survives a connection that is cut in the middle of the zip file, and stops cleanly when every answer is cut', async () => {
+      const dir = workspaceDir();
+      let zips = 0;
+      const held = metadata;
+      let always = false;
+      mock.intercept = async (request) => {
+        if (!request.body.includes('<includeZip>true</includeZip>')) return undefined;
+        zips += 1;
+        return zips === 1 || always ? { ...(await held.answer(request.body)), halfway: 'cut' } : undefined;
+      };
+      const requests = { requestMs: 2_000, zipMs: 2_000, repeats: 1, repeatAfterMs: 5 };
+      // Once: the request is made again, and the snapshot is whole.
+      const report = await snap(dir, { tuning: { requests } });
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+      expect(report.issues).toEqual([]);
+      expect(zips).toBe(2);
+
+      // Every time: the snapshot stops, says that the org cannot be reached, and can be continued.
+      always = true;
+      const cut = await failure(() => snap(dir, { tuning: { requests } }));
+      expect(cut).toMatchObject({ code: 'LOGIN_FAILED', details: { reason: 'ORG_UNREACHABLE', snapshot: 2 } });
+      expect(chunks(dir, 2)).toEqual(['0 running job 1']);
+      always = false;
+      expect((await snap(dir)).snapshot).toMatchObject({ id: 2, status: 'complete' });
+      expect(metadata.retrieves).toHaveLength(2);
+    });
+
+    it('goes on after the library has renewed a session that expired on the way', async () => {
+      await forgetCliLogins();
+      mock.refreshTokens.add('the-refresh-token');
+      await seedCliLogin({
+        username: 'zoe@example.com',
+        alias: 'main',
+        orgId: ORG_ID,
+        instanceUrl: mock.url,
+        accessToken: 'valid-session',
+        refreshToken: 'the-refresh-token',
+      });
+      metadata.maxFiles = 10;
+      const dir = workspaceDir();
+      // The session ends when the fourth retrieve is started.
+      let ended = false;
+      mock.intercept = (request) => {
+        if (!ended && request.body.includes('<retrieve>') && metadata.retrieves.length === 3) {
+          ended = true;
+          mock.sessions.delete('valid-session');
+        }
+        return undefined;
+      };
+      const report = await snap(dir);
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      expect(mock.asked()).toContain('POST /services/oauth2/token');
+      expect(codes(report)).toEqual(['info CHUNK_SPLIT', 'info CHUNK_SPLIT', 'info CHUNK_SPLIT']);
+    });
+
+    it('continues a snapshot with the API version it was begun with, also when the org has a newer one by now', async () => {
+      metadata.hold = true;
+      const dir = workspaceDir();
+      await failure(() => snap(dir, { tuning: { jobMs: 20 } }));
+      metadata.hold = false;
+      mock.versions.push('67.0');
+      mock.requests.length = 0;
+
+      const events: SnapshotProgress[] = [];
+      const report = await snap(dir, { onProgress: (event) => events.push(event) });
+      expect(events[0]).toEqual({ step: 'connected', apiVersion: '67.0' });
+      expect(report.snapshot).toMatchObject({ id: 1, status: 'complete', apiVersion: '66.0' });
+      const asked = mock.requests.filter((request) => request.path.startsWith('/services/Soap/'));
+      expect(asked.length).toBeGreaterThan(0);
+      expect(new Set(asked.map((request) => request.path))).toEqual(new Set(['/services/Soap/m/66.0']));
+
+      // A new snapshot is of the newer version.
+      mock.requests.length = 0;
+      expect((await snap(dir)).snapshot).toMatchObject({ id: 2, apiVersion: '67.0' });
+      expect(mock.requests.some((request) => request.path === '/services/Soap/m/67.0')).toBe(true);
+    });
+
+    it('says that profiles and permission sets hold only a part of the access settings', async () => {
+      const project = dirs.next();
+      const folder = join(project, 'main', 'default');
+      mkdirSync(join(folder, 'permissionsets'), { recursive: true });
+      mkdirSync(join(folder, 'classes'), { recursive: true });
+      writeFileSync(
+        join(folder, 'permissionsets', 'Billing.permissionset-meta.xml'),
+        '<?xml version="1.0" encoding="UTF-8"?>\n<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">\n    <label>Billing</label>\n    <hasActivationRequired>false</hasActivationRequired>\n</PermissionSet>\n',
+      );
+      writeFileSync(join(folder, 'classes', 'Plain.cls'), 'public class Plain {}\n');
+      writeFileSync(
+        join(folder, 'classes', 'Plain.cls-meta.xml'),
+        '<?xml version="1.0" encoding="UTF-8"?>\n<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n    <apiVersion>66.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n',
+      );
+      metadata = await metadataFromSource(project);
+      mock.metadata = metadata;
+
+      const report = await snap(workspaceDir());
+      // A warning: the snapshot is complete in what the org listed, and still not all there is to know.
+      expect(report.snapshot.status).toBe('complete');
+      expect(report.issues).toEqual([
+        {
+          severity: 'warning',
+          code: 'ACCESS_INCOMPLETE',
+          message:
+            'Components of the type PermissionSet hold only a part of the access settings: Salesforce hands such a component out with the access to the components of the same retrieve, and the org is retrieved in chunks. Reading access completely is not built yet.',
+          details: { types: ['PermissionSet'] },
+        },
+      ]);
+      expect(typeOf(report, 'PermissionSet')).toMatchObject({
+        listed: 1,
+        retrieved: 1,
+        note: 'Holds only a part of the access settings.',
+      });
+      expect(typeOf(report, 'ApexClass')?.note).toBeNull();
+    });
+
+    it('names a file Salesforce hands out that is no metadata it knows, and calls the snapshot partial', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      const dir = workspaceDir();
+      const report = await snap(dir);
+      expect(report.snapshot.status).toBe('partial');
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      expect(report.issues).toEqual([
+        {
+          severity: 'error',
+          code: 'RESOLVE_FAILED',
+          message:
+            'mysteries/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known.',
+          details: { at: 'mysteries/Thing.mystery' },
+        },
+      ]);
+    });
+
+    it('leaves the work folder of a snapshot that runs alone when it is refused the lock', async () => {
+      const dir = workspaceDir();
+      mkdirSync(workFolderOf(dir), { recursive: true });
+      // The process that runs the tests is alive and is not this one: it stands for the snapshot that runs.
+      writeFileSync(lockOf(dir), `${String(process.ppid)}\n`);
+      writeFileSync(join(workFolderOf(dir), 'of-the-other-process'), 'in use');
+      expect((await failure(() => snap(dir))).code).toBe('SNAPSHOT_RUNNING');
+      expect(readFileSync(join(workFolderOf(dir), 'of-the-other-process'), 'utf8')).toBe('in use');
+
+      // The same for a second snapshot in this process.
+      rmSync(lockOf(dir));
+      let seen: string[] | undefined;
+      let second: Promise<{ code: string }> | undefined;
+      mock.intercept = (request) => {
+        if (request.body.includes('<includeZip>true</includeZip>') && second === undefined) {
+          mkdirSync(workFolderOf(dir), { recursive: true });
+          writeFileSync(join(workFolderOf(dir), 'marker'), 'in use');
+          second = failure(() => snap(dir)).then((refused) => {
+            seen = readdirSync(workFolderOf(dir));
+            return refused;
+          });
+          return second.then(() => undefined);
+        }
+        return undefined;
+      };
+      expect((await snap(dir)).snapshot.status).toBe('complete');
+      expect((await second)?.code).toBe('SNAPSHOT_RUNNING');
+      expect(seen).toContain('marker');
+      // The one that held the lock tidied up at its end.
+      expect(existsSync(workFolderOf(dir))).toBe(false);
+    });
+
+    it('takes the lock inside a write transaction of the database, and removes only a lock of its own', async () => {
+      const dir = workspaceDir();
+      expect((await snap(dir)).snapshot.status).toBe('complete');
+
+      // Another process is in a write transaction, and the lock file is left from a process that is gone.
+      const gone = spawnSync(process.execPath, ['-e', '']).pid;
+      writeFileSync(lockOf(dir), `${String(gone)}\n`);
+      const holder = driver.open(databaseOf(dir), { readOnly: false, busyTimeoutMs: 50 });
+      holder.exec('BEGIN IMMEDIATE');
+      try {
+        const workspace = await openWorkspace({ root: dir, env });
+        const source = (await workspace.sources.list()).find((one) => one.name === 'prod') as OrgSource;
+        const busy = await failure(() =>
+          takeOrgSnapshot({
+            paths: workspacePaths(dir),
+            source,
+            linked: undefined,
+            env,
+            openStore: () => openStore({ path: databaseOf(dir), driver, busyTimeoutMs: 50 }),
+          }),
+        );
+        expect(busy.code).toBe('STORE_BUSY');
+      } finally {
+        holder.exec('ROLLBACK');
+        holder.close();
+      }
+      // The lock was not looked at and not taken: the file is as it was.
+      expect(readFileSync(lockOf(dir), 'utf8')).toBe(`${String(gone)}\n`);
+
+      // While this snapshot runs, its lock file is deleted by hand and another process takes the lock.
+      mock.intercept = (request) => {
+        if (request.body.includes('<retrieve>')) writeFileSync(lockOf(dir), `${String(process.ppid)}\n`);
+        return undefined;
+      };
+      expect((await snap(dir)).snapshot.status).toBe('complete');
+      expect(readFileSync(lockOf(dir), 'utf8')).toBe(`${String(process.ppid)}\n`);
     });
 
     it('ties the name of a source to the org of its first snapshot', async () => {

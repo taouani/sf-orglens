@@ -13,8 +13,8 @@
  *
  * Only metadata is read. Nothing here queries records.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type { OrgSource, SandboxSource } from '../core/config/config.ts';
 import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
@@ -22,6 +22,7 @@ import { DEFAULT_CHUNK_WEIGHT, planChunks, splitMembers } from '../sources/chunk
 import { takeInventory } from '../sources/inventory.ts';
 import {
   DEFAULT_LIMITS,
+  isAboutTheOrg,
   metadataApi,
   MetadataRequestError,
   type MetadataApi,
@@ -30,7 +31,7 @@ import {
 } from '../sources/metadata-api.ts';
 import { loginFailed, saidBy, unreachable } from '../sources/org-errors.ts';
 import { connectToOrg } from '../sources/org.ts';
-import { unpackRetrieve } from '../sources/retrieved.ts';
+import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
 import { systemCode } from '../sources/tree.ts';
 import {
   addChunks,
@@ -46,6 +47,7 @@ import {
   refreshCoverage,
   splitChunk,
   unlistedComponents,
+  type Chunk,
 } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
 import {
@@ -91,9 +93,13 @@ export interface OrgSnapshotTuning {
   readonly pollMaxMs: number;
   /** How long this process waits for one retrieve to end. */
   readonly jobMs: number;
-  /** After this many retrieves in a row that Salesforce failed, the snapshot stops and can be resumed. */
+  /** After this many retrieves in a row that failed, the snapshot stops and can be resumed. */
   readonly failuresInARow: number;
-  /** How often a retrieve whose job Salesforce no longer knows is started again. */
+  /**
+   * How often a retrieve is started in all, when its job gives no result: Salesforce no longer knows it, or it
+   * never ends. Also how often the start of a retrieve is asked for when the org refuses it, with a pause of
+   * `pollMaxMs` in between.
+   */
   readonly startsPerChunk: number;
   readonly requests: MetadataApiLimits;
 }
@@ -137,6 +143,7 @@ const NAMES_PER_ISSUE = 50;
 const now = (): string => new Date().toISOString();
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
+const minutes = (ms: number): string => plural(Math.round(ms / 60_000), 'minute', 'minutes');
 
 /** The locks this process holds. A second snapshot of a source in the same process is refused like one of another process. */
 const heldHere = new Set<string>();
@@ -168,7 +175,9 @@ function isAlive(pid: number): boolean {
  * find the lock of a dead process cannot both take it.
  */
 function holdLock(store: Store, file: string, source: string): () => void {
-  if (heldHere.has(file)) throw alreadyRunning(source, file);
+  // One workspace can be reached by two paths, through a link. The lock is one.
+  const id = join(realpathSync(dirname(file)), basename(file));
+  if (heldHere.has(id)) throw alreadyRunning(source, file);
   store.write(() => {
     let holder: string | null = null;
     try {
@@ -181,10 +190,18 @@ function holdLock(store: Store, file: string, source: string): () => void {
     }
     writeFileSync(file, `${String(process.pid)}\n`);
   });
-  heldHere.add(file);
+  heldHere.add(id);
   return () => {
-    heldHere.delete(file);
-    rmSync(file, { force: true });
+    heldHere.delete(id);
+    // Only the lock of this process is removed. If the file was deleted by hand and another process has taken
+    // the lock since, the file is the lock of that process.
+    let holder: string | null = null;
+    try {
+      holder = readFileSync(file, 'utf8').trim();
+    } catch {
+      // The file is gone, or cannot be read: there is nothing of this process to remove.
+    }
+    if (holder === String(process.pid)) rmSync(file, { force: true });
   };
 }
 
@@ -195,9 +212,26 @@ function saidAbout(state: RetrieveState): string {
   return state.errorMessage.startsWith(code) ? state.errorMessage : `${code}: ${state.errorMessage}`;
 }
 
-/** True if the org says that it does not know the job: it ended long ago, or the org was refreshed. */
-const isForgotten = (error: unknown): boolean =>
-  error instanceof MetadataRequestError && error.kind === 'refused' && error.code === 'INVALID_CROSS_REFERENCE_KEY';
+/**
+ * True if the org answered a request with a refusal that is about what was asked for, not about the org as a
+ * whole. The snapshot goes on with its other requests.
+ */
+const isRefusal = (error: unknown): error is MetadataRequestError =>
+  error instanceof MetadataRequestError && error.kind === 'refused' && !isAboutTheOrg(error);
+
+/** What the org said when it refused, with its code. */
+const saidIn = (error: MetadataRequestError): string =>
+  `${error.code === null ? '' : `${error.code}: `}${error.message}`;
+
+/** True for the failure of a job that did not end in the time this process waits for one. */
+const isTooSlow = (error: unknown): boolean =>
+  isEngineError(error) && error.code === 'SOURCE_READ_FAILED' && error.details?.['reason'] === 'RETRIEVE_TOO_SLOW';
+
+/** True for a failure of the file system of this machine: no permission, a full disk. It is not about the org. */
+const isSystemFailure = (error: unknown): boolean => {
+  const { code, syscall } = (error ?? {}) as { code?: unknown; syscall?: unknown };
+  return error instanceof Error && typeof code === 'string' && typeof syscall === 'string';
+};
 
 /**
  * Turns what stopped a snapshot into the error the caller gets. With the
@@ -249,7 +283,7 @@ async function ended(
     if (Date.now() >= deadline) {
       throw new EngineError(
         'SOURCE_READ_FAILED',
-        `A retrieve from the org of the source "${source}" did not end within ${String(Math.round(tuning.jobMs / 60_000))} minutes.`,
+        `A retrieve from the org of the source "${source}" did not end within ${minutes(tuning.jobMs)}.`,
         { details: { reason: 'RETRIEVE_TOO_SLOW', source } },
       );
     }
@@ -293,6 +327,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
   const workDir = paths.temporaryDir(source.name);
   let release: (() => void) | undefined;
   let snapshotId: number | undefined;
+  let api: MetadataApi | undefined;
   try {
     release = holdLock(store, paths.snapshotLockFile(source.name), source.name);
     // Whatever an earlier run left behind is of a chunk that was not stored.
@@ -320,7 +355,6 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
       return undefined;
     });
 
-    let api: MetadataApi;
     if (interrupted === undefined) {
       api = await metadataApi(session.connection, session.apiVersion, tuning.requests);
       const inventory = await takeInventory(api, {
@@ -426,10 +460,167 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
   } catch (error) {
     throw stopped(error, source.name, snapshotId);
   } finally {
-    rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
-    release?.();
+    try {
+      // Requests that are still under way, such as listings beside the one that failed, end here.
+      await api?.close();
+    } catch {
+      // The connections end with the process at the latest.
+    }
+    // The work folder belongs to the process that holds the lock. A command that was refused the lock leaves it
+    // alone: it is the folder of the snapshot that runs.
+    if (release !== undefined) {
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      release();
+    }
     store.close();
   }
+}
+
+/**
+ * What became of one retrieve.
+ *
+ * - `stored`: its files are in the snapshot.
+ * - `failed`: it gave no files, and asking for the same again would give none: Salesforce failed the job or
+ *   refused to start it, or what it handed out cannot be read. The chunk is tried in two halves.
+ * - `lost`: its job gave no result: Salesforce no longer knows it, cannot be asked about it, or never ended it.
+ *   The chunk is started again, a few times.
+ */
+type Outcome =
+  | { readonly kind: 'stored' }
+  | { readonly kind: 'failed'; readonly said: string }
+  | { readonly kind: 'lost'; readonly said: string };
+
+/**
+ * Retrieves one chunk and stores its files. Throws what stops the whole snapshot: an org that cannot be reached,
+ * a session that is not accepted, a refusal that holds for the whole org, a job of this run that does not end, a
+ * failure of this machine.
+ */
+async function retrieveChunk(
+  store: Store,
+  snapshotId: number,
+  chunk: Chunk,
+  api: MetadataApi,
+  source: string,
+  workDir: string,
+  tuning: OrgSnapshotTuning,
+): Promise<Outcome> {
+  const { seq, members } = chunk;
+  // A job of an earlier run. This process has not waited for it yet.
+  const resumed = chunk.jobId !== null;
+  let jobId = chunk.jobId;
+  // A start the org refuses is asked for again after a pause: the org may be busy for a moment. A refusal that
+  // stays is taken for one of this retrieve, and its halves are tried.
+  for (let attempt = 1; jobId === null; attempt += 1) {
+    try {
+      jobId = await api.startRetrieve(members);
+    } catch (error) {
+      if (!isRefusal(error)) throw error;
+      if (attempt >= tuning.startsPerChunk) {
+        return { kind: 'failed', said: `Salesforce did not start the retrieve. ${saidIn(error)}` };
+      }
+      await pause(tuning.pollMaxMs);
+      continue;
+    }
+    const started = jobId;
+    store.write(() => {
+      chunkStarted(store, snapshotId, seq, started, now());
+    });
+  }
+
+  let state: RetrieveState;
+  let zip: Uint8Array | null = null;
+  try {
+    state = await ended(api, jobId, source, tuning);
+    if (state.succeeded) zip = (await api.retrieveState(jobId, true)).zip;
+  } catch (error) {
+    if (isRefusal(error)) {
+      // The job ended long ago, or the org was refreshed since, or the org says something else about it. In
+      // every case its result is not to be had.
+      return {
+        kind: 'lost',
+        said:
+          error.code === 'INVALID_CROSS_REFERENCE_KEY'
+            ? 'Salesforce no longer knows the retrieve.'
+            : `Salesforce did not say how far the retrieve is. ${saidIn(error)}`,
+      };
+    }
+    // A job that did not end in an earlier run and does not end in this one either is not waited for a third time.
+    if (resumed && isTooSlow(error)) {
+      return {
+        kind: 'lost',
+        said: `The retrieve did not end within ${minutes(tuning.jobMs)}, also after the snapshot was continued.`,
+      };
+    }
+    throw error;
+  }
+  if (!state.succeeded) return { kind: 'failed', said: saidAbout(state) };
+  if (zip === null) return { kind: 'lost', said: 'Salesforce gave no zip file for a retrieve that succeeded.' };
+
+  const dir = join(workDir, `chunk-${String(seq)}`);
+  mkdirSync(dir, { recursive: true });
+  let unpacked: Unpacked;
+  try {
+    unpacked = await unpackRetrieve(zip, dir);
+  } catch (error) {
+    if (isEngineError(error) || isSystemFailure(error)) throw error;
+    // Something that is not a zip file, for example. The next run would get the same, so the chunk does not stay
+    // in the way: it is handled like a retrieve that Salesforce failed.
+    return { kind: 'failed', said: `What Salesforce handed out could not be read. ${saidBy(error)}` };
+  }
+  const owned = new Set(unpacked.components.flatMap((component) => component.files));
+  const messages = state.problems.map((problem) => saidBy(problem));
+  store.write(() => {
+    const twice: string[] = [];
+    for (const path of unpacked.tree.files) {
+      if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
+    }
+    markRetrieved(store, snapshotId, unpacked.components);
+    for (const problem of unpacked.problems) {
+      issue(
+        store,
+        snapshotId,
+        'error',
+        'RESOLVE_FAILED',
+        `${problem.at} could not be read as metadata: ${problem.message}`,
+        { at: problem.at },
+      );
+    }
+    const other = unpacked.tree.files.filter((path) => !owned.has(path));
+    if (other.length > 0) {
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'FILES_NOT_METADATA',
+        `${plural(other.length, 'file is', 'files are')} not part of a metadata component and not in the snapshot.`,
+        { count: other.length, paths: other.slice(0, NAMES_PER_ISSUE) },
+      );
+    }
+    if (twice.length > 0) {
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'FILE_RETRIEVED_TWICE',
+        `${plural(twice.length, 'file', 'files')} came back in two retrieves. The snapshot holds what came last.`,
+        { count: twice.length, paths: twice.slice(0, NAMES_PER_ISSUE) },
+      );
+    }
+    if (messages.length > 0) {
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'RETRIEVE_MESSAGES',
+        `Salesforce made ${plural(messages.length, 'remark', 'remarks')} about a retrieve. The first: ${messages[0] ?? ''}`,
+        { count: messages.length, messages: messages.slice(0, NAMES_PER_ISSUE) },
+      );
+    }
+    refreshCoverage(store, snapshotId);
+    chunkEnded(store, snapshotId, seq, { status: 'done', at: now(), error: null });
+  });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  return { kind: 'stored' };
 }
 
 /** Retrieves every chunk of a snapshot that is not stored yet, one after the other. */
@@ -445,6 +636,7 @@ async function retrieveChunks(
   let failures = 0;
   for (let chunk = nextChunk(store, snapshotId); chunk !== undefined; chunk = nextChunk(store, snapshotId)) {
     const { seq, members } = chunk;
+    /** Gives the chunk up: its components are not in the snapshot, and an issue says why. */
     const fail = (said: string): void => {
       store.write(() => {
         chunkEnded(store, snapshotId, seq, { status: 'failed', at: now(), error: said });
@@ -461,103 +653,24 @@ async function retrieveChunks(
         );
       });
     };
-
-    let state: RetrieveState | undefined;
-    let zip: Uint8Array | null = null;
-    // True if the job is gone, with its result: it ended long ago, or the org was refreshed since.
-    let lost = false;
+    // How often a retrieve is started for the chunk, with the one of this turn.
     const starts = chunk.attempts + (chunk.jobId === null ? 1 : 0);
-    try {
-      let jobId = chunk.jobId;
-      if (jobId === null) {
-        jobId = await api.startRetrieve(members);
-        const started = jobId;
-        store.write(() => {
-          chunkStarted(store, snapshotId, seq, started, now());
-        });
-      }
-      state = await ended(api, jobId, source, tuning);
-      if (state.succeeded) {
-        zip = (await api.retrieveState(jobId, true)).zip;
-        lost = zip === null;
-      }
-    } catch (error) {
-      if (!isForgotten(error)) throw error;
-      lost = true;
-    }
-    if (lost || state === undefined) {
-      // The retrieve is started again, a few times.
+
+    const outcome = await retrieveChunk(store, snapshotId, chunk, api, source, workDir, tuning);
+    if (outcome.kind === 'lost') {
       if (starts >= tuning.startsPerChunk) {
-        fail(`Salesforce lost the retrieve ${plural(starts, 'time', 'times')}.`);
+        fail(`The retrieve was started ${plural(starts, 'time', 'times')} and gave no result. ${outcome.said}`);
       } else {
         store.write(() => {
           chunkForgotten(store, snapshotId, seq);
         });
+        continue;
       }
-      continue;
-    }
-
-    if (zip !== null) {
+    } else if (outcome.kind === 'stored') {
       failures = 0;
-      const dir = join(workDir, `chunk-${String(seq)}`);
-      mkdirSync(dir, { recursive: true });
-      const unpacked = await unpackRetrieve(zip, dir);
-      const owned = new Set(unpacked.components.flatMap((component) => component.files));
-      const messages = state.problems.map((problem) => saidBy(problem));
-      store.write(() => {
-        const twice: string[] = [];
-        for (const path of unpacked.tree.files) {
-          if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
-        }
-        markRetrieved(store, snapshotId, unpacked.components);
-        for (const problem of unpacked.problems) {
-          issue(
-            store,
-            snapshotId,
-            'error',
-            'RESOLVE_FAILED',
-            `${problem.at} could not be read as metadata: ${problem.message}`,
-            { at: problem.at },
-          );
-        }
-        const other = unpacked.tree.files.filter((path) => !owned.has(path));
-        if (other.length > 0) {
-          issue(
-            store,
-            snapshotId,
-            'warning',
-            'FILES_NOT_METADATA',
-            `${plural(other.length, 'file is', 'files are')} not part of a metadata component and not in the snapshot.`,
-            { count: other.length, paths: other.slice(0, NAMES_PER_ISSUE) },
-          );
-        }
-        if (twice.length > 0) {
-          issue(
-            store,
-            snapshotId,
-            'warning',
-            'FILE_RETRIEVED_TWICE',
-            `${plural(twice.length, 'file', 'files')} came back in two retrieves. The snapshot holds what came last.`,
-            { count: twice.length, paths: twice.slice(0, NAMES_PER_ISSUE) },
-          );
-        }
-        if (messages.length > 0) {
-          issue(
-            store,
-            snapshotId,
-            'warning',
-            'RETRIEVE_MESSAGES',
-            `Salesforce made ${plural(messages.length, 'remark', 'remarks')} about a retrieve. The first: ${messages[0] ?? ''}`,
-            { count: messages.length, messages: messages.slice(0, NAMES_PER_ISSUE) },
-          );
-        }
-        refreshCoverage(store, snapshotId);
-        chunkEnded(store, snapshotId, seq, { status: 'done', at: now(), error: null });
-      });
-      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     } else {
       failures += 1;
-      const said = saidAbout(state);
+      const { said } = outcome;
       const [first, second] = splitMembers(members);
       if (second.length === 0) {
         fail(said);
@@ -579,7 +692,7 @@ async function retrieveChunks(
       if (failures >= tuning.failuresInARow) {
         throw new EngineError(
           'SOURCE_READ_FAILED',
-          `Salesforce failed ${String(failures)} retrieves in a row from the org of the source "${source}". The last: ${said}`,
+          `${String(failures)} retrieves in a row from the org of the source "${source}" failed. The last: ${said}`,
           { details: { reason: 'RETRIEVES_FAILING', source, said } },
         );
       }

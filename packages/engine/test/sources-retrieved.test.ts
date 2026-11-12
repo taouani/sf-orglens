@@ -217,4 +217,54 @@ describe('the files of a retrieve', () => {
       { at: 'notes.txt', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.' },
     ]);
   });
+
+  it('name an entry of a zip file whose name starts with a slash, which is in no folder', async () => {
+    const zip = await JSZip.loadAsync(await retrieved(['ApexTrigger:InvoiceTrigger']));
+    zip.file('/abs/classes/Stray.cls', 'public class Stray {}', { createFolders: false });
+    const unpacked = await unpackRetrieve(await zip.generateAsync({ type: 'nodebuffer' }), workDir());
+    expect(unpacked.tree.files).toEqual([
+      'triggers/InvoiceTrigger.trigger',
+      'triggers/InvoiceTrigger.trigger-meta.xml',
+    ]);
+    expect(unpacked.problems).toEqual([
+      { at: '/abs', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.' },
+    ]);
+  });
+
+  it('stay inside the work folder, whatever the names in the zip file say', async () => {
+    const outer = workDir();
+    const inside = join(outer, 'deep', 'work');
+    mkdirSync(inside, { recursive: true });
+    const zip = await JSZip.loadAsync(await retrieved(['ApexTrigger:InvoiceTrigger']));
+    const meta = await zip.file('unpackaged/triggers/InvoiceTrigger.trigger-meta.xml')?.async('string');
+    for (const name of ['unpackaged/triggers/../../../Up', 'unpackaged/../../Higher', '../../Outside']) {
+      zip.file(`${name}.trigger`, 'trigger Up on Account (before insert) {}', { createFolders: false });
+      zip.file(`${name}.trigger-meta.xml`, meta ?? '', { createFolders: false });
+    }
+    const unpacked = await unpackRetrieve(await zip.generateAsync({ type: 'nodebuffer' }), inside);
+    expect(unpacked.tree.files).toContain('triggers/InvoiceTrigger.trigger');
+    // Nothing was written above the work folder.
+    expect(walk(outer).filter((file) => !file.startsWith('deep/work/'))).toEqual([]);
+    for (const path of unpacked.tree.files) expect(path).not.toContain('..');
+  });
+
+  it('are not read from something that is not a zip file', async () => {
+    await expect(unpackRetrieve(Buffer.from('<html>not a zip file</html>'), workDir())).rejects.toThrow(
+      'It is not a zip file that can be read.',
+    );
+  });
+
+  it('say nothing about the metadata when the work folder cannot be written', async () => {
+    const dir = workDir();
+    // Where the converted files go, there is a file.
+    mkdirSync(join(dir, 'main'), { recursive: true });
+    writeFileSync(join(dir, 'main', 'default'), 'in the way');
+    const failed = await unpackRetrieve(await retrieved(['ApexTrigger:InvoiceTrigger']), dir).then(
+      () => undefined,
+      (error: unknown) => error as { code?: unknown; syscall?: unknown },
+    );
+    // A failure of the file system, which the engine reports as one of the workspace.
+    expect(typeof failed?.code).toBe('string');
+    expect(typeof failed?.syscall).toBe('string');
+  });
 });

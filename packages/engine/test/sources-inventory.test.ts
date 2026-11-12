@@ -52,6 +52,7 @@ function fakeApi(
     },
     startRetrieve: () => Promise.reject(new Error('not used')),
     retrieveState: () => Promise.reject(new Error('not used')),
+    close: () => Promise.resolve(),
   };
 }
 
@@ -195,10 +196,11 @@ describe('the inventory of an org', () => {
     ]);
   });
 
-  it('gives up when the org cannot be reached or does not accept the session', async () => {
+  it('gives up when the org cannot be reached, does not accept the session, or refuses whatever is asked', async () => {
     for (const error of [
       new MetadataRequestError('unreachable', 'TIMEOUT', 'The org did not answer in time.'),
       new MetadataRequestError('session', 'INVALID_SESSION_ID', 'The org does not accept the session.'),
+      new MetadataRequestError('refused', 'REQUEST_LIMIT_EXCEEDED', 'TotalRequests Limit exceeded.'),
     ]) {
       const api = fakeApi(
         Array.from({ length: 30 }, (_, index) => type(`Type${String(index).padStart(2, '0')}`)),
@@ -208,6 +210,34 @@ describe('the inventory of an org', () => {
       // The listings that had not started are not started.
       expect(api.asked.length).toBeLessThan(10);
     }
+  });
+
+  it('gives up when the org refuses most of the listings, whatever its reason, and not when it refuses a few', async () => {
+    const types = Array.from({ length: 12 }, (_, index) => type(`Type${String(index).padStart(2, '0')}`));
+    const refused = (index: number): MetadataRequestError =>
+      new MetadataRequestError('refused', 'UNKNOWN_EXCEPTION', `An unexpected error occurred (${String(index)}).`);
+    const listed = (count: number): Record<string, MetadataRequestError> =>
+      Object.fromEntries(Array.from({ length: count }, (_, index) => [types[index]?.name ?? '', refused(index)]));
+
+    // Half of the listings: each is the failure of its type.
+    const half = await takeInventory(fakeApi(types, listed(6)), { concurrency: 1 });
+    expect(half.types.filter((one) => one.listing === 'failed')).toHaveLength(6);
+
+    // More than half: it is not about the types.
+    const error = await takeInventory(fakeApi(types, listed(7)), { concurrency: 1 }).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(MetadataRequestError);
+    expect(error).toMatchObject({
+      kind: 'refused',
+      code: 'UNKNOWN_EXCEPTION',
+      message: 'An unexpected error occurred (0). The org refused 7 of 12 requests for the components of a type.',
+    });
+
+    // An org with few types: every refusal is taken as the failure of its type.
+    const few = await takeInventory(fakeApi(types.slice(0, 9), listed(9)), { concurrency: 1 });
+    expect(few.types.every((one) => one.listing === 'failed')).toBe(true);
   });
 
   it('reports its progress', async () => {

@@ -18,9 +18,10 @@
  * folder gets a project file of its own with no such settings: what an
  * org is stored as does not depend on where the command runs.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
+import { EngineError } from '../core/errors.ts';
 import { readFolders } from './folder.ts';
 import { loadSourceLibrary } from './library.ts';
 import { saidBy } from './org-errors.ts';
@@ -47,17 +48,50 @@ const PROJECT_FILE = 'sfdx-project.json';
 const PROJECT = { packageDirectories: [{ path: 'main', default: true }] };
 
 /**
+ * Fails if the work folder is not as this module left it, or cannot be written. Called when a conversion failed:
+ * then the cause is this machine, not the metadata, and nothing may be recorded as if the metadata were at fault.
+ */
+function checkWorkFolder(workDir: string): void {
+  if (!existsSync(join(workDir, PROJECT_FILE))) {
+    throw new EngineError('WORKSPACE_IO', 'The folder a retrieve is unpacked in was changed while it was in use.', {
+      hint: 'Run the command again. Nothing else may write to the folder .orglens/tmp while a snapshot is taken.',
+      details: { reason: 'WORK_FOLDER_CHANGED' },
+    });
+  }
+  // These throw what the file system says, which the caller reports as a failure of the workspace.
+  const converted = join(workDir, CONVERTED);
+  mkdirSync(converted, { recursive: true });
+  const probe = join(converted, '.orglens-probe');
+  writeFileSync(probe, '');
+  rmSync(probe);
+}
+
+/**
  * Unpacks the zip file of a retrieve into `workDir`, which must exist and be empty, and reads the result.
  *
  * A file of the zip that the library cannot place is named in `problems`, and everything beside it is
- * converted.
+ * converted. Something that is not a zip file is an `Error`. A work folder that cannot be written, or that was
+ * changed on the way, is an error of the file system or `WORKSPACE_IO`: it says nothing about the metadata.
  */
 export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<Unpacked> {
   const { MetadataConverter, MetadataResolver, RegistryAccess, ZipTreeContainer } = await loadSourceLibrary();
   writeFileSync(join(workDir, PROJECT_FILE), `${JSON.stringify(PROJECT)}\n`);
   mkdirSync(join(workDir, 'main'), { recursive: true });
   const registry = new RegistryAccess(undefined, workDir);
-  const container = await ZipTreeContainer.create(Buffer.from(zip.buffer, zip.byteOffset, zip.byteLength));
+  let container: Awaited<ReturnType<typeof ZipTreeContainer.create>>;
+  try {
+    container = await ZipTreeContainer.create(Buffer.from(zip.buffer, zip.byteOffset, zip.byteLength));
+  } catch (error) {
+    throw new Error('It is not a zip file that can be read.', { cause: error });
+  }
+  /** What the library said, without the places of this machine and of the zip file in it. */
+  const said = (error: unknown): string => {
+    let text = error instanceof Error ? error.message : String(error);
+    for (const place of [join(workDir, CONVERTED), `${workDir}/${CONVERTED}`, workDir, `${ZIP_ROOT}/`]) {
+      text = text.split(place).join('');
+    }
+    return saidBy(text);
+  };
   const resolver = new MetadataResolver(registry, container, false);
   const problems: { at: string; message: string }[] = [];
   const components: SourceComponent[] = [];
@@ -72,7 +106,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         for (const name of [...container.readDirectory(path)].sort(byCodeUnit)) resolveAt(`${path}/${name}`);
       }
       if (problems.length === before) {
-        problems.push({ at: path.slice(ZIP_ROOT.length + 1), message: saidBy(error).split(`${ZIP_ROOT}/`).join('') });
+        problems.push({ at: path.slice(ZIP_ROOT.length + 1), message: said(error) });
       }
     }
   };
@@ -83,13 +117,20 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     }
   }
   // What was asked for by name comes in one folder. Anything beside it is not read, and is not passed over either.
-  for (const name of [...container.readDirectory('.')].sort(byCodeUnit)) {
-    if (name !== ZIP_ROOT) {
-      problems.push({
-        at: name,
-        message: `It is outside the folder "${ZIP_ROOT}" of the zip file, so it was not read.`,
-      });
-    }
+  // The names are taken from the zip file itself where the library keeps it: a name that starts with a slash is
+  // in no folder the library would list.
+  const entries = Object.keys((container as unknown as { zip?: { files?: Record<string, unknown> } }).zip?.files ?? {});
+  const beside = new Set<string>();
+  for (const entry of entries) {
+    if (entry === `${ZIP_ROOT}/` || entry.startsWith(`${ZIP_ROOT}/`)) continue;
+    const [first] = entry.split('/').filter((part) => part !== '');
+    if (first !== undefined) beside.add(`${entry.startsWith('/') ? '/' : ''}${first}`);
+  }
+  for (const name of container.readDirectory('.')) {
+    if (name !== ZIP_ROOT && name !== '') beside.add(name);
+  }
+  for (const name of [...beside].sort(byCodeUnit)) {
+    problems.push({ at: name, message: `It is outside the folder "${ZIP_ROOT}" of the zip file, so it was not read.` });
   }
 
   // The library passes over a file it has no type for, without a word. Every file of the zip has to belong to a
@@ -101,7 +142,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         if (path !== undefined) claimed.add(path.split('\\').join('/'));
       }
     } catch (error) {
-      problems.push({ at: `${component.type.name} ${component.fullName}`, message: saidBy(error) });
+      problems.push({ at: `${component.type.name} ${component.fullName}`, message: said(error) });
     }
   }
   const failed = problems.map((problem) => `${ZIP_ROOT}/${problem.at}`);
@@ -130,12 +171,14 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     try {
       await convert(components);
     } catch {
+      checkWorkFolder(workDir);
       // One component that cannot be converted fails the whole call. Each is tried alone, to name the one.
       for (const component of components) {
         try {
           await convert([component]);
         } catch (error) {
-          problems.push({ at: `${component.type.name} ${component.fullName}`, message: saidBy(error) });
+          checkWorkFolder(workDir);
+          problems.push({ at: `${component.type.name} ${component.fullName}`, message: said(error) });
         }
       }
     }
