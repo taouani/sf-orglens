@@ -222,6 +222,11 @@ in upper case, with `_` for `-`. For a source `prod` the prefix is `ORGLENS_JWT_
   `orglens.toml` or `local.toml`, and both files refuse it.
 - The app in the org needs the OAuth scope `api`, and the user has to be allowed to use it.
   [live-org-setup.md](live-org-setup.md) walks through the set-up of such an app for the test org of this project.
+- On a Linux machine without a desktop, set `SF_USE_GENERIC_UNIX_KEYCHAIN=true` for the job. The Salesforce library
+  that OrgLens connects with creates an encryption key of its own on first use, and with this setting it keeps
+  that key in a file in the home folder and does not look for a keychain of the system. The workflow of this
+  project sets it. What happens without it on a machine that has the keychain program but no session for it was
+  not tested.
 
 ## How the files are checked
 
