@@ -72,6 +72,16 @@ interface MetadataCall {
   readonly job: string | null;
 }
 
+/** What an org says about one component of a deploy that it does not accept. */
+interface DeployProblem {
+  readonly type: string;
+  readonly fullName: string;
+  readonly fileName: string;
+  readonly line?: number;
+  readonly column?: number;
+  readonly problem: string;
+}
+
 export interface MockMetadata {
   /** Types the org describes although it has no component of them. */
   readonly emptyTypes: string[];
@@ -91,6 +101,10 @@ export interface MockMetadata {
   readonly forgotten: Set<string>;
   /** Files the org puts into the zip file of every retrieve beside what was asked for: path below `unpackaged`, and content. */
   readonly extraFiles: Map<string, string>;
+  /** What the org finds wrong in a deploy. While it holds something, a deploy fails and changes nothing. */
+  readonly deployProblems: DeployProblem[];
+  /** Every deploy that was started, in order: the files of its zip file and its options. */
+  readonly deploys: { readonly files: string[]; readonly options: Readonly<Record<string, string>> }[];
   /** Every request to the Metadata API, in order. */
   readonly calls: MetadataCall[];
   /** The members of every retrieve that was started, in order, each as `Type:FullName`. */
@@ -160,6 +174,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
 
   let issued = 0;
   const jobs = new Map<string, RetrieveJob>();
+  const deployJobs = new Map<string, { readonly files: string[]; polls: number }>();
 
   const properties = (tag: string, item: Listed, index: number): string =>
     `<${tag}><createdById>005xx000000001AAAA</createdById><createdByName>Mock User</createdByName>` +
@@ -225,6 +240,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     hold: false,
     forgotten: new Set(),
     extraFiles: new Map(),
+    deployProblems: [],
+    deploys: [],
     calls: [],
     retrieves: [],
     answer: async (body) => {
@@ -311,6 +328,69 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
           `<done>true</done>${found.map((item) => properties('fileProperties', item, listed.indexOf(item))).join('')}` +
             `<id>${id}</id>${problems.map((problem) => `<messages><fileName>unpackaged/package.xml</fileName><problem>${escapeXml(problem)}</problem></messages>`).join('')}` +
             `<status>Succeeded</status><success>true</success>${withZip ? `<zipFile>${zip.toString('base64')}</zipFile>` : ''}`,
+        );
+      }
+
+      if (operation === 'deploy') {
+        const zip = await JSZip.loadAsync(Buffer.from(one('ZipFile') ?? '', 'base64'));
+        const files = Object.entries(zip.files)
+          .filter(([, entry]) => !entry.dir)
+          .map(([path]) => path)
+          .sort();
+        const options: Record<string, string> = {};
+        for (const [, name = '', value = ''] of (
+          /<DeployOptions>(.*?)<\/DeployOptions>/s.exec(body)?.[1] ?? ''
+        ).matchAll(/<(\w+)>([^<]*)<\/\1>/g)) {
+          options[name] = unescapeXml(value);
+        }
+        issued += 1;
+        const id = `0Afxx${String(issued).padStart(10, '0')}AAA`;
+        deployJobs.set(id, { files, polls: 0 });
+        metadata.deploys.push({ files, options });
+        metadata.calls.push({ operation, about: String(files.length), job: id });
+        return ok(
+          `<deployResponse><result><done>false</done><id>${id}</id><state>Queued</state></result></deployResponse>`,
+        );
+      }
+
+      if (operation === 'checkDeployStatus') {
+        const id = one('asyncProcessId') ?? '';
+        metadata.calls.push({ operation, about: '', job: id });
+        const job = deployJobs.get(id);
+        if (job === undefined) return soapFault('INVALID_CROSS_REFERENCE_KEY', `invalid cross reference id: ${id}`);
+        job.polls += 1;
+        const result = (inner: string): { status: number; body: string; type: string } =>
+          ok(`<checkDeployStatusResponse><result>${inner}</result></checkDeployStatusResponse>`);
+        if (metadata.hold || job.polls <= metadata.pollsBeforeDone) {
+          return result(
+            `<checkOnly>false</checkOnly><done>false</done><id>${id}</id><status>InProgress</status><success>false</success>`,
+          );
+        }
+        // One component per file that is not the file beside another one, as Salesforce counts them roughly.
+        const components = job.files.filter((path) => path !== 'package.xml' && !path.endsWith('-meta.xml'));
+        const failed = metadata.deployProblems.length > 0;
+        const failures = metadata.deployProblems
+          .map(
+            (problem) =>
+              `<componentFailures><changed>false</changed><columnNumber>${String(problem.column ?? 0)}</columnNumber>` +
+              `<componentType>${problem.type}</componentType><created>false</created><createdDate>2026-03-01T09:00:00.000Z</createdDate>` +
+              `<deleted>false</deleted><fileName>${escapeXml(problem.fileName)}</fileName><fullName>${escapeXml(problem.fullName)}</fullName>` +
+              `<lineNumber>${String(problem.line ?? 0)}</lineNumber><problem>${escapeXml(problem.problem)}</problem>` +
+              `<problemType>Error</problemType><success>false</success></componentFailures>`,
+          )
+          .join('');
+        const success = (path: string, index: number): string =>
+          `<componentSuccesses><changed>true</changed><componentType>${path === 'package.xml' ? '' : 'ApexClass'}</componentType>` +
+          `<created>${String(path !== 'package.xml' && index % 2 === 0)}</created><createdDate>2026-03-01T09:00:00.000Z</createdDate><deleted>false</deleted>` +
+          `<fileName>${escapeXml(path)}</fileName><fullName>${escapeXml(path)}</fullName><success>true</success></componentSuccesses>`;
+        const successes = failed ? '' : ['package.xml', ...components].map(success).join('');
+        return result(
+          `<checkOnly>false</checkOnly><details>${failures}${successes}</details><done>true</done><id>${id}</id>` +
+            `<numberComponentErrors>${String(metadata.deployProblems.length)}</numberComponentErrors>` +
+            `<numberComponentsDeployed>${String(failed ? 0 : components.length)}</numberComponentsDeployed>` +
+            `<numberComponentsTotal>${String(components.length)}</numberComponentsTotal>` +
+            `<numberTestErrors>0</numberTestErrors><numberTestsCompleted>0</numberTestsCompleted><numberTestsTotal>0</numberTestsTotal>` +
+            `<rollbackOnError>true</rollbackOnError><status>${failed ? 'Failed' : 'Succeeded'}</status><success>${String(!failed)}</success>`,
         );
       }
 

@@ -6,7 +6,7 @@
       "ignoreDependencies": ["better-sqlite3"]
     },
     "packages/engine": {
-      "entry": ["test/**/*.test.ts"],
+      "entry": ["test/**/*.test.ts", "test/live/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "packages/cli": {
