@@ -12,6 +12,7 @@ May import from: `core`, `sources`, `extraction`.
 | `open.ts`                  | `openStore`: the open sequence, write transactions, the "another writer" error |
 | `migrate.ts`, `migrations` | The migration runner and the numbered migrations                               |
 | `blobs.ts`                 | File contents, stored once per distinct content                                |
+| `snapshots.ts`             | Sources, snapshots, their files, coverage per type and issues                  |
 | `probe.ts`                 | What the SQLite build at hand can do                                           |
 
 Decision records: [0025](../../../../docs/adr/0025-sqlite-driver.md) for the drivers and

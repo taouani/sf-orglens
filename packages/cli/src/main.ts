@@ -1,8 +1,10 @@
 import { Command, CommanderError, Option } from 'commander';
 import { engineVersion } from '@sf-orglens/engine';
 import {
+  coverage,
   doctorCommand,
   init,
+  snapshot,
   sourceAdd,
   sourceList,
   sourceRemove,
@@ -159,6 +161,33 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .summary('show the workspace, its database and its sources')
     .description('Shows the workspace, the state of its database and the latest snapshot of every source. Reads only.')
     .action((_options: unknown, command: Command) => run('status', status)(command));
+
+  program
+    .command('snapshot')
+    .summary('read a source and store what it holds')
+    .description(
+      'Reads a source now and stores its metadata files as a new snapshot in the workspace database. ' +
+        'Earlier snapshots are kept. The source is not changed. ' +
+        'Today a source of the kind "git" can be read. Orgs and sandboxes follow. ' +
+        'The exit code is 5 if the snapshot is partial: something could not be read, and the output says what.',
+    )
+    .argument('<source>', 'the name of the source')
+    .action((name: string, _options: unknown, command: Command) =>
+      run('snapshot', (context) => snapshot(context, name))(command),
+    );
+
+  program
+    .command('coverage')
+    .summary('show what a snapshot holds and what it is missing')
+    .description(
+      'Shows the latest snapshot of a source: the number of components per metadata type, and everything that ' +
+        'was left out or went wrong while it was taken. Reads only.',
+    )
+    .argument('<source>', 'the name of the source')
+    .option('--snapshot <number>', 'the snapshot to show (default: the latest)')
+    .action((name: string, options: { snapshot?: string }, command: Command) =>
+      run('coverage', (context) => coverage(context, name, options))(command),
+    );
 
   program
     .command('doctor')

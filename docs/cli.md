@@ -4,8 +4,8 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration. No command connects to an
-org or analyses anything yet.
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, and take snapshots of
+repository folders. No command connects to an org or analyses anything yet.
 
 ## Commands
 
@@ -16,11 +16,13 @@ org or analyses anything yet.
 | `orglens source list`          | Lists the declared sources.                                                               | Nothing        |
 | `orglens source remove <name>` | Removes the declaration of a source. Snapshots already taken stay in the database.        | `orglens.toml` |
 | `orglens status`               | Shows the workspace, the state of its database and the latest snapshot of every source.   | No data        |
+| `orglens snapshot <source>`    | Reads a source now and stores its metadata files as a new snapshot.                       | The database   |
+| `orglens coverage <source>`    | Shows what a snapshot holds per metadata type, and what was left out or went wrong.       | No data        |
 | `orglens doctor`               | Checks Node.js, SQLite, the workspace, its configuration and its database.                | No data        |
 
-`status` and `doctor` change neither the configuration nor the content of the database. They open the database to
-read it, and SQLite can then create its two helper files beside it (`orglens.db-wal` and `orglens.db-shm`) and
-leave them there. Both are in the ignored folder `.orglens`.
+`status`, `coverage` and `doctor` change neither the configuration nor the content of the database. They open the
+database to read it, and SQLite can then create its two helper files beside it (`orglens.db-wal` and
+`orglens.db-shm`) and leave them there. Both are in the ignored folder `.orglens`.
 
 `orglens <command> --help` shows the arguments and options of a command. [configuration.md](configuration.md)
 describes the file the `source` commands edit and how a command finds its workspace.
@@ -30,7 +32,8 @@ What the help texts do not say:
 - `init` in a folder that already has an `orglens.toml` never changes that file. It creates what is missing in
   `.orglens` and says so. With `--name` it is refused there, because the name is set in the file. `init` in a folder
   below an existing workspace is refused too. Both end with `WORKSPACE_EXISTS`.
-- Only `init` creates the database. `status` and the `source` commands never create or migrate it. `status`
+- Only `init` and `snapshot` create the database. `status`, `coverage` and the `source` commands never create or
+  migrate it. `status`
   reports a database that is missing, outdated, newer, foreign or busy as the `state` of the store, and still exits
   with `0`: the command did what it was asked to do. `doctor` is the command that turns a problem into an exit
   code.
@@ -39,11 +42,47 @@ What the help texts do not say:
 - A reader that closes the pipe early, as in `orglens status | head -1`, ends the command quietly with the exit
   code `1`.
 
+### Snapshots
+
+`orglens snapshot <source>` reads a source of the kind `git`: the folders of a repository as they are on disk, or
+a commit when the source has a `ref`. [configuration.md](configuration.md#how-a-git-source-is-read) says which
+folders and files are read. A source of the kind `org` or `sandbox` cannot be read yet and ends with
+`SOURCE_READ_FAILED`.
+
+- A snapshot never changes the source. A repository is only read: no checkout, no fetch, no file is written into
+  it.
+- Every snapshot gets a number that is never used again. Earlier snapshots stay as they are. A file that did not
+  change between two snapshots is stored once.
+- A snapshot is `complete` or `partial`. It is partial when something the source should hold could not be read: a
+  folder that is declared and does not exist, a file that cannot be opened, a component whose files could not be
+  matched. Each of these is an issue of the severity `error`. The snapshot is stored either way, `ok` is `true`,
+  and the exit code is `5`, so that a script does not take an incomplete picture for a complete one.
+- Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing: symbolic links
+  that were not followed, files that `.forceignore` excludes, files that belong to no metadata component, a
+  working tree that differs from its commit. They do not make a snapshot partial.
+- `snapshot.commit` is the full id of a commit only if the snapshot holds exactly what that commit holds, byte
+  for byte. A source with a `ref` always does. Folders read from disk do if every file that was read is the same
+  as in the commit that is checked out. Otherwise `commit` is `null`, and the issue `WORKING_TREE_MODIFIED` lists
+  the files that differ. On a machine where Git converts line endings on checkout, that is every text file, and
+  the issue says so (`details.onlyLineEndings`).
+- A source that cannot be read at all (no repository, no `sfdx-project.json`, an unknown branch) ends with
+  `SOURCE_READ_FAILED` and stores nothing. `details.reason` says which it was.
+
+`orglens coverage <source>` shows the latest snapshot of a source, or the one given with `--snapshot <number>`.
+It ends with `0` also when that snapshot is partial: showing the report is what it was asked to do. The column
+`ANALYSED` is `0` for every type until the analysers arrive.
+
+The issue codes of today: `FOLDER_MISSING`, `FILE_UNREADABLE`, `RESOLVE_FAILED` and `APEX_FILE_UNRESOLVED`
+(error), `LINK_SKIPPED` and `FILES_NOT_METADATA` (warning), `FILES_IGNORED`, `COMMIT_UNKNOWN` and
+`WORKING_TREE_MODIFIED` (info). An issue about several files carries their number in `details.count` and at most
+the first 50 paths in `details.paths`.
+
 ### Not available yet
 
-The plan of Phase 0 lists more commands for the workspace: `source link`, `source check`, `snapshot` and
-`coverage`, and a check of the Salesforce logins in `doctor`. All of them need a connection to an org. They arrive
-with Salesforce connectivity, later in Phase 0, because a command is added only once it does something.
+The plan of Phase 0 lists more commands for the workspace: `source link` and `source check`, snapshots of orgs
+and sandboxes, and a check of the Salesforce logins in `doctor`. All of them need a connection to an org. They
+arrive with the second part of Salesforce connectivity, later in Phase 0, because a command is added only once it
+does something.
 
 ### Global options
 
@@ -135,14 +174,16 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                   |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).        |
-| `source add`    | `source`: the declaration as it was written.                                                                                                             |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                   |
-| `source remove` | `removed`: the name of the source.                                                                                                                       |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, snapshot count, latest snapshot). |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.               |
+| Command         | `data`                                                                                                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                   |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                        |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                              |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                  |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, snapshot count, latest snapshot).                                                                                            |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `note`), `issues` (`severity`, `code`, `message`, `details`). |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                       |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                          |
 
 A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace
@@ -154,7 +195,8 @@ Within one `schemaVersion`:
 
 - A field is never removed and never changes its type or meaning.
 - An error code is never renamed and never reused for another meaning. An exit code never changes its meaning.
-- Fields, commands, error codes, checks of `doctor` and values of a `state` or `status` field **can be added**.
+- Fields, commands, error codes, issue codes, checks of `doctor` and values of a `state` or `status` field **can
+  be added**.
   A program that reads the output ignores fields it does not know and handles values it does not know.
 
 A change that breaks the first two rules raises `schemaVersion` and is announced in the changelog. Until the first
@@ -171,8 +213,8 @@ release, the contract can still change with a pull request that says so.
 | `4`  | connection | A login is missing or has expired, or the org cannot be reached.              |
 | `5`  | partial    | The result is there and it is incomplete.                                     |
 
-No command ends with `3`, `4` or `5` yet. The codes are fixed now, so that scripts written today keep their
-meaning when the commands that use them arrive.
+`snapshot` ends with `5` when the snapshot it stored is partial. No command ends with `3` or `4` yet. The codes
+are fixed now, so that scripts written today keep their meaning when the commands that use them arrive.
 
 ## Error codes
 
@@ -187,8 +229,10 @@ meaning when the commands that use them arrive.
 | `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                             |
 | `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                          |
 | `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                       |
+| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                           |
 | `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                         |
 | `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                          |
+| `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders or the commit it names.          |
 | `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                           |
 | `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.              |
 | `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                  |
@@ -204,6 +248,10 @@ clients of the engine see the same codes.
 
 For `CONFIG_INVALID`, `details.diagnostics` lists every problem: objects with `file`, `line`, `column`, `path`,
 `message` and `text`.
+
+For `SOURCE_READ_FAILED`, `details.reason` is one of `REPO_NOT_FOUND`, `PROJECT_FILE_MISSING`,
+`PROJECT_FILE_INVALID`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`, `GIT_NOT_INSTALLED`, `GIT_FAILED`
+and `KIND_NOT_READABLE`.
 
 ## Start-up time
 

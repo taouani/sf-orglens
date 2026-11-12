@@ -3,12 +3,13 @@
  * empty folder with npm, and runs the installed `orglens` binary.
  *
  * This catches what tests from source cannot: a wrong `files` list, a broken
- * `exports` map, a missing dependency, or a binary that does not start.
+ * `exports` map, a missing dependency, or a binary that does not start. The
+ * installed binary also takes a snapshot of the fixture project.
  *
  * Run `pnpm run build` first.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,6 +114,18 @@ try {
   }
   const doctor = JSON.parse(lastLine(orglens('doctor', '--json')));
   if (doctor.data?.ok !== true) fail(`doctor found a problem in a new workspace: ${JSON.stringify(doctor.data)}`);
+
+  // The installed binary reads a project with the Salesforce library it was installed with. This is where a
+  // dependency that is missing from the package would show.
+  cpSync(join(root, 'fixtures/billing-sfdx'), join(workspace, 'project'), { recursive: true });
+  orglens('source', 'add', 'fixture', '--kind', 'git', '--repo', 'project', '--json');
+  const snapshot = JSON.parse(lastLine(orglens('snapshot', 'fixture', '--json')));
+  const components = (snapshot.data?.types ?? []).reduce((sum, type) => sum + type.retrieved, 0);
+  if (snapshot.data?.snapshot?.status !== 'complete' || components !== 52) {
+    fail(`unexpected snapshot of the fixture project: ${JSON.stringify(snapshot)}`);
+  } else {
+    console.log(`orglens snapshot: ${String(components)} components in ${String(snapshot.data.snapshot.files)} files`);
+  }
 
   // The schema of the JSON output is shipped and can be found by its package path.
   writeFileSync(

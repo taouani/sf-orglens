@@ -59,6 +59,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
 - `pnpm run check:boundaries` writes probe files that break the rules, plus control probes with allowed imports,
   and checks each tool's verdict. It fails when a rule has no probe. When a rule is added or changed, add a probe.
 - `packages/engine/src` contains only the six layer folders and `index.ts`.
+- Every source is read into a `SourceTree` (`sources/tree.ts`): sorted paths with forward slashes, and a function
+  that returns the bytes of one. Nothing after `sources/` asks where a file came from. Reading a source never
+  changes it.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 
@@ -98,7 +101,8 @@ Run `pnpm run check` before every push.
 - `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v0.yaml` belong together
   (`fixtures/README.md`). The key is written by hand and is never changed to make an analyser pass. Change a fixture
   file and its entries in the key in the same pull request. `fixture-key.test.ts` says which entries moved.
-- Tests need no network and no org.
+- Tests need no network and no org. A test that needs a Git repository makes one with `test/helpers/git-repo.ts`.
+  `git` is the only program a test starts besides Node.js.
 - Every store test runs against both SQLite drivers (`test/helpers/store.ts`). The store uses only what the driver
   port in `store/driver.ts` offers.
 - Dependencies are pinned to exact versions. A new runtime dependency needs a reason in the pull request, and a

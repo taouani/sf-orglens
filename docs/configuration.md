@@ -97,7 +97,7 @@ A source name starts with a lower-case letter and has up to 32 lower-case letter
 | `sandbox_name` | sandbox      | The name of the sandbox: 1 to 10 letters and digits.                                                                                            |
 
 All four are optional. No command connects to an org yet, so nothing reads `login_url` today beyond checking it.
-The commands that connect arrive with Salesforce connectivity, later in Phase 0.
+The commands that connect arrive with the second part of Salesforce connectivity, later in Phase 0.
 
 ### A source of kind `git`
 
@@ -114,6 +114,30 @@ holds several orgs in sub-folders is declared as several git sources.
 Paths are written with forward slashes on every system. They are relative, and they contain no `..`, no `.` segment
 and no `~`. In `repo` only, `..` may lead the path, also on its own: `repo = ".."` is the folder above the
 workspace. A slash at the end of a folder is ignored.
+
+### How a git source is read
+
+`orglens snapshot` reads a git source as follows. The reasons are in
+[record 0030](adr/0030-reading-a-git-source.md).
+
+- **Without `ref`** the folders are read from disk as they are, changes that are not committed included. Git is
+  not needed for it. **With `ref`** the commit is read from the repository, whatever is checked out. This needs
+  the `git` program. The repository is never changed and nothing is fetched: a branch of a remote is named with
+  the remote, as in `origin/main`, and has to be fetched before.
+- **The folders** are those of `paths`. Without `paths`, they are the package directories of the
+  `sfdx-project.json` at the top of `repo`, which is read from disk or from the commit like everything else. A
+  package directory inside another one is read with that one. A project whose package directory is the folder of
+  the project file itself (`"path": "."`) needs `paths`.
+- **`.forceignore` is honoured.** Each folder follows the nearest `.forceignore`: its own, or the one of the
+  nearest folder above it, up to the top of `repo`. A `.forceignore` above `repo` is not read. The rules are those
+  of the Salesforce CLI, including the ones it always adds, such as leaving out files whose name starts with a
+  dot. Without a `.forceignore`, no file is left out.
+- **Symbolic links are not followed**, and submodules are not read. Each is reported.
+- **Only metadata is stored.** A file that belongs to no metadata component is not part of the snapshot. It is
+  counted in an issue.
+- **Paths in a snapshot** are relative to `repo`, with forward slashes.
+
+The source that is read can be a plain folder that is in no repository. Its snapshots then name no commit.
 
 ## `.orglens/local.toml`
 

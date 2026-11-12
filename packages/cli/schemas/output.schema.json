@@ -12,7 +12,7 @@
     },
     "command": {
       "description": "The command that ran. Null when the command line was rejected before a command ran.",
-      "enum": ["init", "source add", "source list", "source remove", "status", "doctor", null]
+      "enum": ["init", "source add", "source list", "source remove", "status", "snapshot", "coverage", "doctor", null]
     },
     "ok": {
       "description": "True if `data` holds the result. False if `error` says why there is none. The exit code can be other than 0 when this is true.",
@@ -96,6 +96,24 @@
       }
     },
     {
+      "title": "snapshot",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "snapshot" },
+        "data": { "$ref": "#/$defs/coverage" },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "coverage",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "coverage" },
+        "data": { "$ref": "#/$defs/coverage" },
+        "error": { "type": "null" }
+      }
+    },
+    {
       "title": "doctor",
       "properties": {
         "ok": { "const": true },
@@ -142,6 +160,8 @@
             "SOURCE_EXISTS",
             "SOURCE_INVALID",
             "SOURCE_IN_USE",
+            "SOURCE_READ_FAILED",
+            "SNAPSHOT_NOT_FOUND",
             "INTERNAL"
           ]
         },
@@ -267,6 +287,91 @@
         "configFiles": { "type": "array", "items": { "type": "string" } },
         "store": { "$ref": "#/$defs/store" },
         "sources": { "type": "array", "items": { "$ref": "#/$defs/sourceStatus" } }
+      }
+    },
+    "coverage": {
+      "description": "What a snapshot holds, per metadata type, and everything that was observed while it was taken.",
+      "type": "object",
+      "required": ["snapshot", "types", "issues"],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "kind",
+            "status",
+            "startedAt",
+            "finishedAt",
+            "engineVersion",
+            "commit",
+            "files",
+            "bytes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The number of the snapshot. It is never used again.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "source": { "description": "The name of the source.", "type": "string" },
+            "kind": { "enum": ["org", "sandbox", "git"] },
+            "status": {
+              "description": "`complete`: everything the source holds was read. `partial`: something is missing, and the issues of severity `error` say what. `running` and `failed`: a snapshot of an org that has not ended, or that ended without a result.",
+              "enum": ["running", "complete", "partial", "failed"]
+            },
+            "startedAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
+            "finishedAt": { "type": ["string", "null"] },
+            "engineVersion": { "description": "The version of the engine that took it.", "type": "string" },
+            "commit": {
+              "description": "The full id of the commit whose content the snapshot holds. Null if the snapshot does not hold exactly that: a file that was read from disk differs from the commit that is checked out, or Git could not tell which commit that is. An issue says which.",
+              "type": ["string", "null"]
+            },
+            "files": { "description": "The number of files in the snapshot.", "type": "integer", "minimum": 0 },
+            "bytes": { "description": "The size of the files together.", "type": "integer", "minimum": 0 }
+          }
+        },
+        "types": {
+          "description": "One entry per metadata type, sorted by type.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "listed", "retrieved", "analysed", "note"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "description": "The metadata type, as Salesforce names it.", "type": "string" },
+              "listed": {
+                "description": "How many components of the type the source says it has.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "retrieved": {
+                "description": "How many of them are in the snapshot with all their files.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "analysed": { "description": "How many of them were analysed.", "type": "integer", "minimum": 0 },
+              "note": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "issues": {
+          "description": "Everything that was left out, went wrong or is uncertain. A snapshot with an issue of severity `error` is partial.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "code", "message", "details"],
+            "additionalProperties": false,
+            "properties": {
+              "severity": { "enum": ["error", "warning", "info"] },
+              "code": { "description": "A stable code in upper case. Codes can be added.", "type": "string" },
+              "message": { "type": "string" },
+              "details": { "description": "Facts about the issue. The fields depend on the code.", "type": "object" }
+            }
+          }
+        }
       }
     },
     "doctor": {

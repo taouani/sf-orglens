@@ -40,6 +40,7 @@ import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
 import { boundary } from './boundary.ts';
+import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
 import {
   DATABASE_FILE,
   IGNORE_FILE,
@@ -146,6 +147,13 @@ export interface Workspace {
     /** Removes the declaration of a source from `orglens.toml`. Snapshots already taken stay in the database. */
     remove(name: string): Promise<{ readonly removed: string }>;
   };
+  /**
+   * Reads a source now and stores what it holds as a new snapshot. Earlier snapshots stay as they are. The source
+   * itself is never changed.
+   */
+  snapshot(source: string): Promise<CoverageReport>;
+  /** What the latest snapshot of a source holds, or the snapshot with the given id. Reads only. */
+  coverage(source: string, options?: { readonly snapshot?: number | undefined }): Promise<CoverageReport>;
 }
 
 export interface InitOptions {
@@ -432,9 +440,43 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       config = loadConfig(paths, env);
     };
 
+    const declared = (name: string): SourceDeclaration => {
+      const source = config.sources.find((one) => one.name === name);
+      if (source !== undefined) return source;
+      throw new EngineError('SOURCE_NOT_FOUND', `No source "${name}" is declared in ${SHARED_CONFIG_FILE}.`, {
+        hint: 'See the sources with: orglens source list',
+        details: { source: name },
+      });
+    };
+
     return {
       root: paths.root,
       name: config.name,
+      snapshot: (name) =>
+        boundary(async () => {
+          const source = declared(name);
+          const driver = await resolveDriver(config.store.driver);
+          const taken = await takeSnapshot(paths.root, source, () => {
+            ensureDataDir(paths);
+            return openStore({ path: paths.databaseFile, driver });
+          });
+          const { id, status, files, commit } = taken.snapshot;
+          workspaceLogger(paths).info('snapshot.taken', { source: name, snapshot: id, status, files, commit });
+          return taken;
+        }),
+      coverage: (name, options = {}) =>
+        boundary(async () => {
+          declared(name);
+          const driver = await resolveDriver(config.store.driver);
+          // A workspace without a database has no snapshot. That is said in the same words as for an empty one.
+          if (!existsSync(paths.databaseFile)) throw noSnapshot(name, options.snapshot);
+          const store = openStore({ path: paths.databaseFile, driver, readOnly: true });
+          try {
+            return coverageOf(store, name, options.snapshot);
+          } finally {
+            store.close();
+          }
+        }),
       status: () =>
         boundary(async () => {
           const { store, snapshots } = await inspectStore(paths, config);
