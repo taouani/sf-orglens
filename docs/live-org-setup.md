@@ -143,7 +143,7 @@ after it has logged in"). The weekly run always logs in only.
 | read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot is written to a temporary folder of the runner and deleted when the step ends.                                                  |
 | deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                                                                         |
 | probe           | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports. Nothing is written to the org. |
-| read and probe  | Both, in this order.                                                                                                                                                                                                                                       |
+| read and probe  | Both, in this order. The org is asked about references only if the read step did not fail.                                                                                                                                                                 |
 
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
@@ -169,8 +169,14 @@ What the steps print follows the same rule as the login step, with a wider list 
   platform. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of the org.
 - of a remark of Salesforce about a retrieve in a form the step does not know, and of what a library says about
   a file it cannot read: the words of a short list of everyday words (`read-org.ts`). Every other word, every
-  number and everything in quotes is left out. That says what kind of message it is. It can hold a name only if
-  the name is made of such words alone and stands without quotes.
+  number, everything in quotes or brackets and every path of a file is left out. That says what kind of message
+  it is. No word comes out that is not of the list. A name that stands in a message without quotes and holds
+  words of the list can leave those words behind: "Error" of a layout that is called "Error Layout".
+- of a file the engine could not read as metadata: its first folder and the ending of its name, if they are
+  words of the source format (`reports`, `.report-meta.xml`), and how deep it lies. Of a component the engine
+  could not read: its type and how its name is built.
+- from a symbol table of a class of the fixture project: the names of its fields (`externalReferences`), and a
+  method or a type if every word of it is a word of the fixture project or of Apex.
 - about a component that is not of the fixture project: how its name is built, with `a` in the place of every run
   of letters, digits and underscores (`a.a`, `a/a`), and whether the object or the folder it belongs to came back.
 
@@ -193,6 +199,12 @@ The step "Read the org" fails when the snapshot does not end, or when a componen
 is missing in it. A real org lists components that it does not hand out, so the snapshot of the test org is
 "partial" for reasons that have nothing to do with the fixture project. The step says so in a warning and does not
 fail for it.
+
+The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
+the symbol tables. One query of the Dependency API gives at most 2,000 rows, so the step asks per type and per
+pair of types. Where a query is still cut off or fails, rows are missing. The step then ends with a warning, and
+the number of pairs it reports is a lower bound. A pair that only the name of a field or of a rule gives, because
+the org did not say which object the id belongs to, is marked "by name" and not counted.
 
 The steps were tested against a mock org only before their first run. What the first runs showed is in
 `docs/research/phase-0/real-org.md`, once that report is written.

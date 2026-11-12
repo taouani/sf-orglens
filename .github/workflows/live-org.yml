@@ -18,9 +18,9 @@ name: Live org
 #           numbers.
 #   probe   asks the org what Salesforce itself knows about references: the
 #           rows of the Dependency API and the symbol tables of the Apex
-#           compiler, both through the Tooling API. It reads and writes
-#           nothing, and prints how much of the answer key of the fixture
-#           project each of the two reports.
+#           compiler, both through the Tooling API. It writes nothing, and
+#           prints how much of the answer key of the fixture project each
+#           of the two reports.
 #
 # The secrets belong to the environment "live-org", which hands them only to
 # a run from the branch "main". The log of this workflow can be read by

@@ -27,8 +27,9 @@ The deploy is a tool of the tests of the engine. OrgLens itself only reads, as b
 metadata of the org through the engine. It keeps and uploads no file of the org: a snapshot goes to a temporary
 folder and is removed. A step may also read what Salesforce knows about references through the Tooling API: the
 rows of the Dependency API and the symbol tables of the Apex compiler, with the names behind their ids. These are
-objects that describe metadata. No record of the data of the org is read, and nothing but the deploy writes: a
-symbol table that needs a compile in the org is not asked for.
+objects that describe metadata. No record of the data of the org is read, and nothing but the deploy writes. A
+symbol table is read as the org holds it for a class that is saved. The other way to one, compiling a copy of a
+class in the org, writes to the org and is not taken.
 
 **What a step may print.** Sentences of its own, with values of these kinds, each checked by its form in one
 place (`packages/engine/test/live/public-log.ts`):
@@ -41,9 +42,13 @@ place (`packages/engine/test/live/public-log.ts`):
 - a message of Salesforce only if its whole text has a form the step lists and, where the form holds a name, the
   name is a word of the fixture project or of the platform,
 - of a message in another form, the words of a short list of everyday words and nothing else: every other word,
-  every number and everything in quotes is left out,
+  every number, everything in quotes or brackets and every path of a file is left out,
 - of a component that is not of the fixture project, how its name is built: every run of letters, digits and
-  underscores is written as `a`.
+  underscores is written as `a`,
+- of a file that could not be read as metadata, its first folder and the ending of its name where they are
+  words of the source format, and how deep it lies,
+- of a symbol table of a class of the fixture project, the names of its fields, and a method or a type whose
+  every word is a word of the fixture project or of Apex.
 
 Never: a name of a component that is not of the fixture project, the address or the id of the org, a user name,
 a token, a key, or any other message of Salesforce, of a library or of OrgLens.
@@ -75,14 +80,19 @@ a token, a key, or any other message of Salesforce, of a library or of OrgLens.
 
 ## What the first runs changed
 
-The first runs on 2026-11-12 showed two things the rule above had no answer for, and the record was extended on
-the same day.
+The first runs on 2026-11-12 showed what the rule above had no answer for, and the record was extended on the
+same day.
 
 - A real org lists components it does not hand out: the first snapshot was partial for 223 components that are
   not of the fixture project, and six remarks of Salesforce had a form the step did not know. With "not shown"
-  for all of them, the run could not say why. Hence the two last kinds of value in the list above. The words of
-  the list are words a message is made of whatever it is about. A name that is made of such words alone and
-  stands without quotes would be printed. Such a name gives nothing away that the list does not hold.
+  for all of them, the run could not say why. Hence the everyday words of a message and the form of a name in
+  the list above. The words of the list are words a message is made of whatever it is about, and no other word
+  comes out. A name that stands in a message without quotes can leave behind the words of the list it holds, and
+  a name made of such words alone would be printed. This is the one place where a part of a name of the org can
+  reach the log. It is kept because such words say nothing that the list does not hold.
 - The step that reads the org failed for a partial snapshot. On a real org that is every run. It now fails when
   the snapshot does not end or when the fixture project is not whole in it, and says the rest in a warning.
 - The probes of the Dependency API and of the symbol tables were added to what a step may do.
+- The code review of these changes showed that the line about a file that could not be read printed the ending
+  of the name of the file as the org wrote it. The first folder and the ending are now shown only where they are
+  words of the source format, which no org chooses.

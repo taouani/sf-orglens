@@ -19,7 +19,12 @@
  * one of them (`deploy-fixture.ts`, `read-org.ts`). Of a message in
  * another form, a tool may show the words of a short list of everyday
  * words and nothing else, and of a name of the org how it is built
- * (`everydayWords` and `nameForm` in `read-org.ts`). On top of the forms,
+ * (`everydayWords` and `nameForm` in `read-org.ts`). Of a file that could
+ * not be read as metadata, a tool may show the first folder and the ending
+ * where they are words of the source format (`placeForm`). Of a symbol
+ * table of a class of the fixture project, a tool may show the names of
+ * its fields, and a text whose every word is one of the fixture project
+ * or of Apex (`probe-org.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */

@@ -17,7 +17,15 @@ import { tempDirs } from './helpers/store.ts';
 import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
 import { publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
-import { everydayWords, fileDifference, missingLines, nameForm, readOrg, remarkForm } from './live/read-org.ts';
+import {
+  everydayWords,
+  fileDifference,
+  missingLines,
+  nameForm,
+  placeForm,
+  readOrg,
+  remarkForm,
+} from './live/read-org.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -287,6 +295,64 @@ describe('a text that is not ours, in everyday words', () => {
       'Entity type CustomObject is unknown',
     );
     expect(everydayWords('Entity type CustomObject is unknown')).toBe('Entity type … is unknown');
+    // Only where the word "type" stands before it: a component can have the name of a type.
+    expect(everydayWords('Entity Queue named Dashboard cannot be found', new Set(['Queue', 'Dashboard']))).toBe(
+      'Entity … named … cannot be found',
+    );
+  });
+
+  it('leaves out what stands in any kind of quotes or in brackets, and a path with spaces in it', () => {
+    expect(everydayWords('The package \u201CManaged Package Settings\u201D is not installed')).toBe(
+      'The package … is not installed',
+    );
+    expect(everydayWords('The folder `Custom Settings` and the file [Error Record] cannot be found')).toBe(
+      'The folder … and the file … cannot be found',
+    );
+    // The apostrophe of a word is no quote: the name in quotes after it stays hidden.
+    expect(everydayWords("Can't retrieve 'Custom Settings' because it doesn't exist")).toBe(
+      '… retrieve … because it … exist',
+    );
+    // A quote without a partner ends the text.
+    expect(everydayWords('The file "Custom Error Record is unknown')).toBe('The file …');
+    expect(
+      everydayWords('Could not read /tmp/x/layouts/Account-Custom Error Record Layout.layout-meta.xml as metadata.'),
+    ).toBe('Could not read … as metadata.');
+    expect(everydayWords('The path C:\\work\\Standard Value Set.txt is invalid')).toBe('The path … is invalid');
+  });
+});
+
+describe('the place of something that could not be read as metadata', () => {
+  it('shows a folder and an ending only if they are words of the source format', () => {
+    const { log } = collected();
+    expect(placeForm(log, 'reports/SECRET_PLANS/Takeover.report-meta.xml')).toBe(
+      'in reports, 2 levels deep, a name that ends in .report-meta.xml',
+    );
+    expect(placeForm(log, 'documents/Deals/Plan.AcmeTakeover')).toBe(
+      'in documents, 2 levels deep, a name that ends in (an ending that is not shown)',
+    );
+    expect(placeForm(log, 'HiddenNotes/Budget.MergerWithGlobex')).toBe(
+      'in (a folder that is not shown), 1 level deep, a name that ends in (an ending that is not shown)',
+    );
+    expect(placeForm(log, 'Takeover.txt')).toBe(
+      'in (a folder that is not shown), 0 levels deep, a name that ends in .txt',
+    );
+    expect(placeForm(log, '/Takeover')).toBe(
+      'in (a folder that is not shown), 1 level deep, a name that ends in (an ending that is not shown)',
+    );
+  });
+
+  it('shows of a component its type and the form of its name', () => {
+    const { log } = collected();
+    expect(placeForm(log, 'QuickAction Account.AcmeTakeover')).toBe(
+      'a component of the type QuickAction, with a name of the form a.a',
+    );
+    expect(placeForm(log, 'CustomMetadata Config.Secret Deal')).toBe(
+      'a component of the type CustomMetadata, with a name of the form a.a a',
+    );
+    // A word before a space that is no metadata type is the start of a name.
+    expect(placeForm(log, 'Takeover Plans/Budget.txt')).toBe(
+      'a component of the type (not shown), with a name of the form a/a.a',
+    );
   });
 });
 
@@ -677,7 +743,17 @@ describe('reading the test org', () => {
 
 describe('reading an org that holds more than the fixture project', () => {
   /** Names of components that are not of the fixture project. None may ever stand in the output. */
-  const FOREIGN = ['SecretPlan', 'SECRET_PLANS', 'Secret_Plan', 'Takeover', 'hidden_notes'];
+  const FOREIGN = [
+    'SecretPlan',
+    'SECRET_PLANS',
+    'Secret_Plan',
+    'Takeover',
+    'hidden_notes',
+    'HiddenNotes',
+    'Globex',
+    'Deals',
+    'Budget',
+  ];
 
   /** A mock org that holds the fixture project and, beside it, a class, an object with a field, and a report in a folder. */
   async function withMore(): Promise<MockMetadata> {
@@ -721,6 +797,9 @@ describe('reading an org that holds more than the fixture project', () => {
     more.withheld.add('ApexClass:SecretPlan');
     more.unlistedParents.add('CustomObject:Secret_Plan__c');
     more.extraFiles.set('hidden_notes/Takeover.txt', 'not metadata');
+    // Files whose folder and ending are made of letters alone, as a name of a type or of a code is.
+    more.extraFiles.set('HiddenNotes/Budget.MergerWithGlobex', 'not metadata');
+    more.extraFiles.set('documents/Deals/Plan.AcmeTakeover', 'not metadata');
     // The org refuses to list one folder.
     mock.intercept = (request) =>
       request.body.includes('<folder>SECRET_PLANS</folder>')
@@ -754,7 +833,13 @@ describe('reading an org that holds more than the fixture project', () => {
       '- info UNLISTED_COMPONENTS: 1 observation, about 1 components, files or remarks. Types: CustomObject',
     );
     // The file beside the metadata, whose place the engine keeps in the observation.
-    expect(output).toContain('- error RESOLVE_FAILED: 1 observation');
+    expect(output).toContain('- error RESOLVE_FAILED: 3 observations');
+    expect(output).toContain(
+      '- 1 time: in (a folder that is not shown), 1 level deep, a name that ends in (an ending that is not shown). In everyday words:',
+    );
+    expect(output).toContain(
+      '- 1 time: in documents, 2 levels deep, a name that ends in (an ending that is not shown). In everyday words:',
+    );
     expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
     expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
     expect(output).toMatch(/^Report +0 +0 +failed$/m);
@@ -914,17 +999,35 @@ describe('asking the org what Salesforce knows about references', () => {
     ],
   });
 
+  /** Rows of components that are not of the fixture project, each of another component of one type. */
+  const many = (count: number, type: string, refType: string | null, to: string, refName: string): Row[] =>
+    Array.from({ length: count }, (_, index) => ({
+      ...dependency(type, id('01p', 100 + index), `SecretPlan${String(index)}`, refType ?? '', to, refName),
+      RefMetadataComponentType: refType,
+    }));
+
   /**
    * Makes the mock org answer the Tooling API from tables. It knows the filters the tool uses, gives at most
    * 2,000 rows of the Dependency API, and refuses the objects in `faults`, each with the code that is given.
    */
-  function tooling(rows: Record<string, Row[]>, options: { faults?: Record<string, string>; pageSize?: number } = {}) {
+  function tooling(
+    rows: Record<string, Row[]>,
+    options: {
+      faults?: Record<string, string>;
+      /** The code the org refuses a query with, by its text. */
+      fault?: (soql: string) => string | undefined;
+      /** A query whose answer does not say that it has ended, and names no next page. */
+      notDone?: (soql: string) => boolean;
+      pageSize?: number;
+    } = {},
+  ) {
     const later = new Map<string, Row[]>();
     const asked: string[] = [];
     mock.intercept = (request) => {
       const found = /\/tooling\/query(?:\/(.+))?$/.exec(request.path);
       if (found === null) return undefined;
       let answer: Row[];
+      let open = false;
       if (found[1] !== undefined) {
         answer = later.get(found[1]) ?? [];
       } else {
@@ -932,7 +1035,8 @@ describe('asking the org what Salesforce knows about references', () => {
         asked.push(soql);
         const object = /FROM (\w+)/.exec(soql)?.[1] ?? '';
         const withSymbols = soql.includes('SymbolTable');
-        const fault = options.faults?.[withSymbols ? `${object}.SymbolTable` : object];
+        const fault = options.fault?.(soql) ?? options.faults?.[withSymbols ? `${object}.SymbolTable` : object];
+        open = options.notDone?.(soql) ?? false;
         if (fault !== undefined) {
           return {
             status: 400,
@@ -943,10 +1047,12 @@ describe('asking the org what Salesforce knows about references', () => {
         const notTypes = /(?<!Ref)MetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
         const target = /RefMetadataComponentType = '(\w+)'/.exec(soql)?.[1];
         const notTargets = /RefMetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
+        const names = /\bName IN \(([^)]*)\)/.exec(soql)?.[1];
         const without = (list: string | undefined, value: unknown): boolean =>
           !(list?.includes(`'${String(value)}'`) ?? false);
         answer = (rows[object] ?? []).filter(
           (row) =>
+            (names === undefined || !without(names, row['Name'])) &&
             (type === undefined || row['MetadataComponentType'] === type) &&
             without(notTypes, row['MetadataComponentType']) &&
             (target === undefined || row['RefMetadataComponentType'] === target) &&
@@ -972,7 +1078,7 @@ describe('asking the org what Salesforce knows about references', () => {
         body: JSON.stringify({
           size: answer.length - rest.length,
           totalSize: answer.length,
-          done: rest.length === 0,
+          done: rest.length === 0 && !open,
           nextRecordsUrl: next,
           records: answer.slice(0, size),
         }),
@@ -996,7 +1102,10 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toMatch(/^ApexClass +8 +ok$/m);
     expect(output).toMatch(/^Flow +1 +ok$/m);
     expect(output).toMatch(/^ValidationRule +1 +ok$/m);
-    expect(output).toContain('Different rows in all: 12. Every query for a pair of types was answered in full.');
+    expect(output).toContain(
+      'Different rows in all: 12. No query was cut off or failed in a way that leaves a row out.',
+    );
+    expect(output).not.toContain('::warning::');
     expect(output).toContain(
       'Rows read to find the names behind the ids: CustomObject 3, CustomField 7, ValidationRule 1, ApexClass 4, ApexTrigger 1.',
     );
@@ -1031,12 +1140,18 @@ describe('asking the org what Salesforce knows about references', () => {
   });
 
   it('says what the symbol tables of the compiler hold for the classes of the fixture project', async () => {
-    tooling(tables(), { faults: { 'ApexTrigger.SymbolTable': 'INVALID_FIELD' }, pageSize: 3 });
+    const asked = tooling(tables(), { faults: { 'ApexTrigger.SymbolTable': 'INVALID_FIELD' }, pageSize: 2 });
     const { log, text } = collected();
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
-    expect(output).toMatch(/Classes: 4 in 2 pages, after \d+\.\d s\. With a symbol table: 2\./);
+    // Only classes with a name of the fixture project are asked for. One of them is of a package.
+    expect(asked.filter((soql) => soql.includes('SymbolTable FROM ApexClass'))).toEqual([
+      expect.stringMatching(/ FROM ApexClass WHERE Name IN \('[A-Za-z]+'(, '[A-Za-z]+'){11}\)$/),
+    ]);
+    expect(output).toMatch(
+      /Classes with a name of the fixture project: 3 in 2 pages, after \d+\.\d s\. With a symbol table: 1\./,
+    );
     expect(output).toContain('Classes of the fixture project: 12. Found: 2. With a symbol table: 1.');
     expect(output).toMatch(/^InvoiceSelector +no symbol table$/m);
     expect(output).toMatch(/^InvoiceService +1 +0 +0 +1 +0 +2 +5$/m);
@@ -1060,20 +1175,30 @@ describe('asking the org what Salesforce knows about references', () => {
     );
     expect(output).toContain('- InvoiceService.openInvoices(Id): List<Invoice__c>');
     expect(output).toContain('Triggers cannot be asked for with a symbol table (INVALID_FIELD).');
-    expect(output).toMatch(/Requests to the Tooling API: \d+\./);
+    expect(output).toMatch(/Requests to the Tooling API: \d+\. A request the library sent again/);
+    expectNothingForeign(output);
+  });
+
+  it('asks for every class when the org refuses the query by the names of the classes', async () => {
+    tooling(tables(), { fault: (soql) => (soql.includes('Name IN') ? 'MALFORMED_QUERY' : undefined) });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain(
+      'The query for the classes by their names failed (MALFORMED_QUERY). Every class of the org is asked for.',
+    );
+    expect(output).toMatch(/Classes: 4 in 1 page, after \d+\.\d s\. With a symbol table: 2\./);
+    expect(output).toContain('Classes of the fixture project: 12. Found: 2. With a symbol table: 1.');
     expectNothingForeign(output);
   });
 
   it('asks again per pair of types where a query is at the limit of 2,000 rows, and says when rows are still missing', async () => {
     const org = tables();
-    const many = (count: number, refType: string, to: string, refName: string): Row[] =>
-      Array.from({ length: count }, (_, index) =>
-        dependency('ApexClass', id('01p', 100 + index), `SecretPlan${String(index)}`, refType, to, refName),
-      );
     org['MetadataComponentDependency'] = [
-      ...many(2050, 'CustomField', id('00N', 9), 'Takeover_Date'),
+      ...many(2050, 'ApexClass', 'CustomField', id('00N', 9), 'Takeover_Date'),
       // Behind the limit: a type of target that the first queries do not show, and the rows of the fixture project.
-      ...many(30, 'CustomLabel', id('101', 1), 'Takeover'),
+      ...many(30, 'ApexClass', 'CustomLabel', id('101', 1), 'Takeover'),
       ...(org['MetadataComponentDependency'] ?? []),
     ];
     tooling(org);
@@ -1090,10 +1215,130 @@ describe('asking the org what Salesforce knows about references', () => {
     // The types the limit hid are found: the flow, the trigger, the rule and the field that refer.
     expect(output).toMatch(/^Flow +1 +ok$/m);
     expect(output).toMatch(/^ApexTrigger +1 +ok$/m);
-    expect(output).toContain('1 query for a pair of types could not be answered in full, so rows are missing.');
+    expect(output).toContain('1 query was cut off at the limit or failed, so rows are missing.');
     expect(output).toContain(
       'The answer key holds 137 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
     );
+    // The step does not fail for it, and says at its end that the answer is not whole.
+    expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(output);
+  });
+
+  it('counts a query that failed where its rows can be missing', async () => {
+    // The first query is at the limit, and the org refuses the query for the rows of the classes.
+    const org = tables();
+    org['MetadataComponentDependency'] = [
+      ...many(1990, 'Flow', 'CustomField', id('00N', 9), 'Takeover_Date'),
+      ...(org['MetadataComponentDependency'] ?? []),
+    ];
+    tooling(org, {
+      fault: (soql) => (soql.endsWith("WHERE MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined),
+    });
+    const first = collected();
+    await probeOrg(first.log, { env: environment() });
+    expect(first.log.failed).toBe(false);
+    expect(first.text()).toMatch(/^ApexClass +failed \(UNKNOWN_EXCEPTION\): rows may be missing$/m);
+    expect(first.text()).toContain('1 query was cut off at the limit or failed, so rows are missing.');
+    expect(first.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(first.text());
+
+    // The classes are at the limit, and the org refuses the query for one type of target.
+    org['MetadataComponentDependency'] = [
+      ...many(2050, 'ApexClass', 'CustomField', id('00N', 9), 'Takeover_Date'),
+      ...(tables()['MetadataComponentDependency'] ?? []),
+    ];
+    tooling(org, {
+      fault: (soql) => (soql.endsWith("RefMetadataComponentType = 'CustomField'") ? 'UNKNOWN_EXCEPTION' : undefined),
+    });
+    const second = collected();
+    await probeOrg(second.log, { env: environment() });
+    expect(second.log.failed).toBe(false);
+    expect(second.text()).toMatch(/^ {2}to CustomField +failed \(UNKNOWN_EXCEPTION\): rows are missing$/m);
+    expect(second.text()).toContain('query was cut off at the limit or failed, so rows are missing.');
+    expectNothingForeign(second.text());
+
+    // The classes are at the limit, and no row says of which type a target is.
+    org['MetadataComponentDependency'] = many(2100, 'ApexClass', null, id('00N', 9), 'Takeover_Date');
+    tooling(org);
+    const third = collected();
+    await probeOrg(third.log, { env: environment() });
+    expect(third.text()).toMatch(/^ApexClass +2000 +at the limit, asked again per type of the target$/m);
+    expect(third.text()).toMatch(/^ {2}to a type +no type of a target is known: rows are missing$/m);
+    expect(third.text()).toContain('query was cut off at the limit or failed, so rows are missing.');
+    expectNothingForeign(third.text());
+  });
+
+  it('does not count a query that failed when the first query gave every row', async () => {
+    const org = tables();
+    // A field of a package with the name of a field of the fixture project.
+    org['CustomField']?.push({
+      Id: id('00N', 7),
+      DeveloperName: 'Amount',
+      NamespacePrefix: 'hidden',
+      TableEnumOrId: INVOICE.slice(0, 15),
+    });
+    org['MetadataComponentDependency']?.push(
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 7), 'Amount'),
+    );
+    tooling(org, {
+      // The answer for the flows does not say that it has ended. One object has no field for the prefix of a package.
+      notDone: (soql) => soql.endsWith("WHERE MetadataComponentType = 'Flow'"),
+      fault: (soql) => (/NamespacePrefix.* FROM ValidationRule/.test(soql) ? 'INVALID_FIELD' : undefined),
+    });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toMatch(/^Flow +failed \(NOT_DONE\)$/m);
+    expect(output).toContain(
+      'Different rows in all: 13. No query was cut off or failed in a way that leaves a row out.',
+    );
+    expect(output).toContain(
+      'Rows read to find the names behind the ids: CustomObject 3, CustomField 8, ValidationRule 1 without NamespacePrefix (INVALID_FIELD), ApexClass 4, ApexTrigger 1.',
+    );
+    // The field of the package is not the field of the fixture project.
+    expect(output).toContain(
+      'Rows between two components of the fixture project: 8, which are 8 pairs. Rows with a component that is not of it: 5.',
+    );
+    expect(output).not.toContain('::warning::');
+    expectNothingForeign(output);
+  });
+
+  it('marks a pair that only the name of a field gives, and does not count it as reported', async () => {
+    tooling(tables(), { faults: { CustomField: 'INVALID_TYPE' } });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain('CustomField failed (INVALID_TYPE)');
+    // Without the object of a field, the row could be about a field of that name of any object.
+    expect(output).toContain(
+      'The Dependency API reports 2 of them. 2 more are matched by the name of a field or of a rule alone, because the org gave no object for the id. They are marked "by name" and not counted as reported.',
+    );
+    expect(output).toContain('- by name   ApexClass:invoiceservice -> CustomField:invoice__c.amount__c  (field, soql)');
+    expect(output).toContain('- reported  ApexTrigger:invoicetrigger -> CustomObject:invoice__c  (declaration)');
+    expect(output).toMatch(/^ApexClass +CustomField +\d+ +0$/m);
+    expect(output).toContain('- ApexClass:invoiceservice -> CustomField:invoice__c.unused_field__c  (by name)');
+    expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(output);
+  });
+
+  it('stops asking for types the limit hides after a number of rounds, and says that rows are missing', async () => {
+    // Seven types the tool does not know, each at the limit: every answer shows one more.
+    const org = tables();
+    org['MetadataComponentDependency'] = Array.from({ length: 7 }, (_, kind) =>
+      many(2000, `Kind${String(kind + 1)}`, 'CustomField', id('00N', 9), 'Takeover_Date'),
+    ).flat();
+    const asked = tooling(org);
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toMatch(/^Kind6 +2000 +at the limit, asked again per type of the target$/m);
+    expect(output).not.toMatch(/^Kind7 /m);
+    expect(output).toMatch(/^every other type +2000 +at the limit: rows are missing$/m);
+    expect(output).toContain('7 queries were cut off at the limit or failed, so rows are missing.');
+    expect(asked.filter((soql) => /(?<!Ref)MetadataComponentType NOT IN/.test(soql))).toHaveLength(6);
     expectNothingForeign(output);
   });
 

@@ -21,6 +21,10 @@
  * row about a component that is not of the fixture project is counted and
  * not named.
  *
+ * The step fails when the org answers neither of the two. Where rows are
+ * known to be missing, it ends with a warning: what it counted is a lower
+ * bound then.
+ *
  *   node --no-warnings packages/engine/test/live/probe-org.ts
  */
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
@@ -31,7 +35,7 @@ import { answerKey, failureLines, loginEnvironment, SOURCE } from './test-org.ts
 
 /** The most rows one query of the Dependency API gives. A query that gives this many may have left rows out. */
 const CUT_OFF = 2000;
-/** A symbol table that is not cached is compiled while the query waits. */
+/** The query for the symbol tables can take long. */
 const REQUEST = { timeout: 180_000 } as const;
 /** No query is followed over more pages than this. */
 const PAGES = 400;
@@ -74,7 +78,10 @@ type Row = Readonly<Record<string, unknown>>;
 interface Asked {
   readonly rows: Row[];
   readonly pages: number;
-  /** The code of the failure, or `null` if every page came. */
+  /**
+   * The code of the failure, or `null` if every page came. `PAGES_LEFT` and `NOT_DONE` are codes of this tool: the
+   * answer went on after the last page that was read, or the org did not say that it had ended.
+   */
   readonly failed: string | null;
 }
 
@@ -110,13 +117,16 @@ async function ask(log: PublicLog, session: OrgSession, soql: string, counter: {
   let pages = 0;
   let url: string | null = `/services/data/v${session.apiVersion}/tooling/query?q=${encodeURIComponent(soql)}`;
   try {
-    while (url !== null && pages < PAGES) {
+    while (url !== null) {
+      if (pages >= PAGES) return { rows, pages, failed: 'PAGES_LEFT' };
       counter.requests += 1;
       const page: Page | null = await session.connection.request<Page | null>(url, REQUEST);
       pages += 1;
       if (Array.isArray(page?.records)) rows.push(...(page.records as Row[]));
       const next = text(page?.nextRecordsUrl);
-      url = page?.done !== true && next.startsWith('/services/data/') ? next : null;
+      if (page?.done === true) url = null;
+      else if (next.startsWith('/services/data/')) url = next;
+      else return { rows, pages, failed: 'NOT_DONE' };
     }
   } catch (error) {
     const name = error instanceof Error ? error.name : undefined;
@@ -134,8 +144,9 @@ interface Fixture {
   /** `from -> to`, component to component, with the ways and the tiers the key names for the pair. */
   readonly pairs: ReadonlyMap<string, { from: string; to: string; via: Set<string>; tiers: Set<string> }>;
   readonly unreferenced: readonly string[];
-  /** The names of the classes of the fixture project, in lower case. */
+  /** The names of the classes of the fixture project, in lower case, and as the key writes them. */
   readonly classes: ReadonlySet<string>;
+  readonly classNames: readonly string[];
   /** The names of its custom objects and of its custom fields without the object, in lower case. */
   readonly objectNames: ReadonlySet<string>;
   readonly fieldNames: ReadonlySet<string>;
@@ -170,6 +181,7 @@ function readFixture(): Fixture {
     pairs,
     unreferenced: key.unreferenced ?? [],
     classes: new Set(lower('ApexClass')),
+    classNames: key.components?.['ApexClass'] ?? [],
     objectNames,
     fieldNames: new Set(
       lower('CustomField')
@@ -214,18 +226,22 @@ const identity = ({ from, to }: Dependency): string =>
 /**
  * Finds the key of the fixture project a side of a row stands for.
  *
- * The Dependency API names a field without its object, so the id decides
- * where the org said what the id belongs to. Without that, a name decides
- * only if one component of the fixture project has it.
+ * The Dependency API names a field or a rule without its object, so the id decides where the org said what the
+ * id belongs to. Without that, the name decides if one component of the fixture project has it. For a field or
+ * a rule that is a guess: a field of another object can have the same name.
  */
-function keyOf(side: Side, byId: ReadonlyMap<string, string>, fixture: Fixture): string | null {
+function keyOf(
+  side: Side,
+  byId: ReadonlyMap<string, string>,
+  fixture: Fixture,
+): { key: string; guessed: boolean } | null {
   if (side.namespace !== '') return null;
   const known = byId.get(side.id);
-  if (known !== undefined) return fixture.keys.has(known) ? known : null;
+  if (known !== undefined) return fixture.keys.has(known) ? { key: known, guessed: false } : null;
   const name = side.name.toLowerCase();
   if (side.type === 'StandardEntity') {
     const key = `CustomObject:${name}`;
-    return fixture.keys.has(key) ? key : null;
+    return fixture.keys.has(key) ? { key, guessed: false } : null;
   }
   const candidates = fixture.ofType(side.type).filter((key) => {
     const last =
@@ -235,7 +251,8 @@ function keyOf(side: Side, byId: ReadonlyMap<string, string>, fixture: Fixture):
         .at(-1) ?? '';
     return last === name || last === `${name}__c`;
   });
-  return candidates.length === 1 ? (candidates[0] ?? null) : null;
+  const [key] = candidates;
+  return candidates.length === 1 && key !== undefined ? { key, guessed: key.includes('.') } : null;
 }
 
 /** Reads the names behind the ids of the rows: which object a field or a rule belongs to. */
@@ -243,9 +260,10 @@ async function namesBehindIds(
   log: PublicLog,
   session: OrgSession,
   counter: { requests: number },
-): Promise<Map<string, string>> {
+): Promise<{ byId: Map<string, string>; failed: number }> {
   const byId = new Map<string, string>();
   const said: string[] = [];
+  let failed = 0;
   const read = async (object: string, fields: string): Promise<Row[]> => {
     let asked = await ask(log, session, `SELECT ${fields} FROM ${object}`, counter);
     let note = '';
@@ -258,6 +276,7 @@ async function namesBehindIds(
     said.push(
       `${object} ${asked.failed === null ? `${String(asked.rows.length)}${note}` : `failed (${asked.failed})`}`,
     );
+    if (asked.failed !== null) failed += 1;
     return asked.failed === null ? asked.rows : [];
   };
   const prefixed = (row: Row, name: string): string => {
@@ -287,16 +306,19 @@ async function namesBehindIds(
     }
   }
   log.say(`Rows read to find the names behind the ids: ${said.join(', ')}.`);
-  return byId;
+  return { byId, failed };
 }
 
-/** The Dependency API. Returns false if it could not be asked at all. */
+/**
+ * The Dependency API. Returns `none` if it could not be asked at all, and `partly` if rows are missing or the
+ * names behind the ids could not all be read.
+ */
 async function probeDependencies(
   log: PublicLog,
   session: OrgSession,
   fixture: Fixture,
   counter: { requests: number },
-): Promise<boolean> {
+): Promise<'none' | 'partly' | 'whole'> {
   const shownType = (type: string): string => log.name(type) ?? '(a type that is not shown)';
   const base = `SELECT ${DEPENDENCY_FIELDS} FROM MetadataComponentDependency`;
   const rows = new Map<string, Dependency>();
@@ -322,6 +344,8 @@ async function probeDependencies(
     [...new Set([...rows.values()].map(pick))].filter((type) => TYPE_NAME.test(type));
   const lines: string[][] = [['TYPE THAT REFERS', 'ROWS', 'STATE']];
   let answered = all.failed === null;
+  /** Whether the first query gave every row of the org. Then no later query can add a row. */
+  const whole = all.failed === null && all.rows.length < CUT_OFF;
   let cutOff = 0;
   const quoted = (types: Iterable<string>): string => [...types].map((type) => `'${type}'`).join(', ');
 
@@ -329,12 +353,16 @@ async function probeDependencies(
   const askType = async (type: string): Promise<void> => {
     const ofType = await ask(log, session, `${base} WHERE MetadataComponentType = '${type}'`, counter);
     keep(ofType);
-    if (ofType.failed !== null) {
-      lines.push([shownType(type), '', `failed (${ofType.failed})`]);
+    // An answer that broke off after the limit is at the limit as well.
+    const atLimit = ofType.rows.length >= CUT_OFF;
+    if (ofType.failed !== null && !atLimit) {
+      // The rows of the type are missing, unless the first query gave every row.
+      if (!whole) cutOff += 1;
+      lines.push([shownType(type), '', `failed (${ofType.failed})${whole ? '' : ': rows may be missing'}`]);
       return;
     }
     answered = true;
-    if (ofType.rows.length < CUT_OFF) {
+    if (!atLimit) {
       if (ofType.rows.length > 0) lines.push([shownType(type), String(ofType.rows.length), 'ok']);
       return;
     }
@@ -342,6 +370,10 @@ async function probeDependencies(
     // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
     const asked = new Set<string>();
     let targets = seen((one) => one.to.type).sort();
+    if (targets.length === 0) {
+      cutOff += 1;
+      lines.push(['  to a type', '', 'no type of a target is known: rows are missing']);
+    }
     for (let round = 0; round < ROUNDS && targets.length > 0; round += 1) {
       for (const target of targets) {
         asked.add(target);
@@ -352,11 +384,12 @@ async function probeDependencies(
           counter,
         );
         keep(pair);
-        if (pair.failed !== null) {
-          lines.push([`  to ${shownType(target)}`, '', `failed (${pair.failed})`]);
-        } else if (pair.rows.length >= CUT_OFF) {
+        if (pair.rows.length >= CUT_OFF) {
           cutOff += 1;
           lines.push([`  to ${shownType(target)}`, String(pair.rows.length), 'at the limit: rows are missing']);
+        } else if (pair.failed !== null) {
+          cutOff += 1;
+          lines.push([`  to ${shownType(target)}`, '', `failed (${pair.failed}): rows are missing`]);
         } else if (pair.rows.length > 0) {
           lines.push([`  to ${shownType(target)}`, String(pair.rows.length), 'ok']);
         }
@@ -402,8 +435,8 @@ async function probeDependencies(
       .sort();
     if (others.failed !== null) {
       // Without this answer, a type that the first query does not show stays unseen.
-      if (all.rows.length >= CUT_OFF || all.failed !== null) cutOff += 1;
-      lines.push(['every other type', '', `failed (${others.failed})`]);
+      if (!whole) cutOff += 1;
+      lines.push(['every other type', '', `failed (${others.failed})${whole ? '' : ': rows may be missing'}`]);
       break;
     }
     if (others.rows.length < CUT_OFF) {
@@ -418,19 +451,20 @@ async function probeDependencies(
   for (const line of table(lines)) log.say(line);
   if (!answered) {
     log.say('No query of the Dependency API was answered.');
-    return false;
+    return 'none';
   }
   log.say(
     `Different rows in all: ${String(rows.size)}.` +
       (cutOff > 0
-        ? ` ${plural(cutOff, 'query for a pair of types', 'queries for a pair of types')} could not be answered in full, so rows are missing.`
-        : ' Every query for a pair of types was answered in full.'),
+        ? ` ${plural(cutOff, 'query was', 'queries were')} cut off at the limit or failed, so rows are missing.`
+        : ' No query was cut off or failed in a way that leaves a row out.'),
   );
 
-  const byId = await namesBehindIds(log, session, counter);
+  const { byId, failed: namesFailed } = await namesBehindIds(log, session, counter);
 
-  // Every row, as a pair of keys of the fixture project where both sides are of it.
-  const reported = new Map<string, { from: string; to: string }>();
+  // Every row, as a pair of keys of the fixture project where both sides are of it. A pair is "by name" if no
+  // row gives it with ids the org said the objects of.
+  const reported = new Map<string, { from: string; to: string; guessed: boolean }>();
   const outside = new Map<string, number>();
   let inside = 0;
   const sides = [...rows.values()].flatMap((one) => [one.from, one.to]);
@@ -442,7 +476,9 @@ async function probeDependencies(
     const to = keyOf(one.to, byId, fixture);
     if (from !== null && to !== null) {
       inside += 1;
-      reported.set(`${from} -> ${to}`, { from, to });
+      const id = `${from.key} -> ${to.key}`;
+      const guessed = (from.guessed || to.guessed) && (reported.get(id)?.guessed ?? true);
+      reported.set(id, { from: from.key, to: to.key, guessed });
     } else {
       const pair = `${shownType(one.from.type)} to ${shownType(one.to.type)}`;
       outside.set(pair, (outside.get(pair) ?? 0) + 1);
@@ -465,10 +501,15 @@ async function probeDependencies(
   const kindOf = (key: string): string =>
     `${typeOf(key)}${fixture.ofType(typeOf(key)).includes(key) ? '' : ' (of Salesforce)'}`;
   const expected = [...fixture.pairs].sort(([a], [b]) => a.localeCompare(b));
-  const found = expected.filter(([id]) => reported.has(id));
+  const sure = (id: string): boolean => reported.get(id)?.guessed === false;
+  const found = expected.filter(([id]) => sure(id));
+  const byName = expected.filter(([id]) => reported.get(id)?.guessed === true);
   log.say('');
   log.say(
-    `The answer key holds ${String(expected.length)} pairs of a component and a component it refers to. The Dependency API reports ${String(found.length)} of them.`,
+    `The answer key holds ${String(expected.length)} pairs of a component and a component it refers to. The Dependency API reports ${String(found.length)} of them.` +
+      (byName.length > 0
+        ? ` ${String(byName.length)} more are matched by the name of a field or of a rule alone, because the org gave no object for the id. They are marked "by name" and not counted as reported.`
+        : ''),
   );
   const tally = (group: (pair: { from: string; to: string; via: Set<string>; tiers: Set<string> }) => string[]) => {
     const groups = new Map<string, { inKey: number; reported: number }>();
@@ -476,7 +517,7 @@ async function probeDependencies(
       for (const name of group(pair)) {
         const one = groups.get(name) ?? { inKey: 0, reported: 0 };
         one.inKey += 1;
-        if (reported.has(id)) one.reported += 1;
+        if (sure(id)) one.reported += 1;
         groups.set(name, one);
       }
     }
@@ -503,21 +544,22 @@ async function probeDependencies(
   log.say('');
   log.say('Every pair of the answer key:');
   for (const [id, pair] of expected.slice(0, SHOWN)) {
-    log.say(`- ${reported.has(id) ? 'reported' : 'missing '}  ${id}  (${[...pair.via].sort().join(', ')})`);
+    const state = sure(id) ? 'reported' : reported.has(id) ? 'by name ' : 'missing ';
+    log.say(`- ${state}  ${id}  (${[...pair.via].sort().join(', ')})`);
   }
   if (expected.length > SHOWN) log.say(`- and ${String(expected.length - SHOWN)} more pairs.`);
 
   const extra = [...reported.keys()].filter((id) => !fixture.pairs.has(id)).sort();
   log.say('');
   log.say(`Pairs the Dependency API reports that the answer key does not hold: ${String(extra.length)}.`);
-  for (const id of extra.slice(0, SHOWN)) log.say(`- ${id}`);
+  for (const id of extra.slice(0, SHOWN)) log.say(`- ${id}${sure(id) ? '' : '  (by name)'}`);
   if (extra.length > SHOWN) log.say(`- and ${String(extra.length - SHOWN)} more pairs.`);
 
   const used = fixture.unreferenced.filter((key) => [...reported.values()].some((pair) => pair.to === key));
   log.say(
     `Fields the answer key calls unreferenced: ${String(fixture.unreferenced.length)}. The Dependency API reports a reference to ${String(used.length)} of them${used.length > 0 ? `: ${used.join(', ')}` : ''}.`,
   );
-  return true;
+  return cutOff > 0 || namesFailed > 0 ? 'partly' : 'whole';
 }
 
 /** How many entries the arrays named `references` hold, anywhere in a value. */
@@ -569,7 +611,21 @@ async function probeSymbolTables(
   log.say('');
   log.say('The symbol tables of the compiler (ApexClass.SymbolTable)');
   const started = Date.now();
-  const asked = await ask(log, session, 'SELECT Id, Name, NamespacePrefix, SymbolTable FROM ApexClass', counter);
+  // Only the classes that have a name of the fixture project are asked for: the org holds classes of its own.
+  const select = 'SELECT Id, Name, NamespacePrefix, SymbolTable FROM ApexClass';
+  const named = fixture.classNames.filter((name) => /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name));
+  let asked = await ask(
+    log,
+    session,
+    `${select} WHERE Name IN (${named.map((name) => `'${name}'`).join(', ')})`,
+    counter,
+  );
+  let which = 'Classes with a name of the fixture project';
+  if (asked.failed !== null) {
+    log.say(`The query for the classes by their names failed (${asked.failed}). Every class of the org is asked for.`);
+    asked = await ask(log, session, select, counter);
+    which = 'Classes';
+  }
   if (asked.failed !== null) {
     log.say(`The classes could not be read with their symbol tables (${asked.failed}).`);
     return false;
@@ -580,7 +636,7 @@ async function probeSymbolTables(
   const withTable = (rows: readonly Row[]): number =>
     rows.filter((row) => typeof row['SymbolTable'] === 'object' && row['SymbolTable'] !== null).length;
   log.say(
-    `Classes: ${String(asked.rows.length)} in ${plural(asked.pages, 'page', 'pages')}, after ${((Date.now() - started) / 1000).toFixed(1)} s. With a symbol table: ${String(withTable(asked.rows))}.`,
+    `${which}: ${String(asked.rows.length)} in ${plural(asked.pages, 'page', 'pages')}, after ${((Date.now() - started) / 1000).toFixed(1)} s. With a symbol table: ${String(withTable(asked.rows))}.`,
   );
   log.say(
     `Classes of the fixture project: ${String(fixture.classes.size)}. Found: ${String(ours.length)}. With a symbol table: ${String(withTable(ours))}.`,
@@ -684,11 +740,17 @@ export async function probeOrg(
   const dependencies = await probeDependencies(log, session, fixture, counter);
   const symbols = await probeSymbolTables(log, session, fixture, counter);
   log.say('');
-  log.say(`Requests to the Tooling API: ${String(counter.requests)}.`);
-  if (!dependencies || !symbols) {
+  log.say(
+    `Requests to the Tooling API: ${String(counter.requests)}. A request the library sent again after an error is counted once.`,
+  );
+  if (dependencies === 'none' || !symbols) {
     log.fail([
-      `The org did not answer ${!dependencies && !symbols ? 'either of the two' : !dependencies ? 'the Dependency API' : 'the query for the symbol tables'}. The codes above say why.`,
+      `The org did not answer ${dependencies === 'none' && !symbols ? 'either of the two' : dependencies === 'none' ? 'the Dependency API' : 'the query for the symbol tables'}. The codes above say why.`,
     ]);
+  } else if (dependencies === 'partly') {
+    log.say(
+      '::warning::What the Dependency API gave is not whole: rows are missing, or the names behind the ids could not all be read. The lines above say which. The number of pairs it reports is a lower bound.',
+    );
   }
 }
 

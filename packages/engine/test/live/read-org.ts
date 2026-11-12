@@ -28,6 +28,7 @@ import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { registry } from '@salesforce/source-deploy-retrieve';
 import { workspacePaths } from '../../src/api/layout.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
@@ -155,31 +156,64 @@ const EVERYDAY_WORDS: ReadonlySet<string> = new Set(
     'organization org api version versions object objects field fields record records standard custom value ' +
     'values set sets translation translations translated language languages setting settings feature features ' +
     'license licenses user users profile profiles id ids db database capitalization member members wildcard ' +
-    'manifest zip xml parse parsed parsing resolve resolved could element elements expected unexpected ' +
+    'manifest zip xml parse parsed parsing resolve resolved element elements expected unexpected ' +
     'duplicate empty null undefined defined registry suffix directory path content parent child children'
   ).split(' '),
 );
 
+/** What stands in quotes or in brackets in a message is a name or a value: straight and curly quotes, backticks. */
+const QUOTED = /'[^']*'|"[^"]*"|\u2018[^\u2019]*\u2019|\u201C[^\u201D]*\u201D|`[^`]*`|\[[^\]]*\]/g;
+/** A quote that has no partner. */
+const QUOTE = /['"\u2018\u2019\u201C\u201D`[\]]/;
+/** The end of the name of a file: a dot and an ending. */
+const FILE_END = /\.[A-Za-z0-9]+(?:-meta\.xml)?[.,:;)]*$/;
+/** A path with spaces in it is looked for over this many words at most. */
+const PATH_WORDS = 12;
+
 /**
  * A text that is not ours, in the words of a short list of everyday words and nothing else: every other word,
- * every number and everything in quotes is left out and shown as `…`. `names` are words that are kept as well,
- * such as the names of the metadata types.
+ * every number, everything in quotes or brackets and every path of a file is left out and shown as `…`. `names`
+ * are words that are kept as well where they follow the word "type", such as the names of the metadata types.
  *
- * It says what kind of message it is and holds no name, unless a name is made of such words alone and stands
- * without quotes.
+ * It says what kind of message it is. No word comes out that is not of the list. A name that stands in a message
+ * without quotes and holds words of the list can leave those words behind: "Error" of a layout that is called
+ * "Error Layout".
  */
 export function everydayWords(said: unknown, names: ReadonlySet<string> = new Set()): string {
-  const kept: string[] = [];
-  const words = text(said)
-    .replace(/'[^']*'|"[^"]*"/g, ' \u0000 ')
+  // The apostrophe of "can't" is no quote: the word is left out as a whole.
+  let plain = text(said)
+    .replace(/(?<=[A-Za-z])['\u2019](?=[A-Za-z])/g, '\u0001')
+    .replace(QUOTED, ' \u0000 ');
+  // A quote without a partner: what follows may be a name, so the text ends there.
+  const open = plain.search(QUOTE);
+  if (open !== -1) plain = `${plain.slice(0, open)} \u0000`;
+  const words = plain
     .split(/\s+/)
     .filter((word) => word !== '')
     .slice(0, 60);
-  for (const word of words) {
-    const [, open = '', core = '', close = ''] = /^(\(?)(.*?)([.,:;)]*)$/.exec(word) ?? [];
-    const known = /^[A-Za-z]+$/.test(core) && (EVERYDAY_WORDS.has(core.toLowerCase()) || names.has(core));
-    if (known) kept.push(`${open}${core}${close}`);
-    else if (kept.at(-1) !== '…') kept.push('…');
+  const kept: string[] = [];
+  const leaveOut = (): void => {
+    if (kept.at(-1) !== '…') kept.push('…');
+  };
+  let afterType = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] ?? '';
+    if (/[/\\]/.test(word) && !FILE_END.test(word)) {
+      // A path whose folders or file have spaces in their names goes on to the word with the ending of the file.
+      const end = words.slice(index + 1, index + 1 + PATH_WORDS).findIndex((later) => FILE_END.test(later));
+      if (end !== -1) index += end + 1;
+      leaveOut();
+      afterType = false;
+      continue;
+    }
+    const [, opening = '', core = '', closing = ''] = /^(\(?)(.*?)([.,:;)]*)$/.exec(word) ?? [];
+    const letters = /^[A-Za-z]+$/.test(core);
+    if (letters && (EVERYDAY_WORDS.has(core.toLowerCase()) || (afterType && names.has(core)))) {
+      kept.push(`${opening}${core}${closing}`);
+    } else {
+      leaveOut();
+    }
+    afterType = letters && core.toLowerCase() === 'type';
   }
   return kept.join(' ');
 }
@@ -215,6 +249,57 @@ export function nameForm(name: string): string {
     )
     .join('unfiled$public');
   return form.length > 40 ? `${form.slice(0, 40)}…` : form;
+}
+
+/** The words of the source format, which are the same in every org: its folders, the endings of its files, its types. */
+let format: { folders: Set<string>; endings: Set<string>; types: Set<string> } | undefined;
+function sourceFormat(): { folders: Set<string>; endings: Set<string>; types: Set<string> } {
+  if (format !== undefined) return format;
+  interface Type {
+    readonly name?: string;
+    readonly directoryName?: string;
+    readonly suffix?: string;
+    readonly children?: { readonly types?: Readonly<Record<string, Type>> };
+  }
+  const found = {
+    folders: new Set<string>(),
+    // Endings a file has whatever it is about.
+    endings: new Set('xml txt json js css html htm png jpg jpeg gif svg ico pdf zip csv md'.split(' ')),
+    types: new Set<string>(),
+  };
+  const add = (type: Type): void => {
+    if (type.name !== undefined) found.types.add(type.name);
+    if (type.directoryName !== undefined) found.folders.add(type.directoryName);
+    if (type.suffix !== undefined) found.endings.add(type.suffix);
+    for (const child of Object.values(type.children?.types ?? {})) add(child);
+  };
+  for (const type of Object.values(registry.types as Readonly<Record<string, Type>>)) add(type);
+  for (const ending of Object.keys(registry.suffixes)) found.endings.add(ending);
+  format = found;
+  return found;
+}
+
+/**
+ * The place of something that could not be read as metadata, without a name of the org. The place is a path in
+ * what the org handed out, or a type and the name of a component. Of a path, the first folder and the ending of
+ * the file are shown if they are words of the source format, which the org cannot choose. Of a component, the
+ * type and the form of the name.
+ */
+export function placeForm(log: PublicLog, at: string): string {
+  const known = sourceFormat();
+  const component = /^([A-Za-z][A-Za-z0-9]*) (.+)$/.exec(at);
+  if (component !== null) {
+    const type = component[1] ?? '';
+    return `a component of the type ${known.types.has(type) ? (log.name(type) ?? '(not shown)') : '(not shown)'}, with a name of the form ${nameForm(component[2] ?? '')}`;
+  }
+  const parts = at.split('/');
+  const folder = parts[0] ?? '';
+  const [, ending = '', meta = ''] = /\.([A-Za-z0-9]+)(-meta\.xml)?$/.exec(parts.at(-1) ?? '') ?? [];
+  return (
+    `in ${parts.length > 1 && known.folders.has(folder) ? (log.name(folder) ?? '(a folder that is not shown)') : '(a folder that is not shown)'}, ` +
+    `${String(parts.length - 1)} ${parts.length === 2 ? 'level' : 'levels'} deep, ` +
+    `a name that ends in ${known.endings.has(ending) ? `.${ending}${meta}` : '(an ending that is not shown)'}`
+  );
 }
 
 /** A name without what an org is known to write in two ways: case, encoded characters, the prefix of a package. */
@@ -499,13 +584,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
       }
     }
     if (code === 'RESOLVE_FAILED') {
-      // The place is a path in the org. Its folder and the ending of the file are of the source format.
-      const at = text(details['at']).split('/');
-      const ending = /\.([A-Za-z]+(?:-meta\.xml)?)$/.exec(at.at(-1) ?? '')?.[1];
-      const place =
-        `in ${log.name(at[0]) ?? '(a folder that is not shown)'}, ${String(at.length - 1)} ${at.length === 2 ? 'level' : 'levels'} deep, ` +
-        `a name that ends in ${ending === undefined ? '(not shown)' : `.${ending}`}. In everyday words: ` +
-        everydayWords(text(issue['message']).split(' could not be read as metadata: ')[1] ?? '', typeNames);
+      const place = `${placeForm(log, text(details['at']))}. In everyday words: ${everydayWords(text(issue['message']).split(' could not be read as metadata: ')[1] ?? '', typeNames)}`;
       unread.set(place, (unread.get(place) ?? 0) + 1);
     }
   }
