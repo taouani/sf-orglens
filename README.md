@@ -12,7 +12,8 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
   What does this pull request affect? Who gains or loses access?
 - **Deterministic answers.** Every result comes from the graph, with the path that explains it and a confidence
   tier. A language model is optional and only explains results.
-- **Local-first.** Metadata and code stay on your machine. There is no server. OrgLens stores no credentials.
+- **Local-first.** Metadata and code stay on your machine. There is no server. OrgLens keeps no
+  credentials of its own: it uses the Salesforce CLI login you already have.
 - **Orgs and repositories alike.** A live org, a sandbox and a repository branch are read by the same parsers, so
   any two of them can be compared.
 - **Honest about gaps.** Every snapshot reports what was covered and what was not.
@@ -39,6 +40,7 @@ docs/plans        The re-architecture plan and one plan per phase.
 docs/research     Research notes behind the plans.
 docs/adr          Decision records.
 scripts           Repository checks used by CI.
+tools             The ESLint rule that enforces the layer rules.
 ```
 
 ## Developing

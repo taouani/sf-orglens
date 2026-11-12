@@ -16,9 +16,16 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const windows = process.platform === 'win32';
 
+/** Quotes one argument for cmd.exe. Paths with spaces would otherwise be split. */
+const quote = (text) => (/[\s"&|<>^()]/.test(text) ? `"${text.replaceAll('"', '\\"')}"` : text);
+
 function run(command, args, cwd) {
-  // npm and pnpm are .cmd shims on Windows, which need a shell to start.
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: windows });
+  // npm and pnpm are .cmd shims on Windows and need a shell to start. A shell joins its arguments
+  // without quoting, so they are quoted here. Node.js itself is started directly, without a shell.
+  const viaShell = windows && command !== process.execPath;
+  const result = viaShell
+    ? spawnSync([command, ...args].map(quote).join(' '), { cwd, encoding: 'utf8', shell: true })
+    : spawnSync(command, args, { cwd, encoding: 'utf8' });
   if (result.status !== 0) {
     console.error(`$ ${command} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
     throw new Error(`${command} exited with code ${String(result.status)}`);
@@ -51,10 +58,28 @@ try {
   writeFileSync(join(app, 'package.json'), '{ "name": "orglens-pack-smoke", "private": true }\n');
   run('npm', ['install', '--no-audit', '--no-fund', ...packed.map((name) => join(tarballs, name))], app);
 
-  // No TypeScript source and no build cache may be shipped.
+  // Each package ships its licence, notice and readme, and no TypeScript source or build cache.
+  const rootNotice = readFileSync(join(root, 'NOTICE'), 'utf8');
+  const rootLicense = readFileSync(join(root, 'LICENSE'), 'utf8');
   for (const name of ['@sf-orglens/engine', 'sf-orglens']) {
     const installed = join(app, 'node_modules', name);
     const shipped = readdirSync(installed, { recursive: true }).map(String);
+    for (const required of ['LICENSE', 'NOTICE', 'README.md', 'package.json']) {
+      if (!shipped.includes(required)) fail(`${name} does not ship ${required}`);
+    }
+    if (shipped.includes('NOTICE') && readFileSync(join(installed, 'NOTICE'), 'utf8') !== rootNotice) {
+      fail(`${name} ships a NOTICE that differs from the one at the repository root`);
+    }
+    if (shipped.includes('LICENSE') && readFileSync(join(installed, 'LICENSE'), 'utf8') !== rootLicense) {
+      fail(`${name} ships a LICENSE that differs from the one at the repository root`);
+    }
+    // Source maps must carry their sources, because the TypeScript files are not shipped.
+    for (const map of shipped.filter((file) => file.endsWith('.js.map'))) {
+      if (!('sourcesContent' in JSON.parse(readFileSync(join(installed, map), 'utf8')))) {
+        fail(`${name}: ${map} points at sources that are not in the package`);
+      }
+    }
+    if (shipped.some((file) => file.endsWith('.d.ts.map'))) fail(`${name} ships declaration maps without sources`);
     const unwanted = shipped.filter(
       (file) => (file.endsWith('.ts') && !file.endsWith('.d.ts')) || file.endsWith('.tsbuildinfo'),
     );

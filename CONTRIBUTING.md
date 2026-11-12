@@ -11,7 +11,8 @@ before starting on a larger change, so that it does not collide with work alread
 2. **No customer data, ever.** Do not add metadata, recorded API responses, org identifiers, host names or user
    names taken from a real org. Test data is written for the purpose or comes from public repositories with a
    compatible licence, pinned by commit.
-3. **No credentials.** OrgLens stores no credentials, and none may appear in code, tests, fixtures, logs or issues.
+3. **No credentials.** OrgLens keeps no credential store of its own, and no credential may appear in code, tests,
+   fixtures, logs or issues.
 4. **Results must be explainable.** Every reference the engine reports carries where it came from and how certain
    it is. A change that produces results without provenance will not be merged.
 
@@ -27,24 +28,28 @@ pnpm run check
 
 `pnpm run check` runs everything CI runs except the package smoke test:
 
-| Script                                       | What it checks                                                       |
-| -------------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm run build`                             | TypeScript compiles with the strict settings in `tsconfig.base.json` |
-| `pnpm run typecheck:tests`                   | The test files type-check against the source                         |
-| `pnpm run lint`                              | ESLint with type-aware rules and the import restrictions             |
-| `pnpm run format`                            | Prettier formatting (`pnpm run format:write` fixes it)               |
-| `pnpm run depcruise`                         | Layer rules and circular imports                                     |
-| `pnpm run knip`                              | Unused files, exports and dependencies                               |
-| `pnpm run check:boundaries`                  | Breaks each layer rule on purpose and checks that the tools catch it |
-| `pnpm run coverage`                          | Tests with coverage thresholds                                       |
-| `pnpm run publint` and `pnpm run smoke:pack` | The packages install and run outside the workspace                   |
+| Script                                       | What it checks                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `pnpm run build`                             | TypeScript compiles with the strict settings in `tsconfig.base.json`                 |
+| `pnpm run typecheck:tests`                   | The test files type-check against the source                                         |
+| `pnpm run lint`                              | ESLint with type-aware rules and the import restrictions                             |
+| `pnpm run format`                            | Prettier formatting (`pnpm run format:write` fixes it)                               |
+| `pnpm run depcruise`                         | Layer rules and circular imports                                                     |
+| `pnpm run knip`                              | Unused files, exports and dependencies                                               |
+| `pnpm run check:boundaries`                  | Writes probe files that break the layer rules and checks that each tool rejects them |
+| `pnpm run coverage`                          | Tests with coverage thresholds                                                       |
+| `pnpm run publint` and `pnpm run smoke:pack` | The packages install and run outside the workspace                                   |
 
 ## Architecture rules
 
 The engine has six layers in a fixed order: `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer
 may import from earlier layers only. Clients such as the CLI use only the public entry point of the engine
-package. Only the `sources` layer may import the Salesforce libraries. These rules are defined once in
-`layers.cjs` and enforced by the package `exports` map, ESLint and dependency-cruiser.
+package. Only the `sources` layer may import the Salesforce libraries.
+
+The rules are defined once in `layers.cjs` and enforced twice: by an ESLint rule that resolves every import
+(`tools/eslint-plugin-orglens.js`) and by dependency-cruiser on the resolved dependency graph. The boundary
+between a client and the engine is guarded a third time by the `exports` map of the engine package, which the
+compiler and Node.js both honour. `pnpm run check:boundaries` fails if a rule has no probe.
 
 A decision that changes the architecture, the data model, the storage format or a public contract needs a decision
 record in [`docs/adr/`](docs/adr/).
@@ -76,7 +81,7 @@ git commit -s -m "Describe the change"
 ```
 
 This adds a line such as `Signed-off-by: Your Name <you@example.com>` to the commit message. The name and
-address must be yours.
+address must be yours. Sign-off is checked by the reviewer for now. There is no automated check yet.
 
 ## Reporting security problems
 

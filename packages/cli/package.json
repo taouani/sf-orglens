@@ -17,8 +17,13 @@
   },
   "files": [
     "dist",
-    "!dist/.tsbuildinfo"
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.d.ts.map",
+    "NOTICE"
   ],
+  "scripts": {
+    "prepack": "tsc -b"
+  },
   "engines": {
     "node": ">=24.15.0"
   },

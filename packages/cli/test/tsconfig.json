@@ -8,6 +8,7 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
+    "inlineSources": false,
     "customConditions": ["@sf-orglens/source"]
   },
   "include": [".", "../src"]

@@ -32,7 +32,5 @@ jobs:
         run: pnpm run publint
       - name: Pack, install into an empty folder, run the binary
         run: pnpm run smoke:pack
-      - name: Pending changesets
-        run: pnpm exec changeset status
       - name: Publish (dry run)
         run: pnpm -r --filter "./packages/*" publish --dry-run --no-git-checks --access public

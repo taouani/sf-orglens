@@ -53,9 +53,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
 - A layer imports only from layers above it in this list. The list is defined once, in `layers.cjs`.
 - `packages/engine/src/index.ts` re-exports `api/` and nothing else. Clients never reach into the engine.
 - Only `sources/` may import `@salesforce/*`.
-- The rules are enforced by the package `exports` map, ESLint (`no-restricted-imports`) and dependency-cruiser.
-  `pnpm run check:boundaries` breaks each rule on purpose and checks that the tools catch it. When a rule is
-  added or changed, add a case there.
+- The rules are enforced twice: by the ESLint rule `orglens/layers` (`tools/eslint-plugin-orglens.js`, which
+  resolves every static import, `import()`, type import and `require`) and by dependency-cruiser. The boundary
+  between a client and the engine is guarded a third time by the `exports` map of the engine package.
+- `pnpm run check:boundaries` writes probe files that break the rules, plus control probes with allowed imports,
+  and checks each tool's verdict. It fails when a rule has no probe. When a rule is added or changed, add a probe.
+- `packages/engine/src` contains only the six layer folders and `index.ts`.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

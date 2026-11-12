@@ -21,6 +21,9 @@ if (!supported) {
 } else {
   import('./main.ts')
     .then((cli) => cli.main(process.argv))
+    .then((exitCode) => {
+      process.exitCode = exitCode;
+    })
     .catch((error: unknown) => {
       process.stderr.write(`orglens: ${error instanceof Error ? error.message : String(error)}\n`);
       process.exitCode = 1;

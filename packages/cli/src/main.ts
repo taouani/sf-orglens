@@ -1,6 +1,9 @@
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 import { engineVersion } from '@sf-orglens/engine';
 import { cliVersion } from './version.ts';
+
+/** Exit code for a command line that cannot be understood: unknown option, unknown command, bad argument. */
+export const EXIT_USAGE = 2;
 
 /** The one-line answer to `orglens --version`. */
 export function versionLine(): string {
@@ -30,6 +33,21 @@ export function buildProgram(): Command {
     });
 }
 
-export async function main(argv: readonly string[]): Promise<void> {
-  await buildProgram().parseAsync([...argv]);
+/**
+ * Runs the CLI and returns the process exit code.
+ *
+ * Help and version are successes. Anything else the argument parser rejects
+ * is a usage error, which has its own exit code so that scripts can tell it
+ * from a failure of the tool. The parser has already printed its message.
+ */
+export async function main(argv: readonly string[]): Promise<number> {
+  try {
+    await buildProgram()
+      .exitOverride()
+      .parseAsync([...argv]);
+    return 0;
+  } catch (error) {
+    if (error instanceof CommanderError) return error.exitCode === 0 ? 0 : EXIT_USAGE;
+    throw error;
+  }
 }

@@ -21,7 +21,8 @@ privately and published together, and you are credited unless you prefer otherwi
 OrgLens reads Salesforce metadata and source code and keeps the result on the user's machine. These are treated as
 security problems:
 
-- OrgLens stores, logs or transmits a credential, an access token or a session id.
+- OrgLens writes a credential, an access token or a session id to its own files or logs, or sends one anywhere
+  other than to Salesforce.
 - OrgLens sends metadata, source code or results anywhere without the user asking for it.
 - OrgLens reads record data from an org. It is designed to read metadata only.
 - Crafted metadata or a crafted repository makes OrgLens execute code, write outside its workspace folder, or read
@@ -30,7 +31,8 @@ security problems:
 
 ## Design commitments
 
-- No credentials are stored by OrgLens. Login is delegated to the Salesforce CLI login on the machine, or to
-  environment variables in CI.
+- OrgLens keeps no credential store of its own. Login is delegated to the Salesforce CLI login on the machine, or
+  to environment variables in CI. The Salesforce library that OrgLens uses may refresh an expired token in the
+  Salesforce CLI's own login files, exactly as the Salesforce CLI does. OrgLens writes no other credential file.
 - No telemetry.
 - The optional language-model features are off by default and say what they send before they send it.
