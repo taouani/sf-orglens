@@ -5,7 +5,8 @@ project. This page is the checklist for the maintainer who owns that org. It tak
 
 At the end, four secrets exist in a protected environment of the GitHub repository. Only the workflow `live-org.yml`
 reads them: when a maintainer starts it by hand, and once a week by itself, to log in and do nothing else. Nobody
-else, and no tool, ever holds the key.
+else, and no tool, ever holds the key. The section "What the workflow does in the org" says what a run that is
+started by hand can do beyond logging in.
 
 These steps follow the Salesforce documentation as of November 2026. They were written without access to an org, so
 a label on the screen may differ. If one does, note it and correct this page.
@@ -130,6 +131,43 @@ If you have the Salesforce CLI, you can check the login on your own machine befo
 sf org login jwt --client-id <consumer key> --jwt-key-file orglens-ci.key --username <user name> --instance-url <login URL>
 ```
 
+## What the workflow does in the org
+
+A run that is started by hand asks what it should do after the login (**Run workflow**, field "What the run does
+after it has logged in"). The weekly run always logs in only.
+
+| Choice          | What the run does                                                                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| login only      | Logs in. This is the default.                                                                                                                                                                              |
+| deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run. Nothing else is ever deployed. |
+| read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot is written to a temporary folder of the runner and deleted when the step ends.  |
+| deploy and read | Both, in this order.                                                                                                                                                                                       |
+
+The deploy is the one thing in this repository that changes an org. It is a tool of the tests
+(`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
+two custom objects, custom fields and validation rules on them and on the standard object Account, twelve Apex
+classes and one trigger. It removes nothing. To take the fixture project out of the org again, delete those
+components in Setup, or start over with a new org.
+
+What the two steps print follows the same rule as the login step, with a wider list of what a sentence may hold
+(`packages/engine/test/live/public-log.ts`):
+
+- numbers, and codes of OrgLens, of Salesforce and of the network,
+- names of metadata types (`CustomField`), of the elements of a metadata file (`trackHistory`) and of the folders
+  of the source format (`classes`). They are the vocabulary of the Metadata API and the same in every org.
+- names and paths of the fixture project, which this repository holds anyway,
+- a problem Salesforce reports for a component of a deploy, if the whole text has one of the forms listed in
+  `deploy-fixture.ts`. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of
+  the org.
+
+A step never prints the name of a component that is not of the fixture project, a message of Salesforce or of a
+library in another form, the address or the id of the org, or the user name. On top of the forms, a line that
+holds a word of the settings of the login is replaced as a whole. Everything a library writes to the output of
+the step is dropped. No file of the org is uploaded or kept.
+
+The steps were tested against a mock org only before their first run. What the first runs showed is in
+`docs/research/phase-0/real-org.md`, once that report is written.
+
 ## Keeping the org alive
 
 Salesforce may deactivate a Developer Edition org that nobody logs in to for a long time. The workflow therefore
@@ -154,7 +192,7 @@ What follows is how GitHub documents schedules, as far as this project knows it.
   `live-org.yml` has to follow, or the weekly run shows as skipped and logs in to nothing.
 
 If the org is lost anyway, sign up for a new one and repeat this page. The fixture project is deployed again by
-the same workflow, once that part of it is built.
+the same workflow: start it with the choice "deploy".
 
 ## If the key may have leaked
 

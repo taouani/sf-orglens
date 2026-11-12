@@ -375,6 +375,24 @@ that worked. Everything else in the list below is not built.
   from the documentation of Salesforce and from memory. The step has not run against Salesforce before the
   maintainer starts it for the first time.
 
+Status after the second pull request of this work package (2026-11-12). The workflow can now do the first three
+items of the list below: a run that is started by hand can deploy the fixture project and read the org.
+
+- The two steps are tools of the tests of the engine (`packages/engine/test/live`), written in TypeScript and run
+  from source by Node.js. They call the engine in the process of the step, so "the first real `orglens snapshot`"
+  is a snapshot taken through the API of the engine, which is what the command does, and not a run of the binary.
+- The rule for the public log was widened and is written down in `public-log.ts`, `docs/live-org-setup.md` and
+  `CLAUDE.md`: a step may print names of metadata types, of elements and of the fixture project. Without them a
+  real run could say nothing about types and files. It still prints no name of another component and no message
+  of Salesforce outside a list of known forms.
+- The deploy does not go through the request code of the engine (record 0032) but through the Salesforce
+  library, which has no time limit for a whole answer. The step has a time limit in the workflow.
+- The maintainer decided on 2026-11-12 that the automated author of this project starts the runs itself. The
+  secrets stay in GitHub.
+- Not built yet: the two probes (items 4 and 5) and the report. Item 6 is for the maintainer to choose.
+- Nothing of this has met Salesforce when the pull request is merged. The runs follow it, because the secrets
+  are handed only to a run from `main`.
+
 Run and record in `docs/research/phase-0/real-org.md`:
 
 1. Deploy fixture v0 to the Developer Edition org with a script kept in the repository.
@@ -432,7 +450,8 @@ About ten pull requests, in this order. Each is small enough to review in one si
 | 7b  | Logins: `source link`, `source check`, logins in `doctor`              | WP7          |
 | 7c  | Reading an org: inventory, chunk planner, retrieve, org snapshot       | WP7          |
 | 8a  | Live-org workflow with its login step, ahead of 7c                     | WP8          |
-| 8   | Rest of the live-org workflow, real-org report, cross-check probes     | WP8          |
+| 8b  | Live-org workflow: deploy of the fixture project, first real snapshot  | WP8          |
+| 8c  | Cross-check probes, real-org report                                    | WP8          |
 | 9   | Apex trial code, results, decision record 0018                         | WP9          |
 | 10  | Phase close: updated plan, test plan, phase report                     | WP10         |
 
