@@ -18,7 +18,9 @@ There are two core records.
   type and a name.
 - **Reference.** A directed link between two components with a kind from a fixed vocabulary (`contains`, `reads`,
   `writes`, `calls`, `extends`, `implements`, `uses-type`, `triggers-on`, `grants`, `references`), an origin, a
-  confidence tier, a resolution and a source location (file, line and column).
+  confidence tier, a resolution and a source location (file, line and column). A reference found by one of our own
+  parsers always has the location. One reported by Salesforce (the SymbolTable or the Dependency API) carries what
+  Salesforce gives, which can be no position at all.
 
 A component key is the metadata type plus the fully qualified API name including namespace, with an optional path to
 a sub-component: `Type:name[#kind:sub[/kind:sub]]`. Examples: `CustomField:account.industry`,

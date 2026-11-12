@@ -1,3 +1,6 @@
 [
-  "engineVersion"
+  "ERROR_CODES",
+  "EngineError",
+  "engineVersion",
+  "isEngineError"
 ]
