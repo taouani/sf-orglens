@@ -113,16 +113,17 @@ The org is read through the Metadata API, with the login described [below](#logi
    standard objects and components of installed packages without a word. The components are retrieved in chunks
    of about 3,000 files, one chunk after the other. The files of a chunk are stored as soon as they arrive. A
    chunk that Salesforce fails, which is how it says that a chunk is too large, is tried again in two halves, down
-   to the one component that cannot be handed out.
+   to the one component that cannot be handed out. The same is done when Salesforce refuses three times to start
+   the retrieve of a chunk, or hands out something that is not a zip file.
 3. **The count.** What came back is counted against the inventory, type by type.
 
 The files are stored in the form a repository holds them in (an object with one file per field), under the paths
 they have below a package directory, such as `classes/Foo.cls`.
 
 - The snapshot is partial for: a type whose components the org refused to list (`LISTING_FAILED`), a retrieve
-  that Salesforce failed for a single component (`RETRIEVE_FAILED`), a component the org listed that did not come
-  back (`NOT_RETRIEVED`), a file that came back and cannot be read as metadata (`RESOLVE_FAILED`). The other types
-  and components are in the snapshot.
+  that failed for a single component, or a chunk whose retrieve was started three times and gave no result
+  (`RETRIEVE_FAILED`), a component the org listed that did not come back (`NOT_RETRIEVED`), a file that came back
+  and cannot be read as metadata (`RESOLVE_FAILED`). The other types and components are in the snapshot.
 - Warnings: a type Salesforce describes and never lists, which today is `StandardValueSet` (`TYPE_NOT_READ`), what
   Salesforce remarked about a retrieve (`RETRIEVE_MESSAGES`), files of a retrieve that belong to no component
   (`FILES_NOT_METADATA`), and a file that came back in two retrieves (`FILE_RETRIEVED_TWICE`).
@@ -131,8 +132,8 @@ they have below a package directory, such as `classes/Foo.cls`.
   part of the access settings. The snapshot says so with the warning `ACCESS_INCOMPLETE` and a note on both
   types. Reading access completely is not built yet.
 - Notes: a chunk that was split (`CHUNK_SPLIT`), components that came back although the org had not listed them,
-  such as a standard object that came with its custom fields (`UNLISTED_COMPONENTS`), a snapshot that was
-  continued (`SNAPSHOT_RESUMED`) or given up (`SNAPSHOT_GIVEN_UP`).
+  such as an object that came for the sake of its fields (`UNLISTED_COMPONENTS`), a snapshot that was continued
+  (`SNAPSHOT_RESUMED`) or given up (`SNAPSHOT_GIVEN_UP`).
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
@@ -142,20 +143,29 @@ they have below a package directory, such as `classes/Foo.cls`.
 - `--restart` gives the unfinished snapshot up and takes a new one. The snapshot that was given up keeps its
   number and gets the status `failed`. An unfinished snapshot that another version of OrgLens began is given up in
   the same way, without the option.
-- One snapshot of a source is taken at a time. A second command for the same source ends with `SNAPSHOT_RUNNING`.
-  The lock is the file `.orglens/snapshot-<source>.lock`, which holds the id of the process. A lock whose process
-  no longer exists is taken over.
+- One snapshot of a source is taken at a time. A second command for the same source ends with `SNAPSHOT_RUNNING`
+  and changes nothing. The lock is the file `.orglens/snapshot-<source>.lock`, which holds the id of the process.
+  A lock whose process no longer exists is taken over.
 - The name of a source stands for one org. The first snapshot ties the name to the org that answered, also when
   the source declares no `org_id`. A later login that reaches another org is refused with `ORG_MISMATCH`.
 - A snapshot is read with one API version from start to end: the newest the org offers when the snapshot is
   begun. `snapshot.apiVersion` says which.
-- Every request gives up when no answer starts within 60 seconds, or 10 minutes for the request that fetches the
-  files of a chunk, and is made again twice. No request follows a redirect. A retrieve that Salesforce does not
-  end within 30 minutes stops the command, and the next run asks for the same retrieve again.
+- Every request to the Metadata API gives up when its answer is not complete within 60 seconds, or 10 minutes for
+  the request that fetches the files of a chunk. A request that got no answer, or whose answer broke off, is made
+  again twice. No request to the Metadata API follows a redirect. A retrieve that Salesforce does not end within
+  30 minutes stops the command, and the next run asks for the same retrieve again. If it does not end then
+  either, it is started anew. A chunk is started three times in all before it is given up.
+- Only metadata is read. OrgLens makes no request for a record. One thing is not in its hands: when the session
+  of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it and asks the org
+  about the org itself (decision record 0031 names the requests).
 - What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
-  `SESSION_EXPIRED` or `ORG_UNREACHABLE`, and `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org
-  said no to a request, and `details.code` is its code), `RETRIEVE_TOO_SLOW`, or `RETRIEVES_FAILING` (Salesforce
-  failed 20 retrieves in a row). `details.snapshot` is the number of the unfinished snapshot.
+  `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
+  `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
+  asked for, such as a used-up limit of requests, and `details.code` is its code), `RETRIEVE_TOO_SLOW`, or
+  `RETRIEVES_FAILING` (20 retrieves in a row failed). `details.snapshot` is the number of the unfinished
+  snapshot.
+- While the org is asked what it holds, the same refusal ends the command before a snapshot is stored. So does an
+  org that refuses more than half of its listings.
 - A login that fails before anything was read ends with `LOGIN_FAILED` or `ORG_MISMATCH` and stores nothing.
 - The user of the login needs a permission for the Metadata API. Without it the org refuses the first request,
   and the command ends with `SOURCE_READ_FAILED` (`REQUEST_REFUSED`).

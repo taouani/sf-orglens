@@ -35,11 +35,19 @@ use themselves (`@jsforce/jsforce-node`), on the connection the login produced. 
 library is not used. The library is used for one thing only: to convert the files of a retrieve into the form a
 repository holds.
 
-- Every request has a time limit: 60 seconds, and 10 minutes for the request that fetches the files of a retrieve.
-  A request that gets no answer is made again twice.
-- No request follows a redirect. An answer that points elsewhere is a failure. The session is sent to the address
-  that issued it and to no other.
-- Nothing here can read a record: the Metadata API has no request that could.
+- Every request has a time limit for the whole answer, from sending it to its last byte: 60 seconds, and 10
+  minutes for the request that fetches the files of a retrieve. A request that gets no answer, or whose answer
+  breaks off, is made again twice. So is one that a gateway before the org answers (HTTP 420, 429 or 5xx without
+  a fault of the API, or the fault `SERVER_UNAVAILABLE`).
+- No request to the Metadata API follows a redirect. An answer that points elsewhere is a failure. The session is
+  sent to the address that issued it and to no other.
+- The requests are sent by OrgLens with the HTTP client the library uses (`undici`), not the way the SOAP client
+  would send them. The client's own way limits only the time until an answer starts, follows redirects, and ends
+  the process when a connection breaks in the middle of an answer. The connections go through the proxy the
+  Salesforce libraries would use, and are closed when the snapshot ends.
+- Nothing here can read a record: the Metadata API has no request that could. One thing is outside these four
+  requests: when the session of a Salesforce CLI login expires during a snapshot, the Salesforce library renews
+  it and asks the org about the org itself, with the requests [0031](0031-logins-and-the-home-folder.md) names.
 
 **The inventory comes first, and the snapshot is measured against it.** Every type the org describes is listed, one
 type per request and six requests at a time. Parts of a component, such as the fields of an object, are listed as
@@ -48,11 +56,19 @@ list is recorded as failed, with what the org said, and is never taken for a typ
 Salesforce describes and never lists (`StandardValueSet`) is recorded as not listed. The type of the folders of a
 type, such as `ReportFolder`, is treated as that also if the org describes it as a type of its own.
 
+A refusal that holds for the whole org is not the failure of a type: the inventory fails, and no snapshot is
+stored. These are a used-up limit of requests (`REQUEST_LIMIT_EXCEEDED`), an API that is closed to the org or the
+user, an org that is locked or in maintenance, and a redirect. The same holds when the org refuses more than half
+of at least ten listings, whatever codes it gives: then the refusals are not about the types.
+
 **Every component is retrieved by its name, in chunks.** No wildcard is used. A part is not asked for: it comes
-with its parent. If the org lists a part and not its parent, which is the case for a custom field of a standard
-object, the parent is asked for. A chunk is filled to a weight of 3,000, where a component weighs the number of
-files it is estimated to have. A chunk that Salesforce fails is split in two and tried again, down to one
-component. That component is then recorded as not handed out.
+with its parent. If the org lists a part and not its parent, the parent is asked for. The mock org does that for
+a custom field of a standard object. Salesforce is said to list standard objects among the custom objects, which
+is not verified. A chunk is filled to a weight of 3,000, where a component weighs the number of files it is
+estimated to have. A chunk that fails is split in two and tried again, down to one component. That component is
+then recorded as not handed out (`RETRIEVE_FAILED`). A chunk fails when Salesforce fails its job, when Salesforce
+refuses to start its retrieve three times with a pause in between, or when what comes back is not a zip file that
+can be read.
 
 **What an org is stored as does not depend on where the command runs.** The Salesforce library lets a project
 change the form files are written in, with settings in its `sfdx-project.json` (`sourceBehaviorOptions`,
@@ -88,13 +104,28 @@ has at most one snapshot that is `running`, which an index of the database enfor
   refuses, a component Salesforce does not hand out, a component the org listed that did not come back, a file
   that cannot be read as metadata.
 - What says that going on is pointless stops the command and leaves the snapshot to be continued: an org that
-  does not answer, a session that is not accepted and cannot be renewed, a request the org refuses outside a
-  listing, a retrieve that does not end within 30 minutes, 20 failed retrieves in a row.
-- A job that Salesforce no longer knows is started again, up to three times for a chunk.
+  does not answer, a session that is not accepted and cannot be renewed, a refusal that holds for the whole org,
+  a retrieve of this run that does not end within 30 minutes, 20 failed retrieves in a row, a work folder that
+  cannot be written.
+- A job that gives no result is started again: one that Salesforce no longer knows or refuses to say anything
+  about, one that succeeded without a zip file, and one that did not end in the run that started it and does not
+  end within 30 minutes of the next run either. A chunk is started three times in all. After that all its
+  components are recorded as not handed out, in one issue `RETRIEVE_FAILED`, and the snapshot goes on.
+
+No failure that repeats itself keeps a snapshot from ending: every one of them ends, after a bounded number of
+tries, in a chunk that is split or given up, or in the snapshot being stopped with the journal moved forward.
 
 **One process takes a snapshot of a source at a time.** The lock is a file in the data folder that holds the id of
 the process. It is looked at and written inside a write transaction of the database, so two processes that find
-the lock of a dead process cannot both take it. A lock whose process no longer exists is taken over.
+the lock of a dead process cannot both take it. A lock whose process no longer exists is taken over. A process
+removes the lock at its end only if the file still holds its own id. The work folder below `.orglens/tmp` belongs
+to the process that holds the lock: a command that is refused the lock does not touch it.
+
+The lock relies on the process id, which has limits that are accepted. If the process of a stale lock has ended
+and its id was given to another program, the lock is taken for held until the file is deleted by hand, as the
+hint of `SNAPSHOT_RUNNING` says. Two containers that share one workspace folder do not see each other's
+processes and can both take the lock. Two real processes that race for the lock are not tested: the test holds a
+write transaction on a second connection and checks that the lock is not touched.
 
 **The name of a source stands for one org.** The first snapshot stores the id of the org that answered with the
 source, and a later snapshot is refused with `ORG_MISMATCH` if another org answers. This holds also for a source
@@ -117,7 +148,7 @@ snapshot beside it.
 | A Git LFS pointer file is stored as the content of the file.      | Unchanged, and now a known limitation.                                                                                                                                               |
 | A guard that no session of a login with a key is stored.          | The paths of the library that save a login are not used. A test takes a snapshot with a key and compares the home folder with the two files without secrets that 0031 names.         |
 | Time limits for requests the library makes itself.                | Every request of a snapshot is made by OrgLens, with the limits above. The renewal of a Salesforce CLI session is still the library's own, as 0031 describes.                        |
-| The HTTP client follows a redirect and sends the session along.   | No request of a snapshot follows a redirect.                                                                                                                                         |
+| The HTTP client follows a redirect and sends the session along.   | No request to the Metadata API follows a redirect. The renewal of a session is the library's own, as above.                                                                          |
 
 ## Consequences
 
@@ -127,14 +158,15 @@ snapshot beside it.
   ([0014](0014-access-impact.md)) needs these files complete, so how they are read is a decision that has to be
   made before that work, and before an org and a repository are compared on these two types.
 - The acceptance criterion "a snapshot of the fixture folder and a snapshot of an org with the same content hold
-  the same files" is met against the mock org with one known difference: the org also hands out the standard
+  the same files" is met against the mock org with one known difference: the mock org also hands out the standard
   object `Account` as a file, because it holds custom fields. The contents of the files were not compared, since
   the mock builds them from the same files.
 - Beyond the fixture project, a mock org that holds each of the three public codebases of `fixtures/corpora.toml`
   was read, the largest with 11,707 components in five chunks. Every component and every file came back, with
-  three differences that are understood: a static resource gets the file ending of its content type, labels that
-  a project keeps in two files are one file in an org, and the org adds the objects whose fields a project holds
-  without the object. This test found two defects that the fixture project could not show, both fixed: custom
+  four differences that are understood: a static resource gets the file ending of its content type, labels that
+  a project keeps in two files are one file in an org, the org adds the objects whose fields a project holds
+  without the object, and a report, dashboard, document or email template in a folder the project has no file
+  for is left out of the comparison, because the mock org does not know the folder. This test found two defects that the fixture project could not show, both fixed: custom
   labels could not be converted, and reports in folders were never asked for. It is skipped where the codebases
   are not downloaded, which includes CI. The mock converts with the same library that converts back, so this
   says nothing about what Salesforce itself hands out.
@@ -153,8 +185,20 @@ snapshot beside it.
   ([0027](0027-json-envelope-and-exit-codes.md)).
 - The SOAP client is imported from inside the package `@jsforce/jsforce-node` (`lib/soap.js` and the schema of the
   Metadata API beside it), which is not a documented entry of that package. The version is pinned, and the tests
-  against the mock org fail if an upgrade moves or changes it. The options for the time limit and for redirects
-  reach the HTTP client through an object the class does not declare, and tests pin both.
+  against the mock org fail if an upgrade moves or changes it. What sends its requests is handed to the class as
+  an option its declaration does not name, and tests pin that the time limit, the refusal of a redirect and a
+  broken answer are handled by OrgLens.
+- **`undici` is a direct dependency of the engine**, at the version the Salesforce library already brings
+  (8.12.4). It is the HTTP client of that library, so no code is added to an installation. It is named because
+  the engine now calls it itself. The reason is the three faults of the client's own way of sending that are
+  listed above.
+- The codes that stand for a refusal of the whole org, and the fault `INVALID_CROSS_REFERENCE_KEY` for a job
+  Salesforce no longer knows, are taken from the documentation of the API. None was seen in the answer of a real
+  org yet. A code that is missing from the list costs a listing or a chunk, which the snapshot names, or stops
+  the snapshot when most listings are refused. It does not block a snapshot for good.
+- A start that the org refuses three times is taken for a refusal of that retrieve, and its halves are tried. If
+  an org refuses every start for minutes, a few components are recorded as not handed out before the snapshot
+  stops after 20 failures in a row. The snapshot then ends as partial and names them.
 - A retrieve whose start got no answer is started again. If the first start did reach Salesforce, a job runs
   there whose result nobody fetches. The same holds for a job that was running when a snapshot was given up.
 - A session that was opened with a key is not renewed. If it expires during a long snapshot, the command stops and
@@ -165,7 +209,13 @@ snapshot beside it.
 - A file that comes back in two retrieves is stored as it came last, and a warning names it. No member is asked
   for twice, so this is not expected. It is recorded so that it is seen if an org does it.
 - The components of an org are converted by the Salesforce library, in a folder on disk. A component the library
-  cannot convert is named in an issue, and the others of its chunk are stored.
+  cannot convert is named in an issue, and the others of its chunk are stored. When a conversion fails, the work
+  folder is checked first: if it cannot be written or was changed, the snapshot stops with `WORKSPACE_IO` and
+  nothing is recorded against the metadata. That a changed work folder is noticed is not tested. A component
+  whose name Windows reserves for a device, such as a class `Aux`, can be converted on Linux and macOS and not on
+  Windows, where it is named in an issue.
+- An entry of a zip file outside the folder of the retrieve is not read and is named in an issue. Names that
+  point above the work folder are made harmless by the zip library before a file is written, which a test pins.
 - An unfinished snapshot is never removed by OrgLens. One that is given up stays in the database as `failed`,
   with the files it had. Removing old snapshots is not built.
 
@@ -186,5 +236,19 @@ snapshot beside it.
   stay below the limits of an org.
 - The permission a user needs. Salesforce documents that the Metadata API needs "Modify Metadata Through Metadata
   API Functions" or "Modify All Data".
+- Whether Salesforce lists standard objects among the custom objects, and standard fields among the fields.
+- How Salesforce answers a request it refuses for the whole org, and a job it no longer knows: the codes above.
+- Documents, which an org may list with the ending of their file while the library names them without it, and
+  layouts of an installed package, whose name carries the namespace twice in some answers. Both would show as
+  components that are reported as not retrieved and as not listed.
+
+**Open questions for the maintainer, not decided here:**
+
+- A sandbox that is refreshed gets a new org id. A source of the kind `sandbox` is then refused with
+  `ORG_MISMATCH` after every refresh, by the rule that a name stands for one org. Whether a sandbox source should
+  follow its sandbox across a refresh is a decision about what its snapshots are compared as.
+- Folders inside folders may only be found by a query on the object `Folder`, through the API for data. The
+  data rule forbids such a query. If the listing of the Metadata API does not show them, the rule or the coverage of
+  nested folders has to give.
 
 The first run against the test org (work package 8 of the Phase 0 plan) is where these are measured.

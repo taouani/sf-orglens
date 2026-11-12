@@ -270,14 +270,22 @@ What differs from the list above in part three, or is not done:
   be decided before access impact is built.
 - The retrieve does not go through the Salesforce library. OrgLens makes the four requests of the Metadata API
   itself, because the retrieve of the library keeps the state of a job in memory only, waits up to 30 minutes for
-  a request and follows redirects. The library converts the files that come back.
+  a request and follows redirects. The library converts the files that come back. The requests are sent with the
+  HTTP client of the library (`undici`, now a direct dependency of the engine), with one time limit for the whole
+  answer: the code review showed that the SOAP client limits only the time until an answer starts and ends the
+  process when a connection breaks in the middle of one.
+- The code review of part three found one blocker (a second command that was refused the lock deleted the work
+  folder of the snapshot that ran) and four ways a snapshot could hang, loop or end wrongly. All are fixed, each
+  with a test that fails without its fix. Record 0032 lists what stays open, with two questions for the
+  maintainer: a sandbox that is refreshed gets a new org id, and folders inside folders may need a query that the
+  data rule forbids.
 - A type that fails to list is recorded as failed and makes the snapshot partial. Standard value sets, which
   Salesforce never lists, are not read and a warning says so.
 - Coverage has the columns listed, retrieved and analysed, and says per type how the listing went. What failed
   is in the issues, not in a column.
 - The acceptance criterion "a fixture-folder snapshot and an org snapshot of the same content produce the same
-  file list" is met against the mock with one difference that is correct: the org also hands out the standard
-  object `Account`, because it holds custom fields.
+  file list" is met against the mock with one difference: the mock org also hands out the standard object
+  `Account`, because it holds custom fields.
 - Kill and resume is tested with a second process that is killed while a retrieve runs. The login by alias, the
   split on a limit and the test that a login with a key leaves no credential file run in CI on all three systems.
 - The storage schema has version 2 (migration 2).

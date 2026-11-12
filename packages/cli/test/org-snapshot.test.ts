@@ -33,6 +33,7 @@ afterEach(() => {
   mock.paths.length = 0;
   mock.operations.length = 0;
   mock.withheld = [];
+  mock.unlisted = [];
   mock.retrieveFault = null;
   // The home folder of the test process is an empty folder of its own (tools/vitest-setup.js).
   rmSync(join(homedir(), '.sfdx'), { recursive: true, force: true });
@@ -139,7 +140,7 @@ describe('orglens snapshot of an org', () => {
     expect(run.code).toBe(5);
     expect(run.stdout).toBe(
       [
-        'Snapshot #1 of "prod" is partial, something is missing: 2 components in 2 files (245 bytes).',
+        'Snapshot #1 of "prod" is partial, something is missing: 1 component in 2 files (245 bytes).',
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
         'ApexClass  2       1          0',
@@ -152,14 +153,33 @@ describe('orglens snapshot of an org', () => {
     );
   });
 
+  it('counts what the snapshot holds, with a component that came back although the org had not listed it', async () => {
+    const { dir, env } = setUp();
+    mock.unlisted = ['GreeterTest'];
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toBe(
+      [
+        'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
+        '',
+        'TYPE       LISTED  RETRIEVED             ANALYSED',
+        'ApexClass  1       1 (and 1 not listed)  0',
+        '',
+        'SEVERITY  CODE                 WHAT',
+        'info      UNLISTED_COMPONENTS  1 component of the type ApexClass came back that the org had not listed. It is in the snapshot. The first: GreeterTest',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('keeps a snapshot that was interrupted, shows it in the status, and continues it or gives it up', async () => {
     const { dir, env } = setUp();
-    mock.retrieveFault = 'UNKNOWN_EXCEPTION';
+    mock.retrieveFault = 'REQUEST_LIMIT_EXCEEDED';
     const stopped = await orglens(dir, ['snapshot', 'prod'], env);
     expect(stopped.code).toBe(1);
     expect(stopped.stdout).toBe('');
     expect(stopped.stderr.split('\n').slice(-3)).toEqual([
-      'error: The org of the source "prod" refused a request for its metadata. UNKNOWN_EXCEPTION: The org is busy',
+      'error: The org of the source "prod" refused a request for its metadata. REQUEST_LIMIT_EXCEEDED: The org is busy',
       'hint: Run the command again: snapshot #1 is picked up where it stopped. With --restart it is given up and a new one is taken.',
       '',
     ]);
@@ -169,7 +189,7 @@ describe('orglens snapshot of an org', () => {
       ok: false,
       error: {
         code: 'SOURCE_READ_FAILED',
-        details: { reason: 'REQUEST_REFUSED', source: 'prod', code: 'UNKNOWN_EXCEPTION', snapshot: 1 },
+        details: { reason: 'REQUEST_REFUSED', source: 'prod', code: 'REQUEST_LIMIT_EXCEEDED', snapshot: 1 },
       },
     });
 
@@ -215,7 +235,7 @@ describe('orglens snapshot of an org', () => {
     ]);
 
     // With --restart an interrupted snapshot is given up. Here there is none, and a new one is taken.
-    mock.retrieveFault = 'UNKNOWN_EXCEPTION';
+    mock.retrieveFault = 'REQUEST_LIMIT_EXCEEDED';
     await orglens(dir, ['snapshot', 'prod'], env);
     mock.retrieveFault = null;
     const restarted = await orglensJson(dir, ['snapshot', 'prod', '--restart'], env);

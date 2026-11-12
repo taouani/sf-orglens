@@ -66,6 +66,8 @@ export interface MockOrg {
   classes: Record<string, string> | null;
   /** Classes the org lists and does not hand out. */
   withheld: string[];
+  /** Classes the org does not list and hands out with every retrieve. */
+  unlisted: string[];
   /** If set, a retrieve is refused with this code. */
   retrieveFault: string | null;
   /** The operations of the Metadata API that were asked for. */
@@ -85,6 +87,7 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     refusal: null,
     classes: null,
     withheld: [],
+    unlisted: [],
     retrieveFault: null,
     operations: [],
     close: () =>
@@ -115,11 +118,13 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
       };
     }
     if (operation === 'listMetadata') {
-      const results = names.map(
-        (name, index) =>
-          `<result><fileName>classes/${name}.cls</fileName><fullName>${name}</fullName><id>01pxx${String(index).padStart(10, '0')}AAA</id>` +
-          `<lastModifiedDate>2026-02-01T08:30:00.000Z</lastModifiedDate><manageableState>unmanaged</manageableState><type>ApexClass</type></result>`,
-      );
+      const results = names
+        .filter((name) => !org.unlisted.includes(name))
+        .map(
+          (name, index) =>
+            `<result><fileName>classes/${name}.cls</fileName><fullName>${name}</fullName><id>01pxx${String(index).padStart(10, '0')}AAA</id>` +
+            `<lastModifiedDate>2026-02-01T08:30:00.000Z</lastModifiedDate><manageableState>unmanaged</manageableState><type>ApexClass</type></result>`,
+        );
       return { status: 200, body: soap(`<listMetadataResponse>${results.join('')}</listMetadataResponse>`) };
     }
     if (operation === 'retrieve') {

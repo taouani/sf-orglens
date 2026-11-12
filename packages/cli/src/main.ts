@@ -215,7 +215,7 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
         'Earlier snapshots are kept. The source is not changed. ' +
         'An org or a sandbox is asked what it holds, and its components are retrieved in chunks, which takes ' +
         'minutes. If that is interrupted, the next run continues the same snapshot. ' +
-        'Only metadata is read, never records. ' +
+        'OrgLens asks for metadata only, never for records. ' +
         'The exit code is 5 if the snapshot is partial: something could not be read, and the output says what. ' +
         'It is 4 if the login is missing or does not work or the org cannot be reached.',
     )

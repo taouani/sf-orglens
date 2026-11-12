@@ -288,26 +288,40 @@ function count(number: number, one: string, many: string): string {
 /** The lines that describe a snapshot: one sentence, the types, and the issues. */
 function coverageLines(report: CoverageReport, headline: string): string[] {
   const { snapshot, types, issues } = report;
-  const components = types.reduce((sum, type) => sum + type.listed, 0);
+  // What came back although the source had not listed it, per type. The snapshot holds it.
+  const unlisted = new Map<string, number>();
+  for (const issue of issues) {
+    const { type, count: number } = issue.details;
+    if (issue.code === 'UNLISTED_COMPONENTS' && typeof type === 'string' && typeof number === 'number') {
+      unlisted.set(type, (unlisted.get(type) ?? 0) + number);
+    }
+  }
+  // The components the snapshot holds, not the ones the source listed: of a partial snapshot these are fewer.
+  const components = types.reduce((sum, type) => sum + type.retrieved + (unlisted.get(type.type) ?? 0), 0);
   const lines = [
     `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
       snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
     }.`,
   ];
   // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
-  // nothing in a table. A type it could not list always does.
-  const shown = types.filter((type) => type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok');
+  // nothing in a table. A type it could not list always does, and so does one of which something came back.
+  const shown = types.filter(
+    (type) => type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok' || unlisted.has(type.type),
+  );
   if (shown.length > 0) {
     lines.push(
       '',
       ...table(
         ['TYPE', 'LISTED', 'RETRIEVED', 'ANALYSED'],
-        shown.map((type) => [
-          type.type,
-          LISTED[type.listing](type.listed),
-          String(type.retrieved),
-          String(type.analysed),
-        ]),
+        shown.map((type) => {
+          const more = unlisted.get(type.type);
+          return [
+            type.type,
+            LISTED[type.listing](type.listed),
+            `${String(type.retrieved)}${more === undefined ? '' : ` (and ${String(more)} not listed)`}`,
+            String(type.analysed),
+          ];
+        }),
       ),
     );
   }
