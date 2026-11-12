@@ -52,7 +52,7 @@ packages/cli   the `orglens` binary                            imports only `@sf
 
 - A layer imports only from layers above it in this list. The list is defined once, in `layers.cjs`.
 - `packages/engine/src/index.ts` re-exports `api/` and nothing else. Clients never reach into the engine.
-- Only `sources/` may import `@salesforce/*`.
+- Only `sources/` may import `@salesforce/*`. This is about the code of the engine. A test may import it.
 - The rules are enforced twice: by the ESLint rule `orglens/layers` (`tools/eslint-plugin-orglens.js`, which
   resolves every static import, `import()`, type import and `require`) and by dependency-cruiser. The boundary
   between a client and the engine is guarded a third time by the `exports` map of the engine package.

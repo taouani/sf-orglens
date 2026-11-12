@@ -3,6 +3,7 @@
     <deploymentStatus>Deployed</deploymentStatus>
     <description>An invoice sent to an account. Fixture object of the OrgLens tests.</description>
     <enableActivities>true</enableActivities>
+    <enableSearch>true</enableSearch>
     <label>Invoice</label>
     <nameField>
         <displayFormat>INV-{00000}</displayFormat>

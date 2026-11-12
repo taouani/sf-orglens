@@ -46,6 +46,7 @@ public with sharing class InvoiceTriggerHandler extends TriggerHandler {
             WHERE Account__c IN :accountIds
                 AND Status__c != 'Paid'
             GROUP BY Account__c
+            HAVING SUM(Amount__c) > 0
         ]) {
             Decimal total = (Decimal) row.get('total');
             Integer score = total > 100000 ? 90 : 10;

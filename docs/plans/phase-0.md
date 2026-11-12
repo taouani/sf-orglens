@@ -203,16 +203,19 @@ Accepted when: the key check passes on all three operating systems, and a second
 
 Later fixture versions add flows, custom metadata mappings, field sets, components, permissions and named credentials in the phases that need them.
 
-Status after pull request 6 (2026-11-12). Built: the project (52 components: 2 objects, 31 fields, 6 validation rules,
-12 classes, 1 trigger), the folder of files that do not compile, the answer key (226 references, 182 of them in Apex,
-15 negatives, 3 unknowns), the check as a test on all three systems, `corpora.toml` with a fetch script, and record
-[0029](../adr/0029-fixture-and-answer-key.md). What differs from the list above, or is not done:
+Status after pull request 6 of this plan (2026-11-12, number 7 on GitHub). Built: the project (52 components: 2
+objects, 31 fields, 6 validation rules, 12 classes, 1 trigger), the folder of files that do not compile, the answer
+key (228 references, 184 of them in Apex, 21 negatives, 5 unknowns), the check as a test on all three systems,
+`corpora.toml` with a fetch script, and record [0029](../adr/0029-fixture-and-answer-key.md). What differs from the
+list above, or is not done:
 
 - The project has 31 fields, not about 25.
 - The key names a place by line and word. The column is worked out by the check, not written by hand.
-- The second pass over the key was done by reading it against a list of every custom name in the project that no
-  entry covers. An independent pass is part of the code review of the pull request.
-- The Apex has not been compiled by Salesforce. WP8 deploys the project.
+- The second pass over the key was done twice: by reading it against a list of every custom name in the project that
+  no entry covers, and by the code review of the pull request, which read every entry against the files. The review
+  found no wrong and no missing entry. It found rules that could be read in two ways, which are now written down in
+  `fixtures/README.md`, and a check that let most planted defects pass, which now finds 17 of 20.
+- The Apex has not been compiled by Salesforce. WP8 will deploy the project.
 
 ### WP7 Salesforce connectivity, retrieve and snapshot
 

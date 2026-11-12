@@ -44,4 +44,12 @@ public with sharing class DynamicAccess {
         Map<String, Schema.SObjectField> fields = invoiceType.getDescribe().fields.getMap();
         return fields.get(InvoiceConstants.FIELD_STATUS).getDescribe();
     }
+
+    public static void setRiskScore(Account account, Decimal score) {
+        account.put('Risk_Score__c', score);
+    }
+
+    public static void setAmountByToken(Invoice__c invoice, Decimal amount) {
+        invoice.put(InvoiceConstants.AMOUNT, amount);
+    }
 }

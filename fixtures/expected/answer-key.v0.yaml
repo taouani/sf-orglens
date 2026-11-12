@@ -235,7 +235,7 @@ references:
         refs:
           - { line: 4, match: Owner, kind: reads, to: CustomField:invoice__c.ownerid, via: formula }
           - { line: 4, match: Manager, kind: reads, to: CustomField:user.managerid, via: formula }
-          - { line: 4, match: Email, kind: reads, to: CustomField:user.email, via: formula }
+          - { line: 4, match: Email, kind: reads, to: CustomField:user.email, via: formula, stretch: true, note: "No file of the project says that the manager of a user is a user." }
 
   - file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml
     phase: 1
@@ -385,9 +385,6 @@ references:
       - from: ApexClass:dynamicaccess#method:riskscore(account)
         refs:
           - { line: 6, match: Risk_Score__c, kind: reads, to: CustomField:account.risk_score__c, via: text, tier: probable }
-      - from: ApexClass:dynamicaccess#method:fieldof(sobject)
-        refs:
-          - { line: 10, match: Risk_Score__c, kind: reads, to: CustomField:account.risk_score__c, via: text, tier: possible, stretch: true, note: The object is not known. Account has the only field of this name. }
       - from: ApexClass:dynamicaccess#method:setlegacycode(invoice__c,string)
         refs:
           - { line: 14, match: FIELD_LEGACY, kind: writes, to: CustomField:invoice__c.legacy_code__c, via: text, tier: probable }
@@ -411,6 +408,12 @@ references:
         refs:
           - { line: 43, match: OBJECT_INVOICE, kind: references, to: CustomObject:invoice__c, via: text, tier: probable }
           - { line: 45, match: FIELD_STATUS, kind: references, to: CustomField:invoice__c.status__c, via: text, tier: probable, stretch: true, note: The object reaches this line through two local variables. }
+      - from: ApexClass:dynamicaccess#method:setriskscore(account,decimal)
+        refs:
+          - { line: 49, match: Risk_Score__c, kind: writes, to: CustomField:account.risk_score__c, via: text, tier: probable }
+      - from: ApexClass:dynamicaccess#method:setamountbytoken(invoice__c,decimal)
+        refs:
+          - { line: 53, match: AMOUNT, kind: writes, to: CustomField:invoice__c.amount__c, via: token, note: The token is a constant of another class. }
 
   - file: force-app/main/default/classes/InvoiceTriggerHandler.cls
     phase: 3
@@ -442,8 +445,9 @@ references:
           - { line: 46, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
           - { line: 47, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: soql }
           - { line: 48, match: Account__c, kind: reads, to: CustomField:invoice__c.account__c, via: soql }
-          - { line: 52, match: Risk_Score__c, kind: writes, to: CustomField:account.risk_score__c, via: field }
-          - { line: 54, match: update, kind: writes, to: CustomObject:account, via: dml, op: update }
+          - { line: 49, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: soql }
+          - { line: 53, match: Risk_Score__c, kind: writes, to: CustomField:account.risk_score__c, via: field }
+          - { line: 55, match: update, kind: writes, to: CustomObject:account, via: dml, op: update }
 
   - file: force-app/main/default/triggers/InvoiceTrigger.trigger
     phase: 3
@@ -583,7 +587,7 @@ references:
           - { line: 53, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: sosl }
       - from: ApexClass:parsertorture#method:typeof()
         refs:
-          - { line: 59, match: What, kind: reads, to: CustomField:event.whatid, via: soql, stretch: true, note: A standard relationship that points at several objects. }
+          - { line: 59, match: What, kind: reads, to: CustomField:event.whatid, via: soql, note: A standard relationship that points at several objects. }
           - { line: 60, match: Account, kind: reads, to: CustomObject:account, via: soql }
           - { line: 60, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: soql }
           - { line: 60, match: Credit_Limit__c, kind: reads, to: CustomField:account.credit_limit__c, via: soql }
@@ -624,18 +628,27 @@ negatives:
   - { file: force-app/main/default/classes/ParserTorture.cls, line: 93, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A block comment. }
   - { file: force-app/main/default/classes/ParserTorture.cls, line: 94, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: Code inside a text literal. }
   - { file: force-app/main/default/classes/ParserTorture.cls, line: 95, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A line comment after real code. }
-  - { file: force-app/main/default/classes/InvoiceTriggerHandler.cls, line: 50, match: total, nth: 2, not: CustomField:invoice__c.total__c, why: "The alias of an aggregate, not a field." }
+  - { file: force-app/main/default/classes/InvoiceTriggerHandler.cls, line: 51, match: total, nth: 2, not: CustomField:invoice__c.total__c, why: "The alias of an aggregate, not a field." }
   - { file: force-app/main/default/classes/InvoiceCalloutService.cls, line: 12, match: total, not: CustomField:invoice__c.total__c, why: The key of a map. }
   - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 7, match: Status__c, not: CustomField:invoice__c.status__c, why: The status of the line. The invoice has a field of the same name. }
   - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 16, match: Status__c, not: CustomField:invoice__c.status__c, why: "The status of the line is written, not that of the invoice." }
   - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 11, match: Invoice__c, not: CustomObject:invoice__c, why: "The lookup field of the line, not the object." }
+  - { file: force-app/main/default/classes/InvoiceLineService.cls, line: 34, match: Invoice__c, not: CustomObject:invoice__c, why: "The lookup field of the line is written, not the object." }
+  - { file: force-app/main/default/classes/InvoiceConstants.cls, line: 6, match: Status__c, not: CustomField:invoice__c.status__c, why: "A name in a constant is keyed where the constant is used. Two objects have a field of this name." }
+  - { file: force-app/main/default/classes/InvoiceConstants.cls, line: 6, match: Status__c, not: CustomField:invoice_line__c.status__c, why: "A name in a constant is keyed where the constant is used. Two objects have a field of this name." }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 51, match: NAME, not: CustomField:invoice__c.name, why: "A keyword of a search: the group of fields to search in, not the field." }
+  - { file: force-app/main/default/classes/ParserTorture.cls, line: 51, match: NAME, not: CustomField:account.name, why: "A keyword of a search: the group of fields to search in, not the field." }
+  - { file: force-app/main/default/objects/Invoice__c/validationRules/Locked_When_Paid.validationRule-meta.xml, line: 8, match: Name, not: CustomField:invoice__c.name, why: "The name of the profile, a global variable." }
   - { file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml, line: 4, match: Paid_Date__c, not: CustomField:invoice__c.paid_date__c, why: A comment inside a formula. }
   - { file: force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml, line: 5, match: Status__c, not: CustomField:invoice__c.status__c, why: Text inside a formula. }
   - { file: force-app/main/default/objects/Invoice_Line__c/validationRules/Price_Not_Negative.validationRule-meta.xml, line: 5, match: Quantity__c, not: CustomField:invoice_line__c.quantity__c, why: The description of a rule is text. }
   - { file: force-app/main/default/objects/Invoice_Line__c/validationRules/Price_Not_Negative.validationRule-meta.xml, line: 7, match: Quantity__c, not: CustomField:invoice_line__c.quantity__c, why: The error message of a rule is text. }
 
 # Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
+# One entry for each name whose target is not known.
 unknowns:
   - { file: force-app/main/default/classes/InvoiceSelector.cls, line: 28, match: objectName, from: "ApexClass:invoiceselector#method:anyobject(string,string)", why: The object and the field of the query come from the caller. }
+  - { file: force-app/main/default/classes/InvoiceSelector.cls, line: 28, match: fieldName, from: "ApexClass:invoiceselector#method:anyobject(string,string)", why: The object and the field of the query come from the caller. }
+  - { file: force-app/main/default/classes/DynamicAccess.cls, line: 10, match: Risk_Score__c, from: "ApexClass:dynamicaccess#method:fieldof(sobject)", why: "A read by name on a record of unknown type. The name alone does not say which object: today only Account has a field of this name." }
   - { file: force-app/main/default/classes/DynamicAccess.cls, line: 26, match: fieldName, from: "ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)", why: A read by name on a record of unknown type. }
   - { file: force-app/main/default/classes/DynamicAccess.cls, line: 27, match: fieldName, from: "ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)", why: A write by name on a record of unknown type. }
