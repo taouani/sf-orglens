@@ -1,0 +1,6 @@
+packages:
+  - 'packages/*'
+
+# Supply-chain guard: a package version must have been public for a full day
+# before it can be installed or added to the lockfile.
+minimumReleaseAge: 1440

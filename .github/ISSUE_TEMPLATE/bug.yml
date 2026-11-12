@@ -1,0 +1,50 @@
+name: Bug report
+description: Something OrgLens does is wrong, or a result is missing or incorrect.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. **Do not paste data from a real org:** no host names, org ids, user names,
+        access tokens or proprietary source code. Reduce the problem to a small made-up example instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran and the smallest metadata or code that shows the problem.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - A dependency or reference is missing
+        - A dependency or reference is reported that does not exist
+        - A reference has the wrong kind, confidence or location
+        - Retrieving or reading metadata fails
+        - A command crashes or gives a wrong exit code
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Output of `orglens --version`
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-private-data
+    attributes:
+      label: Private data
+      options:
+        - label: This report contains no data from a real org and no credentials.
+          required: true

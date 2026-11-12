@@ -1,0 +1,41 @@
+{
+  "name": "sf-orglens-workspace",
+  "private": true,
+  "type": "module",
+  "description": "Workspace root for OrgLens, a local-first impact analysis tool for Salesforce.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck:tests": "tsc -p packages/engine/test && tsc -p packages/cli/test",
+    "clean": "node scripts/clean.mjs",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
+    "knip": "knip",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "publint": "pnpm -r --filter \"./packages/*\" exec publint --strict",
+    "smoke:pack": "node scripts/pack-smoke.mjs",
+    "check": "pnpm run build && pnpm run typecheck:tests && pnpm run lint && pnpm run format && pnpm run depcruise && pnpm run knip && pnpm run check:boundaries && pnpm run coverage"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.1.0",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "10.14.0",
+    "knip": "6.44.2",
+    "prettier": "3.9.10",
+    "publint": "0.3.25",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}

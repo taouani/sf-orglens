@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.tgz
+
+# OrgLens workspace data and local settings are never committed
+.orglens/
+
+# Credentials and keys. OrgLens keeps no credential store, and none belong in git.
+*.key
+*.pem
+*.p12
+.env
+.env.*
+!.env.example
+
+# Salesforce CLI state
+.sf/
+.sfdx/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+
+# Probe files written by scripts/check-boundaries.mjs, in case a run is killed
+__probe_*
