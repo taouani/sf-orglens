@@ -32,8 +32,10 @@ export const ERROR_CODES = {
   SOURCE_EXISTS: 'A source with this name is already declared in orglens.toml.',
   SOURCE_INVALID: 'The declaration of a source breaks a rule of the configuration.',
   SOURCE_IN_USE: 'The source cannot be removed, because another source refers to it.',
-  SOURCE_READ_FAILED: 'A source could not be read: its repository, its folders or the commit it names.',
+  SOURCE_READ_FAILED:
+    'A source could not be read: its repository, its folders or the commit it names, or an org that stopped answering as expected while it was read.',
   SNAPSHOT_NOT_FOUND: 'The source has no snapshot yet, or none with the given number.',
+  SNAPSHOT_RUNNING: 'Another process is taking a snapshot of this source.',
   LOGIN_FAILED: 'No login for the org of a source was found, or the login did not work, or the org did not answer.',
   ORG_MISMATCH: 'The login belongs to another org than the one the source declares.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',

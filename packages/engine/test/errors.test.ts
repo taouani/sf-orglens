@@ -43,6 +43,7 @@ describe('EngineError', () => {
       'ORG_MISMATCH',
       'REFERENCE_INVALID',
       'SNAPSHOT_NOT_FOUND',
+      'SNAPSHOT_RUNNING',
       'SOURCE_EXISTS',
       'SOURCE_INVALID',
       'SOURCE_IN_USE',

@@ -2,11 +2,12 @@
  * Taking a snapshot of a source, and reporting what a snapshot covers.
  *
  * A snapshot of a Git source is written in one transaction: it is in the
- * database with all its files, or not at all. A reading that could not get
+ * database with all its files, or not at all. A snapshot of an org is
+ * written chunk by chunk (`org-snapshot.ts`). A reading that could not get
  * everything is stored as `partial`, with an issue for each thing that is
  * missing, so that an incomplete picture is never taken for a complete one.
  */
-import type { SourceDeclaration } from '../core/config/config.ts';
+import type { GitSource } from '../core/config/config.ts';
 import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { readLocalSource, type LocalReading } from '../sources/local.ts';
@@ -40,6 +41,8 @@ export interface SnapshotInfo {
   readonly finishedAt: string | null;
   /** The version of the engine that took it. */
   readonly engineVersion: string;
+  /** The version of the Metadata API an org was read with, such as `66.0`. Null for a Git source. */
+  readonly apiVersion: string | null;
   /** The commit whose content a snapshot of a Git source holds, if it holds exactly that. */
   readonly commit: string | null;
   readonly files: number;
@@ -56,6 +59,13 @@ export interface TypeCoverage {
   readonly retrieved: number;
   /** How many of them were analysed. */
   readonly analysed: number;
+  /**
+   * - `ok`: the source said which components of the type it has.
+   * - `failed`: an org refused to say. `listed` counts what it had said before it refused, and the true number
+   *   is not known.
+   * - `unlistable`: Salesforce never lists components of this type, and they are not read yet.
+   */
+  readonly listing: 'ok' | 'failed' | 'unlistable';
   readonly note: string | null;
 }
 
@@ -75,7 +85,8 @@ export interface CoverageReport {
   readonly issues: readonly SnapshotIssue[];
 }
 
-function report(store: Store, source: string, id?: number): CoverageReport | undefined {
+/** The report of the latest finished snapshot of a source, or of the one with the given id. */
+export function snapshotReport(store: Store, source: string, id?: number): CoverageReport | undefined {
   const snapshot = readSnapshot(store, source, id);
   if (snapshot === undefined) return undefined;
   return {
@@ -87,6 +98,7 @@ function report(store: Store, source: string, id?: number): CoverageReport | und
       startedAt: snapshot.startedAt,
       finishedAt: snapshot.finishedAt,
       engineVersion: snapshot.engineVersion,
+      apiVersion: snapshot.apiVersion,
       commit: snapshot.gitCommit,
       files: snapshot.files,
       bytes: snapshot.bytes,
@@ -120,7 +132,7 @@ export function noSnapshot(source: string, id?: number): EngineError {
 
 /** The coverage of the latest snapshot of a source, or of the one with the given id. */
 export function coverageOf(store: Store, source: string, id?: number): CoverageReport {
-  const found = report(store, source, id);
+  const found = snapshotReport(store, source, id);
   if (found === undefined) throw noSnapshot(source, id);
   return found;
 }
@@ -188,26 +200,16 @@ export function readEveryFile(reading: LocalReading, each: (path: string, conten
 }
 
 /**
- * Reads a source and stores what was read as a new snapshot.
+ * Reads a Git source and stores what was read as a new snapshot.
  *
  * `openStore` is called once the source has been read, so a source that
  * cannot be read leaves the database as it was.
  */
 export async function takeSnapshot(
   workspaceRoot: string,
-  source: SourceDeclaration,
+  source: GitSource,
   openStore: () => Store,
 ): Promise<CoverageReport> {
-  if (source.kind !== 'git') {
-    throw new EngineError(
-      'SOURCE_READ_FAILED',
-      `This version of OrgLens cannot read a source of the kind "${source.kind}" yet.`,
-      {
-        hint: 'Snapshots of repository folders work. Snapshots of orgs and sandboxes are being built.',
-        details: { reason: 'KIND_NOT_READABLE', source: source.name, kind: source.kind },
-      },
-    );
-  }
   const startedAt = now();
   const reading = await readLocalSource(workspaceRoot, source);
 
@@ -238,7 +240,7 @@ export async function takeSnapshot(
         if (!component.files.some((file) => unreadable.has(file))) count.retrieved += 1;
       }
       for (const [type, count] of types) {
-        addCoverage(store, snapshotId, { type, ...count, analysed: 0, note: null });
+        addCoverage(store, snapshotId, { type, ...count, analysed: 0, listing: 'ok', note: null });
       }
       for (const issue of issues) addIssue(store, snapshotId, issue);
 
@@ -252,7 +254,7 @@ export async function takeSnapshot(
     });
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
     store.checkpoint();
-    const taken = report(store, source.name, id);
+    const taken = snapshotReport(store, source.name, id);
     if (taken === undefined) throw new EngineError('INTERNAL', 'The snapshot was stored and cannot be found.');
     return taken;
   } finally {

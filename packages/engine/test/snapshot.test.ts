@@ -115,14 +115,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
         startedAt: expect.stringMatching(UTC) as string,
         finishedAt: expect.stringMatching(UTC) as string,
         engineVersion: expect.stringMatching(/^\d+\.\d+\.\d+/) as string,
+        apiVersion: null,
         commit,
         files: 4,
         bytes: FILES.reduce((sum, path) => sum + readFileSync(join(repo.dir, ...path.split('/'))).byteLength, 0),
       },
       types: [
-        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, note: null },
-        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, note: null },
-        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, note: null },
+        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
       ],
       issues: [],
     });
@@ -187,8 +188,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     expect(report.snapshot).toMatchObject({ status: 'partial', files: 2, commit: null });
     // What is missing is the class, and only the class: the object and its field are in the snapshot.
     expect(report.types).toEqual([
-      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, note: null },
-      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, note: null },
+      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
     ]);
     expect(Object.keys(stored(database, 1))).toEqual(FILES.filter((path) => !path.includes('/classes/')));
     const errors = report.issues.filter((issue) => issue.severity === 'error');
@@ -334,11 +335,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     expect(count(database, 'blob')).toBe(0);
   });
 
-  it('says that an org cannot be read yet, and that a source is not declared', async () => {
+  it('says that an org has no login, and that a source is not declared, and creates no database for either', async () => {
     const { workspace, database } = await setUp();
+    // Snapshots of an org are in org-snapshot.test.ts.
     expect(await failure(() => workspace.snapshot('prod'))).toMatchObject({
-      code: 'SOURCE_READ_FAILED',
-      details: { reason: 'KIND_NOT_READABLE', source: 'prod', kind: 'org' },
+      code: 'LOGIN_FAILED',
+      details: { reason: 'NO_LOGIN', source: 'prod' },
     });
     expect(await failure(() => workspace.snapshot('nowhere'))).toMatchObject({
       code: 'SOURCE_NOT_FOUND',
