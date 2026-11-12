@@ -679,7 +679,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
     expect(codeOf(() => openStore({ path: newFile(), driver, migrations: misnumbered }))).toBe('INTERNAL');
   });
 
-  describe('the first schema', () => {
+  describe('the schema', () => {
     const source = "INSERT INTO source (name, kind, created_at) VALUES ('prod', 'org', '2026-01-01T00:00:00.000Z')";
     const snapshot = (status: string): string =>
       `INSERT INTO snapshot (source_id, status, started_at, engine_version) VALUES (1, '${status}', '2026-01-01T00:00:00.000Z', '0.0.0')`;
@@ -701,7 +701,12 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       const indexes = store
         .all("SELECT name FROM sqlite_schema WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .map((row) => row['name']);
-      expect(indexes).toEqual(['snapshot_by_source', 'snapshot_file_by_blob', 'snapshot_issue_by_snapshot']);
+      expect(indexes).toEqual([
+        'snapshot_by_source',
+        'snapshot_file_by_blob',
+        'snapshot_issue_by_snapshot',
+        'snapshot_one_running',
+      ]);
       expect(
         store.all('SELECT name FROM pragma_table_list WHERE schema = ? AND type = ? AND strict = 0', 'main', 'table'),
       ).toEqual([{ name: 'sqlite_schema' }, { name: 'sqlite_sequence' }]);
@@ -709,7 +714,8 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
     });
 
     // The schema as SQLite holds it, in a golden file. A released migration is never edited, so this file
-    // changes only together with a new migration.
+    // changes only together with a new migration. A column that a migration adds stands on the line of the
+    // column before it: that is how SQLite writes it down.
     it('is exactly the schema in the golden file', async () => {
       const store = openStore({ path: newFile(), driver });
       const schema = store
@@ -718,6 +724,39 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
         .join('\n');
       store.close();
       await expect(schema).toMatchFileSnapshot('./golden/schema.sql');
+    });
+
+    it('brings a database of the first version to the second, with what it holds', () => {
+      const path = newFile();
+      const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 1) });
+      old.run(source);
+      old.run(snapshot('complete'));
+      old.run("INSERT INTO inventory_item (snapshot_id, type, full_name) VALUES (1, 'ApexClass', 'A')");
+      old.run("INSERT INTO retrieve_chunk (snapshot_id, seq, status, members) VALUES (1, 0, 'done', '[]')");
+      old.run(
+        "INSERT INTO snapshot_type_coverage (snapshot_id, type, listed, retrieved) VALUES (1, 'ApexClass', 1, 1)",
+      );
+      old.close();
+
+      const store = openStore({ path, driver });
+      expect(store.migrated).toEqual({ from: 1, to: 2 });
+      // What an older version stored reads as what it was: listed, not known to be retrieved, listing in order.
+      expect(store.get('SELECT listed, retrieved FROM inventory_item')).toEqual({ listed: 1, retrieved: 0 });
+      expect(store.get('SELECT job_id, status FROM retrieve_chunk')).toEqual({ job_id: null, status: 'done' });
+      expect(store.get('SELECT listing, listed FROM snapshot_type_coverage')).toEqual({ listing: 'ok', listed: 1 });
+      store.close();
+    });
+
+    it('allows one snapshot of a source to be under way, and no second one', () => {
+      const store = openStore({ path: newFile(), driver });
+      store.run(source);
+      store.run(snapshot('running'));
+      expect(codeOf(() => store.run(snapshot('running')))).toBe('STORE_FAILED');
+      store.run(snapshot('complete'));
+      store.run(snapshot('failed'));
+      store.run("UPDATE snapshot SET status = 'partial' WHERE id = 1");
+      store.run(snapshot('running'));
+      store.close();
     });
 
     it('never uses the id of a source or a snapshot twice', () => {
