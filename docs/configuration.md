@@ -276,6 +276,8 @@ and the layout of every other line stay exactly as they were.
   keeps the permissions of the old one. If `orglens.toml` is a link, the file it points at is replaced and the link
   stays.
 - While one command changes a file, a second one waits for it, for up to two seconds.
+- On Windows a file cannot be replaced while a program has it open. OrgLens then tries the move again for up to
+  a third of a second, and does the same when it reads a file at the moment another command replaces it.
 - The file has to be UTF-8. A file in another encoding is refused, not converted.
 - Some ways of writing TOML cannot be changed safely as text: sources written as inline tables or with dotted keys
   such as `sources.prod.kind = "org"`, for example. That holds for both files. The commands then stop with the error
