@@ -8,7 +8,7 @@ Records 0002 to 0022 write out the 27 decisions the project started from. Those 
 are summarised in the decision log of the [re-architecture plan](../plans/re-architecture-plan.md#decision-log). The
 "Decisions" column gives the plan ids each record covers. Record 0001 and the records from 0023 on are decisions made
 during the build, with one exception: record 0034 replaces 0008 and covers plan decision A4, which was changed on
-2026-11-12.
+2026-11-12. Record 0018 was completed on 2026-11-13 with the parser the maintainer chose.
 
 | Record                                            | Title                                                                                           | Status                                                          | Decisions  |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
@@ -29,7 +29,7 @@ during the build, with one exception: record 0034 replaces 0008 and covers plan 
 | [0015](0015-authentication.md)                    | Reuse Salesforce CLI logins, store no credentials                                               | Accepted                                                        | D5         |
 | [0016](0016-commands-config-and-json-contract.md) | A fixed command set, a stable JSON contract, and a committable configuration file               | Accepted                                                        | D6         |
 | [0017](0017-typescript-on-node.md)                | TypeScript on Node.js, minimum Node 24.15                                                       | Accepted                                                        | S1         |
-| [0018](0018-apex-analysis-foundation.md)          | Apex analysis is built on web-tree-sitter-sfapex, chosen after a measured trial                 | Accepted                                                        | S3         |
+| [0018](0018-apex-analysis-foundation.md)          | Apex analysis is built on `web-tree-sitter-sfapex`, chosen after a measured trial               | Accepted                                                        | S3         |
 | [0019](0019-apache-2-licence.md)                  | Apache License 2.0                                                                              | Accepted                                                        | S6         |
 | [0020](0020-rewrite-in-new-repository.md)         | A rewrite in a new repository, harvesting ideas from the prototypes                             | Accepted                                                        | M1, M2     |
 | [0021](0021-correctness-proof.md)                 | A three-level proof of correctness and a gate before riders and launch                          | Accepted                                                        | M4         |

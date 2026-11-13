@@ -15,7 +15,8 @@ and "you" is the maintainer.
 
 Every expected output below was produced on Linux x64 with Node.js 24.22.3 on 12 and 13 November 2026, as the
 root user, from the branch that closes the phase. Part F is the exception: its numbers are read from the log of
-the run of 12 November. Times and sizes on your machine will differ. Numbers of components, files and
+the run of 12 November. Step A5 and the item about the parser at the end were changed after your choice of
+13 November, and hold from the commit that records it. Times and sizes on your machine will differ. Numbers of components, files and
 references must not.
 
 At the end there is a list of what this plan cannot show, and what I ask you to decide.

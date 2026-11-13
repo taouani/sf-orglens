@@ -1,4 +1,4 @@
-# 0018. Apex analysis is built on web-tree-sitter-sfapex, chosen after a measured trial
+# 0018. Apex analysis is built on `web-tree-sitter-sfapex`, chosen after a measured trial
 
 - Status: Accepted
 - Date: 2026-11-13
@@ -16,18 +16,21 @@ OrgLens owns the resolver.
 
 ## Decision
 
-The parser is chosen by a trial in Phase 0 (work package WP9 of the [Phase 0 plan](../plans/phase-0.md)): one
-resolver written once over a thin syntax interface, two parser adapters, scored against the hand-written answer key
-of the fixture project and run over public codebases for robustness, speed and memory.
+Decision S3 was that the parser is chosen after a trial in Phase 0 (work package WP9 of the
+[Phase 0 plan](../plans/phase-0.md)): one resolver written once over a thin syntax interface, two parser adapters,
+scored against the hand-written answer key of the fixture project and run over public codebases for robustness,
+speed and memory.
 
 Pass marks on the fixture: recall at least 95%, precision at least 98%, read or write correct for at least 99% of
 matches, and no hits on the negative cases. The time box is four working days with a hard stop at five.
 
-This record was opened on 11 November 2026 as `Proposed`, to be completed with the measurements and the chosen
-parser. The trial reported on 12 and 13 November. The maintainer chose on 13 November 2026.
+Decision S3 was agreed on 11 November 2026. This record was written the day after as `Proposed`, to be completed
+with the measurements and the chosen parser. The trial reported on 12 and 13 November. The maintainer chose on
+13 November 2026.
 
 **OrgLens builds its Apex analysis on `web-tree-sitter-sfapex`**, under a resolver of its own. The sections below
-give the measurements, why the trial itself did not select a parser, and the choice.
+give the measurements, why the trial itself did not select a parser, the choice, and what this record says
+beyond the choice.
 
 ## What the trial reported
 
@@ -44,7 +47,7 @@ in `trial/apex`. Memory is in MiB.
 | NPSP, 319,835 lines: time for everything                      | 19.4 to 21.8 s                    | 3.6 to 4.1 s                   |
 | NPSP: peak memory with the default heap of Node.js            | 1,490 to 1,546 MiB                | 430 to 436 MiB                 |
 | NPSP: peak memory with the heap limited to 1,024 MiB          | 1,047 to 1,108 MiB, the same time | not needed                     |
-| NPSP: the smallest heap that was tried and works              | 768 MiB                           | 256 MiB                        |
+| NPSP: the smallest heap that was tried and works              | 768 MiB with its cache kept       | 256 MiB                        |
 | 1,781 damaged files: references kept, with the right member   | 77.9%                             | 82.1%                          |
 | 1,781 damaged files: references kept, whatever the member     | 87.7%                             | 83.2%                          |
 | 48 pieces of recent syntax                                    | all read                          | all read                       |
@@ -76,13 +79,25 @@ one, and a reader can weigh the third the other way. The author of the trial rec
 
 ## The choice
 
-The maintainer chose `web-tree-sitter-sfapex` on 13 November 2026, from the two candidates and with the
-measurements above. The choice is a judgment of the maintainer. The rule of the plan did not make it.
+The maintainer chose `web-tree-sitter-sfapex` on 13 November 2026. A summary of the measurements above and the
+recommendation were put to the maintainer with the question, beside the other parser and the option to decide
+later. The choice is a judgment of the maintainer. The rule of the plan did not make it.
 
-The adapter of `@apexdevtools/apex-parser`, which is not chosen, is kept in `trial/apex`. A test holds the
-lowered models of the two parsers against each other on the fixture project and on the 48 pieces of syntax, so a
-change of the grammar of either one shows at once, and the engine can change parser by loading the other
-adapter.
+That is all the maintainer decided.
+
+## What goes further than the choice of the maintainer
+
+Two statements of this record are conclusions of its author. The maintainer can strike either one without
+touching the choice.
+
+- The adapter of `@apexdevtools/apex-parser`, which is not chosen, is kept in `trial/apex`. The question to the
+  maintainer said that it stays as a fallback, and the maintainer was not asked to decide it. A test holds the
+  lowered models of the two parsers against each other on the fixture project and on the 48 pieces of syntax, so
+  a change of the grammar of either one shows at once. The engine is meant to be able to change parser by taking
+  the other adapter. That is not shown: the engine has no Apex analysis yet, and it may not import `trial/apex`.
+- `web-tree-sitter-sfapex` and `web-tree-sitter` become run-time dependencies of the engine in the phase that
+  builds Apex analysis, not before. Until then they are dependencies of the trial only. This follows from the
+  rule that no feature of a later phase is started early.
 
 ## Consequences
 
@@ -96,11 +111,9 @@ adapter.
   starts from the list "What the resolver does not do" in the report. That list holds references to things that
   do not exist, reported as `confirmed`: the production resolver must check every name against the description
   of the objects, and lower the tier of what it cannot check.
-- `web-tree-sitter-sfapex` has one maintainer, and the names of its nodes are text that the compiler does not
-  check. The second adapter and the test that compares the two are the answer to both. The grammar is
+- `web-tree-sitter-sfapex` is maintained by one person, and the names of its nodes are text that the compiler
+  does not check. The second adapter and the test that compares the two are the answer to both. The grammar is
   WebAssembly. Loading it is the one step that is not synchronous, and a tree must be freed by hand.
-- `web-tree-sitter-sfapex` and `web-tree-sitter` become run-time dependencies of the engine in the phase that
-  builds Apex analysis, not before. Until then they are dependencies of the trial only.
 - Not taken: `apex-parser`. With it OrgLens would have had to set the size of the heap when it starts, or empty
   the cache of the parser between files, and reading the Apex of a large org would take about five times as
   long. It recovers more after a missing brace, and that advantage is given up.

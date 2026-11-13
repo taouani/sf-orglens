@@ -486,7 +486,7 @@ Status after the pull request of this work package (2026-11-13). The trial is do
 - Of 100 references sampled from apex-recipes, all 100 are right. I checked them, not a second person. Of the 766 calls that `apex-ls` on Java finds in apex-recipes, the trial finds 751.
 - NPSP: `web-tree-sitter-sfapex` takes about 4 seconds and 430 MiB. `apex-parser` takes about 20 seconds, and 1,490 to 1,546 MiB with the default heap of Node.js or 1,047 to 1,108 MiB with the heap limited to 1,024 MiB. Both pass the gates. The first version of this status said that `apex-parser` misses the memory mark. The review of the pull request showed that this rested on one heap setting.
 - The tie-break was measured where it can be. On 1,781 damaged files neither parser recovers better throughout: `apex-parser` after a missing brace, `web-tree-sitter-sfapex` after a missing quote. The grammars are equally current. The first criterion that separates the two by a measurement is the last one, speed, and it names `web-tree-sitter-sfapex`.
-- The decision rule above therefore does not select a parser without a judgment. I recommended `web-tree-sitter-sfapex`. You chose it on 13 November 2026, and record 0018, which holds the numbers, is `Accepted`. The adapter of the other parser is kept, and a test compares the two.
+- The decision rule above therefore does not select a parser without a judgment. I recommended `web-tree-sitter-sfapex`. Added after that pull request: you chose it on 13 November 2026, and record 0018, which holds the numbers, is `Accepted`. The adapter of the other parser is kept, and a test compares the two.
 - The score on the fixture is not a measure of the resolver on code it has not seen: I wrote the fixture, the key and the resolver. A check on NPSP found four kinds of code the resolver missed, which I added. The review found references to things that do not exist, reported as `confirmed`, and names that are dropped without a word. The report lists them for Phase 3.
 - Not done: hours per candidate, which mean nothing for work done by an AI assistant in one session. Lines of adapter code and the surprises of each parser are recorded in their place. The check against the Tooling API of step 6 of the earlier research is replaced by your decision of 12 November 2026 that the Dependency API alone is the cross-check.
 
@@ -510,7 +510,7 @@ Status after the pull request of this work package (2026-11-13). All four are wr
   new record follows your answer.
 - The phase is closed when you have run the test plan. Its part G is the one run that was never done:
   `orglens snapshot` against Salesforce with a login of the Salesforce CLI. It is item 6 of work package 8.
-- Record 0018 is `Accepted`: you chose `web-tree-sitter-sfapex` on 13 November 2026.
+- Added after that pull request: record 0018 is `Accepted`. You chose `web-tree-sitter-sfapex` on 13 November 2026.
 
 ## 6. Pull requests and review
 

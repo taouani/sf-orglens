@@ -17,7 +17,7 @@ is [`docs/plans/phase-0.md`](../plans/phase-0.md). The checks you can run yourse
   - **Which parser.** Both candidates give the same references with one resolver, and both pass every mark of
     the plan. `web-tree-sitter-sfapex` is about five times as fast on the largest codebase and needs 30 to 40
     percent of the memory. On damaged files neither is better throughout. The tie-break of the plan needs a
-    judgment, so the trial does not select a parser. I recommended `web-tree-sitter-sfapex`. You chose it on
+    judgment, so the trial did not select a parser. I recommended `web-tree-sitter-sfapex`. You chose it on
     13 November 2026, and record [0018](../adr/0018-apex-analysis-foundation.md) is `Accepted`.
 - One thing was never run: the command `orglens snapshot` against Salesforce with a login of the Salesforce CLI.
   The code behind it ran against the test org. Part G of the test plan is that run, and only you can do it.
