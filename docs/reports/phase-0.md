@@ -48,11 +48,11 @@ is [`docs/plans/phase-0.md`](../plans/phase-0.md). The checks you can run yourse
 | 10 Phase close            | The updated overall plan, the test plan, this report, the draft of the Phase 1 plan.                                                                                                                                                                                                                                        |
 
 In numbers: about 10,800 lines of TypeScript in the engine and the command line, about 19,600 lines of tests, and
-about 4,300 lines in the trial. About 1,250 tests are defined, and CI runs them on every pull request on three
-systems. How many of them are skipped depends on the system and on the user: 8 on Linux in CI, and 16 where I
-measured, as the root user and without the public codebases. Statement coverage of the two packages is 96.7
-percent, measured there. 14 pull requests before the one that closes the phase, each with a code review by a
-separate agent before it was merged.
+about 4,300 lines in the trial. 1,258 tests are defined, and CI runs them on every pull request on three
+systems. How many of them are skipped depends on the system and on the user: 9 on Linux in CI, 23 on Windows in
+CI, and 17 where I measured, as the root user and without the public codebases. Statement coverage of the two
+packages is 97 percent on Linux in CI. 15 pull requests before the one that closes the phase, each with a code
+review by a separate agent before it was merged.
 
 ## What was measured
 
@@ -62,7 +62,7 @@ runs on one machine or one org.
 | Question                                         | Answer                                                                                                                                                                                                                                                                                                                                                  | Note                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Does the storage layout hold at the target size? | A synthetic org of 147,000 components and 600,000 references: ten snapshots in 159 MB. An impact query over five levels from a hub field takes 779 ms in SQL, and 2.7 ms in memory once the references of the snapshot are loaded, which takes 297 ms. The benchmark has tables of its own and does not go through the store of the engine. Linux only. | [store-benchmark.md](../research/phase-0/store-benchmark.md) |
-| How fast does a command start?                   | `orglens status` in 88 to 93 ms at the median, in three runs of 21 starts each on 13 November while other work ran on the machine. The budget is 150 ms.                                                                                                                                                                                                | `pnpm run check:startup`                                     |
+| How fast does a command start?                   | `orglens status` in 88 to 95 ms at the median on Linux: three runs of 21 starts each on my machine while other work ran on it, and one in CI. The budget is 150 ms.                                                                                                                                                                                     | `pnpm run check:startup`                                     |
 | How long does a real org take to read?           | 120 and 197 seconds for a Developer Edition org of 1,668 listed components and 5,010 files, 408 MB of memory. Nearly all of it is Salesforce building a zip. Three of the files could not be read as metadata, and the listing of one type failed.                                                                                                      | [real-org.md](../research/phase-0/real-org.md)               |
 | What does the Dependency API report?             | 100 of the 137 pairs of the answer key. None of its 117 rows between two components of the fixture project is wrong. Its other 107 rows were counted and not checked. Nothing for standard fields, names in text, lookups, roll-up summaries and inactive rules.                                                                                        | [real-org.md](../research/phase-0/real-org.md)               |
 | What do compiler symbol tables hold?             | Declarations, and no reference.                                                                                                                                                                                                                                                                                                                         | [real-org.md](../research/phase-0/real-org.md)               |
@@ -102,10 +102,10 @@ runs on one machine or one org.
     Windows refused to move the new configuration file over the old one while another process had it open
     (`EPERM`). `docs/cli.md` promises that such commands do not lose each other's change, so this is a defect
     of the engine and not of the test. The code review of the pull request that closes the phase found it in
-    the history of CI. It is
-    corrected in pull request 17: on Windows the move is tried again for about half a second. The correction is
-    tested with a move that fails on purpose. It was not seen to fail or to pass on a real Windows machine
-    outside CI.
+    the history of CI. It is corrected in pull request 17: on Windows the move, and the read of a configuration
+    file, are tried again for up to a third of a second. A test that runs on Windows only holds the file open
+    and sees the move refused and then accepted, and it passed in CI. Which process had the file open in the
+    run that failed is not known. Nothing was run by hand on a Windows machine.
   - On Linux, one run failed in a test that compares the folder of a Git repository before and after a read:
     a newer Git tidies a repository in a process of its own and holds a lock file meanwhile. The helpers of the
     tests now switch that off.
