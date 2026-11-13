@@ -251,6 +251,11 @@ interface QueryMode {
   readonly locate: (name: Name) => Place | undefined;
 }
 
+/** A method or a property without a name, or a method with a parameter without a type. */
+const isNameless = (member: Member): boolean =>
+  (member.kind === 'method' && (member.name.text === '' || member.params.some((param) => param.type.name === ''))) ||
+  (member.kind === 'property' && member.name.text === '');
+
 const typeText = (type: TypeRef): string =>
   `${type.name}${type.args.length > 0 ? `<${type.args.map(typeText).join(',')}>` : ''}${'[]'.repeat(type.array)}`;
 
@@ -1392,6 +1397,9 @@ class Resolver {
       if (member.kind === 'type') {
         const inner = cls?.inner.get(member.decl.name.text.toLowerCase());
         if (inner !== undefined) this.type(file, inner, member.decl);
+      } else if (isNameless(member)) {
+        // A parser gives a declaration without a name for a file that is broken. It has no key.
+        continue;
       } else if (member.kind === 'method') {
         const signature = apexSignature(member.params.map((param) => typeText(param.type)));
         const sub: SubComponent = member.ctor
@@ -1402,7 +1410,7 @@ class Resolver {
         this.stmt(member.body);
       } else if (member.kind === 'field') {
         for (const declared of member.vars) {
-          if (declared.init === undefined) continue;
+          if (declared.init === undefined || declared.name.text === '') continue;
           this.ctx = this.context(
             file,
             keyOf({ kind: 'var', name: declared.name.text }),

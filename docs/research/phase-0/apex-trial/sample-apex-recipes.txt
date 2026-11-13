@@ -1,0 +1,206 @@
+A sample of 100 of the 1,016 references that the trial found in apex-recipes on 12 November 2026, drawn with
+the seed 2026 by trial/apex/src/sample.ts, each with its line of source. apex-recipes is at the commit that
+fixtures/corpora.toml pins. Each entry was read by the AI assistant that wrote the resolver and judged right:
+the target, the kind and the place. The report of the trial says what this check is worth and what it is not.
+The lines of source are from apex-recipes, which is published under CC0-1.0.
+
+1. BatchApexRecipes.cls:62:18 Name | writes CustomField:account.name | field confirmed | from ApexClass:batchapexrecipes#method:execute(database.batchablecontext,list<account>)
+     acct.Name += ' Edited by Batch class';
+2. BatchApexRecipes.cls:62:18 Name | reads CustomField:account.name | field confirmed | from ApexClass:batchapexrecipes#method:execute(database.batchablecontext,list<account>)
+     acct.Name += ' Edited by Batch class';
+3. QueueableRecipes.cls:37:13 update | writes CustomObject:account | dml confirmed update | from ApexClass:queueablerecipes#method:execute(queueablecontext)
+     update accounts;
+4. QueueableWithCalloutRecipes.cls:58:13 update | writes CustomObject:account | dml confirmed update | from ApexClass:queueablewithcalloutrecipes#method:execute(queueablecontext)
+     update accounts;
+5. AccountShippingCountryComparator.cls:67:36 ShippingCountry | reads CustomField:account.shippingcountry | field confirmed | from ApexClass:accountshippingcountrycomparator#method:compare(account,account)
+     compareResult = a1.ShippingCountry.compareTo(
+6. CustomMetadataUtilties.cls:69:17 object__r | reads CustomField:bucketed_picklist__mdt.object__c | soql confirmed | from ApexClass:custommetadatautilties#method:getbucketedpicklistsforobject(id)
+     object__r.qualifiedApiName,
+7. CustomMetadataUtilties.cls:71:18 Bucketed_Picklist__mdt | reads CustomObject:bucketed_picklist__mdt | soql confirmed | from ApexClass:custommetadatautilties#method:getbucketedpicklistsforobject(id)
+     FROM Bucketed_Picklist__mdt
+8. CustomMetadataUtilties.cls:113:18 Picklist_Bucket__mdt | reads CustomObject:picklist_bucket__mdt | soql confirmed | from ApexClass:custommetadatautilties#method:getpicklistbucketwithvalues(list<bucketed_picklist__mdt>,string)
+     FROM Picklist_Bucket__mdt
+9. CustomMetadataUtilties.cls:115:17 Bucketed_Picklist__c | reads CustomField:picklist_bucket__mdt.bucketed_picklist__c | soql confirmed | from ApexClass:custommetadatautilties#method:getpicklistbucketwithvalues(list<bucketed_picklist__mdt>,string)
+     Bucketed_Picklist__c IN :bPl
+10. DMLRecipes.cls:331:13 undelete | writes CustomObject:account | dml confirmed undelete | from ApexClass:dmlrecipes#method:undeleteaccountviakeywordinsystemmode(list<account>)
+     undelete as system accts;
+11. MetadataCatalogRecipes.cls:44:48 EntityDefinition | reads CustomField:fielddefinition.entitydefinitionid | field confirmed | from ApexClass:metadatacatalogrecipes#inner:lookuprelationshipdefinition/ctor:(fielddefinition)
+     this.looksUpTo = String.valueOf(fd.EntityDefinition.DeveloperName);
+12. MetadataCatalogRecipes.cls:45:52 DeveloperName | reads CustomField:fielddefinition.developername | field confirmed | from ApexClass:metadatacatalogrecipes#inner:lookuprelationshipdefinition/ctor:(fielddefinition)
+     this.developerName = String.valueOf(fd.DeveloperName);
+13. SOQLRecipes.cls:118:20 Industry | reads CustomField:account.industry | soql confirmed | from ApexClass:soqlrecipes#method:getrecordsbymultiplefieldvalues()
+     OR Industry = 'Slow Food - Made quickly')
+14. SOSLRecipes.cls:49:31 name | reads CustomField:account.name | sosl confirmed | from ApexClass:soslrecipes#method:namefieldsearch()
+     RETURNING account(name), contact(lastname, account.Name)
+15. InboundEmailHandlerRecipes.cls:169:13 FromAddress | writes CustomField:emailmessage.fromaddress | field confirmed | from ApexClass:inboundemailhandlerrecipes#method:createemailrecord(contact,messaging.inboundemail)
+     FromAddress = email.fromAddress,
+16. InboundEmailHandlerRecipes.cls:173:13 Incoming | writes CustomField:emailmessage.incoming | field confirmed | from ApexClass:inboundemailhandlerrecipes#method:createemailrecord(contact,messaging.inboundemail)
+     Incoming = true,
+17. InboundEmailHandlerRecipes.cls:177:13 RelatedToId | writes CustomField:emailmessage.relatedtoid | field confirmed | from ApexClass:inboundemailhandlerrecipes#method:createemailrecord(contact,messaging.inboundemail)
+     RelatedToId = sender.AccountId
+18. InboundEmailHandlerRecipes.cls:177:34 AccountId | reads CustomField:contact.accountid | field confirmed | from ApexClass:inboundemailhandlerrecipes#method:createemailrecord(contact,messaging.inboundemail)
+     RelatedToId = sender.AccountId
+19. FilesRecipes.cls:87:22 PathOnClient | writes CustomField:contentversion.pathonclient | field confirmed | from ApexClass:filesrecipes#method:createfileattachedtorecord(blob,id,string)
+     fileToUpload.PathOnClient = fileName;
+20. FilesRecipes.cls:89:22 VersionData | writes CustomField:contentversion.versiondata | field confirmed | from ApexClass:filesrecipes#method:createfileattachedtorecord(blob,id,string)
+     fileToUpload.VersionData = fileContents;
+21. FilesRecipes.cls:181:15 LinkedEntityId | reads CustomField:contentdocumentlink.linkedentityid | text probable | from ApexClass:filesrecipes#method:getfilteredattachmentsforrecord(filesrecipes.genericfiletype,id)
+     ' LinkedEntityId = :recordId';
+22. FilesRecipes.cls:236:36 LinkedEntityId | reads CustomField:contentdocumentlink.linkedentityid | field confirmed | from ApexClass:filesrecipes#method:publishcontent(contentdocumentlink)
+     dist.RelatedRecordId = cdl.LinkedEntityId;
+23. CustomRestEndpointRecipes.cls:72:34 Phone | reads CustomField:account.phone | soql confirmed | from ApexClass:customrestendpointrecipes#method:getrecordstoreturn()
+     SELECT Id, Name, Phone, Website
+24. CustomRestEndpointRecipes.cls:410:43 Website | reads CustomField:account.website | field confirmed | from ApexClass:customrestendpointrecipes#method:updateaccountrecords()
+     account.Website = account.Website;
+25. InvocableMethodRecipes.cls:97:53 Contact | reads CustomObject:contact | text probable | from ApexClass:invocablemethodrecipes#method:findrelatedcontacts(list<contactsearchrequest>)
+     queryString = 'SELECT Id, Name FROM Contact WHERE Id = :whoId LIMIT 1';
+26. CanTheUser.cls:427:48 PermissionsRead | reads CustomField:fieldpermissions.permissionsread | soql confirmed | from ApexClass:cantheuser#method:memoizeflsmdc(string,flstype)
+     SELECT Id, Field, PermissionsEdit, PermissionsRead, SobjectType
+27. CanTheUser.cls:428:18 FieldPermissions | reads CustomObject:fieldpermissions | soql confirmed | from ApexClass:cantheuser#method:memoizeflsmdc(string,flstype)
+     FROM FieldPermissions
+28. StripInaccessibleRecipes.cls:28:30 BudgetedCost | reads CustomField:campaign.budgetedcost | soql confirmed | from ApexClass:stripinaccessiblerecipes#method:stripinaccessiblefromquery()
+     SELECT Name, BudgetedCost, ActualCost
+29. StripInaccessibleRecipes.cls:29:22 Campaign | reads CustomObject:campaign | soql confirmed | from ApexClass:stripinaccessiblerecipes#method:stripinaccessiblefromquery()
+     FROM Campaign
+30. DataFactoryForPackageInstalls.cls:35:21 parent1__c | writes CustomField:junction__c.parent1__c | field confirmed | from ApexClass:datafactoryforpackageinstalls#method:generatedata()
+     parent1__c = junction1.get(i).Id,
+31. DataFactoryForPackageInstalls.cls:36:21 Parent2__c | writes CustomField:junction__c.parent2__c | field confirmed | from ApexClass:datafactoryforpackageinstalls#method:generatedata()
+     Parent2__c = junction2.get(i).Id
+32. FormattedRecipeDisplayController.cls:70:30 ApiVersion | reads CustomField:apexclass.apiversion | soql confirmed | from ApexClass:formattedrecipedisplaycontroller#method:getrecipecode(string)
+     SELECT Id, Name, ApiVersion, Body, LengthWithoutComments
+33. OrgShape.cls:21:34 isSandbox | reads CustomField:organization.issandbox | field confirmed | from ApexClass:orgshape#prop:issandbox
+     return getOrgShape().isSandbox;
+34. OrgShape.cls:72:34 isReadOnly | reads CustomField:organization.isreadonly | field confirmed | from ApexClass:orgshape#prop:isreadonly
+     return getOrgShape().isReadOnly;
+35. AccountTriggerHandler.cls:191:13 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:accounttriggerhandler#method:beforedelete()
+     insert clonedAccounts;
+36. LogTriggerHandler.cls:27:21 Log_Data__c | writes CustomField:logevent__c.log_data__c | field confirmed | from ApexClass:logtriggerhandler#method:afterinsert()
+     Log_Data__c = event.Log_Message__c,
+37. PlatformEventRecipesTriggerHandler.cls:46:30 AccountId__c | reads CustomField:event_recipes_demo__e.accountid__c | field confirmed | from ApexClass:platformeventrecipestriggerhandler#method:afterinsert()
+     accounts.get(evt.AccountId__c).Website = evt.Url__c;
+38. AccountTrigger.trigger:1:27 Account | triggers-on CustomObject:account | declaration confirmed | from ApexTrigger:accounttrigger
+     trigger AccountTrigger on Account(
+39. ScheduledApexRecipes_Tests.cls:17:36 timesTriggered | reads CustomField:crontrigger.timestriggered | soql confirmed | from ApexClass:scheduledapexrecipes_tests#method:scheduledexecutiontimeiscorrectpositive()
+     SELECT CronExpression, timesTriggered, nextFireTime
+40. ListSortingRecipes_Tests.cls:12:9 NumberOfEmployees | writes CustomField:account.numberofemployees | field confirmed | from ApexClass:listsortingrecipes_tests#var:a2
+     NumberOfEmployees = 50
+41. CustomMetadataRecipes_Tests.cls:7:45 Field__r | reads CustomField:bucketed_picklist__mdt.field__c | soql confirmed | from ApexClass:custommetadatarecipes_tests#method:testbucketedpicklistspositive()
+     SELECT Id, Field__c, Object__c, Field__r.QualifiedAPIName
+42. DMLRecipes_Tests.cls:18:18 Name | reads CustomField:account.name | field confirmed | from ApexClass:dmlrecipes_tests#method:testinsertinsystemmodepositive()
+     acct.Name,
+43. DMLRecipes_Tests.cls:365:14 Name | writes CustomField:account.name | field confirmed | from ApexClass:dmlrecipes_tests#method:testupdateacccountviakeywordinsystemmodepositive()
+     acct.Name += ' + Updated';
+44. DMLRecipes_Tests.cls:381:9 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:dmlrecipes_tests#method:testupdateacccountviakeywordinsystemmodenegative()
+     insert acct;
+45. DMLRecipes_Tests.cls:431:46 Account | reads CustomObject:account | soql confirmed | from ApexClass:dmlrecipes_tests#method:testupdateacccountviadatabasemethodinsystemmodepositive()
+     String checkAcct = [SELECT Name FROM Account WHERE Id = :acct.Id].Name;
+46. DMLRecipes_Tests.cls:510:40 Name | reads CustomField:account.name | soql confirmed | from ApexClass:dmlrecipes_tests#method:testdeleteaccountviakeywordinsystemmodepositive()
+     String checkAcct = [SELECT Name FROM Account WHERE Id = :acct.Id]
+47. DMLRecipes_Tests.cls:612:40 Name | reads CustomField:account.name | soql confirmed | from ApexClass:dmlrecipes_tests#method:testdeleteaccountviadatabasemethodinsystemmodepositive()
+     String checkAcct = [SELECT Name FROM Account WHERE Id = :acct.Id]
+48. DMLRecipes_Tests.cls:686:9 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:dmlrecipes_tests#method:testundeleteaccountviakeywordinsystemmodepositive()
+     insert acct;
+49. DMLRecipes_Tests.cls:753:20 name | reads CustomField:account.name | soql confirmed | from ApexClass:dmlrecipes_tests#method:testundeleteaccountviadatabasemethodinsystemmodepositive()
+     SELECT name
+50. SOQLRecipes_Tests.cls:276:9 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:soqlrecipes_tests#method:testlimitclausemorethan10accountspositive()
+     insert toinsert;
+51. SOQLRecipes_Tests.cls:331:9 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:soqlrecipes_tests#method:testgetaccountfilterbystatepositive()
+     insert toInsert;
+52. SOQLRecipes_Tests.cls:463:37 Name | reads CustomField:account.name | field confirmed | from ApexClass:soqlrecipes_tests#method:testgetaccountinfowhenqueryingcontactpositive()
+     TestContacts[0].account.Name,
+53. SOQLRecipes_Tests.cls:492:24 parent2__r | reads CustomField:junction__c.parent2__c | field confirmed | from ApexClass:soqlrecipes_tests#method:testgetdetailsfrombothparentrecordspositive()
+     results[0].parent2__r.Name,
+54. SOSLRecipes_Tests.cls:9:9 insert | writes CustomObject:account | dml confirmed insert | from ApexClass:soslrecipes_tests#method:makedata()
+     insert new List<Account>{ a1, a2, a3 };
+55. SOSLRecipes_Tests.cls:15:9 insert | writes CustomObject:contact | dml confirmed insert | from ApexClass:soslrecipes_tests#method:makedata()
+     insert new List<Contact>{ c1, c2, c3 };
+56. SOSLRecipes_Tests.cls:38:29 Contact | reads CustomObject:contact | soql confirmed | from ApexClass:soslrecipes_tests#method:innamefieldstest()
+     [SELECT Id FROM Contact WHERE lastname = 'Alaska']
+57. DataWeaveErrorRecipes_Tests.cls:24:45 LastName | writes CustomField:contact.lastname | field confirmed | from ApexClass:dataweaveerrorrecipes_tests#method:testconvertcontactstoexcel()
+     new Contact(FirstName = 'John', LastName = 'Doe')
+58. InboundEmailHandlerRecipes_tests.cls:25:17 accountId | writes CustomField:contact.accountid | field confirmed | from ApexClass:inboundemailhandlerrecipes_tests#method:makedata()
+     accountId = testAccount.Id,
+59. InboundEmailHandlerRecipes_tests.cls:74:9 delete | writes CustomObject:contact | dml confirmed delete | from ApexClass:inboundemailhandlerrecipes_tests#method:handleinboundemailpositivefailurewhencontactcreationfails()
+     delete [SELECT Id FROM Contact];
+60. InboundEmailHandlerRecipes_tests.cls:96:9 delete | writes CustomObject:contact | dml confirmed delete | from ApexClass:inboundemailhandlerrecipes_tests#method:handleinboundemailpositivenewcontactcreatedwhennocontactfound()
+     delete [SELECT Id FROM Contact];
+61. InboundEmailHandlerRecipes_tests.cls:148:23 LinkedEntityId | reads CustomField:contentdocumentlink.linkedentityid | soql confirmed | from ApexClass:inboundemailhandlerrecipes_tests#method:integrationtestpositive()
+     WHERE LinkedEntityId = :contactId
+62. CalloutRecipes_Tests.cls:391:18 Account | reads CustomObject:account | soql confirmed | from ApexClass:calloutrecipes_tests#method:insertaccountandcontactsfromuntypedresponsepositive()
+     FROM Account
+63. CustomRestEndpointRecipes_Tests.cls:22:13 Account | references CustomObject:account | token confirmed | from ApexClass:customrestendpointrecipes_tests#method:httpcalloutgetrecordstoreturnpositive()
+     Account.SObjectType,
+64. CustomRestEndpointRecipes_Tests.cls:147:47 LastName | writes CustomField:contact.lastname | field confirmed | from ApexClass:customrestendpointrecipes_tests#method:httpcalloutdeletesinglecontactnegativeexception()
+     TestFactory.createSObject(new Contact(LastName = 'test'), true);
+65. CustomRestEndpointRecipes_Tests.cls:495:24 Name | reads CustomField:account.name | soql confirmed | from ApexClass:customrestendpointrecipes_tests#method:httppatchupdateaccountrecordspositive()
+     SELECT Id, Name, Website
+66. CustomRestEndpointRecipes_Tests.cls:519:18 Account | reads CustomObject:account | soql confirmed | from ApexClass:customrestendpointrecipes_tests#method:httppatchupdateaccountrecordspositive()
+     FROM Account
+67. PlatformEventRecipes_Tests.cls:126:20 Subject | reads CustomField:task.subject | soql confirmed | from ApexClass:platformeventrecipes_tests#method:testeventpublishcallbacksuccess()
+     SELECT Subject
+68. Safely_Tests.cls:109:13 Label | writes CustomField:permissionset.label | field confirmed | from ApexClass:safely_tests#method:testdoupdatenegative()
+     Label = 'testPermSet',
+69. Safely_Tests.cls:110:13 Name | writes CustomField:permissionset.name | field confirmed | from ApexClass:safely_tests#method:testdoupdatenegative()
+     Name = 'testPermSet'
+70. Safely_Tests.cls:112:9 insert | writes CustomObject:permissionset | dml confirmed insert | from ApexClass:safely_tests#method:testdoupdatenegative()
+     insert ps;
+71. Safely_Tests.cls:169:49 Name | writes CustomField:account.name | field confirmed | from ApexClass:safely_tests#method:testmarketingprofilegeneratesupdateexceptionpositive()
+     Account account = (Account) new Account(Name = 'TestAccount');
+72. Safely_Tests.cls:197:50 Name | writes CustomField:account.name | field confirmed | from ApexClass:safely_tests#method:testdoupsertmethodsnothrowpositive()
+     Account account2 = (Account) new Account(Name = 'TestAccount');
+73. Safely_Tests.cls:250:13 AssigneeId | writes CustomField:permissionsetassignment.assigneeid | field confirmed | from ApexClass:safely_tests#method:testdoupsertmethodsnegative()
+     AssigneeId = minAccessUser.Id
+74. Safely_Tests.cls:261:21 Name | writes CustomField:account.name | field confirmed | from ApexClass:safely_tests#method:testdoupsertmethodsnegative()
+     account.Name = 'TestAccount2';
+75. Safely_Tests.cls:369:9 insert | writes CustomObject:permissionsetassignment | dml confirmed insert | from ApexClass:safely_tests#method:testdoquerythrowsremovedfieldsexception()
+     insert new PermissionSetAssignment(
+76. StripInaccessibleRecipes_Tests.cls:269:21 title | reads CustomField:contact.title | field confirmed | from ApexClass:stripinaccessiblerecipes_tests#method:teststripinaccessiblebeforedmlminaccesswithpermsetpositive()
+     cnt.title,
+77. AccountServiceLayer_Tests.cls:65:36 Description | reads CustomField:account.description | field confirmed | from ApexClass:accountservicelayer_tests#method:incrementdescriptiononbulkaccountspositive()
+     integer.valueOf(ua.Description),
+78. ApexClassUtilities_Tests.cls:22:19 Name | reads CustomField:apexclass.name | soql confirmed | from ApexClass:apexclassutilities_tests#method:testgetrelatedclassesfromclassbodypositive()
+     WHERE Name LIKE 'ApexClassUtilities'
+79. Log_Tests.cls:31:24 Quiddity__c | reads CustomField:logevent__c.quiddity__c | field confirmed | from ApexClass:log_tests#method:testdirectpublishmethodspositive()
+     logEvt.Quiddity__c,
+80. Log_Tests.cls:67:22 Severity__c | reads CustomField:logevent__c.severity__c | soql confirmed | from ApexClass:log_tests#method:testlogmultipleitempositive()
+     ORDER BY Severity__c
+81. OrgShape_Tests.cls:23:22 OrganizationType | reads CustomField:organization.organizationtype | field confirmed | from ApexClass:orgshape_tests#method:testorgshapeproperties()
+     orgCheck.OrganizationType,
+82. RecipeTreeViewController_Tests.cls:11:24 Name | reads CustomField:apexclass.name | soql confirmed | from ApexClass:recipetreeviewcontroller_tests#method:testgeneratetreedatapositive()
+     OR Name LIKE 'SOQLRecipes'
+83. TestFactory.cls:9:9 Case | references CustomObject:case | token confirmed | from ApexClass:testfactory#var:namefieldmap
+     Case.SObjectType => Case.CaseNumber //this is the autonumber field
+84. TestFactory.cls:239:13 profileId | writes CustomField:user.profileid | field confirmed | from ApexClass:testfactory#method:createtestuser(id,boolean)
+     profileId = profileId,
+85. TestFactory.cls:252:13 insert | writes CustomObject:user | dml confirmed insert | from ApexClass:testfactory#method:createtestuser(id,boolean)
+     insert u;
+86. TestFactory.cls:281:18 Profile | reads CustomObject:profile | soql confirmed | from ApexClass:testfactory#method:createminaccessuser(boolean)
+     FROM Profile
+87. TestFactory.cls:296:18 PermissionSet | reads CustomObject:permissionset | soql confirmed | from ApexClass:testfactory#method:assignpermsettouser(user,string)
+     FROM PermissionSet
+88. TestFactory.cls:325:19 Name | reads CustomField:profile.name | soql confirmed | from ApexClass:testfactory#method:createmarketinguser(boolean)
+     WHERE Name = 'Marketing User'
+89. PSGAdvancedTestingRecipes.cls:93:26 PermissionSet | reads CustomObject:permissionset | soql confirmed | from ApexClass:psgadvancedtestingrecipes#method:assignpermissionsetgroup(permissionsetgroup,id)
+     FROM PermissionSet
+90. PSGAdvancedTestingRecipes.cls:99:13 PermissionSetGroupId | writes CustomField:permissionsetassignment.permissionsetgroupid | field confirmed | from ApexClass:psgadvancedtestingrecipes#method:assignpermissionsetgroup(permissionsetgroup,id)
+     PermissionSetGroupId = PermissionSetGroup.Id,
+91. PSGAdvancedTestingRecipes.cls:108:43 Status | reads CustomField:permissionsetgroup.status | soql confirmed | from ApexClass:psgadvancedtestingrecipes#method:getpermissionsetgroups()
+     return [SELECT Id, DeveloperName, Status FROM PermissionSetGroup];
+92. PSGAdvancedTestingRecipes.cls:108:55 PermissionSetGroup | reads CustomObject:permissionsetgroup | soql confirmed | from ApexClass:psgadvancedtestingrecipes#method:getpermissionsetgroups()
+     return [SELECT Id, DeveloperName, Status FROM PermissionSetGroup];
+93. PSGTestingRecipes.cls:17:19 Name | reads CustomField:permissionset.name | soql confirmed | from ApexClass:psgtestingrecipes#method:testrecalculatepsg()
+     WHERE Name = 'Read_access_to_Account_Shipping_Address'
+94. AccountTriggerHandler_Tests.cls:14:54 Account | reads CustomObject:account | soql confirmed | from ApexClass:accounttriggerhandler_tests#method:beforeinserttestpositive()
+     Account check = [SELECT Id, Description FROM Account LIMIT 1];
+95. AccountTriggerHandler_Tests.cls:39:23 ShippingStreet | reads CustomField:account.shippingstreet | field confirmed | from ApexClass:accounttriggerhandler_tests#method:afterinsertbulktestpositive()
+     check.ShippingStreet.containsIgnoreCase('229b baker st'),
+96. AccountTriggerHandler_Tests.cls:44:39 Description | reads CustomField:account.description | field confirmed | from ApexClass:accounttriggerhandler_tests#method:afterinsertbulktestpositive()
+     Integer.valueOf(check.Description),
+97. AccountTriggerHandler_Tests.cls:58:25 ShippingStreet | writes CustomField:account.shippingstreet | field confirmed | from ApexClass:accounttriggerhandler_tests#method:testafterinsertpositive()
+     new Account(ShippingStreet = '123 sesame st.'),
+98. AccountTriggerHandler_Tests.cls:65:24 ShippingStreet | reads CustomField:account.shippingstreet | soql confirmed | from ApexClass:accounttriggerhandler_tests#method:testafterinsertpositive()
+     SELECT Id, ShippingStreet
+99. AccountTriggerHandler_Tests.cls:123:21 ShippingState | writes CustomField:account.shippingstate | field confirmed | from ApexClass:accounttriggerhandler_tests#method:testbeforeupdatewithadderrornegative()
+     ShippingState = 'BAD STATE CODE'
+100. AccountTriggerHandler_Tests.cls:234:56 Account | reads CustomObject:account | soql confirmed | from ApexClass:accounttriggerhandler_tests#method:beforedeletetestpositive()
+     List<Account> acctCloneCheck = [SELECT Id FROM Account];

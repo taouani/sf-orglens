@@ -89,8 +89,10 @@ export function score(analysis: Analysis, key: Key = loadAnswerKey()): Score {
   const expected = entries.filter((entry) => !entry.stretch);
   const missed = expected.filter((entry) => !taken.has(entry));
   const wrongKind = matched.filter((pair) => pair.key.kind !== pair.found.kind);
+  // The key also holds negatives in fields and rules, which no run on Apex can hit. They are not counted here.
+  const negatives = key.negatives.filter((negative) => isApex(negative.file));
   const negativesHit = analysis.references.filter((found) =>
-    key.negatives.some(
+    negatives.some(
       (negative) => negative.file === found.file && negative.line === found.line && negative.not === found.to,
     ),
   );
@@ -111,7 +113,7 @@ export function score(analysis: Analysis, key: Key = loadAnswerKey()): Score {
     wrongTier: matched.filter((pair) => pair.key.tier !== pair.found.tier),
     wrongOp: matched.filter((pair) => pair.key.op !== pair.found.op),
     negativesHit,
-    negatives: key.negatives.length,
+    negatives: negatives.length,
     unknownsExpected: key.unknowns.length,
     unknownsFound: [...unknownPlaces].filter((place) => reportedPlaces.has(place)).length,
     unknownsExtra: [...reportedPlaces].filter((place) => !unknownPlaces.has(place)).sort(),

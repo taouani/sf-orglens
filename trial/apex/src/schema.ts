@@ -2,18 +2,24 @@
  * What the resolver knows about objects and fields: the custom objects and custom fields of a project in source
  * format, read from its `objects` folders.
  *
- * Standard objects and standard fields have no file in a project. The trial knows them by two rules, which are
+ * Standard objects and standard fields have no file in a project. The trial knows them by the rules below, which are
  * written down here so that they can be judged:
  *
  * - A type name is an object when the project has a folder for it, when it ends like a custom object, or when
  *   it is in the short list of standard objects below.
  * - A name without a custom ending that stands where a field stands is a standard field of the object in front
  *   of it. No list of standard fields is consulted, so a name that does not exist is not noticed.
- * - A child relationship is known only when a lookup field of the project defines it. `Contacts` of `Account` is
- *   not known, and neither is the target of a lookup field that comes from a package the project does not hold.
- *   The resolver reports both as unknown.
+ * - A child relationship is known only when a lookup field of the project defines it. In a sub-query, a child
+ *   relationship that is not known is reported as unknown. In Apex code it is not: `acc.Contacts` is taken for a
+ *   standard field `Account.Contacts`, and `record.Lines__r` without a known relationship is taken for the
+ *   lookup field `Lines__c` of the object of the record. Both are reported at the tier `confirmed`, and both
+ *   are wrong. The report of the trial counts them.
+ * - The target of a lookup field that comes from a package the project does not hold is not known. A field
+ *   behind such a lookup is reported as unknown.
+ * - No field name is checked against the fields the project defines. A custom field that no file of the project
+ *   defines is reported like one that exists.
  *
- * The production resolver needs the description of the org, or a bundled list, in their place.
+ * The production resolver needs the description of the org, or a bundled list, in place of these rules.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

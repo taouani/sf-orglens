@@ -634,7 +634,8 @@ export async function createTreeSitterAdapter(): Promise<SyntaxAdapter> {
     name: 'tree-sitter',
     parseUnit(source, kind): Unit {
       try {
-        return withTree(apex, source, (root) => unit(root, kind));
+        // A byte order mark is not Apex. A file may start with one.
+        return withTree(apex, source.startsWith('\uFEFF') ? source.slice(1) : source, (root) => unit(root, kind));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { types: [], trigger: undefined, problems: [{ at: START, message }] };

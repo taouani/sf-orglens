@@ -9,6 +9,8 @@ import type { TriggerUnitContext } from '@apexdevtools/apex-parser';
 import {
   AnyIdContext,
   ApexErrorListener,
+  ApexLexer,
+  ApexParser,
   ApexParserFactory,
   ArrayCreatorRestContext,
   ArrayExpressionContext,
@@ -76,6 +78,7 @@ import {
   ModifierContext,
   NegExpressionContext,
   NewExpressionContext,
+  NoRestContext,
   ParExpressionContext,
   PostOpExpressionContext,
   PreOpExpressionContext,
@@ -156,8 +159,35 @@ type CtxClass<T extends Ctx> = abstract new (...args: never[]) => T;
 class Problems extends ApexErrorListener {
   readonly found: Problem[] = [];
   override apexSyntaxError(line: number, column: number, message: string): void {
-    this.found.push({ at: { line, column: column + 1 }, message });
+    this.found.push({ at: { line, column: unitColumn(line, column) + 1 }, message });
   }
+}
+
+/**
+ * The lines of the text that is being lowered, kept only when it holds a character outside the basic plane.
+ *
+ * The parser counts a column in characters. The model counts UTF-16 units, as the answer key and JavaScript do.
+ * The two differ behind a character that takes two units, such as an emoji in a text literal.
+ */
+let wideLines: readonly string[] | undefined;
+const HIGH_SURROGATE = /[\uD800-\uDBFF]/;
+function reading(text: string): string {
+  // A byte order mark is not Apex. A file may start with one.
+  const source = text.startsWith('\uFEFF') ? text.slice(1) : text;
+  wideLines = HIGH_SURROGATE.test(source) ? source.split('\n') : undefined;
+  return source;
+}
+function unitColumn(line: number, characters: number): number {
+  const text = wideLines?.[line - 1];
+  if (text === undefined) return characters;
+  let units = 0;
+  let seen = 0;
+  for (const character of text) {
+    if (seen === characters) break;
+    units += character.length;
+    seen += 1;
+  }
+  return units;
 }
 
 const isTerminal = (node: Tree): node is ApexTerminalNode => (node as { symbol?: unknown }).symbol !== undefined;
@@ -171,14 +201,19 @@ const one = <T extends Ctx>(node: Tree | undefined, type: CtxClass<T>): T | unde
 const words = (node: Tree | undefined): string[] => terminals(node).map((token) => token.symbol.text.toLowerCase());
 
 const START: Pos = { line: 1, column: 1 };
-const posOf = (token: ApexTerminalNode): Pos => ({ line: token.symbol.line, column: token.symbol.column + 1 });
+const posOf = (token: ApexTerminalNode): Pos => ({
+  line: token.symbol.line,
+  column: unitColumn(token.symbol.line, token.symbol.column) + 1,
+});
 /** The place of the first token of a node. */
 function startOf(node: Tree | undefined): Pos {
   if (node === undefined) return START;
   if (isTerminal(node)) return posOf(node);
   // A node that the parser made up after an error has no children and no start token of its own.
   const start = (node as { start?: { line: number; column: number } | null }).start;
-  return start === undefined || start === null ? START : { line: start.line, column: start.column + 1 };
+  return start === undefined || start === null
+    ? START
+    : { line: start.line, column: unitColumn(start.line, start.column) + 1 };
 }
 /** The one word a node such as `Id` or `AnyId` stands for. */
 function nameOf(node: Tree | undefined): Name {
@@ -235,6 +270,8 @@ function creator(ctx: CreatorContext | undefined): Expr {
     const elements = [...expressions(array), ...expressions(one(array, ArrayInitializerContext))];
     return { kind: 'collection', type: { ...type, array: 1 }, elements, pairs: [] };
   }
+  // `new List<String>{}`, `new Set<Id>{}` and `new Map<Id, String>{}`: a collection without an element.
+  if (one(ctx, NoRestContext) !== undefined) return { kind: 'collection', type, elements: [], pairs: [] };
   const rest = one(ctx, ClassCreatorRestContext);
   return {
     kind: 'new',
@@ -678,13 +715,28 @@ function trigger(ctx: TriggerUnitContext): TriggerDecl {
   return { name: nameOf(name), object: nameOf(object), body, members };
 }
 
+/**
+ * Gives back the memory of the prediction cache that the ANTLR run time builds as it reads. The cache belongs to
+ * the classes of the parser and of the lexer, so it is shared by every parse of the process. The next files are
+ * parsed more slowly until the cache has grown again. `run-corpus.ts` uses this to measure the trade.
+ */
+export function emptyApexParserCache(): void {
+  for (const recognizer of [ApexParser, ApexLexer]) {
+    const [first] = recognizer.DecisionsToDFA;
+    if (first === undefined) continue;
+    // The class of an entry is taken from an entry: the trial does not depend on the ANTLR run time by name.
+    const Entry = first.constructor as new (...args: unknown[]) => (typeof ApexParser.DecisionsToDFA)[number];
+    recognizer.DecisionsToDFA = recognizer._ATN.decisionToState.map((state, index) => new Entry(state, index));
+  }
+}
+
 export function createApexParserAdapter(): SyntaxAdapter {
   return {
     name: 'apex-parser',
     parseUnit(source, kind): Unit {
       const problems = new Problems();
       try {
-        const { parser } = ApexParserFactory.createLexerAndParser(source, problems);
+        const { parser } = ApexParserFactory.createLexerAndParser(reading(source), problems);
         if (kind === 'trigger') {
           return { types: [], trigger: trigger(parser.triggerUnit()), problems: problems.found };
         }
@@ -704,7 +756,7 @@ export function createApexParserAdapter(): SyntaxAdapter {
     parseQuery(text): Query | undefined {
       const problems = new Problems();
       try {
-        const { parser } = ApexParserFactory.createLexerAndParser(text, problems);
+        const { parser } = ApexParserFactory.createLexerAndParser(reading(text), problems);
         const tree = parser.query();
         // The rule stops where the query stops. Text after it means that this was not one query.
         if (problems.found.length > 0 || parser.getCurrentToken().type !== -1) return undefined;

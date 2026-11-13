@@ -19,7 +19,7 @@ Three notes were added while Phase 0 was built:
 | --- | --- |
 | [store-benchmark.md](store-benchmark.md) | The numbers of the storage benchmark in `bench/`, measured again with the code in the repository. |
 | [real-org.md](real-org.md) | What the first runs against a real org showed: the deploy of the fixture project, the first snapshot, what Salesforce rewrites, what an org lists and does not hand out, and what the Dependency API and the symbol tables of the compiler can be used for. |
-| [apex-trial.md](apex-trial.md) | The report of the Apex trial: two parsers under one resolver, scored against the answer key, run on three public codebases, with time, memory, a check by hand and the parser the trial selects. |
+| [apex-trial.md](apex-trial.md) | The report of the Apex trial: two parsers under one resolver, scored against the answer key, run on three public codebases, with time, memory, a check by hand, a test on damaged files, and what speaks for each parser. The scripts and the sample behind the checks are in [`apex-trial/`](apex-trial/). |
 
 ## How to read them
 

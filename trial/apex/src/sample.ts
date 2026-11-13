@@ -26,10 +26,15 @@ function random(seed: number): () => number {
   };
 }
 
-const next = random(Number(seedText ?? '1'));
+const count = Number(howMany ?? '100');
+const seed = Number(seedText ?? '1');
+if (!Number.isInteger(count) || count < 1 || !Number.isInteger(seed)) {
+  throw new Error(`The count and the seed must be whole numbers: ${howMany ?? ''} ${seedText ?? ''}`);
+}
+const next = random(seed);
 const pool = [...result.references];
 const sample: Found[] = [];
-const wanted = Math.min(Number(howMany ?? '100'), pool.length);
+const wanted = Math.min(count, pool.length);
 while (sample.length < wanted) {
   const [picked] = pool.splice(Math.floor(next() * pool.length), 1);
   if (picked !== undefined) sample.push(picked);
