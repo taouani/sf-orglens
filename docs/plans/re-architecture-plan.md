@@ -33,7 +33,7 @@ The reasons and the measurements are in the [Phase 0 report](../reports/phase-0.
 | What | Before | Now |
 | --- | --- | --- |
 | Decision A4, the cross-check from Salesforce | The Dependency API and compiler symbol data | The Dependency API alone. The symbol table an org keeps holds no reference, and OrgLens compiles nothing in an org. Decided by the maintainer on 12 November 2026, record [0034](../adr/0034-dependency-api-is-the-cross-check.md). |
-| Decision S3, the Apex parser | A trial of three candidates | `apex-ls` was dropped before the trial: its analyser runs on Java only. The trial of the other two selects `web-tree-sitter-sfapex`. The maintainer confirms the choice, record [0018](../adr/0018-apex-analysis-foundation.md). |
+| Decision S3, the Apex parser | A trial of three candidates | `apex-ls` was dropped before the trial: its analyser runs on Java only. The trial of the other two found them equal in output and both within the marks. It recommends `web-tree-sitter-sfapex`, which is about five times as fast, and selects none: the tie-break needs a judgment. The maintainer chooses, record [0018](../adr/0018-apex-analysis-foundation.md). |
 | Decision M1, what is taken from the old repositories | Fixtures, parser logic and designs | Designs and ideas only. No fixture, recording or code is copied. The old repositories hold test inputs without expected outputs, and one finding about them made a rule of it. Every fixture and every expected answer is written fresh. |
 | Decision S4, how an org is retrieved | The retrieve of `@salesforce/source-deploy-retrieve` | Four requests of the Metadata API that OrgLens makes itself. The library converts the files of a retrieve and reads source folders. Record [0032](../adr/0032-reading-an-org.md). |
 | Phase 0 effort | 2 to 3 weeks | 4 to 5 weeks of work as the Phase 0 plan counted it. The total to the gate moved from 24 to 35 weeks to 26 to 37. |
@@ -123,7 +123,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | --- | --- | --- | --- |
 | S1 | Language | TypeScript on Node | Salesforce's own libraries and the Apex parsers live there. Engine, CLI and UI share one language. |
 | S2 | Database | SQLite | One file, keyword search, recursive queries, safe concurrent reads. Kuzu was archived by its sponsor. |
-| S3 | Apex analysis foundation | Decided by a short trial. Two candidates were left, and the trial selects `web-tree-sitter-sfapex` under a resolver that OrgLens owns. The maintainer confirms | The choice determines months of effort and cannot be settled from documentation. |
+| S3 | Apex analysis foundation | Decided by a short trial. Two candidates were left. Both pass the trial under a resolver that OrgLens owns. The trial recommends `web-tree-sitter-sfapex`, and the maintainer chooses | The choice determines months of effort and cannot be settled from documentation. |
 | S4 | Salesforce connectivity | `@salesforce/core` and `@salesforce/source-deploy-retrieve` | Auth and repo reading without new code. The retrieve itself is OrgLens's own since Phase 0, because the one of the library cannot be resumed and writes into a project folder. |
 | S5 | LLM layer | Small internal interface with OpenAI-compatible and Anthropic adapters | Covers hosted and local providers. Library chosen when the layer is built. |
 | S6 | Licence | Apache 2.0 | Explicit patent grant and clear contribution terms. |
@@ -228,7 +228,7 @@ The stack is TypeScript on Node with SQLite, built on Salesforce's own open-sour
 | Database | SQLite, with its built-in full-text search for keyword lookup. Node's own `node:sqlite` by default, `better-sqlite3` as the tested fallback | Decided (S2) |
 | Salesforce auth | `@salesforce/core`, reading existing Salesforce CLI logins. JWT through environment variables for CI | Decided (S4, D5) |
 | Retrieval and repo reading | Own requests to the Metadata API for the retrieve. `@salesforce/source-deploy-retrieve` to convert what comes back and to read source folders | Decided (S4), changed in Phase 0 |
-| Apex analysis | `web-tree-sitter-sfapex` under a resolver of our own. `@apexdevtools/apex-parser` is kept as a second adapter in the trial | Selected by the trial of Phase 0 (S3). The maintainer confirms |
+| Apex analysis | `web-tree-sitter-sfapex` or `@apexdevtools/apex-parser`, under a resolver of our own. The adapter of the other one is kept in the trial | Both pass the trial of Phase 0 (S3). The trial recommends `web-tree-sitter-sfapex`. The maintainer chooses |
 | Apex cross-check | The Dependency API, through the Tooling API | Decided (A4), changed on 12 November 2026 |
 | LLM access | Internal interface with OpenAI-compatible and Anthropic adapters | Decided in principle (S5). Library chosen when built |
 | Distribution | npm package with an `orglens` command | Follows from S1. A Salesforce CLI plugin is an open question |
@@ -293,7 +293,7 @@ The two risks that could sink the product are Apex analysis proving harder than 
 
 | # | Risk | Why it matters | Mitigation |
 | --- | --- | --- | --- |
-| 1 | Method-level Apex analysis with type resolution is harder than estimated | It is the largest and least certain piece of work, and D2 depends on it | The Phase 0 trial showed it is feasible: one resolver reaches every pass mark on the fixture and gives the same 59,845 references on three public codebases with either parser. Left for phase 3: overloads by type, interfaces, a full description of standard objects, text that is followed through parameters. Ship class-level references as "probable" first if needed, then tighten. The parser stays behind one interface, with a second adapter kept as proof. |
+| 1 | Method-level Apex analysis with type resolution is harder than estimated | It is the largest and least certain piece of work, and D2 depends on it | The Phase 0 trial showed it is feasible: one resolver reaches every pass mark on the fixture and gives the same 59,845 references on three public codebases with either parser. Left for phase 3: every name checked against the description of the objects (the spike checks none, and reports fields that do not exist as `confirmed`), overloads by type, interfaces, text that is followed through parameters or put together in steps. Ship class-level references as "probable" first if needed, then tighten. The parser stays behind one interface, with a second adapter kept as proof. |
 | 2 | Results are wrong by omission | One missed dependency in front of a client destroys trust | The Dependency API as cross-check, for what it can see: custom fields and custom objects. For standard fields and names in text nothing from Salesforce confirms a result, so the fixture project with its answer key and checks by hand on public codebases carry the proof there. Coverage manifest on every snapshot. The correctness gate before any announcement. |
 | 3 | Text matching produces too many false positives | Long "possible" lists get ignored, which hides real results | Three tiers shown separately. Confirmed results first by default. Measure the false-positive rate on public codebases and tune. |
 | 4 | Scope creep by a solo developer | Three earlier builds went broad before deep | The F1 rule: no rider before the gate. Thin slices. Deferred list kept in the plan, not in the backlog. |
@@ -320,7 +320,7 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 
 **Resolved by planned work**
 
-- [ ] **Apex analysis foundation.** The Phase 0 trial selects `web-tree-sitter-sfapex`. Answered when the maintainer confirms (S3).
+- [ ] **Apex analysis foundation.** Both parsers pass the Phase 0 trial, which recommends `web-tree-sitter-sfapex`. Answered when the maintainer chooses (S3).
 - [ ] **Scope of the Dependency API on large orgs.** Its type coverage is measured for the types of the fixture project. Its limits on a large org, and flows, are not.
 - [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence?
 
