@@ -5,21 +5,7 @@
  * `JSON.stringify`, and every failure is an `EngineError`. A client never
  * opens the database or reads the configuration files itself.
  */
-import { randomBytes } from 'node:crypto';
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   diagnosticsJson,
@@ -41,6 +27,7 @@ import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
+import { pause, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
 import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
@@ -312,35 +299,6 @@ function workspaceLogger(paths: WorkspacePaths): Logger {
   }
 }
 
-/**
- * Writes the content of a file in one step, so that a crash never leaves half a configuration.
- *
- * The new content is written to a file beside the old one, flushed to disk, and moved over it. A link is
- * followed first: the file it points at is replaced and the link stays. The new file gets the permissions of
- * the old one. A file that does not exist yet is created with the permissions the system gives a new file.
- */
-function writeFileAtomically(file: string, text: string): void {
-  const exists = existsSync(file);
-  const target = exists ? realpathSync(file) : file;
-  const mode = exists ? statSync(target).mode & 0o777 : undefined;
-  const temporary = `${target}.${randomBytes(6).toString('hex')}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(temporary, 'wx', mode);
-    writeFileSync(descriptor, text);
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    // The mode given to `open` is cut down by the umask of the process.
-    if (mode !== undefined) chmodSync(temporary, mode);
-    renameSync(temporary, target);
-  } catch (error) {
-    if (descriptor !== undefined) closeSync(descriptor);
-    rmSync(temporary, { force: true });
-    throw error;
-  }
-}
-
 /** Creates the data folder if it is missing, and first of all the file that keeps it out of Git. */
 function ensureDataDir(paths: WorkspacePaths): boolean {
   mkdirSync(paths.dataDir, { recursive: true });
@@ -353,10 +311,6 @@ const LOCK_WAIT_MS = 2000;
 const LOCK_PAUSE_MS = 20;
 /** A lock this old was left behind by a command that did not end properly. An edit takes milliseconds. */
 const LOCK_STALE_MS = 30_000;
-
-const pause = (milliseconds: number): void => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-};
 
 /**
  * Runs one change of the configuration files while no other command changes them.

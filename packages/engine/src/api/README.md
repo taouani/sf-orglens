@@ -13,6 +13,7 @@ May import from: every other layer.
 | `org-snapshot.ts` | Taking a snapshot of an org or a sandbox: inventory, retrieve in chunks, resume                    |
 | `check.ts`        | Checking a source: can it be logged in to, or read, as things are now?                             |
 | `layout.ts`       | Where a workspace keeps its files, and how the workspace of a folder is found                      |
+| `atomic-write.ts` | Replacing a configuration file in one step, with further tries where Windows refuses the move      |
 | `boundary.ts`     | Turns everything that is thrown inside the engine into an `EngineError` before it reaches a client |
 
 Every function of the API returns a promise and data that survives `JSON.stringify`. It fails only with an
