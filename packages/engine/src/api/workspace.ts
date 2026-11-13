@@ -27,7 +27,7 @@ import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
-import { pause, writeFileAtomically } from './atomic-write.ts';
+import { pause, whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
 import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
@@ -238,7 +238,8 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
  */
 function readText(file: string, label: string): string | ConfigDiagnostic {
   try {
-    return UTF8.decode(readFileSync(file));
+    // Another command may be replacing the file at this moment.
+    return UTF8.decode(whileBusyOnWindows(() => readFileSync(file)));
   } catch (error) {
     if (!(error instanceof TypeError)) throw error;
     return {

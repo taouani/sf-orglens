@@ -23,39 +23,49 @@ export function pause(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-/** What the write takes from the system. A test puts its own in. */
-export interface AtomicWriteSystem {
+/** What the tries take from the system. A test puts its own in. */
+export interface BusySystem {
   readonly platform: string;
-  readonly rename: (from: string, to: string) => void;
   readonly pause: (milliseconds: number) => void;
+}
+
+/** What the write takes from the system. A test puts its own in. */
+export interface AtomicWriteSystem extends BusySystem {
+  readonly rename: (from: string, to: string) => void;
 }
 
 const SYSTEM: AtomicWriteSystem = { platform: process.platform, rename: renameSync, pause };
 
 /**
- * How long the move waits before each further try on Windows. Eight tries in all, over 635 milliseconds at most:
- * less than the two seconds another command waits for the lock of the configuration.
+ * How long a step waits before each further try on Windows: seven tries in all, with 315 milliseconds of pauses.
+ *
+ * A write happens while the lock of the configuration is held, and another command waits two seconds for that
+ * lock. A refusal that passes costs a few milliseconds. One that does not pass, such as a file that is
+ * read-only, costs each command the whole wait while it holds the lock, so the last of several commands in a
+ * queue can end with the message of the lock in place of the real cause.
  */
-export const RENAME_PAUSES_MS: readonly number[] = [5, 10, 20, 40, 80, 160, 320];
+export const BUSY_PAUSES_MS: readonly number[] = [5, 10, 20, 40, 80, 160];
 
-/** What Windows answers when the file to replace is open somewhere. */
-const BUSY_ON_WINDOWS: ReadonlySet<unknown> = new Set(['EPERM', 'EACCES', 'EBUSY']);
+/** What Windows answers through Node.js when a file is open elsewhere or is being replaced. */
+const BUSY_ON_WINDOWS: ReadonlySet<unknown> = new Set(['EPERM', 'EBUSY']);
 
 /**
- * Moves the new file over the old one.
+ * Does one step on a file, and on Windows does it again for a short while if the file is busy.
  *
- * Windows refuses to replace a file for as long as any process has it open, and a virus scanner or another
- * OrgLens command that reads the configuration at that moment has it open for a few milliseconds. The move is
- * safe to repeat, so on Windows it is tried again for a short while. On other systems the same codes mean that
- * the folder may not be written, and waiting would only delay the message.
+ * Windows refuses to replace a file for as long as any process has it open, and it can refuse to open a file at
+ * the moment another process replaces it. One CI run failed in that way: eight commands changed the
+ * configuration at the same moment, and one move was refused with `EPERM`. Most likely another of the commands
+ * was reading the file. Which process had it open is not known. A virus scanner does the same. Both steps are
+ * safe to repeat. On other systems these codes do not pass by waiting, and the error is passed on at once.
+ * Windows gives the same codes for a file that is read-only, so there a failure that stays is reported a third
+ * of a second later.
  */
-function renameOver(from: string, to: string, system: AtomicWriteSystem): void {
+export function whileBusyOnWindows<T>(step: () => T, system: BusySystem = SYSTEM): T {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      system.rename(from, to);
-      return;
+      return step();
     } catch (error) {
-      const wait = system.platform === 'win32' ? RENAME_PAUSES_MS[attempt] : undefined;
+      const wait = system.platform === 'win32' ? BUSY_PAUSES_MS[attempt] : undefined;
       if (wait === undefined || !BUSY_ON_WINDOWS.has((error as { code?: unknown }).code)) throw error;
       system.pause(wait);
     }
@@ -84,7 +94,9 @@ export function writeFileAtomically(file: string, text: string, system: AtomicWr
     descriptor = undefined;
     // The mode given to `open` is cut down by the umask of the process.
     if (mode !== undefined) chmodSync(temporary, mode);
-    renameOver(temporary, target, system);
+    whileBusyOnWindows(() => {
+      system.rename(temporary, target);
+    }, system);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
     rmSync(temporary, { force: true });

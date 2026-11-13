@@ -3,6 +3,6 @@
 'sf-orglens': patch
 ---
 
-On Windows, `orglens source add`, `source remove` and `source link` no longer fail with `WORKSPACE_IO` when another
-program has the configuration file open at the moment it is replaced. The replacement is tried again for about
-half a second.
+On Windows, a command that reads or changes a configuration file tries again for up to a third of a second when
+another program has the file open at that moment, before it fails with `WORKSPACE_IO`. One run of the tests on
+Windows had failed in `orglens source add` for that reason.
