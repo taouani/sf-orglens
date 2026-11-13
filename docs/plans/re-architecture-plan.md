@@ -8,7 +8,7 @@ Agreed on 11 November 2026 · The OrgLens Authors
 > just before the phase starts, and decisions are recorded in [`docs/adr/`](../adr/). Where a phase plan or a
 > decision record differs from this document, the newer one wins.
 >
-> Last updated on 13 November 2026, at the close of Phase 0.
+> Last updated on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
 
 ## Summary
 
@@ -33,7 +33,7 @@ The reasons and the measurements are in the [Phase 0 report](../reports/phase-0.
 | What | Before | Now |
 | --- | --- | --- |
 | Decision A4, the cross-check from Salesforce | The Dependency API and compiler symbol data | The Dependency API alone. The symbol table an org keeps holds no reference. The maintainer decided on 12 November 2026 that the Dependency API alone is the cross-check for Apex and that nothing is compiled in the test org. Record [0034](../adr/0034-dependency-api-is-the-cross-check.md) writes that down and says which of its sentences go further than what the maintainer decided. |
-| Decision S3, the Apex parser | A trial of three candidates | `apex-ls` was dropped before the trial: its analyser runs on Java only. The trial of the other two found them equal in output and both within the marks. It recommends `web-tree-sitter-sfapex`, which is about five times as fast, and selects none: the tie-break needs a judgment. The maintainer chooses, record [0018](../adr/0018-apex-analysis-foundation.md). |
+| Decision S3, the Apex parser | A trial of three candidates | `apex-ls` was dropped before the trial: its analyser runs on Java only. The trial of the other two found them equal in output and both within the marks. Its author recommended `web-tree-sitter-sfapex`, which is about five times as fast, and the trial selected none: the tie-break needs a judgment. The maintainer chose `web-tree-sitter-sfapex` on 13 November 2026, record [0018](../adr/0018-apex-analysis-foundation.md). |
 | Decision M1, what is taken from the old repositories | Fixtures, parser logic and designs | Designs and ideas only. No fixture, recording or code is copied. The old repositories hold test inputs without expected outputs, and the data rules of this repository forbid copying a fixture, a recording or code from them (record [0020](../adr/0020-rewrite-in-new-repository.md)). Every fixture and every expected answer is written fresh. |
 | Decision S4, how an org is retrieved | The retrieve of `@salesforce/source-deploy-retrieve` | Four requests of the Metadata API that OrgLens makes itself. The library converts the files of a retrieve and reads source folders. Record [0009](../adr/0009-one-ingestion-path.md) stays the record of S4. Record [0032](../adr/0032-reading-an-org.md), a decision of the build, says how the retrieve is done. |
 | Phase 0 effort | 2 to 3 weeks | 4 to 5 weeks of work as the Phase 0 plan counted it. The total to the gate moved from 24 to 35 weeks to 26 to 37. |
@@ -45,7 +45,7 @@ The reasons and the measurements are in the [Phase 0 report](../reports/phase-0.
 | Roadmap, Phase 4 | Comparison, access impact | Two things Phase 0 found are added to it: a comparison has to know the default values an org adds to almost every file, and profiles and permission sets have to be read completely, which a retrieve in chunks does not do. The estimate of 5 to 7 weeks was not raised for them, and that is not checked. |
 | What is reused in each phase | Fixtures, expected outputs and parser code of B | Ideas and designs only. |
 | Risks | 11 risks | Risks 1, 2, 5, 6, 7 and 8 are rewritten with what was measured, and risk 11 names that Phase 0 ended without a release. Risk 8 no longer says "Reuse B's fixtures" and "Keep B runnable as a comparison tool until phase 3 ends": nothing is copied from the old repositories, and they are not touched. Risks 12 and 13 are new. |
-| Open questions | 12 questions | One is answered: the public codebases. The names are chosen and not checked. The parser waits for the maintainer. Four are new. The heading "Before or during phase 0" is now "From the start of the project", because two of its questions, the performance targets and the org for the gate, were not settled in Phase 0. |
+| Open questions | 12 questions | Two are answered: the public codebases and the Apex parser. The project and package names are chosen and not checked. Four are new. The heading "Before or during phase 0" is now "From the start of the project", because two of its questions, the performance targets and the org for the gate, were not settled in Phase 0. |
 | The note at the head of this document | "The plan the project was started from, kept as it was agreed" | The plan is updated when a phase is closed, and this section lists the changes. |
 
 What Phase 0 says about the estimates: they were made in weeks of a developer who works with AI assistance. Phase 0
@@ -91,7 +91,7 @@ Confirmed on 11 November 2026.
 
 ## Decision log
 
-All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, and the rows of S3, S4 and M1 say what Phase 0 changed in them. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
+All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, S3 was completed with the choice of the parser on 13 November 2026, and the rows of S4 and M1 say what Phase 0 changed in them. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
 
 ### Features and scope
 
@@ -130,7 +130,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | --- | --- | --- | --- |
 | S1 | Language | TypeScript on Node | Salesforce's own libraries and the Apex parsers live there. Engine, CLI and UI share one language. |
 | S2 | Database | SQLite | One file, keyword search, recursive queries, safe concurrent reads. Kuzu was archived by its sponsor. |
-| S3 | Apex analysis foundation | To be chosen after a short trial. The trial is done and the choice is open: two candidates were left, and both pass under a resolver that OrgLens owns. The trial recommends `web-tree-sitter-sfapex`, and the maintainer chooses | The choice determines months of effort and cannot be settled from documentation. |
+| S3 | Apex analysis foundation | `web-tree-sitter-sfapex`, under a resolver that OrgLens owns. Chosen by the maintainer on 13 November 2026 after a short trial in which both candidates that were left passed and which selected neither | The choice determines months of effort and cannot be settled from documentation. |
 | S4 | Salesforce connectivity | `@salesforce/core` and `@salesforce/source-deploy-retrieve` | Auth and repo reading without new code. The retrieve itself is OrgLens's own since Phase 0, because the one of the library cannot be resumed and writes into a project folder. |
 | S5 | LLM layer | Small internal interface with OpenAI-compatible and Anthropic adapters | Covers hosted and local providers. Library chosen when the layer is built. |
 | S6 | Licence | Apache 2.0 | Explicit patent grant and clear contribution terms. |
@@ -235,7 +235,7 @@ The stack is TypeScript on Node with SQLite, built on Salesforce's own open-sour
 | Database | SQLite, with its built-in full-text search for keyword lookup. Node's own `node:sqlite` by default, `better-sqlite3` as the tested fallback | Decided (S2) |
 | Salesforce auth | `@salesforce/core`, reading existing Salesforce CLI logins. JWT through environment variables for CI | Decided (S4, D5) |
 | Retrieval and repo reading | Own requests to the Metadata API for the retrieve. `@salesforce/source-deploy-retrieve` to convert what comes back and to read source folders | Decided (S4), changed in Phase 0 |
-| Apex analysis | `web-tree-sitter-sfapex` or `@apexdevtools/apex-parser`, under a resolver of our own. The adapter of the other one is kept in the trial | Both pass the trial of Phase 0 (S3). The trial recommends `web-tree-sitter-sfapex`. The maintainer chooses |
+| Apex analysis | `web-tree-sitter-sfapex`, under a resolver of our own. The adapter for `@apexdevtools/apex-parser` is kept in the trial | Decided (S3) by the maintainer on 13 November 2026: the parser. Both passed the trial of Phase 0. That the other adapter is kept is a conclusion of record 0018, not part of the choice |
 | Apex cross-check | The Dependency API, through the Tooling API | Decided (A4), changed on 12 November 2026 |
 | LLM access | Internal interface with OpenAI-compatible and Anthropic adapters | Decided in principle (S5). Library chosen when built |
 | Distribution | npm package with an `orglens` command | Follows from S1. A Salesforce CLI plugin is an open question |
@@ -306,7 +306,7 @@ The two risks that could sink the product are Apex analysis proving harder than 
 | 4 | Scope creep by a solo developer | Three earlier builds went broad before deep | The F1 rule: no rider before the gate. Thin slices. Deferred list kept in the plan, not in the backlog. |
 | 5 | Large-org retrieval is slow or hits limits | 10,000+ components is the stated target and no build is proven there | Chunked and resumable retrieves exist since phase 0. Measured on one small org only: 1,668 listed components in two to three minutes, nearly all of it Salesforce building the zip. Splitting and resuming ran against a mock org only. Incremental refresh in phase 4. Reports opt-in. Test on a large org early, not at the gate. |
 | 6 | The Dependency API is incomplete or limited on large orgs | The cross-check may not cover every type or every record | Incomplete is now measured: it reported 100 of 137 pairs of the answer key and nothing wrong, and it is blind to standard fields, names in text, lookups, roll-up summaries and inactive rules. Limited on large orgs is not measured: the test org has 224 rows, far below the 2,000 of one query. It is in Beta and can go away. Treat it as a second opinion, never the primary source. Query per type. Say in the coverage output for each reference whether Salesforce could have confirmed it. |
-| 7 | A key third-party library is abandoned or changes | Kuzu was archived under two earlier builds | Prefer Salesforce-maintained libraries. Isolate each behind a layer boundary. No Apex parser is selected yet. `web-tree-sitter-sfapex`, which the trial recommends, has one maintainer. Whichever is chosen, the adapter for the other parser is kept in the trial, and a test compares what the two lower to, so the parser can be changed by one import. The retrieve no longer depends on the retrieve of the Salesforce library. |
+| 7 | A key third-party library is abandoned or changes | Kuzu was archived under two earlier builds | Prefer Salesforce-maintained libraries. Isolate each behind a layer boundary. `web-tree-sitter-sfapex`, the Apex parser the maintainer chose, is maintained by one person. The adapter for the other parser is kept in the trial, and a test compares what the two lower to, so the parser is meant to be changeable by one import. That is not shown before the engine has Apex analysis. The retrieve no longer depends on the retrieve of the Salesforce library. |
 | 8 | The rewrite loses value from the old repositories | B's parsers encode many real-world fixes | Nothing is copied from them, and they are not touched. Their lessons come over through the research note [`harvest-and-config.md`](../research/phase-0/harvest-and-config.md) and through what the maintainer knows. Public codebases take the place of B's fixtures as the test of real-world shapes. |
 | 9 | Client confidentiality during real-org testing | Level 3 of the proof needs a client org | Client permission first. Everything stays on the local machine. Nothing from client orgs enters public benchmarks, fixtures or issues. |
 | 10 | Local LLM models are weak at tool calling | "Any provider" may underdeliver for the agent | The LLM is optional by design. `explain` needs no tool calling. State the tested models in the docs. |
@@ -327,7 +327,7 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 
 **Resolved by planned work**
 
-- [ ] **Apex analysis foundation.** Both parsers pass the Phase 0 trial, which recommends `web-tree-sitter-sfapex`. Answered when the maintainer chooses (S3).
+- [x] **Apex analysis foundation.** `web-tree-sitter-sfapex`. Both parsers passed the Phase 0 trial, which selected neither, and the maintainer chose on 13 November 2026 (S3).
 - [ ] **Scope of the Dependency API on large orgs.** Its type coverage is measured for the types of the fixture project. Its limits on a large org, and flows, are not.
 - [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence?
 

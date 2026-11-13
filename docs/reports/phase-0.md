@@ -9,15 +9,16 @@ is [`docs/plans/phase-0.md`](../plans/phase-0.md). The checks you can run yourse
 - All ten work packages are built. The six outcomes of the plan are reached, with the limits named below.
 - OrgLens can make a workspace, declare sources, log in to an org without holding a credential, and store an
   org or a repository folder as an immutable snapshot in one SQLite file. It analyses nothing yet.
-- Of the two questions the phase was there to answer, one is answered and one waits for your choice:
+- The two questions the phase was there to answer are answered, the second by your choice after this report
+  was first written:
   - **What Salesforce can confirm.** The Dependency API is usable as a cross-check for custom fields and custom
     objects, within known limits. The symbol tables of the compiler are not usable. You decided that the
     Dependency API alone is the cross-check (record [0034](../adr/0034-dependency-api-is-the-cross-check.md)).
   - **Which parser.** Both candidates give the same references with one resolver, and both pass every mark of
     the plan. `web-tree-sitter-sfapex` is about five times as fast on the largest codebase and needs 30 to 40
     percent of the memory. On damaged files neither is better throughout. The tie-break of the plan needs a
-    judgment, so the trial does not select a parser. I recommend `web-tree-sitter-sfapex`, and you choose. Record
-    [0018](../adr/0018-apex-analysis-foundation.md) is `Proposed` until then.
+    judgment, so the trial did not select a parser. I recommended `web-tree-sitter-sfapex`. You chose it on
+    13 November 2026, and record [0018](../adr/0018-apex-analysis-foundation.md) is `Accepted`.
 - One thing was never run: the command `orglens snapshot` against Salesforce with a login of the Salesforce CLI.
   The code behind it ran against the test org. Part G of the test plan is that run, and only you can do it.
 
@@ -28,9 +29,9 @@ is [`docs/plans/phase-0.md`](../plans/phase-0.md). The checks you can run yourse
 | 1   | `init`, `source add`, `list`, `remove`, `status`, `doctor`, `snapshot` and `coverage` work on Linux, macOS and Windows | Built, and `source link` and `source check` beside them. Tested by CI on the three systems, on Node.js 24 and 26. Run by hand on Linux only. One CI run on Windows failed once in `source add`, see "Two failures in CI" below.     |
 | 2   | `snapshot` retrieves a real org in chunks, can resume, and stores an immutable snapshot                                | Built. The engine read the test org twice, in two chunks, into 5,010 files. Resuming and the splitting of a chunk ran against a mock org only: the test org never needed either. The command itself was not run against Salesforce. |
 | 3   | A fixture project with a hand-written answer key, checked by CI                                                        | Built: 52 components, 184 references of Apex and 44 of formulas and rules, 21 negatives, 5 unknowns. Salesforce accepted the project on the first deploy, and the Dependency API contradicts no entry of the key.                   |
-| 4   | The Apex analysis foundation is chosen by a measured trial and recorded                                                | The trial is done. It does not select a parser: both pass, and the tie-break needs a judgment. The record is `Proposed` until you choose.                                                                                           |
+| 4   | The Apex analysis foundation is chosen by a measured trial and recorded                                                | The trial is done. It did not select a parser: both pass, and the tie-break needs a judgment. You chose `web-tree-sitter-sfapex` on 13 November 2026, and the record is `Accepted`.                                                 |
 | 5   | We know from a real org what the Dependency API and compiler symbol data are good for                                  | Measured on one small Developer Edition org. Not measured: an org above 2,000 rows per query, flows, and every type the fixture project does not hold yet.                                                                          |
-| 6   | Every decision is a decision record, and the plans are in git                                                          | 34 records. 0018 is `Proposed`, 0008 is superseded by 0034, the others are `Accepted`.                                                                                                                                              |
+| 6   | Every decision is a decision record, and the plans are in git                                                          | 34 records. 0008 is superseded by 0034, the others are `Accepted`.                                                                                                                                                                  |
 
 ## What was built
 
@@ -141,7 +142,7 @@ runs on one machine or one org.
 ## Open with you
 
 1. Approve or reject the phase, after the test plan.
-2. Choose the parser.
+2. The parser: done. You chose `web-tree-sitter-sfapex` on 13 November 2026.
 3. The questions in section 4 of the [Phase 1 plan](../plans/phase-1.md).
 4. One thing in the settings of the repository that I cannot see: confirm that private vulnerability reporting
    is switched on.

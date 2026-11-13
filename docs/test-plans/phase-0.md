@@ -15,7 +15,8 @@ and "you" is the maintainer.
 
 Every expected output below was produced on Linux x64 with Node.js 24.22.3 on 12 and 13 November 2026, as the
 root user, from the branch that closes the phase. Part F is the exception: its numbers are read from the log of
-the run of 12 November. Times and sizes on your machine will differ. Numbers of components, files and
+the run of 12 November. Step A5 and the item about the parser at the end were changed after your choice of
+13 November, and hold from the commit that records it. Times and sizes on your machine will differ. Numbers of components, files and
 references must not.
 
 At the end there is a list of what this plan cannot show, and what I ask you to decide.
@@ -64,7 +65,7 @@ Outcome 6, and the base of all others.
 | A2  | `pnpm run check:adr`                                       | `34 decision records checked: 27 plan decisions covered once each.`                                                                                                                                                                                                                                           |
 | A3  | `pnpm run check:startup`                                   | Three lines with medians, then `ok: "orglens status" is within the budget of 150 ms.` The budget is enforced on Linux and only reported on Windows and macOS.                                                                                                                                                 |
 | A4  | Open the page **Actions** of the repository, workflow `CI` | The latest run on `main` is green, with jobs for Linux, macOS and Windows on Node.js 24 and 26.                                                                                                                                                                                                               |
-| A5  | Open `docs/adr/README.md`                                  | Every record is `Accepted`, except those the table marks as superseded. Record 0018 is `Proposed` until you have chosen the parser, and that is the one open point of the phase. Once you have, it names your choice.                                                                                         |
+| A5  | Open `docs/adr/README.md`                                  | Every record is `Accepted`, except those the table marks as superseded. Record 0018 names the parser you chose on 13 November 2026.                                                                                                                                                                           |
 
 Three kinds of tests are skipped. Those of the three public codebases run when the codebases are there (part
 H). Those that take the permission to read a file or a folder away cannot run as the root user or on Windows.
@@ -271,9 +272,9 @@ node trial/apex/src/run-fixture.ts apex-parser
 ## What I ask you to decide
 
 1. **Approve or reject Phase 0.** If a step above fails, tell me its number and what you saw.
-2. **The parser.** The trial does not select one: both pass every mark of the plan, and the tie-break needs a
-   judgment. I recommend `web-tree-sitter-sfapex`. The [report of the trial](../research/phase-0/apex-trial.md)
-   sets out what speaks for each, in its section "The rule of the plan, applied". Record 0018 becomes `Accepted`
-   when you have chosen.
+2. **The parser: done.** The trial did not select one: both pass every mark of the plan, and the tie-break
+   needs a judgment. You chose `web-tree-sitter-sfapex` on 13 November 2026, and record 0018 is `Accepted`. The
+   [report of the trial](../research/phase-0/apex-trial.md) sets out what speaks for each parser, in its section
+   "The rule of the plan, applied".
 3. **The questions of the [Phase 1 plan](../plans/phase-1.md), section 4.** Nothing of Phase 1 is built before you
    approve that plan.

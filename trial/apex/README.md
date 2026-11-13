@@ -5,6 +5,9 @@ OrgLens builds its Apex analysis on. It is not part of the engine and is not shi
 [docs/research/phase-0/apex-trial.md](../../docs/research/phase-0/apex-trial.md), the decision in record
 [0018](../../docs/adr/0018-apex-analysis-foundation.md).
 
+The trial is over. Both candidates passed, and the maintainer chose `web-tree-sitter-sfapex` on 13 November 2026.
+The adapter of the other parser stays here for the test that compares the two.
+
 ## What is here
 
 | File                                                       | What it is                                                                                  |
