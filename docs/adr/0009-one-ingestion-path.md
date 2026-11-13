@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-11
 - Decisions: A5, S4
+- Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: the Tooling API supplies the Dependency API only
 
 ## Context
 

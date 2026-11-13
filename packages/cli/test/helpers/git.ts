@@ -17,6 +17,9 @@ const SETTINGS = [
   'user.email=test@example.invalid',
   'commit.gpgsign=false',
   'core.autocrlf=false',
+  // No tidying in a process of its own after a commit: it holds a lock file in the repository for a moment.
+  'maintenance.auto=false',
+  'gc.auto=0',
   'init.defaultBranch=main',
 ].flatMap((one) => ['-c', one]);
 

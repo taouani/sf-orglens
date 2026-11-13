@@ -499,6 +499,19 @@ Research measurements so far: on NPSP, `apex-parser` parsed 1,070 files in 18.5 
 - Write a short phase report: what was built, what was measured, what changed.
 - Draft the Phase 1 plan for your approval. Nothing in Phase 1 starts before that.
 
+Status after the pull request of this work package (2026-11-13). All four are written:
+[the overall plan](re-architecture-plan.md#changes-since-the-plan-was-agreed), the
+[test plan](../test-plans/phase-0.md), the [phase report](../reports/phase-0.md) and the
+[draft of the Phase 1 plan](phase-1.md).
+
+- Decision A4 is changed in the overall plan, and record [0034](../adr/0034-dependency-api-is-the-cross-check.md)
+  replaces 0008. Records 0009 and 0021 stay in force and are read without the compiler data, as 0034 says. The
+  wording of the correctness gate for what Salesforce cannot confirm is question Q3 of the Phase 1 plan, and a
+  new record follows your answer.
+- The phase is closed when you have run the test plan. Its part G is the one run that was never done:
+  `orglens snapshot` against Salesforce with a login of the Salesforce CLI. It is item 6 of work package 8.
+- Record 0018 is `Proposed` until you confirm the parser.
+
 ## 6. Pull requests and review
 
 About ten pull requests, in this order. Each is small enough to review in one sitting.

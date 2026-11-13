@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-11
 - Decisions: M4
+- Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: level 2 is cross-checked against the Dependency API only
 
 ## Context
 

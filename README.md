@@ -6,8 +6,10 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 > **Pre-release.** The project is being built in the open and is not usable yet. There is no published package and
 > no analysis command. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
 >
-> What exists today: a workspace with its configuration and its database, and the commands `init`, `source`,
-> `status` and `doctor`. See [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
+> What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
+> and immutable snapshots of an org, a sandbox or a repository folder. The commands are `init`, `source`,
+> `snapshot`, `coverage`, `status` and `doctor`. Nothing is analysed yet. See [docs/cli.md](docs/cli.md) and
+> [docs/configuration.md](docs/configuration.md).
 
 ## What it will do
 
@@ -23,14 +25,14 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 
 ## Status
 
-| Phase                | Delivers                                                                                                                                | State       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | In progress |
-| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Not started |
-| 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started |
-| 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started |
-| 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started |
-| Correctness gate     | Proof on public codebases and a real 10,000+ component org                                                                              | Not started |
+| Phase                | Delivers                                                                                                                                | State          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, in test |
+| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Not started    |
+| 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started    |
+| 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started    |
+| 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started    |
+| Correctness gate     | Proof on public codebases and a real 10,000+ component org                                                                              | Not started    |
 
 The full plan, with the reasons behind each decision, is in [`docs/plans/`](docs/plans/).
 
@@ -40,8 +42,12 @@ The full plan, with the reasons behind each decision, is in [`docs/plans/`](docs
 packages/engine   The engine library. Layers: core, sources, extraction, store, engines, api.
 packages/cli      The `orglens` command line. Uses only the public API of the engine.
 docs/plans        The re-architecture plan and one plan per phase.
+docs/test-plans   One test plan per phase, for the maintainer to run by hand.
+docs/reports      One report per phase: what was built, what was measured, what changed.
 docs/research     Research notes behind the plans.
 docs/adr          Decision records.
+fixtures          The fixture project, its hand-written answer key, and the list of public test codebases.
+trial/apex        The Apex parser trial of Phase 0. Not part of the engine, not shipped.
 docs/cli.md       The commands, the JSON output contract and the exit codes.
 docs/configuration.md   The configuration files of a workspace.
 scripts           Repository checks used by CI.

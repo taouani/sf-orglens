@@ -32,6 +32,10 @@ const SETTINGS = [
   ['commit.gpgsign', 'false'],
   ['core.autocrlf', 'false'],
   ['init.defaultBranch', 'main'],
+  // A newer Git tidies a repository in a process of its own after a commit, and holds a lock file meanwhile.
+  // A test that compares the folder of a repository before and after would see the lock come or go.
+  ['maintenance.auto', 'false'],
+  ['gc.auto', '0'],
 ].flatMap(([name, value]) => ['-c', `${String(name)}=${String(value)}`]);
 
 let emptyConfig: string | undefined;
