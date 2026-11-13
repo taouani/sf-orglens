@@ -480,6 +480,16 @@ If neither passes in the time box: the trial reports the measured gap by categor
 
 Deliverables: the trial code under `trial/apex/` (not shipped), the results table, and decision record 0018 filled in with the numbers. The resolver written here is a spike. Phase 3 builds the production version, informed by it.
 
+Status after the pull request of this work package (2026-11-13). The trial is done. The report is [`docs/research/phase-0/apex-trial.md`](../research/phase-0/apex-trial.md).
+
+- Both parsers reach every pass mark on the fixture with the one resolver: 181 of 181 references, none extra, none on a negative case. On apex-recipes, Nebula Logger and NPSP, about 394,000 lines, the resolver reports the same 59,845 references with either parser.
+- Of 100 references sampled from apex-recipes, all 100 are right. I checked them, not a second person. Of the 766 calls that `apex-ls` on Java finds in apex-recipes, the trial finds 751.
+- NPSP: `web-tree-sitter-sfapex` takes about 4 seconds and 430 MiB. `apex-parser` takes about 20 seconds, and 1,490 to 1,546 MiB with the default heap of Node.js or 1,047 to 1,108 MiB with the heap limited to 1,024 MiB. Both pass the gates. The first version of this status said that `apex-parser` misses the memory mark. The review of the pull request showed that this rested on one heap setting.
+- The tie-break was measured where it can be. On 1,781 damaged files neither parser recovers better throughout: `apex-parser` after a missing brace, `web-tree-sitter-sfapex` after a missing quote. The grammars are equally current. The first criterion that separates the two by a measurement is the last one, speed, and it names `web-tree-sitter-sfapex`.
+- The decision rule above therefore does not select a parser without a judgment. I recommend `web-tree-sitter-sfapex`, and you choose. Record 0018 holds the numbers and stays `Proposed` until then. The adapter of the other parser is kept, and a test compares the two.
+- The score on the fixture is not a measure of the resolver on code it has not seen: I wrote the fixture, the key and the resolver. A check on NPSP found four kinds of code the resolver missed, which I added. The review found references to things that do not exist, reported as `confirmed`, and names that are dropped without a word. The report lists them for Phase 3.
+- Not done: hours per candidate, which mean nothing for work done by an AI assistant in one session. Lines of adapter code and the surprises of each parser are recorded in their place. The check against the Tooling API of step 6 of the earlier research is replaced by your decision of 12 November 2026 that the Dependency API alone is the cross-check.
+
 Research measurements so far: on NPSP, `apex-parser` parsed 1,070 files in 18.5 s and `tree-sitter-sfapex` in 2.3 s. `apex-parser` kept more structure on badly broken code. Preliminary ranking puts `apex-parser` slightly ahead, and the trial is allowed to reverse that.
 
 ### WP10 Phase close

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck:tests": "tsc -p packages/engine/test && tsc -p packages/cli/test",
+    "typecheck:tests": "tsc -p packages/engine/test && tsc -p packages/cli/test && tsc -p trial/apex",
     "clean": "node scripts/clean.mjs",
     "test": "vitest run",
     "coverage": "vitest run --coverage",

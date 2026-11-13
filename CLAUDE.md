@@ -64,6 +64,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
 ```
 
 - A layer imports only from layers above it in this list. The list is defined once, in `layers.cjs`.
+- `trial/apex` is the Apex trial of Phase 0 (decision record 0018): two parser adapters under one resolver. It is
+  not part of the engine and is not shipped. Its tests run with the others.
 - `packages/engine/src/index.ts` re-exports `api/` and nothing else. Clients never reach into the engine.
 - Only `sources/` may import `@salesforce/*` and `@jsforce/*`. This is about the code of the engine. A test may
   import them.

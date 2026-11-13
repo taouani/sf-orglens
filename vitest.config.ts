@@ -6,7 +6,7 @@ export default defineConfig({
   resolve: { conditions: ['@sf-orglens/source'] },
   ssr: { resolve: { conditions: ['@sf-orglens/source'] } },
   test: {
-    include: ['packages/*/test/**/*.test.ts'],
+    include: ['packages/*/test/**/*.test.ts', 'trial/*/test/**/*.test.ts'],
     // Gives every test file an empty home folder. The tests of the logins rely on it, and no test may see the
     // real one. It needs a process per test file: the home folder is a property of the process.
     setupFiles: ['./tools/vitest-setup.js'],

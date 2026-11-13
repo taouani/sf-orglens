@@ -13,12 +13,13 @@ installing and running the libraries in question, not from reading about them. C
 | [corpora-and-proof.md](corpora-and-proof.md) | Which public codebases and which free orgs can be used to prove correctness. |
 | [harvest-and-config.md](harvest-and-config.md) | What is reused from the three earlier prototypes, and the design of the configuration file, the engine API and the JSON output. |
 
-Two notes were added while Phase 0 was built:
+Three notes were added while Phase 0 was built:
 
 | Note | What it holds |
 | --- | --- |
 | [store-benchmark.md](store-benchmark.md) | The numbers of the storage benchmark in `bench/`, measured again with the code in the repository. |
 | [real-org.md](real-org.md) | What the first runs against a real org showed: the deploy of the fixture project, the first snapshot, what Salesforce rewrites, what an org lists and does not hand out, and what the Dependency API and the symbol tables of the compiler can be used for. |
+| [apex-trial.md](apex-trial.md) | The report of the Apex trial: two parsers under one resolver, scored against the answer key, run on three public codebases, with time, memory, a check by hand, a test on damaged files, and what speaks for each parser. The scripts and the sample behind the checks are in [`apex-trial/`](apex-trial/). |
 
 ## How to read them
 
