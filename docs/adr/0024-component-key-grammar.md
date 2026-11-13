@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-12
 - Decisions: none (made during the build)
+- Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: there is no compiler data to match against
 
 ## Context
 

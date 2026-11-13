@@ -13,17 +13,20 @@ is was not known then. Phase 0 measured both on a real org with the fixture proj
 ([real-org.md](../research/phase-0/real-org.md)).
 
 - **The Dependency API** reports 100 of the 137 pairs of the answer key, and none of its 117 rows between two
-  components of the fixture project is wrong. It knows custom fields and custom objects as targets, and classes,
-  triggers, formula fields and active validation rules as sources. It has no row for a standard field, for a name
-  in text, for a field named only in a describe call or through a token kept in another class, for the target of
-  a lookup, for a roll-up summary or for a rule that is not active. A row names two components. It does not say
-  which method refers, where, how often, or whether a field is read or written.
+  components of the fixture project is wrong. Its other 107 rows were counted and not checked. It knows custom
+  fields, custom objects and standard objects as targets, and classes, triggers, formula fields and active
+  validation rules as sources. It has no row for a standard field, for a name in text, for a field named only in
+  a describe call or through a token kept in another class, for the target of a lookup, or for a rule that is not
+  active. Of a roll-up summary it reports the field in its filter and nothing else. A row names two components.
+  It does not say which method refers, where, how often, or whether a field is read or written.
 - **The symbol table** that an org keeps for a saved class holds what the class declares and no reference at
   all. A symbol table with references can only be had by compiling a copy of the class in the org, which writes
   to the org and needs the permission to author Apex.
 
 The maintainer decided on 12 November 2026 that the Dependency API alone is the cross-check for Apex, and that
-nothing is compiled in the test org to learn what such a symbol table holds.
+nothing is compiled in the test org to learn what such a symbol table holds. That is all the maintainer decided.
+This record writes it down and draws two conclusions from it, which the section "What goes further than the
+decision of the maintainer" names.
 
 ## Decision
 
@@ -40,9 +43,26 @@ which the goal of the project already rules out ("read-only against every org").
   seen it. The coverage output says for each reference whether it is of a kind the API reports, by the list
   above. A reference to a standard field or from a name in text is never counted against OrgLens for want of a
   row.
-- The sentence of [0009](0009-one-ingestion-path.md) that the Tooling API supplies "the Dependency API and
-  compiler symbol data", and level 2 of [0021](0021-correctness-proof.md), which names "compiler data", are read
-  without the compiler data from now on. Both records stay in force for everything else.
+- Four other records name compiler data and are read without it from now on. Each stays in force for everything
+  else, and each has a note that points here: the sentence of [0009](0009-one-ingestion-path.md) that the Tooling
+  API supplies "the Dependency API and compiler symbol data", level 2 of [0021](0021-correctness-proof.md), the
+  sentence of [0010](0010-data-model-and-identity.md) that a reference can be reported by "the SymbolTable or the
+  Dependency API", and the sentence of [0024](0024-component-key-grammar.md) about matching a key against
+  compiler data.
+
+## What goes further than the decision of the maintainer
+
+Two sentences of the decision above are conclusions of the author of this record. They are in force with the
+record, and the maintainer can strike either.
+
+- **"Not in the org of a user."** The maintainer decided for the test org. That OrgLens compiles nothing in the
+  org of a user follows from the goal statement, "read-only against every org", which the maintainer confirmed
+  on 11 November 2026.
+- **How a missing row is counted.** That a pair without a row is a difference "only where the API could have
+  seen it" is a rule of the author. Without it, every reference to a standard field would count as a
+  disagreement with Salesforce. What the correctness gate asks for in the kinds the API does not see is put to
+  the maintainer as question Q3 of the [Phase 1 plan](../plans/phase-1.md), and the answer may change this
+  rule.
 
 ## Consequences
 

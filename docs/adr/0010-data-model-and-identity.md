@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-11
 - Decisions: D1
+- Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: a reference is reported by the Dependency API, never by a symbol table
 - Supersedes: Legacy record 0004 (identifier containing the org id). See [legacy.md](legacy.md).
 
 ## Context

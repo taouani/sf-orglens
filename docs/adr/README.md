@@ -7,7 +7,8 @@ the architecture, the data model, the storage format, a public contract or the s
 Records 0002 to 0022 write out the 27 decisions the project started from. Those decisions were agreed on 2026-11-11 and
 are summarised in the decision log of the [re-architecture plan](../plans/re-architecture-plan.md#decision-log). The
 "Decisions" column gives the plan ids each record covers. Record 0001 and the records from 0023 on are decisions made
-during the build.
+during the build, with one exception: record 0034 replaces 0008 and covers plan decision A4, which was changed on
+2026-11-12.
 
 | Record                                            | Title                                                                                           | Status                                                          | Decisions  |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
