@@ -23,8 +23,9 @@ a reading and not on a measurement. The scripts and the sample behind the checks
 - The tie-break of the plan has four criteria in a fixed order. The first three do not separate the parsers by a
   measurement: on 1,781 damaged files each parser keeps more than the other for some kinds of damage. The fourth,
   speed, names B.
-- **The choice is the maintainer's.** Record 0018 stays `Proposed`. The section "The rule of the plan, applied"
-  sets out what speaks for each parser.
+- **The choice is the maintainer's.** The section "The rule of the plan, applied" sets out what speaks for each
+  parser. Added after this report was written: the maintainer chose `web-tree-sitter-sfapex` on 13 November
+  2026, and record 0018 is `Accepted`.
 - The score on the fixture flatters the resolver. A check on NPSP found four kinds of code the resolver did not
   understand, and the review found more: references to things that do not exist, reported as `confirmed`. They
   are listed under "What the resolver does not do".
