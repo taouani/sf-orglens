@@ -48,7 +48,7 @@ is [`docs/plans/phase-0.md`](../plans/phase-0.md). The checks you can run yourse
 | 10 Phase close            | The updated overall plan, the test plan, this report, the draft of the Phase 1 plan.                                                                                                                                                                                                                                        |
 
 In numbers: about 10,800 lines of TypeScript in the engine and the command line, about 19,600 lines of tests, and
-about 4,000 lines in the trial. About 1,170 tests run on every pull request on three systems. Statement coverage of
+about 4,300 lines in the trial. About 1,230 tests run on every pull request on three systems. Statement coverage of
 the two packages is 96.7 percent. 14 pull requests before the one that closes the phase, each with a code review by a separate agent before it was
 merged.
 
