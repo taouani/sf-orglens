@@ -36,24 +36,32 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 `$ tsc -b` and nothing else.
 
 The command line is not published, so it is started from the build. The steps below write `orglens` for it. Make
-that work in your shell, with the path of your clone:
+that work in your shell with the two lines for it. Run them in the root of the clone, where the build has just
+run: they note that folder, so no path has to be typed.
 
 ```sh
 # bash, zsh, Git Bash
-alias orglens='node /path/to/sf-orglens/packages/cli/dist/bin.js'
+ORGLENS_REPO="$(pwd)"
+orglens() { node "$ORGLENS_REPO/packages/cli/dist/bin.js" "$@"; }
 ```
 
 ```powershell
 # PowerShell
-function orglens { node C:\path\to\sf-orglens\packages\cli\dist\bin.js @args }
+$orglensRepo = (Get-Location).Path
+function orglens { node "$orglensRepo\packages\cli\dist\bin.js" @args }
 ```
+
+The two lines hold for the terminal window they were run in. In a new window, go to the root of the clone and
+run them again. Every other line of this plan can be pasted as it is. Where bash and PowerShell differ, both
+are given. I ran the lines for bash. I have no Windows machine, so the lines for PowerShell were not run by me.
 
 ```sh
 orglens --version
 ```
 
 Expected: one line of the form `sf-orglens/0.0.0 engine/0.0.0 node-v24.22.3 linux-x64`, with your Node.js version
-and your system.
+and your system. On Windows the line ends with `win32-x64`. An error `Cannot find module` means that the two
+lines above were not run in the root of the clone, or that the build has not run.
 
 ## A. The repository and its checks
 
@@ -77,11 +85,16 @@ Outcomes 1 and 2, for a source of the kind `git`. Work on a copy of the fixture 
 that nothing is written into the repository.
 
 ```sh
-cp -r /path/to/sf-orglens/fixtures/billing-sfdx ~/orglens-demo
+# bash, zsh, Git Bash
+cp -r "$ORGLENS_REPO/fixtures/billing-sfdx" ~/orglens-demo
 cd ~/orglens-demo
 ```
 
-In PowerShell: `Copy-Item -Recurse C:\path\to\sf-orglens\fixtures\billing-sfdx $HOME\orglens-demo`.
+```powershell
+# PowerShell
+Copy-Item -Recurse "$orglensRepo\fixtures\billing-sfdx" "$HOME\orglens-demo"
+cd "$HOME\orglens-demo"
+```
 
 | #   | Do                                   | Expect                                                                                                                                                                                                                                                                       |
 | --- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -133,8 +146,20 @@ codes.
 Outcome 2, for a folder that is in a Git repository. Use a second copy.
 
 ```sh
-cp -r /path/to/sf-orglens/fixtures/billing-sfdx ~/orglens-demo-git
+# bash, zsh, Git Bash
+cp -r "$ORGLENS_REPO/fixtures/billing-sfdx" ~/orglens-demo-git
 cd ~/orglens-demo-git
+```
+
+```powershell
+# PowerShell
+Copy-Item -Recurse "$orglensRepo\fixtures\billing-sfdx" "$HOME\orglens-demo-git"
+cd "$HOME\orglens-demo-git"
+```
+
+Then, in either shell:
+
+```sh
 orglens init
 orglens source add repo --kind git
 git init
@@ -157,6 +182,8 @@ git commit -m "first"
 ## E. The fixture project and its answer key
 
 Outcome 3.
+
+Run E1 in the root of the clone: `cd "$ORGLENS_REPO"` in bash, `cd $orglensRepo` in PowerShell.
 
 | #   | Do                                                                                                                            | Expect                                                                                                                                                                                                                  |
 | --- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -192,8 +219,20 @@ the org is not yours to keep a copy of.
 You need a login of the Salesforce CLI for the org (`sf org login web --alias my-org`).
 
 ```sh
+# bash, zsh, Git Bash
 mkdir ~/orglens-org-test
 cd ~/orglens-org-test
+```
+
+```powershell
+# PowerShell
+New-Item -ItemType Directory "$HOME\orglens-org-test"
+cd "$HOME\orglens-org-test"
+```
+
+Then, in either shell:
+
+```sh
 orglens init
 orglens source add dev --kind org
 orglens source link dev my-org
@@ -234,8 +273,10 @@ used. If G2 fails to read your login, that is the likely place, and the error co
 
 Outcome 4. The trial is in `trial/apex` and is not part of OrgLens.
 
+Go back to the root of the clone: `cd "$ORGLENS_REPO"` in bash, `cd $orglensRepo` in PowerShell. The lines of
+this part are the same in both shells.
+
 ```sh
-cd /path/to/sf-orglens
 node trial/apex/src/run-fixture.ts tree-sitter
 node trial/apex/src/run-fixture.ts apex-parser
 ```
