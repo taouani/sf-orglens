@@ -36,36 +36,53 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 `$ tsc -b` and nothing else.
 
 The command line is not published, so it is started from the build. The steps below write `orglens` for it. Make
-that work in your shell, with the path of your clone:
+that work with the two lines for your shell. Run them in the root of the clone, where the build has just run:
+they note that folder, so no path has to be typed.
+
+In bash, zsh or Git Bash:
 
 ```sh
-# bash, zsh, Git Bash
-alias orglens='node /path/to/sf-orglens/packages/cli/dist/bin.js'
+ORGLENS_REPO="$(pwd)"
+orglens() { node "$ORGLENS_REPO/packages/cli/dist/bin.js" "$@"; }
 ```
 
+In PowerShell:
+
 ```powershell
-# PowerShell
-function orglens { node C:\path\to\sf-orglens\packages\cli\dist\bin.js @args }
+$orglensRepo = (Get-Location).ProviderPath
+function orglens { node "$orglensRepo\packages\cli\dist\bin.js" @args }
 ```
+
+The two lines hold for the terminal window they were run in. In a new window, go to the root of the clone and
+run them again. If a terminal still has the alias `orglens` of an earlier version of this plan, run
+`unalias orglens` first: bash refuses the second line while the alias exists.
+
+Every other line of this plan can be pasted as it is, with one exception that part G names: the alias of your
+login. Where bash and PowerShell differ, both are given. I ran the lines for bash, in bash on Linux. I did not
+run them in zsh or in Git Bash. I have no Windows machine, so the lines for PowerShell were not run by me.
+
+The folders `orglens-demo`, `orglens-demo-git` and `orglens-org-test` in your home folder must not exist yet.
+Delete them if they are left from an earlier attempt: a copy into a folder that exists lands one level too deep.
 
 ```sh
 orglens --version
 ```
 
 Expected: one line of the form `sf-orglens/0.0.0 engine/0.0.0 node-v24.22.3 linux-x64`, with your Node.js version
-and your system.
+and your system. On Windows on x64 the line ends with `win32-x64`. An error `Cannot find module` means that the two
+lines above were not run in the root of the clone, or that the build has not run.
 
 ## A. The repository and its checks
 
 Outcome 6, and the base of all others.
 
-| #   | Do                                                         | Expect                                                                                                                                                                                                                                                                                                        |
-| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1  | `pnpm run check`                                           | It ends with a table of coverage, the lines `Statements`, `Branches`, `Functions`, `Lines`, and the exit code `0`. Of 1,258 tests, 1,241 pass and 17 are skipped where I ran it, as the root user. As another user on Linux expect 1,249 and 9, as in CI on Linux. On my machine it takes about five minutes. |
-| A2  | `pnpm run check:adr`                                       | `34 decision records checked: 27 plan decisions covered once each.`                                                                                                                                                                                                                                           |
-| A3  | `pnpm run check:startup`                                   | Three lines with medians, then `ok: "orglens status" is within the budget of 150 ms.` The budget is enforced on Linux and only reported on Windows and macOS.                                                                                                                                                 |
-| A4  | Open the page **Actions** of the repository, workflow `CI` | The latest run on `main` is green, with jobs for Linux, macOS and Windows on Node.js 24 and 26.                                                                                                                                                                                                               |
-| A5  | Open `docs/adr/README.md`                                  | Every record is `Accepted`, except those the table marks as superseded. Record 0018 names the parser you chose on 13 November 2026.                                                                                                                                                                           |
+| #   | Do                                                         | Expect                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | `pnpm run check`                                           | It ends with a table of coverage, the lines `Statements`, `Branches`, `Functions`, `Lines`, and the exit code `0`. Of 1,258 tests, 1,241 pass and 17 are skipped where I ran it, as the root user. As another user on Linux expect 1,249 and 9, as in CI on Linux. On Windows expect 1,235 and 23, as in CI on Windows. On macOS I did not note the numbers. What must hold everywhere: no test fails. On my machine it takes about five minutes. |
+| A2  | `pnpm run check:adr`                                       | `34 decision records checked: 27 plan decisions covered once each.`                                                                                                                                                                                                                                                                                                                                                                               |
+| A3  | `pnpm run check:startup`                                   | A line with the Node.js version and the system, three lines with medians, then on Linux `ok: "orglens status" is within the budget of 150 ms.` On Windows and macOS the budget is not enforced, and the last line is `The budget of 150 ms for "orglens status" is not enforced on this system.`                                                                                                                                                  |
+| A4  | Open the page **Actions** of the repository, workflow `CI` | The latest run on `main` is green, with jobs for Linux, macOS and Windows on Node.js 24 and 26.                                                                                                                                                                                                                                                                                                                                                   |
+| A5  | Open `docs/adr/README.md`                                  | Every record is `Accepted`, except those the table marks as superseded. Record 0018 names the parser you chose on 13 November 2026.                                                                                                                                                                                                                                                                                                               |
 
 Three kinds of tests are skipped. Those of the three public codebases run when the codebases are there (part
 H). Those that take the permission to read a file or a folder away cannot run as the root user or on Windows.
@@ -76,12 +93,19 @@ A few run on one kind of system only.
 Outcomes 1 and 2, for a source of the kind `git`. Work on a copy of the fixture project, outside the clone, so
 that nothing is written into the repository.
 
+In bash, zsh or Git Bash:
+
 ```sh
-cp -r /path/to/sf-orglens/fixtures/billing-sfdx ~/orglens-demo
+cp -r "$ORGLENS_REPO/fixtures/billing-sfdx" ~/orglens-demo
 cd ~/orglens-demo
 ```
 
-In PowerShell: `Copy-Item -Recurse C:\path\to\sf-orglens\fixtures\billing-sfdx $HOME\orglens-demo`.
+In PowerShell:
+
+```powershell
+Copy-Item -Recurse "$orglensRepo\fixtures\billing-sfdx" "$HOME\orglens-demo"
+cd "$HOME\orglens-demo"
+```
 
 | #   | Do                                   | Expect                                                                                                                                                                                                                                                                       |
 | --- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -132,9 +156,23 @@ codes.
 
 Outcome 2, for a folder that is in a Git repository. Use a second copy.
 
+In bash, zsh or Git Bash:
+
 ```sh
-cp -r /path/to/sf-orglens/fixtures/billing-sfdx ~/orglens-demo-git
+cp -r "$ORGLENS_REPO/fixtures/billing-sfdx" ~/orglens-demo-git
 cd ~/orglens-demo-git
+```
+
+In PowerShell:
+
+```powershell
+Copy-Item -Recurse "$orglensRepo\fixtures\billing-sfdx" "$HOME\orglens-demo-git"
+cd "$HOME\orglens-demo-git"
+```
+
+Then, in either shell:
+
+```sh
 orglens init
 orglens source add repo --kind git
 git init
@@ -144,19 +182,21 @@ git commit -m "first"
 
 `git commit` needs a name and an e-mail address in your Git settings, as for any commit.
 
-| #   | Do                                                                                                                                | Expect                                                                                                                                                                                                                                                                                                                                                 |
-| --- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | `orglens snapshot repo`                                                                                                           | `Snapshot #1 of "repo" is complete: 52 components in 65 files (36 KiB), commit` and the first ten characters of the id that `git rev-parse HEAD` prints.                                                                                                                                                                                               |
-| D2  | Add a line to a class without a commit, then `orglens snapshot repo`                                                              | The snapshot is complete and names no commit. One line `info WORKING_TREE_MODIFIED` says that 1 file differs from the commit.                                                                                                                                                                                                                          |
-| D3  | `git status` and `git log`                                                                                                        | OrgLens changed nothing in the repository: no new commit, no file but yours modified. `.orglens` ignores itself.                                                                                                                                                                                                                                       |
-| D4  | On Windows with the Git setting `core.autocrlf=true`: D1 can name no commit                                                       | Git then checks text files out with other line ends than the commit has. The snapshot names no commit and says in `WORKING_TREE_MODIFIED` that only the line ends differ. That is by design. I did not try this on Windows.                                                                                                                            |
-| D5  | `orglens source add at-first --kind git --ref HEAD`, then `orglens snapshot at-first`                                             | `Added the source "at-first" (git) to orglens.toml.` Then `Snapshot #3 of "at-first" is complete: 52 components in 65 files (36 KiB), commit` and the id of D1. The source reads the commit, not the folder, so the line you added in D2 is not in it and there is no `WORKING_TREE_MODIFIED`.                                                         |
-| D6  | `orglens source remove at-first`, then `orglens source list` and `orglens status`                                                 | `Removed the source "at-first" from orglens.toml. Snapshots of it stay in the database.` The list and the status show `repo` only.                                                                                                                                                                                                                     |
-| D7  | Add a line `colour = "blue"` at the end of `orglens.toml`, run `orglens status` and `orglens doctor`, and take the line out again | `status` ends with `error: orglens.toml:` and the place, then `sources.repo.colour: Unknown key "colour". Known keys: kind, description, repo, ref, paths, tracks.` The exit code is `2`. `doctor` shows the check `config` as `failed` with the same sentence, the check `store` as `skipped`, and ends with `1 check failed.` and the exit code `1`. |
+| #   | Do                                                                                                                                                    | Expect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | `orglens snapshot repo`                                                                                                                               | `Snapshot #1 of "repo" is complete: 52 components in 65 files (36 KiB), commit` and the first ten characters of the id that `git rev-parse HEAD` prints.                                                                                                                                                                                                                                                                                                                                                                         |
+| D2  | Add a line to a class without a commit, then `orglens snapshot repo`                                                                                  | The snapshot is complete and names no commit. One line `info WORKING_TREE_MODIFIED` says that 1 file differs from the commit.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D3  | `git status` and `git log`                                                                                                                            | OrgLens changed nothing in the repository: no new commit, no file but yours modified. `.orglens` ignores itself.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D4  | On Windows with the Git setting `core.autocrlf=true`, which the installer of Git for Windows sets: look at the output of `git add -A` above and at D1 | `git add -A` prints a warning for each text file, 67 lines of the form `LF will be replaced by CRLF the next time Git touches it`. D1 still names the commit, because the files were copied and not checked out by Git. Once Git has written a file again, for example after `git checkout` of it, the file has other line ends than the commit, and the snapshot names no commit and says in `WORKING_TREE_MODIFIED` that only the line ends differ. That is by design. I tried this on Linux with the setting, not on Windows. |
+| D5  | `orglens source add at-first --kind git --ref HEAD`, then `orglens snapshot at-first`                                                                 | `Added the source "at-first" (git) to orglens.toml.` Then `Snapshot #3 of "at-first" is complete: 52 components in 65 files (36 KiB), commit` and the id of D1. The source reads the commit, not the folder, so the line you added in D2 is not in it and there is no `WORKING_TREE_MODIFIED`.                                                                                                                                                                                                                                   |
+| D6  | `orglens source remove at-first`, then `orglens source list` and `orglens status`                                                                     | `Removed the source "at-first" from orglens.toml. Snapshots of it stay in the database.` The list and the status show `repo` only.                                                                                                                                                                                                                                                                                                                                                                                               |
+| D7  | Add a line `colour = "blue"` at the end of `orglens.toml`, run `orglens status` and `orglens doctor`, and take the line out again                     | `status` ends with `error: orglens.toml:` and the place, then `sources.repo.colour: Unknown key "colour". Known keys: kind, description, repo, ref, paths, tracks.` The exit code is `2`. `doctor` shows the check `config` as `failed` with the same sentence, the check `store` as `skipped`, and ends with `1 check failed.` and the exit code `1`.                                                                                                                                                                           |
 
 ## E. The fixture project and its answer key
 
 Outcome 3.
+
+Run E1 in the root of the clone: `cd "$ORGLENS_REPO"` in bash, `cd $orglensRepo` in PowerShell.
 
 | #   | Do                                                                                                                            | Expect                                                                                                                                                                                                                  |
 | --- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -191,11 +231,30 @@ the org is not yours to keep a copy of.
 
 You need a login of the Salesforce CLI for the org (`sf org login web --alias my-org`).
 
+In bash, zsh or Git Bash:
+
 ```sh
 mkdir ~/orglens-org-test
 cd ~/orglens-org-test
+```
+
+In PowerShell:
+
+```powershell
+New-Item -ItemType Directory "$HOME\orglens-org-test"
+cd "$HOME\orglens-org-test"
+```
+
+Then, in either shell:
+
+```sh
 orglens init
 orglens source add dev --kind org
+```
+
+Run G0 now. Then link the source to your login, with the alias of your login in place of `my-org`:
+
+```sh
 orglens source link dev my-org
 ```
 
@@ -226,16 +285,20 @@ to paste.
 **What is written on your machine.** OrgLens writes into the folder of the workspace only. One thing is done by
 the Salesforce library and not by OrgLens: if the session of your login has expired, the library renews it and
 rewrites the file of that login in `.sfdx` in your home folder, as the Salesforce CLI itself would on its next
-command (record 0031). Every test of this ran with the file-based key store of the library. Your machine most
-likely keeps the key of the Salesforce CLI in the keychain of the system, which no test and no run of mine has
-used. If G2 fails to read your login, that is the likely place, and the error code tells me.
+command (record 0031). Every test of this ran with the file-based key store of the library. On
+Windows the library keeps the key of the Salesforce CLI in such a file too, `key.json` in `.sfdx` in your home
+folder. I read that in the code of the library and did not run it on Windows. On macOS, and on Linux with a
+keyring, the key is in the keychain of the system, which no test and no run of mine has used. If G2 fails to
+read your login, the key store is the likely place, and the error code tells me.
 
 ## H. The Apex trial
 
 Outcome 4. The trial is in `trial/apex` and is not part of OrgLens.
 
+Go back to the root of the clone: `cd "$ORGLENS_REPO"` in bash, `cd $orglensRepo` in PowerShell. The lines of
+this part are the same in both shells.
+
 ```sh
-cd /path/to/sf-orglens
 node trial/apex/src/run-fixture.ts tree-sitter
 node trial/apex/src/run-fixture.ts apex-parser
 ```
