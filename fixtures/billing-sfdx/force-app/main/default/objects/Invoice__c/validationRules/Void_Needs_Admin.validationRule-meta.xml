@@ -7,8 +7,7 @@
   $Profile.Name &lt;&gt; 'System Administrator',
   $User.Department &lt;&gt; 'Finance',
   $UserRole.Name &lt;&gt; 'Controller',
-  $Organization.Country &lt;&gt; 'France',
-  $RecordType.Name &lt;&gt; 'Credit Note'
+  $Organization.Country &lt;&gt; 'France'
 )</errorConditionFormula>
     <errorMessage>Only an administrator or the finance department can void an invoice.</errorMessage>
 </ValidationRule>

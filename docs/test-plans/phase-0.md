@@ -219,7 +219,7 @@ Outcomes 2 and 5. The workflow logs in with the secrets you stored. Its log is p
 
 The workflow runs on `main`, which holds the larger fixture project of Phase 1. The numbers of the fixture project
 in F2 and F3 are those of the run of 12 November, with the smaller project. A run of today counts 87 components
-and 190 pairs, and until the larger project is deployed to the test org the step that reads the org fails,
+and 189 pairs, and until the larger project is deployed to the test org the step that reads the org fails,
 because it does not find the whole project there. I deploy it when the pull request with the new fixture is
 merged, and bring F2 and F3 up to date with the numbers of that run.
 

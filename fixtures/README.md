@@ -41,7 +41,7 @@ Phase 1 added 35 components, and changed no file that was there. The new fields 
 - a formula across three relationships, the last of them the owner of an account (`Account_Owner_Email__c`), the
   parent of an account, and a hierarchy field of the user;
 - the global variables: `$Setup` with a custom setting, `$Label`, `$Permission`, `$CustomMetadata` with a record,
-  `$User` with a standard and a custom field, `$Profile`, `$UserRole`, `$Organization`, `$RecordType`, and
+  `$User` with a standard and a custom field, `$Profile`, `$UserRole`, `$Organization`, and
   `$ObjectType` inside `VLOOKUP`;
 - `CASE`, `INCLUDES` and `TEXT` on picklists, `ISCHANGED` and `PRIORVALUE` on a picklist in a rule
   (`Paid_Cannot_Be_Reopened`), a dependent picklist with its controlling field, and two picklists
@@ -57,11 +57,19 @@ The live-org workflow deployed the 52 components of Phase 0 to a Developer Editi
 Salesforce accepted them on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves
 that it passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md).
 
-**The 35 components of Phase 1 have not been deployed.** The workflow can only deploy from `main`, so Salesforce
-sees them after the pull request that added them is merged. Until that run, nothing but my reading and that of
-the code review says that Salesforce accepts the new formulas. The one least sure is `$RecordType.Name` in the
-rule `Void_Needs_Admin`: `Invoice__c` has no record type, and Salesforce may refuse the variable on such an
-object. If it refuses a formula, the file and its entries in the key are corrected in a pull request of their own.
+**The 35 components of Phase 1 are not in the test org yet.** The workflow sent them on 15 November 2026.
+Salesforce accepted 85 of the 87 components, refused two, and so changed nothing in the org:
+
+- the rule `Void_Needs_Admin`, which compared `$RecordType.Name`. `Invoice__c` has no record type. The line is
+  removed, so the project has no `$RecordType` any more. A probe still has it.
+- the field `Region__c`, whose default value was `TEXT($User.Billing_Region__c)`. The same call is accepted in the
+  formula field `Is_My_Region__c`, so it is the default value that does not take it. The default value is now
+  `$User.Department`.
+
+The log of that run did not show what Salesforce said about the two, because its messages had no form the step
+knew. **Why each was refused is therefore my reading, and not verified**, and so is that the corrected files are
+accepted: the workflow can only deploy from `main`, after the pull request with the correction is merged. The step
+now shows the everyday words of such a message.
 
 ## The answer key
 
@@ -130,7 +138,7 @@ have is wrong.
 - `extends` to a class of the project, and the object of a trigger.
 - A field behind a global variable of a formula is a `reads` of that field: `$Setup.Billing_Settings__c.Grace_Days__c`
   reads the field of the custom setting, `$User.Department` the field of the user, `$Profile.Name` the name of the
-  profile. The same holds for `$UserRole`, `$Organization` and `$RecordType`, and for a field that `VLOOKUP` names
+  profile. The same holds for `$UserRole` and `$Organization`, and for a field that `VLOOKUP` names
   with `$ObjectType.Tax_Code__c.Fields.Rate__c`.
 - `$CustomMetadata.Billing_Rule__mdt.Default.Max_Amount__c` is a `reads` of the field of the type and a `references`
   to the record `Default`. `$Label` and `$Permission` are a `references` to the label and to the permission.
@@ -213,8 +221,8 @@ analyser. It checks that:
 - the list of unreferenced fields is the list of fields no entry points at;
 - no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
   the tiers and operations follow the rules above;
-- the numbers this page quotes are the numbers of the key: 291 references (107 in fields and rules, 184 in Apex), 7
-  of them stretch, 33 negatives and 5 unknowns;
+- the numbers this page quotes are the numbers of the key: 290 references (106 in fields and rules, 184 in Apex), 7
+  of them stretch, 31 negatives and 5 unknowns;
 - version 0 of the key still names places that exist, has nothing that version 1 has not, and has the same Apex
   part.
 

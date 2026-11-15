@@ -143,12 +143,11 @@ standard:
   - CustomField:user.email
   - CustomField:user.managerid
   - CustomField:user.username
-  # The objects behind the global variables $Profile, $UserRole, $Organization and $RecordType, and the group
+  # The objects behind the global variables $Profile, $UserRole and $Organization, and the group
   # that a queue is.
   - CustomField:group.name
   - CustomField:organization.country
   - CustomField:profile.name
-  - CustomField:recordtype.name
   - CustomField:userrole.name
 
 # The fields of the project that nothing in the project refers to. Unused_Field__c is the control case: its name
@@ -455,7 +454,7 @@ references:
     members:
       - from: CustomField:invoice__c.region__c
         refs:
-          - { line: 4, match: Billing_Region__c, kind: reads, to: CustomField:user.billing_region__c, via: formula, note: "A default value that is a formula." }
+          - { line: 4, match: Department, kind: reads, to: CustomField:user.department, via: formula, note: "A default value that is a formula." }
 
   - file: force-app/main/default/objects/Invoice__c/fields/Status_Notice__c.field-meta.xml
     phase: 1
@@ -524,7 +523,6 @@ references:
           - { line: 8, match: Department, kind: reads, to: CustomField:user.department, via: formula }
           - { line: 9, match: Name, kind: reads, to: CustomField:userrole.name, via: formula }
           - { line: 10, match: Country, kind: reads, to: CustomField:organization.country, via: formula }
-          - { line: 11, match: Name, kind: reads, to: CustomField:recordtype.name, via: formula }
 
   # ------------------------------------------------------------------ Phase 3: Apex
   - file: force-app/main/default/classes/InvoiceConstants.cls
@@ -900,9 +898,7 @@ negatives:
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Tax_Rate_Matches_Code.validationRule-meta.xml, line: 9, match: Name, not: CustomField:invoice__c.name, why: "The name of the tax code, not of the invoice." }
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 7, match: Name, not: CustomField:invoice__c.name, why: "The name of the profile, a global variable." }
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 9, match: Name, not: CustomField:invoice__c.name, why: "The name of the role, a global variable." }
-  - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 11, match: Name, not: CustomField:invoice__c.name, why: "The name of the record type, a global variable." }
   - { file: force-app/main/default/objects/Invoice__c/fields/Status_Rank__c.field-meta.xml, line: 5, match: Email, not: CustomField:user.email, why: "A value of a picklist, in text. Fields of the user and of the contact have that name." }
-  - { file: force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml, line: 4, match: Billing_Region__c, not: CustomField:account.billing_region__c, why: "The field of the user. The account has a field of the same name." }
 
 # Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
 # One entry for each name whose target is not known.

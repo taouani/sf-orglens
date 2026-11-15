@@ -20,7 +20,7 @@ import { loadSourceLibrary } from '../../src/sources/library.ts';
 import { connectToOrg } from '../../src/sources/org.ts';
 import { networkCode } from '../../src/sources/org-errors.ts';
 import { asStep } from './own-output.ts';
-import type { PublicLog } from './public-log.ts';
+import { everydayWords, type PublicLog } from './public-log.ts';
 import {
   failureLines,
   FIXTURE_DIR,
@@ -48,8 +48,8 @@ const STATES: ReadonlySet<string> = new Set([
   'Canceled',
 ]);
 
-/** A name in Apex or in a formula, with dots: `Invoice__c.Amount__c`. */
-const NAME = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*`;
+/** A name in Apex or in a formula, with dots: `Invoice__c.Amount__c`. A global variable of a formula begins with `$`. */
+const NAME = String.raw`\$?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*`;
 /** A type in Apex: a name, with generics and arrays. A space stands only after a comma, so prose has not this form. */
 const TYPE = String.raw`[A-Za-z_][A-Za-z0-9_.]*(?:(?:<|>|, ?|\[\])[A-Za-z0-9_.]*)*`;
 /** A type, or a method with its return type and its parameters: `void post(List<Invoice__c>)`. */
@@ -127,7 +127,9 @@ export const PLATFORM_WORDS: ReadonlySet<string> = new Set(
   (
     'void null true false this super string integer decimal double long boolean date datetime time id blob object ' +
     'sobject list set map schema system database test exception type text number percent currency picklist checkbox ' +
-    'lookup formula apex class trigger interface enum select from where'
+    'lookup formula apex class trigger interface enum select from where ' +
+    // The global variables of a formula.
+    'api custommetadata label objecttype organization permission profile recordtype setup user userrole'
   ).split(' '),
 );
 
@@ -144,7 +146,8 @@ export function fixtureWords(): Set<string> {
 
 /**
  * A problem as it may be printed: itself, if its whole text has a known form and every word at a name, a
- * signature or a token is a word of the fixture project or of the platform. Else a sentence that says why not.
+ * signature or a token is a word of the fixture project or of the platform. Else a sentence that says why not,
+ * and of a problem of a form that is not known its everyday words (`everydayWords`): no other word of it comes out.
  * With `names` false, a problem is only printed if its form holds no name at all: that is for a problem about
  * something that is not a component of the fixture project.
  */
@@ -167,7 +170,9 @@ export function shownProblem(log: PublicLog, problem: unknown, words: ReadonlySe
     }
     return text;
   }
-  return `not shown, because it is not of a known form. ${where}`;
+  // Of a form that is not known, the words of the list of everyday words say what kind of problem it is.
+  const everyday = everydayWords(text);
+  return `not shown, because it is not of a known form. ${where}${/[A-Za-z]/.test(everyday) ? ` Its everyday words: ${everyday}` : ''}`;
 }
 
 /** One message of a deploy about a component. */
