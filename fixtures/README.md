@@ -57,20 +57,22 @@ The live-org workflow deployed the 52 components of Phase 0 to a Developer Editi
 Salesforce accepted them on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves
 that it passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md).
 
-**The 35 components of Phase 1 are not in the test org yet.** The workflow sent them on 15 November 2026.
-Salesforce reported a problem for two of the 87 components and none for the other 85, and so changed nothing in
-the org:
+**The 35 components of Phase 1 are in the test org since 15 November 2026.** Salesforce accepted all 87
+components on the second try. The Apex test was not run then either. The first try was refused for two of the 87
+components, and Salesforce changed nothing in the org:
 
 - the rule `Void_Needs_Admin`, which compared `$RecordType.Name`. `Invoice__c` has no record type. The line is
   removed, so the project has no `$RecordType` any more. A probe still has it.
 - the field `Region__c`, whose default value was `TEXT($User.Billing_Region__c)`. Salesforce reported no problem
   for the formula field `Is_My_Region__c`, which holds the same call. The default value is now `$User.Department`.
 
-The log of that run did not show what Salesforce said about the two, because its messages had no form the step
-knew. **Why each was refused is therefore my reading, and not verified.** Not verified either: that Salesforce
-checked the other 85 components to the end in a deploy it refused, and that it accepts the corrected files. The
-workflow can only deploy from `main`, after the pull request with the correction is merged. The step now shows
-the everyday words of such a message.
+The log of the refused run did not show what Salesforce said about the two, because its messages had no form the
+step knew. **Why each was refused is therefore my reading, and not verified.** That Salesforce accepts the
+corrected files shows that they are valid, and not that the reading is right. The step now shows the everyday
+words of such a message.
+
+What the runs showed, and which pairs of the key the Dependency API reports (129 of 189), is in
+[`real-org.md` of Phase 1](../docs/research/phase-1/real-org.md).
 
 ## The answer key
 

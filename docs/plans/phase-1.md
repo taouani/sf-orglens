@@ -176,15 +176,26 @@ components, `answer-key.v1.yaml` with 106 references in fields and rules (62 mor
 
 The first deploy, on the same day, was refused for two of the 87 components, and Salesforce changed nothing in
 the test org: the rule that held `$RecordType.Name` and the field with the default value
-`TEXT($User.Billing_Region__c)`. The log names the two components and not the reason. Both are corrected in a pull request of their own. Not done: a deploy that Salesforce accepts, and the run of the probe.
-The workflow can only do both from `main`. Until then nothing but my reading says that Salesforce accepts the
-corrected formulas. Your reading of ten entries is open too.
+`TEXT($User.Billing_Region__c)`. The log names the two components and not the reason. Both were corrected by
+reading, and Salesforce accepted the second deploy: 87 of 87 components. Why the two were refused is still my
+reading.
 
-Five things differ from the list above:
+The probe ran after it. The Dependency API reports 129 of the 189 pairs of the key, and 29 of the 52 that are new.
+No row between two components of the fixture is wrong. Of the 52 pairs from a formula to something custom it
+reports 51, and the one is in the inactive rule. It reports nothing for a global value set and for a controlling
+field, which is new, and nothing for standard fields, lookups, roll-up summaries and lookup filters, as before.
+The tool that asks had to be corrected first: it gave the custom metadata type a name with the ending `__c`.
+[real-org.md](../research/phase-1/real-org.md) has the numbers and what is not verified.
+
+Open: your reading of ten entries.
+
+Six things differ from the list above:
 
 - The fixture has no `$RecordType`. Salesforce refused the rule that had it. That the variable is the reason,
   because `Invoice__c` has no record type, is my reading. A probe has it, the key does not. To key it, the project
   would need a record type, which is one more metadata type in the fixture. That is not done.
+- The fixture has no custom field in a default value. Salesforce refused the field that had one. The default
+  value that is a formula now names a standard field of the user.
 - The fixture also has `$UserRole`, and the folder of what cannot be deployed also has a relationship and a
   label that do not exist.
 - The list of functions for the probes is the one of the help page of Salesforce, and the fetch of that page gave
@@ -198,11 +209,13 @@ Five things differ from the list above:
 
 Accepted when:
 
-- Salesforce accepts the deploy, which shows that every formula of the fixture is valid.
-- `fixture-key.test.ts` passes with the new key.
-- The pull request with the fixture and the key is merged before the pull request of WP5 is opened.
-- The run of the probe is recorded: which of the new pairs the Dependency API reports.
-- You have read at least ten entries of the new key against their files (section 9).
+- Salesforce accepts the deploy, which shows that every formula of the fixture is valid. Met on 15 November
+  2026, on the second try.
+- `fixture-key.test.ts` passes with the new key. Met.
+- The pull request with the fixture and the key is merged before the pull request of WP5 is opened. Met.
+- The run of the probe is recorded: which of the new pairs the Dependency API reports. Met:
+  [real-org.md](../research/phase-1/real-org.md).
+- You have read at least ten entries of the new key against their files (section 9). Open.
 
 ### WP2 XML with positions
 
@@ -399,6 +412,20 @@ Accepted when:
 - On the test org: no pair of the fixture is missed for a formula field or a validation rule, and the report
   says how many pairs Salesforce reports that this phase cannot have yet, which are those of Apex.
 - Only metadata is read. A test pins the objects that are queried.
+
+Two things the probe of 15 November 2026 showed are for this work package
+([real-org.md](../research/phase-1/real-org.md), section 4):
+
+- **A question for you, before I build it.** The Dependency API reports three pairs from a formula to an object
+  that the key leaves out on purpose: the object in `$ObjectType` inside `VLOOKUP`, and the custom metadata
+  type behind `$CustomMetadata`, from the rule and from the record. The key has the reference to the field or
+  the record. As the second point above is written, OrgLens would miss these three. Either OrgLens records a
+  reference to the object there as well, or the comparison counts a row to an object as covered when OrgLens
+  has a reference from the same component to a field or a record of that object. I will put both to you with
+  what each costs when this work package starts.
+- The row of a custom object in the Tooling API holds its name without the ending, and the type of a row about
+  a record of a custom metadata type is the name of that type. The test tool got both wrong at first. The
+  engine has to name a custom object from a source that has the ending.
 
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 
