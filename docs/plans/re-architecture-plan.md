@@ -8,7 +8,7 @@ Agreed on 11 November 2026 · The OrgLens Authors
 > just before the phase starts, and decisions are recorded in [`docs/adr/`](../adr/). Where a phase plan or a
 > decision record differs from this document, the newer one wins.
 >
-> Last updated on 15 November 2026, with the answers of the maintainer to the Phase 1 plan. Before that: on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
+> Last updated on 15 November 2026, with the answers of the maintainer to the Phase 1 plan and the approval of that plan with one change. Before that: on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
 
 ## Summary
 
@@ -55,14 +55,15 @@ orgs.
 
 ### With the answers to the Phase 1 plan, 15 November 2026
 
-The maintainer answered the eight questions of the [Phase 1 plan](phase-1.md) on 15 November 2026. The plan of
-Phase 1 is not approved yet.
+The maintainer answered the eight questions of the [Phase 1 plan](phase-1.md) on 15 November 2026. The
+maintainer approved that plan on the same day with one change. The next section holds the change, and it
+replaces the row "What a snapshot of an org reads" below.
 
 | What | Before | Now |
 | --- | --- | --- |
 | Performance targets | Open. Proposed for an org of 10,000 components: 30 minutes, 2 seconds, 10 seconds, 5 minutes | Set by the maintainer for an org of 100,000 components: first snapshot under 60 minutes, impact query under 5 seconds, comparison under 10 seconds, incremental refresh under 5 minutes. How a component is counted is open: by one count the target is about twice the synthetic org of Phase 0, by another about ten times (record [0037](../adr/0037-performance-targets.md)). Nothing measured supports the 60 minutes by either count. |
 | The goal for metadata coverage | Decision F3: the logic tier, then the presentation tier, reports opt-in | The maintainer noted the goal: all metadata, except what comes from managed packages. That F3 still sets the order in which types are built is a reading of the author of record 0036, not a statement of the maintainer. How packages are left out is not decided. |
-| What a snapshot of an org reads | Every type the org lists. Partial when anything listed did not come back | The logic tier by default. Complete when every listed component of the types it reads came back and could be read. Record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md). That custom labels, custom permissions and global value sets are added to the default is a reading of the author of that record. To be built in Phase 1, once its plan is approved. |
+| What a snapshot of an org reads | Every type the org lists. Partial when anything listed did not come back | The logic tier by default. Complete when every listed component of the types it reads came back and could be read. Record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md). That custom labels, custom permissions and global value sets are added to the default is a reading of the author of that record. Replaced on the same day: see the next section. |
 | The correctness gate | No dependency that Salesforce confirms is missing | A second half for standard fields, names in text, lookups and roll-up summaries: every entry of the answer key is found, and a random sample from public codebases is checked by hand. Record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md). The estimate of the gate was not looked at again. |
 | The Dependency API in the engine | Phase 3, with Apex | Phase 1, for the types Phase 1 analyses. Phase 3 extends it to Apex. |
 | Roadmap, Phase 1 | 4 to 6 weeks | 6 to 7 weeks: the cross-check and the rule for what a snapshot reads are added. The total to the gate is 28 to 38 weeks. What Phase 3 saves is not estimated. |
@@ -70,6 +71,20 @@ Phase 1 is not approved yet.
 | The reader for XML | `fast-xml-parser` behind a wrapper, named in the Phase 0 plan | A reader of our own, with `fast-xml-parser` as the second opinion in tests. If a maintained library that gives the place of every character is found on the first day of that work, it is taken instead and the maintainer is told. The record is written with the reader. |
 | How colleagues get the first slice | Open (risk 11) | A pre-release on GitHub with the packed command line attached. Nothing on npm yet. |
 | Risks and open questions | | Risks 5, 11 and 13 follow the answers. Three open questions are answered: the performance targets, the gate where Salesforce confirms nothing, and what "complete" means. The open question "Managed packages" is extended and stays open. |
+
+### With the approval of the Phase 1 plan, 15 November 2026
+
+The maintainer chose "Approve with changes" for the Phase 1 plan on 15 November 2026 and named the change in these words: "metadata to index/retrieve should cover almost everything in the org: Custom objects/fields, flows and their elements, Apex classes and their methods, email templates, report types, reports, permission sets, permissin set groups, ...." The author put two readings of it to the maintainer, who chose the first: a snapshot reads every type from Phase 1 on, and references are found phase by phase (record [0038](../adr/0038-a-snapshot-reads-every-type.md)).
+
+| What | Before | Now |
+| --- | --- | --- |
+| What a snapshot of an org reads | The logic tier by default (record 0036, earlier on the same day) | Every type the org lists. Complete is judged over the logic tier. That what is missing in another type is a warning is a reading of the author of record 0038. To be built in Phase 1. |
+| Reports | Opt-in (decision F3) | Read by default. Not analysed before a phase builds an analyser for them. |
+| The order of the analysers | The roadmap | Unchanged, as a reading of the author of record 0038. Report types are in no phase. Where email templates, report types and reports go is put to the maintainer when Phase 2 is planned. |
+| The target of 60 minutes for a first snapshot | No measurement supports it (record 0037). Reading fewer types was expected to help | Still no measurement supports it, and a snapshot does not read fewer types. |
+| The Phase 1 plan | Answered, not approved | Approved with this change. The approval was given before the change was written, and the maintainer has not read the changed text. Open: how the components of the performance targets are counted (record 0037). |
+| Record 0036 | Accepted | Superseded by record 0038. |
+| Elsewhere in this plan | | Row F3 of the decision log, the row of Phase 6 and the list "Later" of the roadmap, risks 5 and 13, and the open questions "Managed packages", "What complete means" and "Folders inside folders" follow the change. |
 
 ## Goal statement
 
@@ -108,17 +123,21 @@ Confirmed on 11 November 2026.
 3. Outside adoption grows, with GitHub stars as the visible measure.
 
 **Notes since, not part of the confirmed text.** The text above is as the maintainer confirmed it and is not
-changed. Two answers to the Phase 1 plan of 15 November 2026 touch it.
+changed. Two answers to the Phase 1 plan of 15 November 2026 and the change the maintainer made with its approval
+touch it.
 
 - The maintainer wrote with one answer: "the goal is all metadata except those coming from managed packages".
   Whether that becomes a line of the goal statement is for the maintainer to say.
 - The maintainer set numbers for "acceptable", for an org of 100,000 components (record
   [0037](../adr/0037-performance-targets.md)). The second criterion, decision M4 and the gate still name an org
   of 10,000 or more components. How a component is counted in each of them is not decided.
+- With the approval of the Phase 1 plan the maintainer wrote that the metadata to index and retrieve "should
+  cover almost everything in the org", with a list of types (record
+  [0038](../adr/0038-a-snapshot-reads-every-type.md)). From Phase 1 on a snapshot reads every type.
 
 ## Decision log
 
-All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, S3 was completed with the choice of the parser on 13 November 2026, and the rows of S4 and M1 say what Phase 0 changed in them. The rows of F3, D6 and M4 say what the answers of the maintainer of 15 November 2026 changed, and the row of F3 says what in it is a reading of the author of record 0036. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
+All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, S3 was completed with the choice of the parser on 13 November 2026, and the rows of S4 and M1 say what Phase 0 changed in them. The rows of F3, D6 and M4 say what the answers of the maintainer of 15 November 2026 changed, and the row of F3 says what in it is a reading of the author of records 0036 and 0038. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
 
 ### Features and scope
 
@@ -126,7 +145,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | --- | --- | --- | --- |
 | F1 | First release scope | Impact core first, then automation order, integration map and basic security audit as riders | Riders are mostly queries over the same graph. No rider starts until impact analysis passes the correctness gate. |
 | F2 | Role of the LLM | Optional: explains results, later an agent that calls the engines as tools. No RAG, vectors or embeddings | Embeddings were the heaviest dependency and served a secondary feature. Exact graph queries beat similarity search on structured metadata. |
-| F3 | Metadata coverage | Logic tier first. Presentation tier is the next milestone, reports opt-in. Answer of the maintainer of 15 November 2026: a snapshot of an org reads the logic tier by default (record 0036), and the goal the maintainer noted is all metadata, except what comes from managed packages. Readings of the author of record 0036, which the maintainer can strike: three types are added to the default, and this decision still sets the order in which types are built | The logic tier covers everything that can break at runtime. Reports can number in the tens of thousands. |
+| F3 | Metadata coverage | Logic tier first. Presentation tier is the next milestone, reports opt-in. Changed by the maintainer on 15 November 2026 (record 0038): a snapshot of an org reads every type from Phase 1 on, reports included, and references are found phase by phase. The goal the maintainer noted is all metadata, except what comes from managed packages. Readings of the author of records 0036 and 0038, which the maintainer can strike: custom labels, custom permissions and global value sets belong to the logic tier, and this decision still sets the order in which analysers are built | The logic tier covers everything that can break at runtime. Reports can number in the tens of thousands. |
 | F4 | Removals | Remove RAG, the binary build and unused dependencies. No live record-data queries. Defer docs generation, dead code and posture audit | Record queries pull business data and weaken the local-first promise. Impact analysis does not need them. |
 
 ### Architecture
@@ -304,11 +323,11 @@ Effort is in focused weeks for one developer with AI assistance. These are rough
 | 4 Compare and access | Snapshot comparison for all three pairings, which has to know the default values an org adds to almost every file. Multi-org workspace and repo sub-folder mapping. Change-set impact from a Git diff. Incremental refresh. Profiles, permission sets and groups read completely, with access impact. Change-aware rules for delete and data-type change. | 5 to 7 weeks | Phases 1 to 3 |
 | Correctness gate | Run on public codebases and one real 10,000+ component org. Fix every missing dependency. The second half of record 0035: the answer key for what Salesforce cannot confirm, and a sample checked by hand. Measure ingest and query times. Publish the benchmark. Announce. | 2 to 3 weeks, estimated before the second half existed and not looked at again | Phase 4, access to a suitable org |
 | 5 Riders | Automation order of execution, integration map, basic security audit. `orglens explain` through the LLM layer. | 4 to 6 weeks | Gate passed |
-| 6 Web UI and agent | Local HTTP server and browser UI. `orglens ask` as an agent over the engines. Presentation tier: layouts, Lightning pages, list views, email templates, sharing rules, opt-in reports. | 6 to 10 weeks | Phase 5 |
+| 6 Web UI and agent | Local HTTP server and browser UI. `orglens ask` as an agent over the engines. Presentation tier: layouts, Lightning pages, list views, email templates, sharing rules, reports. A snapshot reads them from Phase 1 on (record 0038), and this phase analyses them. | 6 to 10 weeks | Phase 5 |
 
 Total to the gate is 28 to 38 focused weeks, of which Phase 0 is done. Phases 5 and 6 add 10 to 16.
 
-Later, with no estimate yet: the metadata types beyond the logic tier and the presentation tier, which the goal the maintainer noted on 15 November 2026 asks for, desktop app, documentation and diagram generation, dead-code detection, security posture audit, more change-aware rules, a possible Salesforce CLI plugin.
+Later, with no estimate yet: the analysis of the metadata types beyond the logic tier and the presentation tier, report types among them, which a snapshot reads from Phase 1 on (record 0038), desktop app, documentation and diagram generation, dead-code detection, security posture audit, more change-aware rules, a possible Salesforce CLI plugin.
 
 ### What is reused in each phase
 
@@ -331,7 +350,7 @@ The two risks that could sink the product are Apex analysis proving harder than 
 | 2 | Results are wrong by omission | One missed dependency in front of a client destroys trust | The Dependency API as cross-check, for what it can see: custom fields and custom objects. For standard fields and names in text nothing from Salesforce confirms a result, so the fixture project with its answer key and checks by hand on public codebases carry the proof there. Coverage manifest on every snapshot. The correctness gate before any announcement. |
 | 3 | Text matching produces too many false positives | Long "possible" lists get ignored, which hides real results | Three tiers shown separately. Confirmed results first by default. Measure the false-positive rate on public codebases and tune. |
 | 4 | Scope creep by a solo developer | Three earlier builds went broad before deep | The F1 rule: no rider before the gate. Thin slices. Deferred list kept in the plan, not in the backlog. |
-| 5 | Large-org retrieval is slow or hits limits | The target is a first snapshot of an org of 100,000 components in under 60 minutes (record 0037), and no build is proven at any large size | Chunked and resumable retrieves exist since phase 0. Measured on one small org only: 1,668 listed components in two to three minutes, nearly all of it Salesforce building the zip. Scaled straight that is two to three hours for 100,000, and one small org is a weak base for scaling. Splitting and resuming ran against a mock org only. From Phase 1 on a snapshot is to read the logic tier by default (record 0036), which should shorten it and is not measured. How the 100,000 are counted is open, and by the other count the straight scaling is ten hours or more. Retrieving chunks side by side is not built. Incremental refresh in phase 4. Reports opt-in. Test on a large org early, not at the gate. |
+| 5 | Large-org retrieval is slow or hits limits | The target is a first snapshot of an org of 100,000 components in under 60 minutes (record 0037), and no build is proven at any large size | Chunked and resumable retrieves exist since phase 0. Measured on one small org only: 1,668 listed components in two to three minutes, nearly all of it Salesforce building the zip. Scaled straight that is two to three hours for 100,000, and one small org is a weak base for scaling. Splitting and resuming ran against a mock org only. A snapshot reads every type, reports included (record 0038), so nothing shortens it, and the one measurement was taken that way. How the 100,000 are counted is open, and by the other count the straight scaling is ten hours or more. Retrieving chunks side by side is not built. Incremental refresh in phase 4. Reports are read by default since record 0038, and the Phase 1 plan proposes a key to leave types out. Test on a large org early, not at the gate. |
 | 6 | The Dependency API is incomplete or limited on large orgs | The cross-check may not cover every type or every record | Incomplete is now measured: it reported 100 of 137 pairs of the answer key and nothing wrong, and it is blind to standard fields, names in text, lookups, roll-up summaries and inactive rules. Limited on large orgs is not measured: the test org has 224 rows, far below the 2,000 of one query. It is in Beta and can go away. Treat it as a second opinion, never the primary source. Query per type. Say in the coverage output for each reference whether Salesforce could have confirmed it. |
 | 7 | A key third-party library is abandoned or changes | Kuzu was archived under two earlier builds | Prefer Salesforce-maintained libraries. Isolate each behind a layer boundary. `web-tree-sitter-sfapex`, the Apex parser the maintainer chose, is maintained by one person. The adapter for the other parser is kept in the trial, and a test compares what the two lower to, so the parser is meant to be changeable by one import. That is not shown before the engine has Apex analysis. The retrieve no longer depends on the retrieve of the Salesforce library. |
 | 8 | The rewrite loses value from the old repositories | B's parsers encode many real-world fixes | Nothing is copied from them, and they are not touched. Their lessons come over through the research note [`harvest-and-config.md`](../research/phase-0/harvest-and-config.md) and through what the maintainer knows. Public codebases take the place of B's fixtures as the test of real-world shapes. |
@@ -339,7 +358,7 @@ The two risks that could sink the product are Apex analysis proving harder than 
 | 10 | Local LLM models are weak at tool calling | "Any provider" may underdeliver for the agent | The LLM is optional by design. `explain` needs no tool calling. State the tested models in the docs. |
 | 11 | Motivation and momentum over 6 to 9 months of solo work | No deadline and no outside pressure | The first slice is usable within weeks. Colleagues use it from phase 1. Each phase from phase 1 on ends with a release. Phase 0 ended without one: nothing is published. Phase 1 ends with a pre-release on GitHub that has the packed command line attached (answer of the maintainer of 15 November 2026). |
 | 12 | The proof rests on one author | The fixture project, its answer key and the analysers are written by the same AI assistant. A blind spot in one is a blind spot in all three | The key is written before the analyser it scores and is never changed to make one pass. The Dependency API contradicts no entry it can see. Checks by hand on public codebases, on code the author did not write. A second person reads a part of the key in every test plan. |
-| 13 | A snapshot of a real org may never be "complete" | The one org that was read lists 223 components that Salesforce does not hand out, and both of its snapshots are "partial". Whether other orgs are the same is not measured. A status that is always "partial" teaches users to ignore it | Decided on 15 November 2026 (record 0036): a snapshot of an org reads the logic tier by default and is complete when every listed component of those types came back and could be read. It is to be built in Phase 1. Thirteen components of the test org in logic-tier types still do not come back, and the custom labels with them, and three files came back and could not be read. A snapshot of that org can stay partial until each is explained. Until Phase 1 is built the snapshot names every component that is missing, with its type and the reason where one is known. |
+| 13 | A snapshot of a real org may never be "complete" | The one org that was read lists 223 components that Salesforce does not hand out, and both of its snapshots are "partial". Whether other orgs are the same is not measured. A status that is always "partial" teaches users to ignore it | Decided on 15 November 2026 (record 0038): a snapshot of an org reads every type and is complete when every listed component of the logic tier came back and could be read. That what is missing in another type is a warning is a reading of the author of record 0038. By it the risk moves from a status that is always "partial" to warnings that are always there: 209 of the 223 are outside the logic tier. It is to be built in Phase 1. Thirteen components of the test org in logic-tier types still do not come back, and the custom labels with them, and three files came back and could not be read. A snapshot of that org can stay partial until each is explained. Until Phase 1 is built the snapshot names every component that is missing, with its type and the reason where one is known. |
 
 ## Open questions
 
@@ -356,14 +375,14 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 
 - [x] **Apex analysis foundation.** `web-tree-sitter-sfapex`. Both parsers passed the Phase 0 trial, which selected neither, and the maintainer chose on 13 November 2026 (S3).
 - [ ] **Scope of the Dependency API on large orgs.** Its type coverage is measured for the types of the fixture project. Its limits on a large org, and flows, are not.
-- [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence? The maintainer noted on 15 November 2026 that the goal is all metadata, except what comes from managed packages. Still open with that: whether the components of a package stay as named targets of references from the maintainer's own metadata, and from which phase packages are left out.
+- [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence? The maintainer noted on 15 November 2026 that the goal is all metadata, except what comes from managed packages. Still open with that: whether the components of a package stay as named targets of references from the maintainer's own metadata, and from which phase packages are left out. With the approval of the Phase 1 plan the maintainer wrote that the metadata to index and retrieve "should cover almost everything in the org" (record 0038). The author of that record reads "almost" as the packages, and reads that the components of a package are still read until a later record says otherwise.
 
 **New at the close of Phase 0**
 
 - [x] **What the correctness gate asks for where Salesforce confirms nothing.** The gate says that no dependency Salesforce confirms may be missing. For standard fields, names in text, lookups and roll-up summaries Salesforce confirms nothing. Answered on 15 November 2026: the gate has a second half for these kinds (record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md)).
-- [x] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Answered on 15 November 2026: every listed component of the types the snapshot reads came back and could be read (record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md)).
+- [x] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Answered on 15 November 2026: every listed component of the logic tier came back and could be read (record [0038](../adr/0038-a-snapshot-reads-every-type.md), which replaces record 0036). That what is missing in another type is a warning is a reading of the author of that record. Not decided: whether a type outside the logic tier counts for "complete" once it has an analyser.
 - [ ] **A sandbox that is refreshed gets a new org id.** Should a source of the kind `sandbox` follow its sandbox across a refresh? Record 0032 leaves it open. It matters from the phase that compares snapshots.
-- [ ] **Folders inside folders** of reports and dashboards may only be found by a query on an object of the data API. The data rule forbids such a query. Record 0032 leaves it open. It matters when reports are read.
+- [ ] **Folders inside folders** of reports and dashboards may only be found by a query on an object of the data API. The data rule forbids such a query. Record 0032 leaves it open. Since record 0038 reports are read by default, so it matters from Phase 1 on. Whether the test org has such folders was not measured.
 
 **Design details to settle when reached**
 
@@ -373,4 +392,4 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 - [ ] **Old repositories.** When are the three archived, and is the plain `orgLens` name freed for the new project? Needs the maintainer's explicit go-ahead. Until then they are not touched.
 - [ ] **Use of the money budget.** Proposed: LLM usage for evaluation runs after the gate, and paid org capacity if a free org cannot hold the level 2 codebases.
 
-**Deferred by decision, listed so they are not forgotten:** web UI framework, desktop wrapper, LLM client library, browser login for admins, presentation-tier metadata, reading custom settings records.
+**Deferred by decision, listed so they are not forgotten:** web UI framework, desktop wrapper, LLM client library, browser login for admins, the analysis of presentation-tier metadata, reading custom settings records.

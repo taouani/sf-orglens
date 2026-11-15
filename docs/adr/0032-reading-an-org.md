@@ -4,6 +4,7 @@
 - Date: 2026-11-12
 - Decisions: none (made during the build)
 - Changed by: [0036](0036-what-a-snapshot-of-an-org-reads.md), which says which types a snapshot of an org reads by default and when it is complete
+- Changed by: [0038](0038-a-snapshot-reads-every-type.md), which supersedes 0036 before it was built: a snapshot keeps reading every type, and "partial" is judged over the logic tier. That a listing the org refuses outside the logic tier is then a warning is a reading of the author of 0038
 
 ## Context
 

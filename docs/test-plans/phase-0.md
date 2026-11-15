@@ -270,8 +270,8 @@ orglens source link dev my-org
 | G6  | Compare the table with what you know of the org                                                                                      | The counts of classes, triggers, custom objects and flows are the ones you expect. If a type you know is missing from the table, that is a finding.                                                                                                                                                                                                                                                                                                                 |
 
 What I expect and cannot promise: the snapshot will most likely be `partial`. The test org lists 223 components
-that Salesforce does not hand out, most of them list views. What "complete" should mean is one of the questions
-at the end of this plan. Anything else that looks wrong here is a finding, because this is the first run of its
+that Salesforce does not hand out, most of them list views. What "complete" should mean was a question of the
+Phase 1 plan and is answered in decision record 0038. Anything else that looks wrong here is a finding, because this is the first run of its
 kind: an error code, a type that is refused, a retrieve that fails.
 
 **What these outputs hold, and where they must not go.** The line that `orglens source link` prints and the
@@ -340,5 +340,4 @@ node trial/apex/src/run-fixture.ts apex-parser
    [report of the trial](../research/phase-0/apex-trial.md) sets out what speaks for each parser, in its section
    "The rule of the plan, applied".
 3. **The [Phase 1 plan](../plans/phase-1.md).** You answered the eight questions of its section 4 on 15 November
-   2026, and the plan follows your answers. What is left is to approve it or to send it back. Nothing of Phase 1
-   is built before you approve that plan.
+   2026, and the plan follows your answers. Added later: you approved it with one change on the same day.
