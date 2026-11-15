@@ -14,6 +14,9 @@ export default defineConfig({
     // Many tests start Git or a second Node.js process several times. On the Windows runners of CI one such test
     // takes up to 4 seconds, which leaves no room below the default of 5.
     testTimeout: 20_000,
+    // A hook does the same kind of work: `org-snapshot.test.ts` copies a part of the fixture project into a
+    // temporary folder before its tests. On a Windows runner that did not end within the default of 10 seconds once.
+    hookTimeout: 20_000,
     coverage: {
       provider: 'v8',
       include: ['packages/*/src/**/*.ts'],
