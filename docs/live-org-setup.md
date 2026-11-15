@@ -153,8 +153,9 @@ components in Setup, or start over with a new org.
 
 The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for
 describe metadata: `MetadataComponentDependency`, `ApexClass` with its symbol table, and `CustomObject`,
-`CustomField`, `ValidationRule` and `ApexTrigger` for the names behind the ids. No record of the data of the org is
-read. A symbol table with references to other classes can only be had by compiling a copy of a class in the org,
+`CustomField`, `ValidationRule` and `ApexTrigger` for the names behind the ids. A field and a rule are asked for
+with the name of their object (`EntityDefinition.QualifiedApiName`), because the row of a custom object holds its
+name without the ending, and a custom metadata type ends in `__mdt`. No record of the data of the org is read. A symbol table with references to other classes can only be had by compiling a copy of a class in the org,
 which writes to the org, so the probe does not do that.
 
 What the steps print follows the same rule as the login step, with a wider list of what a sentence may hold

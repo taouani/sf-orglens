@@ -243,6 +243,15 @@ function keyOf(
     const key = `CustomObject:${name}`;
     return fixture.keys.has(key) ? { key, guessed: false } : null;
   }
+  // A record of a custom metadata type. The API is taken to give the name of the type where a type stands: the
+  // run of 15 November 2026 had one row to a type whose name is not the name of a metadata type, from the one
+  // rule that names a record. No run has shown the name itself. The type and the record together name one
+  // record, so this is not a guess by a name alone. If the API writes the row another way, it matches nothing.
+  const recordType = /^([a-z][a-z0-9_]*)__mdt$/.exec(side.type.toLowerCase())?.[1];
+  if (recordType !== undefined) {
+    const key = `CustomMetadata:${recordType}.${name.split('.').at(-1) ?? ''}`;
+    return fixture.keys.has(key) ? { key, guessed: false } : null;
+  }
   const candidates = fixture.ofType(side.type).filter((key) => {
     const last =
       key
@@ -255,7 +264,20 @@ function keyOf(
   return candidates.length === 1 && key !== undefined ? { key, guessed: key.includes('.') } : null;
 }
 
-/** Reads the names behind the ids of the rows: which object a field or a rule belongs to. */
+/** The name of the object of a row, as the org writes it, where the row was asked for with it. */
+const OBJECT_NAME = 'EntityDefinition.QualifiedApiName';
+const objectName = (row: Row): string => {
+  const entity = row['EntityDefinition'];
+  return typeof entity === 'object' && entity !== null ? text((entity as Row)['QualifiedApiName']) : '';
+};
+
+/**
+ * Reads the names behind the ids of the rows: which object a field or a rule belongs to.
+ *
+ * The row of a custom object holds its name without the ending: `Invoice` for `Invoice__c`, and `Billing_Rule`
+ * for the custom metadata type `Billing_Rule__mdt`. So the name of a custom object is taken from a field or a
+ * rule of it, which name their object in full. A custom object without either is named with `__c`.
+ */
 async function namesBehindIds(
   log: PublicLog,
   session: OrgSession,
@@ -264,20 +286,34 @@ async function namesBehindIds(
   const byId = new Map<string, string>();
   const said: string[] = [];
   let failed = 0;
-  const read = async (object: string, fields: string): Promise<Row[]> => {
-    let asked = await ask(log, session, `SELECT ${fields} FROM ${object}`, counter);
-    let note = '';
-    if (asked.failed !== null) {
-      // An object that has no field for the prefix of a package is read without it.
-      const first = asked.failed;
-      asked = await ask(log, session, `SELECT ${fields.replace(', NamespacePrefix', '')} FROM ${object}`, counter);
-      if (asked.failed === null) note = ` without NamespacePrefix (${first})`;
+  /** Reads the rows of an object. A field that not every org or object has is left out when the org refuses it. */
+  const read = async (object: string, fields: string, withObjectName = false): Promise<Row[]> => {
+    const bare = fields.replace(', NamespacePrefix', '');
+    const tries: (readonly [select: string, without: string])[] = withObjectName
+      ? [
+          [`${fields}, ${OBJECT_NAME}`, ''],
+          [`${bare}, ${OBJECT_NAME}`, ' without NamespacePrefix'],
+          [fields, ' without the name of the object'],
+          [bare, ' without NamespacePrefix and the name of the object'],
+        ]
+      : [
+          [fields, ''],
+          [bare, ' without NamespacePrefix'],
+        ];
+    let first: string | null = null;
+    let last: string | null = null;
+    for (const [select, without] of tries) {
+      const asked = await ask(log, session, `SELECT ${select} FROM ${object}`, counter);
+      if (asked.failed === null) {
+        said.push(`${object} ${String(asked.rows.length)}${first === null ? '' : `${without} (${first})`}`);
+        return asked.rows;
+      }
+      first ??= asked.failed;
+      last = asked.failed;
     }
-    said.push(
-      `${object} ${asked.failed === null ? `${String(asked.rows.length)}${note}` : `failed (${asked.failed})`}`,
-    );
-    if (asked.failed !== null) failed += 1;
-    return asked.failed === null ? asked.rows : [];
+    said.push(`${object} failed (${last ?? 'NO_CODE'})`);
+    failed += 1;
+    return [];
   };
   const prefixed = (row: Row, name: string): string => {
     const namespace = text(row['NamespacePrefix']);
@@ -286,17 +322,40 @@ async function namesBehindIds(
 
   // A custom object, by its id. A field and a rule name their object by that id, or by the name of a standard object.
   const objects = new Map<string, string>();
+  /** The name of a custom object without its ending, in lower case, to check what a field or a rule says. */
+  const bases = new Map<string, string>();
   for (const row of await read('CustomObject', 'Id, DeveloperName, NamespacePrefix')) {
-    const name = prefixed(row, `${text(row['DeveloperName'])}__c`);
-    objects.set(short(row['Id']), name);
-    byId.set(short(row['Id']), `CustomObject:${name.toLowerCase()}`);
+    const base = prefixed(row, text(row['DeveloperName']));
+    objects.set(short(row['Id']), `${base}__c`);
+    bases.set(short(row['Id']), base.toLowerCase());
   }
+  const fields = await read('CustomField', 'Id, DeveloperName, NamespacePrefix, TableEnumOrId', true);
+  const rules = await read('ValidationRule', 'Id, ValidationName, NamespacePrefix, EntityDefinitionId', true);
+
+  // The name of a custom object as a field or a rule of it gives it. It has to be the name without the ending,
+  // two underscores and an ending.
+  const named = new Set<string>();
+  const says = (row: Row, object: unknown): void => {
+    const id = short(object);
+    const name = objectName(row);
+    const base = bases.get(id);
+    const lower = name.toLowerCase();
+    if (base === undefined || !lower.startsWith(`${base}__`) || !/^[a-z0-9]+$/.test(lower.slice(base.length + 2))) {
+      return;
+    }
+    objects.set(id, name);
+    named.add(id);
+  };
+  for (const row of fields) says(row, row['TableEnumOrId']);
+  for (const row of rules) says(row, row['EntityDefinitionId']);
+
+  for (const [id, name] of objects) byId.set(id, `CustomObject:${name.toLowerCase()}`);
   const objectOf = (value: unknown): string => objects.get(short(value)) ?? text(value);
-  for (const row of await read('CustomField', 'Id, DeveloperName, NamespacePrefix, TableEnumOrId')) {
+  for (const row of fields) {
     const name = prefixed(row, `${text(row['DeveloperName'])}__c`);
     byId.set(short(row['Id']), `CustomField:${`${objectOf(row['TableEnumOrId'])}.${name}`.toLowerCase()}`);
   }
-  for (const row of await read('ValidationRule', 'Id, ValidationName, NamespacePrefix, EntityDefinitionId')) {
+  for (const row of rules) {
     const name = prefixed(row, text(row['ValidationName']));
     byId.set(short(row['Id']), `ValidationRule:${`${objectOf(row['EntityDefinitionId'])}.${name}`.toLowerCase()}`);
   }
@@ -306,6 +365,15 @@ async function namesBehindIds(
     }
   }
   log.say(`Rows read to find the names behind the ids: ${said.join(', ')}.`);
+  if (objects.size > 0) {
+    const built = objects.size - named.size;
+    log.say(
+      `Custom objects: ${String(objects.size)}. A field or a rule of the object gave the name of ${String(named.size)}.` +
+        (built > 0
+          ? ` ${built === 1 ? 'The name of the other one is' : `The names of the other ${String(built)} are`} built with the ending __c, which is wrong for a custom metadata type.`
+          : ''),
+    );
+  }
   return { byId, failed };
 }
 
@@ -319,7 +387,13 @@ async function probeDependencies(
   fixture: Fixture,
   counter: { requests: number },
 ): Promise<'none' | 'partly' | 'whole'> {
-  const shownType = (type: string): string => log.name(type) ?? '(a type that is not shown)';
+  // The API is taken to give the name of a custom metadata type as the type of a record of it (`keyOf`). A type
+  // that is no name of a metadata type is shown where it is the name of an object of the fixture project.
+  const shownType = (type: string): string =>
+    log.name(type) ??
+    (fixture.objectNames.has(type.toLowerCase()) && log.clean(type)
+      ? `${type.toLowerCase()} (an object of the fixture project)`
+      : '(a type that is not shown)');
   const base = `SELECT ${DEPENDENCY_FIELDS} FROM MetadataComponentDependency`;
   const rows = new Map<string, Dependency>();
   const keep = (asked: Asked): void => {
