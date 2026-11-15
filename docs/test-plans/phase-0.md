@@ -270,8 +270,8 @@ orglens source link dev my-org
 | G6  | Compare the table with what you know of the org                                                                                      | The counts of classes, triggers, custom objects and flows are the ones you expect. If a type you know is missing from the table, that is a finding.                                                                                                                                                                                                                                                                                                                 |
 
 What I expect and cannot promise: the snapshot will most likely be `partial`. The test org lists 223 components
-that Salesforce does not hand out, most of them list views. What "complete" should mean is one of the questions
-at the end of this plan. Anything else that looks wrong here is a finding, because this is the first run of its
+that Salesforce does not hand out, most of them list views. What "complete" should mean was a question of the
+Phase 1 plan and is answered in decision record 0038. Anything else that looks wrong here is a finding, because this is the first run of its
 kind: an error code, a type that is refused, a retrieve that fails.
 
 **What these outputs hold, and where they must not go.** The line that `orglens source link` prints and the
