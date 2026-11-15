@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-12
 - Decisions: A4
+- Followed by: [0035](0035-gate-where-salesforce-confirms-nothing.md), which holds the answer to question Q3 and leaves the rule for a pair without a row as it is
 - Supersedes: [0008](0008-reference-sources-and-provenance.md)
 
 ## Context

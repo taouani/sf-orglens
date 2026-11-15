@@ -1,7 +1,8 @@
 # Phase 1 plan: First slice
 
-Status: **draft, not approved**. Nothing in this plan is built before the maintainer approves it.
-Date: 2026-11-13
+Status: **answered, not approved yet**. The maintainer answered the eight questions of section 4 on 15 November
+2026, and the plan now follows the answers. Nothing in this plan is built before the maintainer approves it.
+Date: 2026-11-13, with the answers written in on 2026-11-15
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 0 plan](phase-0.md), [Phase 0 report](../reports/phase-0.md)
 
@@ -62,7 +63,7 @@ Two smaller ones:
 | WP5 Formulas                   | A parser for the formula language and a resolver for the names in it                                  |
 | WP6 Analysis in the snapshot   | `snapshot` analyses, `coverage` reports it, an older snapshot can be analysed again                   |
 | WP7 Impact                     | The engine and the command `orglens impact`, with its JSON contract                                   |
-| WP8 Cross-check (if Q1 is yes) | The Dependency API read by the engine and compared with its own references                            |
+| WP8 Cross-check                | The Dependency API read by the engine and compared with its own references                            |
 | WP9 What a snapshot reads (Q2) | The types that are read, what "complete" means, and the open points of Phase 0 in those types         |
 | WP10 Proof                     | Every formula and rule of the public codebases checked, and the measurements                          |
 | WP11 Phase close               | Updated overall plan, test plan, phase report, draft of the Phase 2 plan                              |
@@ -80,9 +81,27 @@ Two smaller ones:
 - Asking an org to describe its objects through another API. Section 5, WP4, says what is done instead.
 - The language model, the web UI, and any rider.
 
-## 4. Decisions needed from you
+## 4. The eight questions and your answers
 
-Eight questions. Q1 and Q2 change what is built. The others can be answered with one word each.
+You answered all eight on 15 November 2026. The first table holds each answer and what follows from it. The
+second table holds the questions as they were asked, unchanged.
+
+| #   | Your answer                                                                                                                                                                          | What follows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | (a). The engine reads the Dependency API in this phase.                                                                                                                              | WP8 is built. In the overall plan this moves from Phase 3 to Phase 1, for the types this phase analyses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Q2  | (a), with a note: "the goal is all metadata except those coming from managed packages".                                                                                              | WP9 is built for option (a), and record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md) holds the rule. Two readings of mine are in that record, and you can strike either one. First, your "(a)" is the yes to the three types: custom labels, custom permissions and global value sets join the default list. Second, your note is the goal for later phases and changes nothing in this one: a snapshot still reads the components of a package in the types it reads. How packages are left out is a question for the phase that widens the types, because your own formulas and code refer to fields and classes of packages.                                                                                                                                                                   |
+| Q3  | (a).                                                                                                                                                                                 | Record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md) adds the second half to the gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Q4  | Your own numbers, for an org of 100,000 components: first snapshot under 60 minutes, impact query under 5 seconds, comparison under 10 seconds, incremental refresh under 5 minutes. | Record [0037](../adr/0037-performance-targets.md). **How you count a component is open**, and I asked you on the same day. The question counted top-level components only, and by that count your target is ten times the synthetic org of Phase 0. Counted as the org lists them, fields included, it is twice that org. Until you answer, this plan works with the second count, as a reading of mine. Two more readings of mine are in the record: the org of the gate stays at 10,000 or more, and the 5 seconds hold for the worst impact query that is measured. This phase measures the impact query at the target size, through the real store (WP3 and WP7). Nothing that was measured supports 60 minutes for a first snapshot, by either count, and this phase does not change that (section 8). |
+| Q5  | As proposed.                                                                                                                                                                         | The four pass marks stand. If one is missed, the phase reports the gap and we decide together.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Q6  | (a).                                                                                                                                                                                 | WP11 ends with a pre-release on GitHub that has the packed command line attached. Nothing goes to npm.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Q7  | (a).                                                                                                                                                                                 | WP6 builds `orglens analyse <source>`. The record that extends 0016 is written in the pull request of WP6.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Q8  | (a).                                                                                                                                                                                 | WP2 builds a reader of our own. I still search for a library on the first day of WP2, and take it and tell you if one exists and is maintained. The record is written in the pull request of WP2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+One thing your answer to Q6 leaves open, which I put to you before the release of WP11: records 0022 and 0027
+say that the package names and the JSON contract can still change "until the first release". Whether this
+pre-release is that release is not decided.
+
+The questions as they were asked on 13 November 2026:
 
 | #   | Question                                                                                                                                                                                                                                                                                                                                                                                 | Options                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Recommendation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -186,16 +205,21 @@ Build:
 - Writing in one transaction with batches. Reading through one interface, so that the impact engine does not know
   whether it walks SQL or an index in memory.
 - A decision record for the tables.
-- The benchmark of Phase 0, which used tables of its own, run again through the real store.
+- The benchmark of Phase 0, which used tables of its own, run again through the real store. The generator of
+  the benchmark gets a factor for the size, and the benchmark runs at two sizes: the synthetic org of Phase 0,
+  which has 147,000 rows, and the size of your targets. With components counted as an org lists them, that is
+  twice the org of Phase 0. If you count top-level components only, it is ten times, and it costs one more run
+  with another factor (record 0037).
 
 Accepted when:
 
 - Every store test passes with both SQLite drivers, on the three systems.
 - A second snapshot of an unchanged source adds membership rows and no version.
 - A database of schema version 2 is migrated, and its snapshots are still there and count as not analysed.
-- The benchmark is recorded: for the synthetic org of 147,000 components, the size after one and after ten
+- The benchmark is recorded: for the synthetic org of 147,000 rows, the size after one and after ten
   snapshots and the time to write one, next to the numbers of Phase 0 (106 MB, 159 MB, 4 seconds). If the real
-  store is more than twice as large or as slow, I report it before going on.
+  store is more than twice as large or as slow, I report it before going on. The same three numbers are recorded
+  for the org of twice the size. Phase 0 has no numbers to hold them against.
 
 ### WP4 Objects, fields and validation rules
 
@@ -271,7 +295,8 @@ Build:
 
 - `orglens snapshot` analyses after the files are stored, also for a snapshot of an org that was continued. A
   failure of the analysis of one file costs that file and is an issue. It never loses the snapshot.
-- `orglens analyse <source>` analyses a stored snapshot again, or what Q7 decides in its place.
+- `orglens analyse <source>` analyses a stored snapshot again (your answer to Q7), with the decision record that
+  extends 0016.
 - `coverage`: the column `ANALYSED` gets its numbers. Below the table, per origin: references found, names not
   resolved, paths not followed, formulas that did not parse.
 - `status` says for each source whether its latest snapshot is analysed, and by which version.
@@ -311,11 +336,13 @@ Accepted when:
   that nothing refers to, a field that is reached only through another formula.
 - The answer for every field of the fixture equals what the answer key implies, computed by a test from the key
   alone.
-- On the synthetic org of 147,000 components in the real store: the time of an impact query from an ordinary
-  field and from a hub field, cold and warm, against the target of Q4.
+- On the two synthetic orgs of WP3 in the real store: the time of an impact query from an ordinary field and
+  from a hub field, cold and warm, to a depth of five levels and without a limit. The target is 5 seconds at the
+  size of your targets (record 0037). I hold the four cases at that size against it, which is a reading of mine:
+  you named no case. A case that misses it is a mark missed, and the phase reports it.
 - `orglens impact` on a snapshot that was never analysed ends with an error that says how to analyse it.
 
-### WP8 Cross-check with the Dependency API (if Q1 is yes)
+### WP8 Cross-check with the Dependency API
 
 Build:
 
@@ -340,23 +367,24 @@ Accepted when:
 
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 
-Build, for option (a):
+Build, as record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md) says:
 
-- The list of logic-tier types of record 0004 as the default of a snapshot of an org, and keys in `orglens.toml`
-  to add or remove types. Documented in `docs/configuration.md`.
-- A snapshot is complete when every listed component of the types it reads came back. A type that was left out
-  is named in `coverage` as not read.
+- The list of logic-tier types of record 0004, with custom labels, custom permissions and global value sets
+  added, as the default of a snapshot of an org, and keys in `orglens.toml` to add or remove types. Documented in
+  `docs/configuration.md`.
+- A snapshot is complete when every listed component of the types it reads came back and could be read. A type
+  that was left out is named in `coverage` as not read, which changes the output of `coverage`: the JSON Schema
+  and `docs/cli.md` change with it.
 - The open points of Phase 0 that are in logic-tier types, looked at on the test org through the workflow:
   - seven bundles of an installed package that are listed with the prefix of the package. Five were handed out
     without it, and for two no such twin was found,
   - two fields and two record types whose parent the org does not list as an object,
   - two objects that Salesforce says it cannot find,
-  - custom labels, listed and not handed out, if they are added to the list (Q2),
+  - custom labels, listed and not handed out,
   - three files that came back and could not be read as metadata. In which types they are is not known.
-- A decision record for what is read and what "complete" means.
 
-With option (b), the first point is dropped and the second changes. With option (c), this work package is only
-the open points.
+Not built here: leaving out the components of managed packages. Your note to Q2 names that as the goal. How it
+is done is put to you when the phase that widens the types is planned.
 
 Accepted when:
 
@@ -387,7 +415,8 @@ Accepted when:
 
 - The overall plan updated, `docs/test-plans/phase-1.md`, a phase report, and the draft of the Phase 2 plan for
   your approval.
-- The release of Q6.
+- The release of Q6: a pre-release on GitHub with the packed command line attached, installed with one
+  `npm install` line. Nothing goes to npm.
 
 ## 6. How the results are proven
 
@@ -407,43 +436,44 @@ No single one of these is enough. Each covers a weakness of the others.
 About twelve pull requests, each from its own branch, each with a code review by a separate agent, merged when CI
 is green on the three systems and every finding is resolved.
 
-| PR  | Content                                                              | Work package |
-| --- | -------------------------------------------------------------------- | ------------ |
-| 1   | This plan as approved, with your answers                             |              |
-| 2   | Fixture v1, its key, the probes, the deploy and the run of the probe | WP1          |
-| 3   | The XML reader                                                       | WP2          |
-| 4   | Migration 0003, the tables, the benchmark through the store          | WP3          |
-| 5   | Components, attributes and the references written in XML             | WP4          |
-| 6   | The formula parser and resolver, scored against the key              | WP5          |
-| 7   | Analysis in `snapshot`, `analyse`, `coverage`                        | WP6          |
-| 8   | The impact engine and `orglens impact`                               | WP7          |
-| 9   | The Dependency API in the engine and the comparison                  | WP8          |
-| 10  | What a snapshot reads, and "complete"                                | WP9          |
-| 11  | The proof on public codebases and the note with the numbers          | WP10         |
-| 12  | Phase close                                                          | WP11         |
+| PR  | Content                                                                                                                            | Work package |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1   | This plan with your answers, and records 0035 to 0037. Your approval is written into the status line of this plan when you give it |              |
+| 2   | Fixture v1, its key, the probes, the deploy and the run of the probe                                                               | WP1          |
+| 3   | The XML reader                                                                                                                     | WP2          |
+| 4   | Migration 0003, the tables, the benchmark through the store                                                                        | WP3          |
+| 5   | Components, attributes and the references written in XML                                                                           | WP4          |
+| 6   | The formula parser and resolver, scored against the key                                                                            | WP5          |
+| 7   | Analysis in `snapshot`, `analyse`, `coverage`                                                                                      | WP6          |
+| 8   | The impact engine and `orglens impact`                                                                                             | WP7          |
+| 9   | The Dependency API in the engine and the comparison                                                                                | WP8          |
+| 10  | What a snapshot reads, and "complete"                                                                                              | WP9          |
+| 11  | The proof on public codebases and the note with the numbers                                                                        | WP10         |
+| 12  | Phase close                                                                                                                        | WP11         |
 
 PRs 3, 4 and 2 do not depend on each other. PR 5 needs 2, 3 and 4. PR 6 needs 5. PR 9 and PR 10 need 7.
 
 ## 8. Risks in this phase
 
-| Risk                                                                                                                           | Handling                                                                                                                                                                                         |
-| ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The formula language has no published grammar, and has corners I do not know.                                                  | The probes of WP1 cover every documented function. The deploy to the test org rejects what is not valid. A formula that does not parse is reported and its names are still found, as `probable`. |
-| The proof rests on one author (risk 12 of the overall plan).                                                                   | Section 6. The key is merged before the analyser is written. Q1.                                                                                                                                 |
-| Standard relationships cannot be followed without a description of the standard objects.                                       | A table and a rule, with every path that is not followed counted. The count on the public codebases and on your org decides whether more is needed, and that would be a question to you.         |
-| The real store is slower or larger than the benchmark tables of Phase 0.                                                       | Measured in WP3, before anything is built on it.                                                                                                                                                 |
-| An answer of `impact` is read as complete when most of the org is not analysed yet.                                            | The answer says what it does not cover in its first lines, and `complete` is `false`. I would rather have a colleague annoyed by the warning than misled by its absence.                         |
-| The Dependency API is in Beta and may change or be slow on a large org.                                                        | The stage is optional and has a time limit. What it did not cover is in `coverage`. Above 2,000 rows it was never run against Salesforce: your org in the test plan may be the first.            |
-| Phase 1 grows. Flows and record types are close, and a real org will show ten things worth fixing.                             | The "not in Phase 1" list is the boundary. What a real org shows goes to the Phase 2 plan unless it breaks an outcome of this one.                                                               |
-| `orglens snapshot` with a Salesforce CLI login never ran against Salesforce, nor did a login kept in the keychain of a system. | Part G of the Phase 0 test plan is that run. I ask you to do it before WP6 is built. A defect it shows is corrected first, in a pull request of its own.                                         |
+| Risk                                                                                                                                                      | Handling                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The formula language has no published grammar, and has corners I do not know.                                                                             | The probes of WP1 cover every documented function. The deploy to the test org rejects what is not valid. A formula that does not parse is reported and its names are still found, as `probable`.                                                                                                                                                                                                                                                                  |
+| The proof rests on one author (risk 12 of the overall plan).                                                                                              | Section 6. The key is merged before the analyser is written. Q1.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Standard relationships cannot be followed without a description of the standard objects.                                                                  | A table and a rule, with every path that is not followed counted. The count on the public codebases and on your org decides whether more is needed, and that would be a question to you.                                                                                                                                                                                                                                                                          |
+| The real store is slower or larger than the benchmark tables of Phase 0.                                                                                  | Measured in WP3, before anything is built on it.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| An answer of `impact` is read as complete when most of the org is not analysed yet.                                                                       | The answer says what it does not cover in its first lines, and `complete` is `false`. I would rather have a colleague annoyed by the warning than misled by its absence.                                                                                                                                                                                                                                                                                          |
+| The Dependency API is in Beta and may change or be slow on a large org.                                                                                   | The stage is optional and has a time limit. What it did not cover is in `coverage`. Above 2,000 rows it was never run against Salesforce: your org in the test plan may be the first.                                                                                                                                                                                                                                                                             |
+| Phase 1 grows. Flows and record types are close, and a real org will show ten things worth fixing.                                                        | The "not in Phase 1" list is the boundary. What a real org shows goes to the Phase 2 plan unless it breaks an outcome of this one.                                                                                                                                                                                                                                                                                                                                |
+| The target of 60 minutes for a first snapshot of an org of 100,000 components has no measurement behind it, however a component is counted (record 0037). | This phase builds nothing for it. WP9 makes a snapshot read fewer types, which should shorten it and is not measured. The test plan of this phase asks you for the time of the first snapshot of your org and the count `coverage` lists, if you are free to tell them. That would be the first real number. It is not written into the repository. If it is far off, retrieving chunks side by side is the next thing to look at, and that is a question to you. |
+| `orglens snapshot` with a Salesforce CLI login never ran against Salesforce, nor did a login kept in the keychain of a system.                            | Part G of the Phase 0 test plan is that run. I ask you to do it before WP6 is built. A defect it shows is corrected first, in a pull request of its own.                                                                                                                                                                                                                                                                                                          |
 
 ## 9. Effort
 
 The roadmap estimated Phase 1 at 4 to 6 weeks. This plan is 6 to 7. Two things account for the difference: the
 cross-check of WP8, which the roadmap has in Phase 3, and WP9, which Phase 0 left open. Without both it is
-about 5. If you approve the plan as it is, the total to the gate in the overall plan moves from 26 to 37 weeks
-to 28 to 38, less what Phase 3 saves because the Dependency API is then already read. I have not estimated that
-saving.
+about 5. With your answers to Q1 and Q2 both are in, and the total to the gate in the overall plan moves from 26
+to 37 weeks to 28 to 38, less what Phase 3 saves because the Dependency API is then already read. I have not
+estimated that saving. The second size of the benchmark is inside the days of WP3.
 
 | Work package                  | Rough effort      |
 | ----------------------------- | ----------------- |
@@ -465,12 +495,14 @@ calendar days. Elapsed time depends on how fast you can answer, review the key a
 
 ## 10. What you will be asked to do
 
-1. Answer Q1 to Q8, and approve this plan or send it back.
+1. Approve this plan or send it back. You answered Q1 to Q8 on 15 November 2026.
 2. Run part G of the Phase 0 test plan, if you have not yet, before WP6 is built.
 3. Read ten entries of the new answer key against their files, when the pull request of WP1 is up, before the
    analyser is written. About 20 minutes.
 4. Review the pull requests you want to look at. Merging is done by the assistant under the rule of Phase 0.
 5. At the end, run the Phase 1 test plan. Its main step is `orglens snapshot` and `orglens impact` on an org you
    know, for fields whose uses you know, and with Q1 the comparison with what Salesforce reports. If that org is
-   a client's, the client's permission comes first, and nothing of it goes into an issue or a chat.
-6. For Q6 (b) only: an npm account and a token.
+   a client's, the client's permission comes first, and nothing of it goes into an issue or a chat. If you are
+   free to tell them, I ask for two numbers of that run: how long the first snapshot took and how many
+   components `coverage` lists. If the org is a client's, they stay with you unless the client agrees, and they
+   are not written into the repository.
