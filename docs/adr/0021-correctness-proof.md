@@ -4,6 +4,7 @@
 - Date: 2026-11-11
 - Decisions: M4
 - Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: level 2 is cross-checked against the Dependency API only
+- Changed by: [0035](0035-gate-where-salesforce-confirms-nothing.md), which adds a second half to the gate, for what Salesforce cannot confirm
 
 ## Context
 

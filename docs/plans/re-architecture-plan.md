@@ -8,7 +8,7 @@ Agreed on 11 November 2026 · The OrgLens Authors
 > just before the phase starts, and decisions are recorded in [`docs/adr/`](../adr/). Where a phase plan or a
 > decision record differs from this document, the newer one wins.
 >
-> Last updated on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
+> Last updated on 15 November 2026, with the answers of the maintainer to the Phase 1 plan. Before that: on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
 
 ## Summary
 
@@ -22,7 +22,7 @@ The plan rests on five choices:
 - **Nothing is silently missed.** Every reference carries a confidence tier, dynamic references are resolved where possible, and Salesforce's own dependency data is used as a cross-check.
 - **One simple store.** A single SQLite file holds immutable snapshots of every org, sandbox and repo branch, so every comparison is the same operation.
 
-Rough effort to the correctness gate is 26 to 37 focused weeks for one developer with AI assistance. No deadline applies.
+Rough effort to the correctness gate is 28 to 38 focused weeks for one developer with AI assistance. No deadline applies.
 
 ## Changes since the plan was agreed
 
@@ -52,6 +52,24 @@ What Phase 0 says about the estimates: they were made in weeks of a developer wh
 was built in two calendar days by an AI assistant. The weeks are kept as a measure of the size of a phase. They
 are a poor forecast of elapsed time, which depends on the reviews and decisions of the maintainer and on access to
 orgs.
+
+### With the answers to the Phase 1 plan, 15 November 2026
+
+The maintainer answered the eight questions of the [Phase 1 plan](phase-1.md) on 15 November 2026. The plan of
+Phase 1 is not approved yet.
+
+| What | Before | Now |
+| --- | --- | --- |
+| Performance targets | Open. Proposed for an org of 10,000 components: 30 minutes, 2 seconds, 10 seconds, 5 minutes | Set by the maintainer for an org of 100,000 components: first snapshot under 60 minutes, impact query under 5 seconds, comparison under 10 seconds, incremental refresh under 5 minutes. Record [0037](../adr/0037-performance-targets.md) says how a component is counted and that nothing measured supports the 60 minutes. |
+| The goal for metadata coverage | Decision F3: the logic tier, then the presentation tier, reports opt-in | The maintainer noted the goal: all metadata, except what comes from managed packages. F3 still sets the order. How packages are left out is not decided. |
+| What a snapshot of an org reads | Every type the org lists. Partial when anything listed did not come back | The logic tier by default, with custom labels, custom permissions and global value sets added. Complete when every listed component of the types it reads came back and could be read. Record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md). Built in Phase 1. |
+| The correctness gate | No dependency that Salesforce confirms is missing | A second half for standard fields, names in text, lookups and roll-up summaries: every entry of the answer key is found, and a random sample from public codebases is checked by hand. Record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md). |
+| The Dependency API in the engine | Phase 3, with Apex | Phase 1, for the types Phase 1 analyses. Phase 3 extends it to Apex. |
+| Roadmap, Phase 1 | 4 to 6 weeks | 6 to 7 weeks: the cross-check and the rule for what a snapshot reads are added. The total to the gate is 28 to 38 weeks. What Phase 3 saves is not estimated. |
+| Decision D6, the command set | Fixed | The command `orglens analyse` is added in Phase 1. Its record is written with the command. |
+| The reader for XML | `fast-xml-parser` behind a wrapper, named in the Phase 0 plan | A reader of our own, with `fast-xml-parser` as the second opinion in tests. Its record is written with the reader. |
+| How colleagues get the first slice | Open (risk 11) | A pre-release on GitHub with the packed command line attached. Nothing on npm yet. |
+| Risks and open questions | | Risks 5, 11 and 13 follow the answers. Three open questions are answered: the performance targets, the gate where Salesforce confirms nothing, and what "complete" means. |
 
 ## Goal statement
 
@@ -89,9 +107,14 @@ Confirmed on 11 November 2026.
 2. It handles a 10,000+ component org with acceptable ingest and query times.
 3. Outside adoption grows, with GitHub stars as the visible measure.
 
+**Added by the maintainer since.** The text above is as it was confirmed. On 15 November 2026 the maintainer
+added two things with the answers to the Phase 1 plan. The goal for coverage is all metadata, except what comes
+from managed packages. And "acceptable" in the second criterion has numbers, for an org of 100,000 components
+(record [0037](../adr/0037-performance-targets.md)).
+
 ## Decision log
 
-All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, S3 was completed with the choice of the parser on 13 November 2026, and the rows of S4 and M1 say what Phase 0 changed in them. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
+All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 2026, S3 was completed with the choice of the parser on 13 November 2026, and the rows of S4 and M1 say what Phase 0 changed in them. The rows of F3, D6 and M4 say what the maintainer added on 15 November 2026. In the reasoning, A is `orgLens`, B is `salesforce-orglens` and C is `orglens-claude`.
 
 ### Features and scope
 
@@ -99,7 +122,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | --- | --- | --- | --- |
 | F1 | First release scope | Impact core first, then automation order, integration map and basic security audit as riders | Riders are mostly queries over the same graph. No rider starts until impact analysis passes the correctness gate. |
 | F2 | Role of the LLM | Optional: explains results, later an agent that calls the engines as tools. No RAG, vectors or embeddings | Embeddings were the heaviest dependency and served a secondary feature. Exact graph queries beat similarity search on structured metadata. |
-| F3 | Metadata coverage | Logic tier first. Presentation tier is the next milestone, reports opt-in | The logic tier covers everything that can break at runtime. Reports can number in the tens of thousands. |
+| F3 | Metadata coverage | Logic tier first. Presentation tier is the next milestone, reports opt-in. Since 15 November 2026: a snapshot of an org reads the logic tier by default, with three types added (record 0036), and the goal the maintainer noted is all metadata, except what comes from managed packages | The logic tier covers everything that can break at runtime. Reports can number in the tens of thousands. |
 | F4 | Removals | Remove RAG, the binary build and unused dependencies. No live record-data queries. Defer docs generation, dead code and posture audit | Record queries pull business data and weaken the local-first promise. Impact analysis does not need them. |
 
 ### Architecture
@@ -121,7 +144,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | D3 | Meaning of "what breaks" | Reachability first, then change-aware rules starting with delete and data-type change | Useful early, with a path to the real differentiator. |
 | D4 | Access impact | Metadata only by default. User assignments are an explicit opt-in, counts only | No personal data is read unless the user asks. |
 | D5 | Authentication | Salesforce CLI login by default, JWT through environment variables for CI | OrgLens stores no credentials. |
-| D6 | Commands and configuration | Fixed command set with stable JSON output. Committable `orglens.toml`, local `.orglens/` data folder | The JSON format is the contract for the web UI, CI and the agent. Colleagues can clone and rerun. |
+| D6 | Commands and configuration | Fixed command set with stable JSON output. Committable `orglens.toml`, local `.orglens/` data folder. Since 15 November 2026: the command `analyse` is added to the set in Phase 1 | The JSON format is the contract for the web UI, CI and the agent. Colleagues can clone and rerun. |
 | D7 | Dynamic references | Resolution sequence: query-string text, custom metadata and field sets, then tracing through the Apex. Three confidence tiers. Residue becomes object-level "possible" dependencies | Proposed by the maintainer. The full field inventory makes text matching reliable. Erring toward extra "possible" entries is the right side for this tool. |
 
 ### Technical stack
@@ -142,7 +165,7 @@ All 27 decisions were agreed on 11 November 2026. A4 was changed on 12 November 
 | M1 | Approach | Rewrite. The old repositories give designs and ideas: parser logic, the coverage manifest, trust features and the change-set preview flow. Nothing is copied from them | No existing repo shares a language, store or identity scheme with the target. |
 | M2 | Repository | New repository. The three old ones are archived later with a pointer | Clean history and licence. Nothing is archived without explicit go-ahead. |
 | M3 | Build order | Thin end-to-end slice first, then widen by metadata family. Apex trial runs alongside | Usable within weeks. Design mistakes surface while cheap. |
-| M4 | Proof of correctness | Fixture project with known answers, large public codebases, one real 10,000+ component org | Gate: no confirmed Salesforce-reported dependency is missing, and every difference is explained. |
+| M4 | Proof of correctness | Fixture project with known answers, large public codebases, one real 10,000+ component org | Gate: no confirmed Salesforce-reported dependency is missing, and every difference is explained. Since 15 November 2026 the gate has a second half for what Salesforce cannot confirm (record 0035). |
 | M5 | Going public | Public repository from the start, marked pre-release, announced after the gate | Colleagues can use it normally. The launch is saved for when claims are backed up. |
 
 ## Target architecture
@@ -238,14 +261,14 @@ The stack is TypeScript on Node with SQLite, built on Salesforce's own open-sour
 | Apex analysis | `web-tree-sitter-sfapex`, under a resolver of our own. The adapter for `@apexdevtools/apex-parser` is kept in the trial | Decided (S3) by the maintainer on 13 November 2026: the parser. Both passed the trial of Phase 0. That the other adapter is kept is a conclusion of record 0018, not part of the choice |
 | Apex cross-check | The Dependency API, through the Tooling API | Decided (A4), changed on 12 November 2026 |
 | LLM access | Internal interface with OpenAI-compatible and Anthropic adapters | Decided in principle (S5). Library chosen when built |
-| Distribution | npm package with an `orglens` command | Follows from S1. A Salesforce CLI plugin is an open question |
+| Distribution | npm package with an `orglens` command | Follows from S1. At the end of Phase 1: a pre-release on GitHub with the packed command line attached, and nothing on npm yet (answer of the maintainer of 15 November 2026). A Salesforce CLI plugin is an open question |
 | Licence | Apache 2.0 | Decided (S6) |
 | Web UI framework | Not chosen | Deferred until the CLI is proven |
 | Desktop wrapper | Not chosen | Deferred |
 
 Explicitly not in the stack: DuckDB, Kuzu, LanceDB, embeddings, LlamaIndex, LiteLLM, and the Python-to-Node bridge.
 
-The SQLite driver, the test runner and the CLI framework (`commander`) were chosen in phase 0. Records 0023 and 0025 hold the toolchain and the driver. No XML parser was chosen: the engine reads no XML yet. The Phase 0 plan named `fast-xml-parser` behind a wrapper of our own, and the draft of the Phase 1 plan proposes a reader of our own instead, which is a question to the maintainer there.
+The SQLite driver, the test runner and the CLI framework (`commander`) were chosen in phase 0. Records 0023 and 0025 hold the toolchain and the driver. No XML parser was chosen: the engine reads no XML yet. The Phase 0 plan named `fast-xml-parser` behind a wrapper of our own. The maintainer chose a reader of our own on 15 November 2026 (Phase 1 plan, Q8), with `fast-xml-parser` as the second opinion in the tests. Its record is written with the reader.
 
 Library facts checked on 11 November 2026: [Kuzu archived](https://oneuptime.com/blog/post/2026-08-12-kuzu-archived-pin-0-11-3-fork-or-migrate/markdown), [apex-ls](https://www.npmjs.com/package/@apexdevtools/apex-ls), [tree-sitter-sfapex](https://docs.rs/crate/tree-sitter-sfapex/latest), [source-deploy-retrieve](https://www.github.com/forcedotcom/source-deploy-retrieve). I confirmed that these exist and are published. I did not test their capabilities then. Phase 0 did: its research notes are in [`docs/research/phase-0/`](../research/phase-0/).
 
@@ -271,15 +294,15 @@ Effort is in focused weeks for one developer with AI assistance. These are rough
 | Phase | Delivers | Rough effort | Depends on |
 | --- | --- | --- | --- |
 | 0 Foundations | **Built in November 2026.** New repository, Apache 2.0, CI on three operating systems, decision records. Workspace, `orglens.toml`, source declarations, logins. Immutable snapshots of an org and of a repository folder, with a retrieve that can be continued. First read of a real org, and what Salesforce can confirm. Apex trial of two parsers. First version of the fixture project and its answer key. | 4 to 5 weeks | Nothing |
-| 1 First slice | Objects, fields, formula fields and validation rules through every layer: snapshot, store, impact by reachability, coverage, CLI with JSON output. Usable on real orgs for field-to-formula and field-to-rule impact. | 4 to 6 weeks | Phase 0 |
+| 1 First slice | Objects, fields, formula fields and validation rules through every layer: snapshot, store, impact by reachability, coverage, CLI with JSON output. Usable on real orgs for field-to-formula and field-to-rule impact. Since 15 November 2026 also: the Dependency API read by the engine as cross-check for these types, and the rule for what a snapshot of an org reads and when it is complete. | 6 to 7 weeks | Phase 0 |
 | 2 Flows and config | Flows at element level with field reads and writes. Workflow rules, record types, custom metadata types and their records, field sets. B's Flow parser is the model for the design, and the fixtures are written fresh. | 3 to 4 weeks | Phase 1 |
-| 3 Apex | Classes and triggers at method level with read, write and source location. Dynamic reference resolution and the three confidence tiers. The Dependency API as cross-check. LWC and Aura links to Apex. Named credentials. | 8 to 12 weeks | Phase 0 trial result, phase 1 |
+| 3 Apex | Classes and triggers at method level with read, write and source location. Dynamic reference resolution and the three confidence tiers. The cross-check with the Dependency API, which the engine reads since Phase 1, extended to Apex. LWC and Aura links to Apex. Named credentials. | 8 to 12 weeks | Phase 0 trial result, phase 1 |
 | 4 Compare and access | Snapshot comparison for all three pairings, which has to know the default values an org adds to almost every file. Multi-org workspace and repo sub-folder mapping. Change-set impact from a Git diff. Incremental refresh. Profiles, permission sets and groups read completely, with access impact. Change-aware rules for delete and data-type change. | 5 to 7 weeks | Phases 1 to 3 |
 | Correctness gate | Run on public codebases and one real 10,000+ component org. Fix every missing dependency. Measure ingest and query times. Publish the benchmark. Announce. | 2 to 3 weeks | Phase 4, access to a suitable org |
 | 5 Riders | Automation order of execution, integration map, basic security audit. `orglens explain` through the LLM layer. | 4 to 6 weeks | Gate passed |
 | 6 Web UI and agent | Local HTTP server and browser UI. `orglens ask` as an agent over the engines. Presentation tier: layouts, Lightning pages, list views, email templates, sharing rules, opt-in reports. | 6 to 10 weeks | Phase 5 |
 
-Total to the gate is 26 to 37 focused weeks, of which Phase 0 is done. Phases 5 and 6 add 10 to 16.
+Total to the gate is 28 to 38 focused weeks, of which Phase 0 is done. Phases 5 and 6 add 10 to 16.
 
 Later, with no estimate yet: desktop app, documentation and diagram generation, dead-code detection, security posture audit, more change-aware rules, a possible Salesforce CLI plugin.
 
@@ -304,15 +327,15 @@ The two risks that could sink the product are Apex analysis proving harder than 
 | 2 | Results are wrong by omission | One missed dependency in front of a client destroys trust | The Dependency API as cross-check, for what it can see: custom fields and custom objects. For standard fields and names in text nothing from Salesforce confirms a result, so the fixture project with its answer key and checks by hand on public codebases carry the proof there. Coverage manifest on every snapshot. The correctness gate before any announcement. |
 | 3 | Text matching produces too many false positives | Long "possible" lists get ignored, which hides real results | Three tiers shown separately. Confirmed results first by default. Measure the false-positive rate on public codebases and tune. |
 | 4 | Scope creep by a solo developer | Three earlier builds went broad before deep | The F1 rule: no rider before the gate. Thin slices. Deferred list kept in the plan, not in the backlog. |
-| 5 | Large-org retrieval is slow or hits limits | 10,000+ components is the stated target and no build is proven there | Chunked and resumable retrieves exist since phase 0. Measured on one small org only: 1,668 listed components in two to three minutes, nearly all of it Salesforce building the zip. Splitting and resuming ran against a mock org only. Incremental refresh in phase 4. Reports opt-in. Test on a large org early, not at the gate. |
+| 5 | Large-org retrieval is slow or hits limits | The target is a first snapshot of an org of 100,000 components in under 60 minutes (record 0037), and no build is proven at any large size | Chunked and resumable retrieves exist since phase 0. Measured on one small org only: 1,668 listed components in two to three minutes, nearly all of it Salesforce building the zip. Scaled straight that is two to three hours for 100,000, and one small org is a weak base for scaling. Splitting and resuming ran against a mock org only. Since Phase 1 a snapshot reads the logic tier by default (record 0036), which should shorten it and is not measured. Retrieving chunks side by side is not built. Incremental refresh in phase 4. Reports opt-in. Test on a large org early, not at the gate. |
 | 6 | The Dependency API is incomplete or limited on large orgs | The cross-check may not cover every type or every record | Incomplete is now measured: it reported 100 of 137 pairs of the answer key and nothing wrong, and it is blind to standard fields, names in text, lookups, roll-up summaries and inactive rules. Limited on large orgs is not measured: the test org has 224 rows, far below the 2,000 of one query. It is in Beta and can go away. Treat it as a second opinion, never the primary source. Query per type. Say in the coverage output for each reference whether Salesforce could have confirmed it. |
 | 7 | A key third-party library is abandoned or changes | Kuzu was archived under two earlier builds | Prefer Salesforce-maintained libraries. Isolate each behind a layer boundary. `web-tree-sitter-sfapex`, the Apex parser the maintainer chose, is maintained by one person. The adapter for the other parser is kept in the trial, and a test compares what the two lower to, so the parser is meant to be changeable by one import. That is not shown before the engine has Apex analysis. The retrieve no longer depends on the retrieve of the Salesforce library. |
 | 8 | The rewrite loses value from the old repositories | B's parsers encode many real-world fixes | Nothing is copied from them, and they are not touched. Their lessons come over through the research note [`harvest-and-config.md`](../research/phase-0/harvest-and-config.md) and through what the maintainer knows. Public codebases take the place of B's fixtures as the test of real-world shapes. |
 | 9 | Client confidentiality during real-org testing | Level 3 of the proof needs a client org | Client permission first. Everything stays on the local machine. Nothing from client orgs enters public benchmarks, fixtures or issues. |
 | 10 | Local LLM models are weak at tool calling | "Any provider" may underdeliver for the agent | The LLM is optional by design. `explain` needs no tool calling. State the tested models in the docs. |
-| 11 | Motivation and momentum over 6 to 9 months of solo work | No deadline and no outside pressure | The first slice is usable within weeks. Colleagues use it from phase 1. Each phase from phase 1 on ends with a release. Phase 0 ended without one: nothing is published, and how colleagues get the first slice is a question in the Phase 1 plan. |
+| 11 | Motivation and momentum over 6 to 9 months of solo work | No deadline and no outside pressure | The first slice is usable within weeks. Colleagues use it from phase 1. Each phase from phase 1 on ends with a release. Phase 0 ended without one: nothing is published. Phase 1 ends with a pre-release on GitHub that has the packed command line attached (answer of the maintainer of 15 November 2026). |
 | 12 | The proof rests on one author | The fixture project, its answer key and the analysers are written by the same AI assistant. A blind spot in one is a blind spot in all three | The key is written before the analyser it scores and is never changed to make one pass. The Dependency API contradicts no entry it can see. Checks by hand on public codebases, on code the author did not write. A second person reads a part of the key in every test plan. |
-| 13 | A snapshot of a real org may never be "complete" | The one org that was read lists 223 components that Salesforce does not hand out, and both of its snapshots are "partial". Whether other orgs are the same is not measured. A status that is always "partial" teaches users to ignore it | Decide what "complete" means before the first release (open question). Until then the snapshot names every component that is missing, with its type and the reason where one is known. |
+| 13 | A snapshot of a real org may never be "complete" | The one org that was read lists 223 components that Salesforce does not hand out, and both of its snapshots are "partial". Whether other orgs are the same is not measured. A status that is always "partial" teaches users to ignore it | Decided on 15 November 2026 (record 0036): a snapshot of an org reads the logic tier by default and is complete when every listed component of those types came back and could be read. It is built in Phase 1. Thirteen components of the test org in logic-tier types still do not come back, so a snapshot of that org can stay partial until each is explained. Until Phase 1 is built the snapshot names every component that is missing, with its type and the reason where one is known. |
 
 ## Open questions
 
@@ -320,7 +343,7 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 
 **From the start of the project**
 
-- [ ] **Performance targets.** "Acceptable" is still undefined. Proposed for a 10,000-component org: first full snapshot under 30 minutes, incremental refresh under 5 minutes, impact query under 2 seconds, comparison under 10 seconds. The maintainer to confirm or replace. Phase 0 measured the storage layout with a synthetic org of that size, in tables of the benchmark and not through the store of the engine, and no real org of that size.
+- [x] **Performance targets.** Set by the maintainer on 15 November 2026, for an org of 100,000 components: first full snapshot under 60 minutes, incremental refresh under 5 minutes, impact query under 5 seconds, comparison under 10 seconds (record [0037](../adr/0037-performance-targets.md)). The numbers proposed before were for a 10,000-component org: 30 minutes, 5 minutes, 2 seconds and 10 seconds. No target is shown to hold yet. Phase 0 measured the storage layout with a synthetic org of that size, in tables of the benchmark and not through the store of the engine, and no real org of that size.
 - [ ] **Project and package name.** Chosen: the repository is `sf-orglens`, the command is `orglens`, the packages are `sf-orglens` and `@sf-orglens/engine`. Still open: whether the names are free on npm and clear of trademarks was not checked, and nothing is published yet.
 - [ ] **Which real org is the gate run on,** and will the client permit it? Finding this early also allows large-org testing before the gate.
 - [x] **Which public codebases are used for level 2 of the proof.** apex-recipes, Nebula Logger and NPSP, pinned by commit in `fixtures/corpora.toml`. None was deployed to an org yet.
@@ -329,12 +352,12 @@ Sixteen questions are open or were answered since the plan was agreed. A ticked 
 
 - [x] **Apex analysis foundation.** `web-tree-sitter-sfapex`. Both parsers passed the Phase 0 trial, which selected neither, and the maintainer chose on 13 November 2026 (S3).
 - [ ] **Scope of the Dependency API on large orgs.** Its type coverage is measured for the types of the fixture project. Its limits on a large org, and flows, are not.
-- [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence?
+- [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence? The maintainer noted on 15 November 2026 that the goal is all metadata, except what comes from managed packages. Still open with that: whether the components of a package stay as named targets of references from the maintainer's own metadata, and from which phase packages are left out.
 
 **New at the close of Phase 0**
 
-- [ ] **What the correctness gate asks for where Salesforce confirms nothing.** The gate says that no dependency Salesforce confirms may be missing. For standard fields, names in text, lookups and roll-up summaries Salesforce confirms nothing. Put to the maintainer in the Phase 1 plan.
-- [ ] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Put to the maintainer in the Phase 1 plan.
+- [x] **What the correctness gate asks for where Salesforce confirms nothing.** The gate says that no dependency Salesforce confirms may be missing. For standard fields, names in text, lookups and roll-up summaries Salesforce confirms nothing. Answered on 15 November 2026: the gate has a second half for these kinds (record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md)).
+- [x] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Answered on 15 November 2026: every listed component of the types the snapshot reads came back and could be read (record [0036](../adr/0036-what-a-snapshot-of-an-org-reads.md)).
 - [ ] **A sandbox that is refreshed gets a new org id.** Should a source of the kind `sandbox` follow its sandbox across a refresh? Record 0032 leaves it open. It matters from the phase that compares snapshots.
 - [ ] **Folders inside folders** of reports and dashboards may only be found by a query on an object of the data API. The data rule forbids such a query. Record 0032 leaves it open. It matters when reports are read.
 

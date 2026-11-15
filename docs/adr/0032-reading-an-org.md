@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-12
 - Decisions: none (made during the build)
+- Changed by: [0036](0036-what-a-snapshot-of-an-org-reads.md), which says which types a snapshot of an org reads by default and when it is complete
 
 ## Context
 

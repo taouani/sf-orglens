@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-11
 - Decisions: F3
+- Changed by: [0036](0036-what-a-snapshot-of-an-org-reads.md), which makes the logic tier the default of a snapshot of an org and adds custom labels, custom permissions and global value sets to it
 
 ## Context
 
