@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-15
-- Decisions: none (made during the build)
+- Decisions: none (an answer of the maintainer to the Phase 1 plan)
 
 ## Context
 
@@ -26,24 +26,36 @@ The gate of record 0021 stays as it is and gets a second half.
 **For standard fields, names in text, lookups and roll-up summaries, the gate asks for two things.**
 
 1. Every entry of the answer key of the fixture project for these kinds is found.
-2. A random sample of references of these kinds from the public codebases is checked by hand. No reference in
-   the sample is wrong, and the list of what was missed is published.
+2. A random sample from the public codebases is checked by hand for references of these kinds. No reference
+   that OrgLens reports in the sample is wrong, and the list of what it missed is published.
 
 The size of the sample is set in the phase that runs the gate.
 
 That is all the maintainer decided.
 
+## What goes further than the answer of the maintainer
+
+Three statements below are conclusions of the author of this record. The maintainer can strike any of them.
+
+- **The pass marks of a phase do not replace the gate.** A phase can ask for more than the gate. It cannot ask
+  for less in its place.
+- **"Published" means a file in this repository.** A sample from a public codebase can be published. Nothing
+  from a real org can (the data rules of `CLAUDE.md`), so the real org of level 3 is not a source of the sample.
+- **The rule of record 0034 for a pair without a row stays.** Record 0034 says that a pair OrgLens found and the
+  Dependency API does not have is a difference only where the API could have seen it, and that the answer to Q3
+  may change that rule. The option the maintainer chose does not speak of it, so the author leaves it as it is.
+
 ## Consequences
 
-- Every phase from Phase 1 on knows what it works towards for the kinds Salesforce does not see. The pass marks
-  of a phase can be stricter than the gate. They cannot replace it.
+- Every phase from Phase 1 on knows what it works towards for the kinds Salesforce does not see.
 - The second half rests on the answer key and on checks by hand. Both were written and done by the author of the
   analysers so far (risk 12 of the [overall plan](../plans/re-architecture-plan.md)). A second person reads a
   part of the key in every test plan, and that is the only outside check for these kinds.
 - "Checked by hand" does not say by whom. It is not decided whether the sample of the gate is checked by the
   maintainer, by the author, or by both.
-- Record 0034 names a fifth kind the Dependency API does not report: a validation rule that is not active. The
-  question to the maintainer did not name it, so the second half does not cover it by this record. It is put to
-  the maintainer when the gate is planned.
-- "Published" means a file in this repository. A sample from a public codebase can be published. Nothing from a
-  real org can (the data rules of `CLAUDE.md`), so the real org of level 3 is not a source of the sample.
+- The Dependency API is blind to more than the four kinds the question named. Record 0034 and the note of the
+  real org also name a validation rule that is not active, a lookup filter, and a field that is named only in a
+  describe call or through a token kept in another class. The second half does not cover them by this record.
+  They are put to the maintainer when the gate is planned.
+- The estimate of the gate in the overall plan, two to three weeks, was made before the second half existed and
+  was not looked at again.

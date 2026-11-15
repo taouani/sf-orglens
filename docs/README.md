@@ -18,4 +18,4 @@ Everything that explains why OrgLens is built the way it is lives here, in git, 
 | Phase         | Plan                                 | State                                                                                                                                              |
 | ------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Foundations | [plans/phase-0.md](plans/phase-0.md) | Approved on 2026-11-11. Built. [Test plan](test-plans/phase-0.md), [report](reports/phase-0.md). Closed when the maintainer has run the test plan. |
-| 1 First slice | [plans/phase-1.md](plans/phase-1.md) | Draft. Not approved, nothing of it is built.                                                                                                       |
+| 1 First slice | [plans/phase-1.md](plans/phase-1.md) | The maintainer answered its eight questions on 2026-11-15. Not approved yet, nothing of it is built.                                               |

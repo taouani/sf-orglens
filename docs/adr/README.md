@@ -8,8 +8,8 @@ Records 0002 to 0022 write out the 27 decisions the project started from. Those 
 are summarised in the decision log of the [re-architecture plan](../plans/re-architecture-plan.md#decision-log). The
 "Decisions" column gives the plan ids each record covers. Record 0001 and the records from 0023 on are decisions made
 during the build, with one exception: record 0034 replaces 0008 and covers plan decision A4, which was changed on
-2026-11-12. Record 0018 was completed on 2026-11-13 with the parser the maintainer chose. Records 0035 to 0037 hold
-what the maintainer answered to the Phase 1 plan on 2026-11-15.
+2026-11-12. Record 0018 was completed on 2026-11-13 with the parser the maintainer chose. Records 0035 to 0037 are not
+decisions of the build either: they hold what the maintainer answered to the Phase 1 plan on 2026-11-15.
 
 | Record                                                 | Title                                                                                           | Status                                                          | Decisions  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
@@ -66,10 +66,11 @@ the table to match. A superseded record keeps its "Decisions" line and no longer
 
 ## Planned records
 
-| Decision                                                                                                                                                   | Recorded with                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| A new command `orglens analyse`, which extends [0016](0016-commands-config-and-json-contract.md). The maintainer chose it on 2026-11-15 (Phase 1 plan, Q7) | The pull request that builds the command |
-| A reader of our own for the XML of metadata files. The maintainer chose it on 2026-11-15 (Phase 1 plan, Q8)                                                | The pull request that builds the reader  |
+| Decision                                                                                                                                                                                                                                                                                             | Recorded with                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| A new command `orglens analyse`, which extends [0016](0016-commands-config-and-json-contract.md). The maintainer chose it on 2026-11-15 (Phase 1 plan, Q7)                                                                                                                                           | The pull request that builds the command        |
+| A reader of our own for the XML of metadata files. The maintainer chose it on 2026-11-15 (Phase 1 plan, Q8). If a maintained library that gives the place of every character is found on the first day of that work, it is taken instead and the maintainer is told                                  | The pull request that builds the reader         |
+| Whether the pre-release at the end of Phase 1 is "the first release" of records [0022](0022-public-pre-release.md) and [0027](0027-json-envelope-and-exit-codes.md), from which package names and the JSON contract are fixed. The maintainer chose the pre-release on 2026-11-15 (Phase 1 plan, Q6) | An answer of the maintainer before that release |
 
 ## Earlier prototypes
 
