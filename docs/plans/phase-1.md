@@ -237,6 +237,28 @@ Accepted when:
 - Every `-meta.xml` file of the public codebases is read without a problem. That is more than 11,000 files.
 - A file that is not well-formed gives an issue and no exception.
 
+Status on 15 November 2026, with the pull request that holds the reader. Built: `extraction/xml.ts`, its tests,
+and decision record [0039](../adr/0039-a-reader-of-our-own-for-xml.md).
+
+- **The search I promised in Q8 found no library to take.** Seven were looked at. None gives the place of each
+  decoded character. [xml-readers.md](../research/phase-1/xml-readers.md) has the list.
+- **All three points above are met.** The reader gives back the names, the values and the places of 1,500 random
+  documents, and the values `fast-xml-parser` gives for them. It reads the 11,338 `-meta.xml` files of the three
+  public codebases without a problem, to the values `fast-xml-parser` gives, in a third of a second. 68 kinds of
+  file that it must refuse give an issue each, and so does every start of a file that is cut off, and random
+  bytes.
+- CI does not download the public codebases. The test over them ran on my machine and is skipped in CI.
+
+Five things differ from what Q8 and the list above say, or are choices of mine that you can strike:
+
+- The reader is about 760 lines, of them about 580 of code and types. Q8 said "about 300 lines".
+- It refuses four things that well-formed XML can hold: a document type declaration, a processing instruction,
+  an encoding other than UTF-8, and an element with both text and elements. No file of the fixture project or
+  of the public codebases holds one. Whether a file of a real org does is not known.
+- It does not keep comments, nor the white space between child elements.
+- It resolves names against the namespaces a file declares, and refuses a prefix that is not declared.
+- A column counts UTF-16 code units. A character outside the basic plane, such as an emoji, counts as two.
+
 ### WP3 Components and references in the store
 
 Build:
