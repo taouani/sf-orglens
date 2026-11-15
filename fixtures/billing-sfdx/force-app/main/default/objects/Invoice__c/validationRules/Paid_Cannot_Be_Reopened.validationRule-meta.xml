@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Paid_Cannot_Be_Reopened</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  ISCHANGED(Status__c),
+  ISPICKVAL(PRIORVALUE(Status__c), 'Paid'),
+  NOT(ISPICKVAL(Status__c, 'Void'))
+)</errorConditionFormula>
+    <errorDisplayField>Status__c</errorDisplayField>
+    <errorMessage>A paid invoice can only be voided.</errorMessage>
+</ValidationRule>

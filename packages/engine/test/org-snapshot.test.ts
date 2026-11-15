@@ -238,7 +238,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 0, listing: 'ok', note: null },
         { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 9, retrieved: 9, analysed: 0, listing: 'ok', note: null },
+        { type: 'ValidationRule', listed: 10, retrieved: 10, analysed: 0, listing: 'ok', note: null },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'RecordType')).toEqual({
@@ -250,7 +250,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         note: null,
       });
 
-      // The same files as a snapshot of the folder, and the same content for what Salesforce does not rewrite.
+      // The files of the folder, and the same content for what Salesforce does not rewrite.
       expect(stored(dir, 1)).toEqual(expected);
       for (const path of wholeFiles.filter((one) => /\.(?:cls|trigger)$/.test(one))) {
         expect(content(dir, 1, path).equals(readFileSync(join(WHOLE, 'main/default', path))), path).toBe(true);
@@ -259,7 +259,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       expect(events.slice(-2)).toEqual([
-        { step: 'planned', snapshot: 1, components: 88, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
       ]);
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.
@@ -280,7 +280,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 88, listed: 88, retrieved: 88, ids: 88, dates: 88 });
+        ).toEqual({ items: 89, listed: 89, retrieved: 89, ids: 89, dates: 89 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.

@@ -85,15 +85,28 @@ const NAMED_ONLY: ReadonlySet<string> = new Set([
   'GlobalValueSet',
 ]);
 
-/** The elements of a field or a rule in which a reference of each kind of naming stands. */
-const ELEMENTS_OF_VIA: Readonly<Record<string, readonly string[]>> = {
-  formula: ['formula', 'errorConditionFormula', 'defaultValue'],
-  filter: ['lookupFilter', 'summaryFilterItems'],
-  summary: ['summarizedField', 'summaryForeignKey'],
-  lookup: ['referenceTo'],
-  'display-field': ['errorDisplayField', 'displayField'],
-  'controlling-field': ['controllingField'],
-  'value-set': ['valueSetName'],
+/**
+ * Where a reference of each kind of naming stands in a field or a rule: the element that holds the word, and for a
+ * filter the element around that one. `reads` lists the elements in which the reference is a read. In every other
+ * element it is a `references`.
+ */
+const PLACE_OF_VIA: Readonly<
+  Record<string, { in: readonly string[]; within?: readonly string[]; reads: readonly string[] }>
+> = {
+  formula: {
+    in: ['formula', 'errorConditionFormula', 'defaultValue'],
+    reads: ['formula', 'errorConditionFormula', 'defaultValue'],
+  },
+  filter: {
+    in: ['field', 'valueField'],
+    within: ['lookupFilter', 'summaryFilterItems'],
+    reads: ['field', 'valueField'],
+  },
+  summary: { in: ['summarizedField', 'summaryForeignKey'], reads: ['summarizedField'] },
+  lookup: { in: ['referenceTo'], reads: [] },
+  'display-field': { in: ['errorDisplayField'], reads: [] },
+  'controlling-field': { in: ['controllingField'], reads: [] },
+  'value-set': { in: ['valueSetName'], reads: [] },
 };
 
 /**
@@ -123,8 +136,12 @@ function metadataPlace(file: string, line: number, column: number): { elements: 
       else if (quote !== '') region = `text ${quote ?? ''}`;
       at += rest.startsWith('/*') ? 2 : step;
     } else if (region === 'comment') {
-      if (rest.startsWith('*/')) region = 'code';
-      at += rest.startsWith('*/') ? 2 : 1;
+      // A backslash keeps the end of a comment inside it.
+      if (rest.startsWith('\\*/')) at += 3;
+      else {
+        if (rest.startsWith('*/')) region = 'code';
+        at += rest.startsWith('*/') ? 2 : 1;
+      }
     } else {
       // In a text, a backslash takes the next character with it.
       if (rest.startsWith('\\')) at += 2;
@@ -362,16 +379,28 @@ describe('the answer key', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('names every place of a field or a rule in the element its entry says, and none in a comment or a text', () => {
+  it('names every place of a field or a rule in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
       if (isApex(reference.file)) continue;
       const { elements, region } = metadataPlace(reference.file, reference.line, reference.column);
-      const allowed = ELEMENTS_OF_VIA[reference.via] ?? [];
-      if (!elements.some((element) => allowed.includes(element))) {
+      const place = PLACE_OF_VIA[reference.via];
+      const innermost = elements.at(-1) ?? '';
+      const around = place?.within;
+      if (
+        place === undefined ||
+        !place.in.includes(innermost) ||
+        (around !== undefined && !elements.some((element) => around.includes(element)))
+      ) {
         wrong.push(`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`);
+        continue;
       }
       if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
+      // A field that is used is read. A field or an object that is only named is referred to, and so is everything
+      // that is neither a field nor an object.
+      const target = parseKey(reference.to).type;
+      const expected = place.reads.includes(innermost) && target === 'CustomField' ? 'reads' : 'references';
+      if (reference.kind !== expected) wrong.push(`${reference.id}: ${reference.kind}, expected ${expected}`);
     }
     expect(wrong).toEqual([]);
     // The check can tell the three apart. The names in the comment and in the texts of this field are negatives.
@@ -461,7 +490,7 @@ describe('the answer key', () => {
       stretch: key.references.filter((reference) => reference.stretch).length,
       negatives: key.negatives.length,
       unknowns: key.unknowns.length,
-    }).toEqual({ version: 1, components: 86, phase1: 103, phase3: 184, stretch: 7, negatives: 31, unknowns: 5 });
+    }).toEqual({ version: 1, components: 87, phase1: 107, phase3: 184, stretch: 7, negatives: 33, unknowns: 5 });
   });
 });
 
@@ -495,10 +524,10 @@ describe('version 0 of the answer key', () => {
   });
 
   it('has nothing that version 1 has not', () => {
-    const now = new Set(key.references.map((reference) => `${reference.id}:${reference.via}:${reference.tier}`));
-    expect(
-      old.references.filter((reference) => !now.has(`${reference.id}:${reference.via}:${reference.tier}`)),
-    ).toEqual([]);
+    const whole = (reference: (typeof key.references)[number]): string =>
+      `${reference.id}:${reference.from}:${reference.via}:${reference.tier}:${String(reference.stretch)}`;
+    const now = new Set(key.references.map(whole));
+    expect(old.references.filter((reference) => !now.has(whole(reference)))).toEqual([]);
     const forbidden = new Set(key.negatives.map((negative) => idOf(negative, negative.not)));
     expect(old.negatives.filter((negative) => !forbidden.has(idOf(negative, negative.not)))).toEqual([]);
     expect(old.components.filter((component) => !inProject.has(component.key))).toEqual([]);

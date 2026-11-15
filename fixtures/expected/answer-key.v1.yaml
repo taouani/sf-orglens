@@ -103,6 +103,7 @@ components:
     - Invoice__c.Amount_Within_Credit_Limit
     - Invoice__c.Large_Amount_Needs_Permission
     - Invoice__c.Locked_When_Paid
+    - Invoice__c.Paid_Cannot_Be_Reopened
     - Invoice__c.Paid_Requires_Paid_Date
     - Invoice__c.Tax_Rate_Matches_Code
     - Invoice__c.Void_Needs_Admin
@@ -490,6 +491,16 @@ references:
           - { line: 6, match: Max_Amount__c, kind: reads, to: CustomField:billing_rule__mdt.max_amount__c, via: formula }
           - { line: 7, match: Approve_Large_Invoices, kind: references, to: CustomPermission:approve_large_invoices, via: formula }
           - { line: 9, match: Amount__c, kind: references, to: CustomField:invoice__c.amount__c, via: display-field }
+
+  - file: force-app/main/default/objects/Invoice__c/validationRules/Paid_Cannot_Be_Reopened.validationRule-meta.xml
+    phase: 1
+    members:
+      - from: ValidationRule:invoice__c.paid_cannot_be_reopened
+        refs:
+          - { line: 6, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula, note: ISCHANGED on a picklist. }
+          - { line: 7, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula, note: "PRIORVALUE on a picklist, inside ISPICKVAL." }
+          - { line: 8, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: formula }
+          - { line: 10, match: Status__c, kind: references, to: CustomField:invoice__c.status__c, via: display-field }
 
   - file: force-app/main/default/objects/Invoice__c/validationRules/Tax_Rate_Matches_Code.validationRule-meta.xml
     phase: 1
@@ -890,6 +901,8 @@ negatives:
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 7, match: Name, not: CustomField:invoice__c.name, why: "The name of the profile, a global variable." }
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 9, match: Name, not: CustomField:invoice__c.name, why: "The name of the role, a global variable." }
   - { file: force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml, line: 11, match: Name, not: CustomField:invoice__c.name, why: "The name of the record type, a global variable." }
+  - { file: force-app/main/default/objects/Invoice__c/fields/Status_Rank__c.field-meta.xml, line: 5, match: Email, not: CustomField:user.email, why: "A value of a picklist, in text. Fields of the user and of the contact have that name." }
+  - { file: force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml, line: 4, match: Billing_Region__c, not: CustomField:account.billing_region__c, why: "The field of the user. The account has a field of the same name." }
 
 # Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
 # One entry for each name whose target is not known.

@@ -1,6 +1,9 @@
 # Formula probes: one small formula for every operator, every kind of literal, every kind of name and every
 # function of the formula language of Salesforce. An analyser must read each of them without a problem.
 #
+# What is not probed: a text that runs over two lines, which the grammar of the engine refuses and the formula
+# editor of Salesforce may accept, and the named arguments in square brackets of old buttons.
+#
 # The probes test the reading of a formula, not what it means. They are not deployed, so Salesforce has not
 # checked them: the kinds of the arguments are plausible and not verified. Each formula is written for the object
 # Invoice__c of the project billing-sfdx, and names only fields that project has. ../README.md says more.
@@ -11,8 +14,8 @@
 #   names    every name of the formula that is not the name of a call and not TRUE, FALSE, NULL or NOT, in the
 #            order they stand, each as it is written with its dots. A name in a comment or in a text is not one.
 #   seen     for a function: where the name was seen. See `sources`.
-#   where    `elsewhere` for a function that Salesforce offers in a report, a button or a page, and not in a
-#            formula field or a validation rule. Phase 1 reads no formula of that kind. The call is read anyway.
+#   where    `elsewhere` for a function that Salesforce offers in a report, a button, a page or an action, and not
+#            in a formula field or a validation rule. Phase 1 reads no formula of that kind. The call is read anyway.
 #            The mark is written from the summary of the help page and is not verified.
 
 version: 1
@@ -25,7 +28,7 @@ sources:
   help-summary: The name stands only in the summary of the rest of the page. It was not read as written.
   # github.com/salesforce/formula-engine at commit 118bbca82d0791eab43c413aff4f243d0f0af59e. Its grammar is the
   # source of the operators, the literals and the characters of a name below.
-  engine: The name stands in the open-source formula engine of Salesforce.
+  engine: The name stands in the code of the open-source formula engine of Salesforce, implemented or only named.
 
 probes:
   # ---------------------------------------------------------------- operators
@@ -66,7 +69,6 @@ probes:
   - { covers: "escaped quotes", formula: "\"a \\\"Amount__c\\\" b\" & 'it\\'s Tax_Rate__c'", names: [] }
   - { covers: "escaped backslash", formula: "\"C:\\\\\" & Legacy_Code__c", names: [Legacy_Code__c], note: "The text ends after the second backslash." }
   - { covers: "escaped line and tab", formula: "\"a\\nb\\tc\\r\" & 'A\\NB\\TC\\R'", names: [] }
-  - { covers: "text over two lines", formula: "\"first line\nAmount__c\" & Legacy_Code__c", names: [Legacy_Code__c], note: "The grammar of the engine refuses a line end inside a text. The formula editor of Salesforce is not verified." }
   - { covers: "comment marks in a text", formula: "\"/* not a comment */\" & Legacy_Code__c", names: [Legacy_Code__c] }
   - { covers: "TRUE", formula: "TRUE", names: [] }
   - { covers: "FALSE", formula: "FALSE", names: [] }
@@ -78,6 +80,7 @@ probes:
   - { covers: "comment at the end", formula: "Amount__c /* Paid_Date__c */", names: [Amount__c] }
   - { covers: "quote in a comment", formula: "/* it's \"so */ Amount__c", names: [Amount__c] }
   - { covers: "star and slash in a comment", formula: "/* a * b / c ** // */ Amount__c", names: [Amount__c] }
+  - { covers: "end of a comment after a backslash", formula: "/* a \\*/ Paid_Date__c */ Amount__c", names: [Amount__c], note: "The grammar keeps the comment open after a backslash." }
 
   # ---------------------------------------------------------------- names
   - { covers: "field", formula: "Amount__c", names: [Amount__c] }
@@ -103,6 +106,7 @@ probes:
   - { covers: "$Api", formula: "$Api.Session_ID", names: [$Api.Session_ID] }
   - { covers: "$System", formula: "$System.OriginDateTime", names: [$System.OriginDateTime] }
   - { covers: "name with a namespace", formula: "acme__Score__c + Account__r.acme__Rating__c", names: [acme__Score__c, Account__r.acme__Rating__c], note: "The fields do not exist in the project. The names are read all the same." }
+  - { covers: "name that begins like a word of the language", formula: "Notes & Trueness & Nullable & Falsehood", names: [Notes, Trueness, Nullable, Falsehood], note: "The fields do not exist in the project." }
   - { covers: "call of an unknown function", formula: "NOSUCHFUNCTION(Amount__c, 1)", names: [Amount__c], note: "A call is any name before a bracket." }
   - { covers: "call with a space before the bracket", formula: "ABS (Amount__c)", names: [Amount__c] }
   - { covers: "call without arguments in a call", formula: "IF(TODAY() > Due_Date__c, NOW(), NOW())", names: [Due_Date__c] }
@@ -178,7 +182,7 @@ probes:
   - { covers: ASCII, seen: [help-summary, engine], formula: "ASCII(Legacy_Code__c)", names: [Legacy_Code__c] }
   - { covers: BEGINS, seen: [help, engine], formula: "BEGINS(Legacy_Code__c, 'INV')", names: [Legacy_Code__c] }
   - { covers: BR, seen: [help], formula: "Legacy_Code__c & BR() & External_Id__c", names: [Legacy_Code__c, External_Id__c] }
-  - { covers: CASESAFEID, seen: [help], formula: "CASESAFEID(Id)", names: [Id] }
+  - { covers: CASESAFEID, seen: [help, engine], formula: "CASESAFEID(Id)", names: [Id] }
   - { covers: CONTAINS, seen: [help, engine], formula: "CONTAINS(Legacy_Code__c, 'X')", names: [Legacy_Code__c] }
   - { covers: FIND, seen: [help, engine], formula: "FIND('-', Legacy_Code__c, 1)", names: [Legacy_Code__c] }
   - { covers: GETSESSIONID, seen: [help], formula: "GETSESSIONID()", names: [] }
@@ -202,23 +206,23 @@ probes:
   - { covers: TEXT, seen: [help, engine], formula: "TEXT(Status__c) & TEXT(Amount__c)", names: [Status__c, Amount__c] }
   - { covers: TRIM, seen: [help, engine], formula: "TRIM(Legacy_Code__c)", names: [Legacy_Code__c] }
   - { covers: UPPER, seen: [help, engine], formula: "UPPER(Legacy_Code__c)", names: [Legacy_Code__c] }
-  - { covers: URLENCODE, seen: [help], formula: "URLENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: URLENCODE, seen: [help, engine], formula: "URLENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
   - { covers: VALUE, seen: [help, engine], formula: "VALUE(Legacy_Code__c)", names: [Legacy_Code__c] }
 
   # ---------------------------------------------------------------- functions: advanced
   - { covers: CURRENCYRATE, seen: [help], formula: "Amount__c * CURRENCYRATE('EUR')", names: [Amount__c] }
   - { covers: ISCHANGED, seen: [help, engine], formula: "ISCHANGED(Status__c)", names: [Status__c] }
-  - { covers: JUNCTIONIDLIST, seen: [help], formula: "JUNCTIONIDLIST(Account__c, Billing_Contact__c)", names: [Account__c, Billing_Contact__c] }
-  - { covers: PREDICT, seen: [help], formula: "PREDICT('0ORxx0000000001', Amount__c, Tax_Rate__c)", names: [Amount__c, Tax_Rate__c] }
+  - { covers: PREDICT, seen: [help, engine], formula: "PREDICT('0ORxx0000000001', Amount__c, Tax_Rate__c)", names: [Amount__c, Tax_Rate__c] }
   - { covers: REGEX, seen: [help, engine], formula: "REGEX(Legacy_Code__c, \"[A-Z]{3}-\\\\d+\")", names: [Legacy_Code__c] }
-  - { covers: VLOOKUP, seen: [help], formula: "VLOOKUP($ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c)", names: [$ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c] }
+  - { covers: VLOOKUP, seen: [help, engine], formula: "VLOOKUP($ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c)", names: [$ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c] }
   - { covers: IMAGEPROXYURL, seen: [help], where: elsewhere, formula: "IMAGEPROXYURL('https://example.com/logo.png')", names: [] }
 
   # ---------------------------------------------------------------- functions: not in a field or a rule
+  - { covers: JUNCTIONIDLIST, seen: [help], where: elsewhere, formula: "JUNCTIONIDLIST(Account__c, Billing_Contact__c)", names: [Account__c, Billing_Contact__c], note: "As far as I know it is offered only for a value an action fills in. Not verified." }
   - { covers: GETRECORDIDS, seen: [help], where: elsewhere, formula: "GETRECORDIDS($ObjectType.Invoice__c)", names: [$ObjectType.Invoice__c] }
-  - { covers: INCLUDE, seen: [help], where: elsewhere, formula: "INCLUDE($SControl.Header_Snippet, [title = Name])", names: [$SControl.Header_Snippet, title, Name], note: "The square brackets hold named arguments. The grammar of the engine reads them as a map." }
+  - { covers: INCLUDE, seen: [help], where: elsewhere, formula: "INCLUDE($SControl.Header_Snippet)", names: [$SControl.Header_Snippet], note: "The form with named arguments in square brackets is not probed." }
   - { covers: LINKTO, seen: [help], where: elsewhere, formula: "LINKTO('Open', $Action.Account.View, Account__c)", names: [$Action.Account.View, Account__c] }
   - { covers: REQUIRESCRIPT, seen: [help], where: elsewhere, formula: "REQUIRESCRIPT('/soap/ajax/66.0/connection.js')", names: [] }
   - { covers: URLFOR, seen: [help], where: elsewhere, formula: "URLFOR($Action.Account.View, Account__c)", names: [$Action.Account.View, Account__c] }
-  - { covers: PARENTGROUPVAL, seen: [help], where: elsewhere, formula: "PARENTGROUPVAL(AMOUNT:SUM, GRAND_SUMMARY)", names: ["AMOUNT:SUM", GRAND_SUMMARY], note: "A formula of a report. Its names are columns and groupings, not fields." }
-  - { covers: PREVGROUPVAL, seen: [help], where: elsewhere, formula: "PREVGROUPVAL(AMOUNT:SUM, CLOSE_DATE, 1)", names: ["AMOUNT:SUM", CLOSE_DATE], note: "A formula of a report." }
+  - { covers: PARENTGROUPVAL, seen: [help, engine], where: elsewhere, formula: "PARENTGROUPVAL(AMOUNT:SUM, GRAND_SUMMARY)", names: ["AMOUNT:SUM", GRAND_SUMMARY], note: "A formula of a report. Its names are columns and groupings, not fields." }
+  - { covers: PREVGROUPVAL, seen: [help, engine], where: elsewhere, formula: "PREVGROUPVAL(AMOUNT:SUM, CLOSE_DATE, 1)", names: ["AMOUNT:SUM", CLOSE_DATE], note: "A formula of a report." }

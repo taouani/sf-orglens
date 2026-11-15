@@ -10,7 +10,9 @@
 #               does not parse, a name is found by its token and the reference is `probable`.
 #   unresolved  names that are of no namespace and that nothing in the project defines. Each is a finding.
 #   external    names with the prefix of a package that is not in the project.
-# A file with none of the three holds no name.
+#   negatives   places where a reference to the named target must not be reported, as in the answer key.
+# An empty formula is not among the files: whether an empty element is a formula at all is for the analyser to
+# decide, and its plan does not say.
 
 version: 1
 project: billing-sfdx
@@ -46,11 +48,6 @@ files:
       - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, tier: probable }
       - { line: 4, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, tier: probable }
 
-  - file: objects/Invoice__c/fields/Bad_Empty__c.field-meta.xml
-    from: CustomField:invoice__c.bad_empty__c
-    parses: false
-    why: The formula is empty.
-
   - file: objects/Invoice__c/validationRules/Bad_Extra_Bracket.validationRule-meta.xml
     from: ValidationRule:invoice__c.bad_extra_bracket
     parses: false
@@ -74,6 +71,8 @@ files:
     why: The formula goes through a relationship the object does not have. What follows it cannot be followed.
     unresolved:
       - { line: 4, match: Nowhere__r }
+    negatives:
+      - { line: 4, match: Name, not: CustomField:invoice__c.name }
 
   - file: objects/Invoice__c/fields/Missing_Field_Of_Parent__c.field-meta.xml
     from: CustomField:invoice__c.missing_field_of_parent__c

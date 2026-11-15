@@ -170,9 +170,9 @@ Build:
   documents, every operator and every kind of literal. Expected: each is read without a problem.
 - A deploy of the new fixture to the test org, and a run of the probe of Phase 0.
 
-Status on 15 November 2026, with the pull request that holds the fixture and the key. Built: the 34 new
-components, `answer-key.v1.yaml` with 103 references in fields and rules (59 more than version 0), the probes
-(177 formulas) and the folder `fixtures/formula-negative` (11 files), each with a check. Not done: the deploy and
+Status on 15 November 2026, with the pull request that holds the fixture and the key. Built: the 35 new
+components, `answer-key.v1.yaml` with 107 references in fields and rules (63 more than version 0), the probes
+(178 formulas) and the folder `fixtures/formula-negative` (10 files), each with a check. Not done: the deploy and
 the run of the probe, which the workflow can only do from `main`, so after the merge. Until then nothing but my
 reading says that Salesforce accepts the new formulas. Your reading of ten entries is open too.
 

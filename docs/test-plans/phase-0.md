@@ -37,10 +37,12 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 `$ tsc -b` and nothing else.
 
 The third line takes the repository back to the last commit before Phase 1 began to build. Phase 1 has made the
-fixture project larger, from 52 to 86 components, and this plan quotes the numbers of the smaller one. Git says
-`HEAD is now at 84c2b2f` and that the clone is in "detached HEAD" state, which is expected. In a clone you made
-before 15 November 2026 the line changes nothing you have run so far: run it, then `pnpm install` and
-`pnpm run build` again. Part F is the exception, and says so: its workflow always runs on `main`.
+fixture project larger, from 52 to 87 components, and this plan quotes the numbers of the smaller one. Git says
+`HEAD is now at 84c2b2f` and that the clone is in "detached HEAD" state, which is expected. A clone you made
+before 15 November 2026 does not hold that commit yet, and Git answers the third line with
+`fatal: reference is not a tree`. Run `git fetch origin` in it first, then the third line, then `pnpm install`
+and `pnpm run build` again. Nothing you have run so far changes by it. Part F is the exception, and says so: its
+workflow always runs on `main`.
 
 The command line is not published, so it is started from the build. The steps below write `orglens` for it. Make
 that work with the two lines for your shell. Run them in the root of the clone, where the build has just run:
@@ -216,8 +218,8 @@ Run E1 in the root of the clone: `cd "$ORGLENS_REPO"` in bash, `cd $orglensRepo`
 Outcomes 2 and 5. The workflow logs in with the secrets you stored. Its log is public.
 
 The workflow runs on `main`, which holds the larger fixture project of Phase 1. The numbers of the fixture project
-in F2 and F3 are those of the run of 12 November, with the smaller project. A run of today counts 86 components
-and 189 pairs, and until the larger project is deployed to the test org the step that reads the org fails,
+in F2 and F3 are those of the run of 12 November, with the smaller project. A run of today counts 87 components
+and 190 pairs, and until the larger project is deployed to the test org the step that reads the org fails,
 because it does not find the whole project there. I deploy it when the pull request with the new fixture is
 merged, and bring F2 and F3 up to date with the numbers of that run.
 

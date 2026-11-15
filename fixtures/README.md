@@ -17,7 +17,7 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 86 components: 5 custom objects, 54 custom fields on them, on `Account` and on `User`, 9
+`billing-sfdx` has 87 components: 5 custom objects, 54 custom fields on them, on `Account` and on `User`, 10
 validation rules, 12 Apex classes and 1 trigger, and five components that are only there to be referred to: the
 file of custom labels with one label, a record of a custom metadata type, a custom permission and a global value
 set. Three of the objects are targets too: a custom setting, a custom metadata type and `Tax_Code__c`. It is small
@@ -26,7 +26,8 @@ on purpose. Each file is there for a case that an analyser can get wrong:
 - formulas on formulas, across a lookup, through the owner, with a comment and with a field name inside text;
 - two roll-up summaries and a lookup filter;
 - an inactive validation rule, and a rule that names a field only in its message;
-- a field `Status__c` on both objects, and a lookup field `Invoice__c` that is named like the object;
+- a field `Status__c` on `Invoice__c` and another of the same name on `Invoice_Line__c`, and a lookup field
+  `Invoice__c` that is named like the object;
 - queries with fields in `SELECT`, `WHERE`, `ORDER BY`, `GROUP BY` and `HAVING`, a sub-query, an aggregate with
   aliases, `TYPEOF`, a search, and queries built as text from literals, from constants of another class and from
   parameters;
@@ -35,14 +36,15 @@ on purpose. Each file is there for a case that an analyser can get wrong:
   variable that is named like an object;
 - `Unused_Field__c`, which nothing refers to. Its name stands in comments and in text only.
 
-Phase 1 added 34 components, and changed no file that was there. The new fields and rules are these cases:
+Phase 1 added 35 components, and changed no file that was there. The new fields and rules are these cases:
 
 - a formula across three relationships, the last of them the owner of an account (`Account_Owner_Email__c`), the
   parent of an account, and a hierarchy field of the user;
 - the global variables: `$Setup` with a custom setting, `$Label`, `$Permission`, `$CustomMetadata` with a record,
   `$User` with a standard and a custom field, `$Profile`, `$UserRole`, `$Organization`, `$RecordType`, and
   `$ObjectType` inside `VLOOKUP`;
-- `CASE`, `INCLUDES` and `TEXT` on picklists, a dependent picklist with its controlling field, and two picklists
+- `CASE`, `INCLUDES` and `TEXT` on picklists, `ISCHANGED` and `PRIORVALUE` on a picklist in a rule
+  (`Paid_Cannot_Be_Reopened`), a dependent picklist with its controlling field, and two picklists
   that take their values from a global value set;
 - a name in a comment, in text with double quotes, in text with single quotes, and after a quote that a backslash
   keeps inside the text (`Status_Notice__c`);
@@ -55,10 +57,11 @@ The live-org workflow deployed the 52 components of Phase 0 to a Developer Editi
 Salesforce accepted them on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves
 that it passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md).
 
-**The 34 components of Phase 1 have not been deployed.** The workflow can only deploy from `main`, so Salesforce
-sees them after the pull request that added them is merged. Until that run, nothing but my reading says that
-Salesforce accepts the new formulas. If it refuses one, the file and its entries in the key are corrected in a
-pull request of their own.
+**The 35 components of Phase 1 have not been deployed.** The workflow can only deploy from `main`, so Salesforce
+sees them after the pull request that added them is merged. Until that run, nothing but my reading and that of
+the code review says that Salesforce accepts the new formulas. The one least sure is `$RecordType.Name` in the
+rule `Void_Needs_Admin`: `Invoice__c` has no record type, and Salesforce may refuse the variable on such an
+object. If it refuses a formula, the file and its entries in the key are corrected in a pull request of their own.
 
 ## The answer key
 
@@ -198,8 +201,11 @@ analyser. It checks that:
   declarations of the file, with their signatures;
 - every reference points at a component of the project or at a listed standard target;
 - no place is in a comment, and each place is in the kind of text its entry says: in a query, in a literal, in code;
-- every place of a field or a rule stands in the element its entry says (a formula, a filter, a roll-up, the target
-  of a lookup), and a place in a formula stands in no comment and in no text of it;
+- every place of a field or a rule stands directly in the element its entry says (a formula, a line of a filter, a
+  roll-up, the target of a lookup), not just somewhere inside it, and a place in a formula stands in no comment and
+  in no text of it;
+- the kind of such an entry follows from its place: `reads` for a field in a formula, in a line of a filter and as
+  the field a roll-up sums, `references` for everything else;
 - the word of an entry stands for its target: it is its name, a DML keyword, a child relationship of the project, or
   a constant of the project whose value holds the name. Only a name that comes from a variable is `possible`;
 - the kind fits: a plain field access is a write exactly when an assignment follows it, `extends` points at a class,
@@ -207,8 +213,8 @@ analyser. It checks that:
 - the list of unreferenced fields is the list of fields no entry points at;
 - no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
   the tiers and operations follow the rules above;
-- the numbers this page quotes are the numbers of the key: 287 references (103 in fields and rules, 184 in Apex), 7
-  of them stretch, 31 negatives and 5 unknowns;
+- the numbers this page quotes are the numbers of the key: 291 references (107 in fields and rules, 184 in Apex), 7
+  of them stretch, 33 negatives and 5 unknowns;
 - version 0 of the key still names places that exist, has nothing that version 1 has not, and has the same Apex
   part.
 
@@ -223,7 +229,7 @@ entries that version 1 added.
 
 ## Formula probes
 
-`formula-probes.yaml` holds 177 small formulas: one for every operator, every kind of literal, every kind of name
+`formula-probes.yaml` holds 178 small formulas: one for every operator, every kind of literal, every kind of name
 and every function. A parser of formulas must read each without a problem. Each probe lists by hand the names its
 formula holds, and `packages/engine/test/formula-fixtures.test.ts` compares that list with what a simple scan of
 the text finds.
@@ -235,12 +241,14 @@ the text finds.
   read as written. 17 stand only in a summary of the rest of the page and also in the formula engine. Two,
   `PICKLISTCOUNT` and `TRUNC`, stand only in that summary. Each probe says where its name was seen.
 - The probes are not deployed, so Salesforce has not checked them. The kinds of their arguments are plausible and
-  not verified. Eight functions are marked as not usable in a field or a rule, from the same summary.
+  not verified. Nine functions are marked as not usable in a field or a rule, from the same summary.
+- One thing has no probe: a text that runs over two lines. The grammar of the engine refuses it and the formula
+  editor of Salesforce may accept it. Which holds is not verified, so no file here takes a side.
 
 ## Formulas that cannot be deployed
 
-`formula-negative/` holds ten fields and one rule of `Invoice__c` in the layout of the project, and
-`expected.yaml`, which says of each whether its formula parses and what is expected of the names in it. Six
+`formula-negative/` holds nine fields and one rule of `Invoice__c` in the layout of the project, and
+`expected.yaml`, which says of each whether its formula parses and what is expected of the names in it. Five
 formulas do not parse. Five name something that is not there: a field, a relationship, a field of the parent, a
 label, and two fields of a package. No file has the name of a file of the project, so a test lays the folder over a
 copy of the project. They are written so that Salesforce refuses them, which is not verified: none was sent to

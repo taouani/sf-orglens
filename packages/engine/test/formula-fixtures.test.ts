@@ -37,8 +37,10 @@ function namesOf(formula: string): string[] {
   for (let at = 0; at < formula.length;) {
     const here = formula[at] ?? '';
     if (formula.startsWith('/*', at)) {
-      const end = formula.indexOf('*/', at + 2);
-      at = end === -1 ? formula.length : end + 2;
+      // A backslash keeps the end of a comment inside it.
+      at += 2;
+      while (at < formula.length && !formula.startsWith('*/', at)) at += formula.startsWith('\\*/', at) ? 3 : 1;
+      at += 2;
       code += ' ';
     } else if (here === '"' || here === "'") {
       at += 1;
@@ -141,7 +143,7 @@ describe('the formula probes', () => {
       functions: functions.length,
       elsewhere: probes.filter((probe) => probe['where'] === 'elsewhere').length,
       summaryOnly: functions.filter((probe) => texts(probe['seen']).join() === 'help-summary').length,
-    }).toEqual({ probes: 177, functions: 104, elsewhere: 8, summaryOnly: 2 });
+    }).toEqual({ probes: 178, functions: 104, elsewhere: 9, summaryOnly: 2 });
   });
 });
 
@@ -169,7 +171,7 @@ describe('the formulas that cannot be deployed', () => {
     for (const entry of files) {
       const file = String(entry['file']);
       const unknown = Object.keys(entry).filter(
-        (field) => !['file', 'from', 'parses', 'why', 'refs', 'unresolved', 'external'].includes(field),
+        (field) => !['file', 'from', 'parses', 'why', 'refs', 'unresolved', 'external', 'negatives'].includes(field),
       );
       if (unknown.length > 0) wrong.push(`${file}: unknown field ${unknown.join(', ')}`);
       const [, object = '', folder = '', name = ''] = file.split('/');
@@ -183,7 +185,14 @@ describe('the formulas that cannot be deployed', () => {
       if (!/<(formula|errorConditionFormula)>/.test(text)) wrong.push(`${file}: holds no formula`);
     }
     expect(wrong).toEqual([]);
-    expect(files.filter((entry) => entry['parses'] === false).length).toBeGreaterThanOrEqual(4);
+    // The numbers the documents quote.
+    expect({
+      files: files.length,
+      rules: files.filter((entry) => String(entry['from']).startsWith('ValidationRule:')).length,
+      notParsed: files.filter((entry) => entry['parses'] === false).length,
+      withMissingName: files.filter((entry) => entry['unresolved'] !== undefined || entry['external'] !== undefined)
+        .length,
+    }).toEqual({ files: 10, rules: 1, notParsed: 5, withMissingName: 5 });
   });
 
   it('name places that exist, targets the project has, and missing names it has not', () => {
@@ -214,6 +223,17 @@ describe('the formulas that cannot be deployed', () => {
         const word = String(missing['match']).toLowerCase();
         if ([...known].some((one) => parseKey(one).name.split('.').includes(word.replace(/__r$/, '__c')))) {
           wrong.push(`${at}: the project has a component of that name`);
+        }
+      }
+      for (const negative of dicts(entry['negatives'])) {
+        const at = `${file}:${String(negative['line'])} ${String(negative['match'])}`;
+        if (!placed(negative)) wrong.push(`${at}: no such place`);
+        if (Object.keys(negative).some((field) => !['line', 'match', 'nth', 'not'].includes(field))) {
+          wrong.push(`${at}: unknown field`);
+        }
+        if (!known.has(String(negative['not']))) wrong.push(`${at}: the project has no ${String(negative['not'])}`);
+        if (dicts(entry['refs']).some((ref) => ref['line'] === negative['line'] && ref['to'] === negative['not'])) {
+          wrong.push(`${at}: a reference of the file is forbidden by its own negative`);
         }
       }
       for (const external of dicts(entry['external'])) {

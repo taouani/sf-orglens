@@ -445,7 +445,7 @@ describe('deploying the fixture project', () => {
     expect(text().replace(/after \d+ seconds/, 'after N seconds')).toBe(
       [
         'The deploy of the fixture project ended as Succeeded after N seconds.',
-        'Components of the fixture project: 86. Salesforce counted 24, deployed 24 and found errors in 0.',
+        'Components of the fixture project: 87. Salesforce counted 24, deployed 24 and found errors in 0.',
         'Of the components Salesforce accepted, 12 are new in the org, 12 were changed, and 0 were as they are.',
         'The fixture project is in the test org. No Apex test was run.',
       ].join('\n'),
@@ -522,7 +522,7 @@ describe('deploying the fixture project', () => {
         .concat(text().split('\n').slice(2)),
     ).toEqual([
       '::error::The deploy of the fixture project ended as Failed after N seconds.',
-      'Components of the fixture project: 86. Salesforce counted 24, deployed 0 and found errors in 5.',
+      'Components of the fixture project: 87. Salesforce counted 24, deployed 0 and found errors in 5.',
       '1. ApexClass InvoiceService, file classes/InvoiceService.cls, line 14, column 9',
       '   Problem: Variable does not exist: Amount__c',
       '2. ApexClass InvoiceSelector, file classes/InvoiceSelector.cls, line 3, column 1',
@@ -664,7 +664,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toContain(
-      'Components: 88 listed by the org, 88 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+      'Components: 89 listed by the org, 89 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
     );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
@@ -682,7 +682,7 @@ describe('reading the test org', () => {
     const files = fixtureFiles().size;
     // The mock org hands a file out as the Salesforce library writes it, which writes a quote as a reference.
     expect(output).toContain(
-      `Files of the fixture project: ${String(files)}. In the snapshot: ${String(files)}. The same byte for byte: ${String(files - 8)}. Different: 8.`,
+      `Files of the fixture project: ${String(files)}. In the snapshot: ${String(files)}. The same byte for byte: ${String(files - 9)}. Different: 9.`,
     );
     expect(output).toContain(
       '- objects/Invoice__c/fields/Summary__c.field-meta.xml: only how characters such as quotes are written differs (391 bytes here, 411 from the org)',
@@ -734,8 +734,8 @@ describe('reading the test org', () => {
     expect(log.failed).toBe(true);
     expect(output).toMatch(/Retrieves: 1 chunk, 0 stored, 0 failed, 1 not ended\./);
     expect(output).toMatch(/^ApexTrigger +0 +0 +failed$/m);
-    expect(output).toContain('- and 66 more components.');
-    expect(output).toContain('- and 78 more files that are not in the snapshot.');
+    expect(output).toContain('- and 67 more components.');
+    expect(output).toContain('- and 79 more files that are not in the snapshot.');
     expect(output).toContain(
       '- error LISTING_FAILED: 1 observation. Types: ApexTrigger. Codes of Salesforce: INVALID_TYPE (1)',
     );
@@ -852,7 +852,7 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
     expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
     expect(output).toMatch(/^Report +0 +0 +failed$/m);
-    expect(output).toContain('Fixture project: 86 components. Listed by the org: 86. Retrieved: 86.');
+    expect(output).toContain('Fixture project: 87 components. Listed by the org: 87. Retrieved: 87.');
     expectNothingForeign(output);
   });
 
@@ -1125,11 +1125,11 @@ describe('asking the org what Salesforce knows about references', () => {
       'The rows with a component that is not of the fixture project, by type: ApexClass to CustomField 2, ApexClass to CustomObject 1, Flow to CustomField 1',
     );
     expect(output).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
+      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
     );
     expect(output).toMatch(/^ApexClass +CustomField +\d+ +1$/m);
     expect(output).toMatch(/^ApexClass +CustomObject \(of Salesforce\) +\d+ +1$/m);
-    expect(output).toMatch(/^ValidationRule +CustomField +17 +1$/m);
+    expect(output).toMatch(/^ValidationRule +CustomField +18 +1$/m);
     expect(output).toMatch(/^CustomField +GlobalValueSet +2 +0$/m);
     expect(output).toMatch(/^value-set +2 +0$/m);
     expect(output).toMatch(/^formula +\d+ +2$/m);
@@ -1228,7 +1228,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toMatch(/^ApexTrigger +1 +ok$/m);
     expect(output).toContain('1 query was cut off at the limit or failed, so rows are missing.');
     expect(output).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
+      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
     );
     // The step does not fail for it, and says at its end that the answer is not whole.
     expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
@@ -1425,7 +1425,7 @@ describe('a tool of the live-org workflow as a program', () => {
     expect(probed.stderr).toBe('');
     expect(probed.stdout).toContain('One query without a filter: 0 rows in 1 page.\n');
     expect(probed.stdout).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
+      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
     );
     expect(probed.stdout).toContain('Classes of the fixture project: 12. Found: 0. With a symbol table: 0.\n');
     expect(probed.code).toBe(0);

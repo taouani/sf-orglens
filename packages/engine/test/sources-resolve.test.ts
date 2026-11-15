@@ -122,7 +122,7 @@ describe('resolving components', () => {
     const dir = 'src with space/ünï';
     const { tree } = readFolders(root, [dir]);
     const resolution = await resolveComponents(tree, [dir]);
-    expect(resolution.components).toHaveLength(86);
+    expect(resolution.components).toHaveLength(87);
     expect(resolution.unresolved).toEqual([]);
     expect(resolution.components.flatMap((component) => component.files).every((file) => file.startsWith(dir))).toBe(
       true,
