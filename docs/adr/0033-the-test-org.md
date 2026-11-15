@@ -96,9 +96,11 @@ same day.
 - The code review of these changes showed that the line about a file that could not be read printed the ending
   of the name of the file as the org wrote it. The first folder and the ending are now shown only where they are
   words of the source format, which no org chooses.
-- The deploy of 15 November 2026 was the first that Salesforce refused. It said "not shown" for both problems,
-  whose messages had no form of the list, so the run could not say why. The step of the deploy now shows the
-  everyday words of such a message, as the step that reads the org does, and a name in a known form may begin
-  with `$`, as a global variable of a formula does. The list of everyday words got thirteen words of a problem
-  with a formula (`formula`, `function`, `parameter`, `default`, `syntax`, `reference`, `use` and their forms).
-  The rule above is not changed by this.
+- The deploy of 15 November 2026 was the first that Salesforce refused. The step said "not shown" for both
+  problems, whose messages had no form of the list, so the run could not say why. The step of the deploy now
+  shows the everyday words of such a message, as the step that reads the org does, and a name in a known form may
+  begin with `$`, as a global variable of a formula does. The list of everyday words got thirteen words of a
+  problem with a formula (`formula`, `function`, `parameter`, `default`, `syntax`, `reference`, `use` and their
+  forms). A problem of a known form that holds a name and is about something that is not a component of the
+  fixture project is not searched for everyday words: the name itself could be one. The rule above is not
+  changed by this.

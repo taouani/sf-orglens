@@ -168,6 +168,7 @@ describe('a problem of a deploy, as it is printed', () => {
     // A global variable of a formula, of the fixture project and of the platform.
     'Field $User.Department does not exist. Check spelling.',
     'Field $RecordType.Name does not exist. Check spelling.',
+    'Field Status__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Illegal assignment from Decimal to String',
     'Entity is not org-accessible',
   ])('shows the known form: %s', (problem) => {
@@ -186,6 +187,8 @@ describe('a problem of a deploy, as it is printed', () => {
       'Illegal assignment from everything the org said about Initech to nothing at all',
       '… from … the org … to … at all',
     ],
+    // A name in quotes stays out as a whole, with the everyday words it holds.
+    ["Something of the layout named 'Default Use' cannot be found", '… of the … named … cannot be found'],
     // A problem with a formula, as a deploy can report it: what it is about stays out, what kind it is comes out.
     [
       'The default value formula for Region__c uses a function that is not supported: TEXT of the picklist Secret_Plan__c',
@@ -208,6 +211,9 @@ describe('a problem of a deploy, as it is printed', () => {
     'Illegal assignment from Decimal to Initech',
     "Unexpected token 'SecretPlan'.",
     'Field $Secret.Plan does not exist. Check spelling.',
+    // A variable of the platform with a field the fixture project does not hold.
+    'Field $User.Secret_Plan__c does not exist. Check spelling.',
+    'Field Secret_Plan__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Method does not exist or incorrect signature: void post(List<Secret_Plan__c>) from the type InvoiceService',
   ])('does not show a known form that names something the fixture project does not hold: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(
@@ -217,9 +223,12 @@ describe('a problem of a deploy, as it is printed', () => {
 
   it('shows of a problem about something else than a component of the fixture project only a form without names', () => {
     expect(shownProblem(log, 'Entity is not org-accessible', words, false)).toBe('Entity is not org-accessible');
-    expect(shownProblem(log, 'Variable does not exist: Amount__c', words, false)).toBe(
-      `not shown, because it is not of a known form. ${where} Its everyday words: … does not exist: …`,
-    );
+    const about = `not shown, because it is about something that is not a component of the fixture project. ${where}`;
+    expect(shownProblem(log, 'Variable does not exist: Amount__c', words, false)).toBe(about);
+    // A name that is an everyday word stays out too: the form is known, so the place is known to hold a name.
+    expect(shownProblem(log, 'Invalid type: Settings', words, false)).toBe(about);
+    expect(shownProblem(log, 'Variable does not exist: Profile', words, false)).toBe(about);
+    expect(shownProblem(log, 'Field $User.Default does not exist. Check spelling.', words, false)).toBe(about);
   });
 
   it('shows of a class that has to be compiled again only that it is one', () => {
@@ -541,7 +550,7 @@ describe('deploying the fixture project', () => {
       '3. CustomObject (a name that is not of the fixture project)',
       '   Problem: Entity is not org-accessible',
       '4. ApexClass (a name that is not of the fixture project), line 2, column 4',
-      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it. Its everyday words: … does not exist: …',
+      '   Problem: not shown, because it is about something that is not a component of the fixture project. The page "Deployment Status" in the Setup of the test org shows it.',
       '5. ApexClass InvoiceBatch, file classes/InvoiceBatch.cls, line 5, column 2',
       '   Problem: not shown, because it names something that is not in the fixture project. The page "Deployment Status" in the Setup of the test org shows it.',
     ]);

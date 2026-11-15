@@ -58,18 +58,19 @@ Salesforce accepted them on the first try, so the Apex compiles. **The Apex test
 that it passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md).
 
 **The 35 components of Phase 1 are not in the test org yet.** The workflow sent them on 15 November 2026.
-Salesforce accepted 85 of the 87 components, refused two, and so changed nothing in the org:
+Salesforce reported a problem for two of the 87 components and none for the other 85, and so changed nothing in
+the org:
 
 - the rule `Void_Needs_Admin`, which compared `$RecordType.Name`. `Invoice__c` has no record type. The line is
   removed, so the project has no `$RecordType` any more. A probe still has it.
-- the field `Region__c`, whose default value was `TEXT($User.Billing_Region__c)`. The same call is accepted in the
-  formula field `Is_My_Region__c`, so it is the default value that does not take it. The default value is now
-  `$User.Department`.
+- the field `Region__c`, whose default value was `TEXT($User.Billing_Region__c)`. Salesforce reported no problem
+  for the formula field `Is_My_Region__c`, which holds the same call. The default value is now `$User.Department`.
 
 The log of that run did not show what Salesforce said about the two, because its messages had no form the step
-knew. **Why each was refused is therefore my reading, and not verified**, and so is that the corrected files are
-accepted: the workflow can only deploy from `main`, after the pull request with the correction is merged. The step
-now shows the everyday words of such a message.
+knew. **Why each was refused is therefore my reading, and not verified.** Not verified either: that Salesforce
+checked the other 85 components to the end in a deploy it refused, and that it accepts the corrected files. The
+workflow can only deploy from `main`, after the pull request with the correction is merged. The step now shows
+the everyday words of such a message.
 
 ## The answer key
 

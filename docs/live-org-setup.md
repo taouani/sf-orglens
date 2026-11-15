@@ -167,8 +167,9 @@ What the steps print follows the same rule as the login step, with a wider list 
 - a problem Salesforce reports for a component of the fixture project in a deploy, if the whole text has one of
   the forms listed in `deploy-fixture.ts` and every name in it is a word of the fixture project or of the
   platform. Anything else is "not shown", and is read on the page **Deployment Status** in the Setup of the org.
-- of a remark of Salesforce about a retrieve in a form the step does not know, and of what a library says about
-  a file it cannot read: the words of a short list of everyday words (`read-org.ts`). Every other word, every
+- of a problem of a deploy and of a remark of Salesforce about a retrieve in a form the step does not know, and of
+  what a library says about a file it cannot read: the words of a short list of everyday words
+  (`everydayWords` in `public-log.ts`). Every other word, every
   number, everything in quotes or brackets and every path of a file is left out. That says what kind of message
   it is. No word comes out that is not of the list. A name that stands in a message without quotes and holds
   words of the list can leave those words behind: "Error" of a layout that is called "Error Layout".

@@ -66,9 +66,9 @@ const form = (text: string): RegExp =>
  * The problems Salesforce is known to report for Apex and for fields, each
  * as a form the whole text has to have. What stands at a name, a signature
  * or a token is printed if it has that form and nothing else. A problem of
- * another form is "not shown": the list is written from memory and from the
- * documentation, and grows with what the test org shows on its page
- * "Deployment Status".
+ * another form is "not shown", but for its everyday words: the list is
+ * written from memory and from the documentation, and grows with what the
+ * test org shows on its page "Deployment Status".
  */
 const KNOWN_PROBLEMS: readonly RegExp[] = [
   form('Variable does not exist: NAME'),
@@ -107,6 +107,7 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   form('Unreachable statement'),
   form('Field NAME does not exist\\. Check spelling\\.'),
   form('Error: Field NAME does not exist\\. Check spelling\\.'),
+  form('Field NAME is a picklist field\\. Picklist fields are only supported in certain functions\\.'),
   form("Incorrect parameter type for function 'NAME\\(\\)'\\. Expected SIG, received SIG"),
   form("Incorrect number of parameters for function 'NAME\\(\\)'\\. Expected [0-9-]+, received [0-9]+"),
   form("Syntax error\\. Missing 'TOKEN'"),
@@ -149,7 +150,7 @@ export function fixtureWords(): Set<string> {
  * signature or a token is a word of the fixture project or of the platform. Else a sentence that says why not,
  * and of a problem of a form that is not known its everyday words (`everydayWords`): no other word of it comes out.
  * With `names` false, a problem is only printed if its form holds no name at all: that is for a problem about
- * something that is not a component of the fixture project.
+ * something that is not a component of the fixture project. Of a known form with a name, nothing comes out then.
  */
 export function shownProblem(log: PublicLog, problem: unknown, words: ReadonlySet<string>, names = true): string {
   const text = typeof problem === 'string' ? problem.trim() : '';
@@ -161,7 +162,10 @@ export function shownProblem(log: PublicLog, problem: unknown, words: ReadonlySe
     if (found === null) continue;
     // Every place of a form is filled when the form matches.
     const named = found.slice(1).flatMap((part) => part.match(WORD) ?? []);
-    if (named.length > 0 && !names) break;
+    // The form is known and holds a name, so the text is not searched for everyday words: the name could be one.
+    if (named.length > 0 && !names) {
+      return `not shown, because it is about something that is not a component of the fixture project. ${where}`;
+    }
     if (
       !log.clean(text) ||
       named.some((word) => !words.has(word.toLowerCase()) && !PLATFORM_WORDS.has(word.toLowerCase()))
