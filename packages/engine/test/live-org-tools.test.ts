@@ -1350,8 +1350,8 @@ describe('asking the org what Salesforce knows about references', () => {
 
   /**
    * The small org with the custom metadata type of the fixture project, the rule that names a record of it, and
-   * a type beside it. How the Dependency API writes a row about a record is an assumption of the tool, and so
-   * of these rows: no org has been seen to give one.
+   * a type beside it. A row about a record has the name of the custom metadata type as its type, as the test
+   * org gave it on 15 November 2026. That its name is the record alone is an assumption: the log shows no name.
    */
   const withCustomMetadata = (): Record<string, Row[]> => {
     const org = tables();

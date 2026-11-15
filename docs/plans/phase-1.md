@@ -176,9 +176,18 @@ components, `answer-key.v1.yaml` with 106 references in fields and rules (62 mor
 
 The first deploy, on the same day, was refused for two of the 87 components, and Salesforce changed nothing in
 the test org: the rule that held `$RecordType.Name` and the field with the default value
-`TEXT($User.Billing_Region__c)`. The log names the two components and not the reason. Both are corrected in a pull request of their own. Not done: a deploy that Salesforce accepts, and the run of the probe.
-The workflow can only do both from `main`. Until then nothing but my reading says that Salesforce accepts the
-corrected formulas. Your reading of ten entries is open too.
+`TEXT($User.Billing_Region__c)`. The log names the two components and not the reason. Both were corrected by
+reading, and Salesforce accepted the second deploy: 87 of 87 components. Why the two were refused is still my
+reading.
+
+The probe ran after it. The Dependency API reports 129 of the 189 pairs of the key, and 29 of the 52 that are new.
+No row between two components of the fixture is wrong. Of the 52 pairs from a formula to something custom, which
+are not the same 52, it reports 51, and the one is in the inactive rule. It reports nothing for a global value set and for a controlling
+field, which is new, and nothing for standard fields, lookups, roll-up summaries and lookup filters, as before.
+The tool that asks had to be corrected first: it gave the custom metadata type a name with the ending `__c`.
+[real-org.md](../research/phase-1/real-org.md) has the numbers and what is not verified.
+
+Open: your reading of ten entries.
 
 Five things differ from the list above:
 
@@ -196,13 +205,19 @@ Five things differ from the list above:
   that their numbers do not move each time the project gets a type. One test takes a snapshot of a mock org with
   the whole project, with every new type in it.
 
+One case that the list does not name is lost as well: a custom field in a default value. Salesforce refused the
+field that had one. The fixture still has a default value that is a formula, as the list asks, and the one
+default value that names a field now names a standard field of the user.
+
 Accepted when:
 
-- Salesforce accepts the deploy, which shows that every formula of the fixture is valid.
-- `fixture-key.test.ts` passes with the new key.
-- The pull request with the fixture and the key is merged before the pull request of WP5 is opened.
-- The run of the probe is recorded: which of the new pairs the Dependency API reports.
-- You have read at least ten entries of the new key against their files (section 9).
+- Salesforce accepts the deploy, which shows that every formula of the fixture is valid. Met on 15 November
+  2026, on the second try.
+- `fixture-key.test.ts` passes with the new key. Met.
+- The pull request with the fixture and the key is merged before the pull request of WP5 is opened. Met.
+- The run of the probe is recorded: which of the new pairs the Dependency API reports. Met:
+  [real-org.md](../research/phase-1/real-org.md) lists the 23 it does not report, and the other 29 are reported.
+- You have read at least ten entries of the new key against their files (section 9). Open.
 
 ### WP2 XML with positions
 
@@ -400,6 +415,28 @@ Accepted when:
   says how many pairs Salesforce reports that this phase cannot have yet, which are those of Apex.
 - Only metadata is read. A test pins the objects that are queried.
 
+Three things the probe of 15 November 2026 showed are for this work package
+([real-org.md](../research/phase-1/real-org.md), sections 4 and 6):
+
+- **A question for you, before I build it.** The Dependency API reports two pairs from a validation rule to an
+  object that the key leaves out on purpose: the object in `$ObjectType` inside `VLOOKUP`, and the custom
+  metadata type behind `$CustomMetadata`. The key has the reference to the field or the record. As the second
+  point above is written, OrgLens would miss these two. Either OrgLens records a reference to the object there
+  as well, or the comparison counts a row to an object as covered when OrgLens has a reference from the same
+  component to a field or a record of that object. I will put both to you with what each costs when this work
+  package starts.
+- A third row goes from the record `Billing_Rule.Default` to its custom metadata type. It is not from a formula,
+  so the second point above does not cover it, and the key has no entry from a record. Whether OrgLens records
+  it is a separate question, which I will put to you with the first.
+- "Where Salesforce could have seen it" follows the list of record 0034: standard fields, names in text,
+  lookups, roll-up summaries and inactive rules. The probe adds lookup filters, the value set and the controlling
+  field of a picklist. Built from the shorter list, the comparison would count five pairs of the fixture
+  against OrgLens that Salesforce never reports. The comparison is built on the longer list, and a record that
+  follows 0034 says so.
+- The row of a custom object in the Tooling API holds its name without the ending, and the type of a row about
+  a record of a custom metadata type is the name of that type. The test tool got both wrong at first. The
+  engine has to name a custom object from a source that has the ending.
+
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 
 Build, as record [0038](../adr/0038-a-snapshot-reads-every-type.md) says, which replaces record
@@ -478,14 +515,14 @@ Accepted when:
 
 No single one of these is enough. Each covers a weakness of the others.
 
-| Proof                                          | What it shows                                                                           | Its weakness                                                                          |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| The answer key of the fixture, v1              | Every hard case I could think of is handled, and no negative case is hit                | I wrote the fixture, the key and the analyser                                         |
-| The deploy of the fixture to the test org      | Every formula of the fixture is valid Salesforce                                        | Says nothing about what OrgLens finds                                                 |
-| The Dependency API on the test org             | For custom fields, whether Salesforce agrees pair by pair with the key and with OrgLens | Blind to standard fields, lookups, summaries and inactive rules. The fixture is small |
-| Every formula and rule of the public codebases | Code I did not write, checked one by one                                                | About 110 items. Checked by me                                                        |
-| The Dependency API on an org of yours (Q1)     | Scale: hundreds of formulas and rules that neither of us wrote                          | Only you see the result. I get the numbers you choose to tell me                      |
-| Ten entries of the key read by you             | A second person                                                                         | Ten entries                                                                           |
+| Proof                                          | What it shows                                                                           | Its weakness                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| The answer key of the fixture, v1              | Every hard case I could think of is handled, and no negative case is hit                | I wrote the fixture, the key and the analyser                                                                                         |
+| The deploy of the fixture to the test org      | Every formula of the fixture is valid Salesforce                                        | Says nothing about what OrgLens finds                                                                                                 |
+| The Dependency API on the test org             | For custom fields, whether Salesforce agrees pair by pair with the key and with OrgLens | Blind to standard fields, lookups, summaries, lookup filters, value sets, controlling fields and inactive rules. The fixture is small |
+| Every formula and rule of the public codebases | Code I did not write, checked one by one                                                | About 110 items. Checked by me                                                                                                        |
+| The Dependency API on an org of yours (Q1)     | Scale: hundreds of formulas and rules that neither of us wrote                          | Only you see the result. I get the numbers you choose to tell me                                                                      |
+| Ten entries of the key read by you             | A second person                                                                         | Ten entries                                                                                                                           |
 
 ## 7. Pull requests and review
 

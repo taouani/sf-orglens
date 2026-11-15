@@ -240,13 +240,11 @@ function keyOf(side: Side, { byId, built }: Names, fixture: Fixture): { key: str
     const key = `CustomObject:${name}`;
     return fixture.keys.has(key) ? { key, guessed: false } : null;
   }
-  // A record of a custom metadata type. How the API writes such a row has not been seen: the log shows no type
-  // that is not the name of a metadata type, and no name. The run of 15 November 2026 had one row from a
-  // validation rule to such a type, and the fixture project has one rule that names a record. Two ways are
-  // read here. If the API writes the row a third way, it matches nothing, or is marked "by name" below.
-  // - The type is the name of the custom metadata type, and the name is the record, with or without the type
-  //   before a dot.
-  // - The type is `CustomMetadata`, and the name is the type, a dot and the record.
+  // A record of a custom metadata type. The type of such a row is the name of the custom metadata type: run 8
+  // of 15 November 2026 matched the record of the fixture project that way, after run 7 had printed the type as
+  // one that is not shown. Whether the name of the row holds the type before a dot was not seen, so both are
+  // read. The second way, the type `CustomMetadata` with the full name, was not seen in a run and is kept in
+  // case another version of the API writes it.
   // Either way the type and the record together name one record, so this is not a guess by a name alone.
   const recordType = /^([a-z][a-z0-9_]*)__mdt$/.exec(side.type.toLowerCase())?.[1];
   if (recordType !== undefined) {
@@ -295,8 +293,9 @@ interface Names {
  *
  * The row of a custom object holds its name without the ending: `Invoice` for `Invoice__c`, and `Billing_Rule`
  * for the custom metadata type `Billing_Rule__mdt`. So a field and a rule are asked for with the name of their
- * object, and that name is taken for the custom object. That the Tooling API gives it for both has not been
- * seen in a run against the org: where the org refuses it, the rows are read without it. A custom object that
+ * object, and that name is taken for the custom object. The test org accepted that in both queries and named
+ * all 5 of its custom objects (run 8 of 15 November 2026). The log does not say whether a name came from a
+ * field, from a rule or from both. Where an org refuses it, the rows are read without it. A custom object that
  * no field and no rule names gets the ending `__c`, and every key that rests on such a name is a guess.
  */
 async function namesBehindIds(log: PublicLog, session: OrgSession, counter: { requests: number }): Promise<Names> {

@@ -161,10 +161,10 @@ which writes to the org, so the probe does not do that.
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
 `__c`. So a field and a rule are asked for with the name of their object (`EntityDefinition.QualifiedApiName`).
 Where the org refuses that, the probe reads without it, names every custom object with `__c`, marks the pairs
-that rest on such a name as "by name", and ends with a warning. Two things here are assumptions and have not been
-seen in a run against the org: that the Tooling API gives that name for a field and for a rule, and how the
-Dependency API writes a row about a record of a custom metadata type. The probe reads such a row in two ways, and
-its log says of a type it does not show whether it ends in `__mdt`.
+that rest on such a name as "by name", and ends with a warning. The test org accepted that in both queries on 15
+November 2026 and named all 5 of its custom objects. A row of the Dependency API about a record of a custom
+metadata type has the name of that type as its type, as the two probes of that day showed together. Whether its name holds the type before a dot was not seen, so the probe reads
+both. Of a type it does not show, its log says whether it ends in `__mdt`.
 
 What the steps print follows the same rule as the login step, with a wider list of what a sentence may hold
 (`packages/engine/test/live/public-log.ts`):
