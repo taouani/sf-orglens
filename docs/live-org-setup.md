@@ -147,8 +147,9 @@ after it has logged in"). The weekly run always logs in only.
 
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
-two custom objects, custom fields and validation rules on them and on the standard object Account, twelve Apex
-classes and one trigger. It removes nothing. To take the fixture project out of the org again, delete those
+the components of `fixtures/billing-sfdx`: custom objects with their fields and validation rules, a custom setting,
+a custom metadata type with a record, fields on the standard objects Account and User, a global value set, a
+custom label, a custom permission, twelve Apex classes and one trigger. It removes nothing. To take the fixture project out of the org again, delete those
 components in Setup, or start over with a new org.
 
 The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for
@@ -156,6 +157,14 @@ describe metadata: `MetadataComponentDependency`, `ApexClass` with its symbol ta
 `CustomField`, `ValidationRule` and `ApexTrigger` for the names behind the ids. No record of the data of the org is
 read. A symbol table with references to other classes can only be had by compiling a copy of a class in the org,
 which writes to the org, so the probe does not do that.
+
+The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
+`__c`. So a field and a rule are asked for with the name of their object (`EntityDefinition.QualifiedApiName`).
+Where the org refuses that, the probe reads without it, names every custom object with `__c`, marks the pairs
+that rest on such a name as "by name", and ends with a warning. Two things here are assumptions and have not been
+seen in a run against the org: that the Tooling API gives that name for a field and for a rule, and how the
+Dependency API writes a row about a record of a custom metadata type. The probe reads such a row in two ways, and
+its log says of a type it does not show whether it ends in `__mdt`.
 
 What the steps print follows the same rule as the login step, with a wider list of what a sentence may hold
 (`packages/engine/test/live/public-log.ts`):
