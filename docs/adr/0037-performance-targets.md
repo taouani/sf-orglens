@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-15
 - Decisions: none (an answer of the maintainer to the Phase 1 plan)
+- Followed by: [0038](0038-a-snapshot-reads-every-type.md), after which a snapshot does not read fewer types. The first of the two things this record names as a help for the first snapshot is gone
 
 ## Context
 

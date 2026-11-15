@@ -4,6 +4,7 @@
 - Date: 2026-11-12
 - Decisions: none (made during the build)
 - Changed by: [0036](0036-what-a-snapshot-of-an-org-reads.md), which says which types a snapshot of an org reads by default and when it is complete
+- Followed by: [0038](0038-a-snapshot-reads-every-type.md), after which a snapshot reads every type again and "partial" is judged over the logic tier
 
 ## Context
 

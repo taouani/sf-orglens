@@ -340,5 +340,4 @@ node trial/apex/src/run-fixture.ts apex-parser
    [report of the trial](../research/phase-0/apex-trial.md) sets out what speaks for each parser, in its section
    "The rule of the plan, applied".
 3. **The [Phase 1 plan](../plans/phase-1.md).** You answered the eight questions of its section 4 on 15 November
-   2026, and the plan follows your answers. What is left is to approve it or to send it back. Nothing of Phase 1
-   is built before you approve that plan.
+   2026, and the plan follows your answers. Added later: you approved it with one change on the same day.

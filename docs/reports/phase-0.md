@@ -144,6 +144,6 @@ runs on one machine or one org.
 1. Approve or reject the phase, after the test plan.
 2. The parser: done. You chose `web-tree-sitter-sfapex` on 13 November 2026.
 3. The questions in section 4 of the [Phase 1 plan](../plans/phase-1.md). Added after this report was written:
-   you answered them on 15 November 2026. The approval of that plan is still open.
+   you answered them on 15 November 2026 and approved that plan with one change on the same day.
 4. One thing in the settings of the repository that I cannot see: confirm that private vulnerability reporting
    is switched on.

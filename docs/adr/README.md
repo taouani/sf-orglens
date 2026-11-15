@@ -9,7 +9,7 @@ are summarised in the decision log of the [re-architecture plan](../plans/re-arc
 "Decisions" column gives the plan ids each record covers. Record 0001 and the records from 0023 on are decisions made
 during the build, with one exception: record 0034 replaces 0008 and covers plan decision A4, which was changed on
 2026-11-12. Record 0018 was completed on 2026-11-13 with the parser the maintainer chose. Records 0035 to 0037 are not
-decisions of the build either: they hold what the maintainer answered to the Phase 1 plan on 2026-11-15.
+decisions of the build either: they hold what the maintainer answered to the Phase 1 plan on 2026-11-15. Record 0038 holds the change the maintainer made when approving that plan on the same day.
 
 | Record                                                 | Title                                                                                           | Status                                                          | Decisions  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
@@ -50,6 +50,7 @@ decisions of the build either: they hold what the maintainer answered to the Pha
 | [0035](0035-gate-where-salesforce-confirms-nothing.md) | The correctness gate has a second half for what Salesforce cannot confirm                       | Accepted                                                        |            |
 | [0036](0036-what-a-snapshot-of-an-org-reads.md)        | A snapshot of an org reads the logic tier by default, and is complete when all of it came back  | Accepted                                                        |            |
 | [0037](0037-performance-targets.md)                    | Performance targets, for an org of 100,000 components                                           | Accepted                                                        |            |
+| [0038](0038-a-snapshot-reads-every-type.md)            | A snapshot of an org reads every type, and references are found phase by phase                  | Accepted                                                        |            |
 
 ## Writing a record
 
