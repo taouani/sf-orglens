@@ -293,8 +293,9 @@ interface Names {
  *
  * The row of a custom object holds its name without the ending: `Invoice` for `Invoice__c`, and `Billing_Rule`
  * for the custom metadata type `Billing_Rule__mdt`. So a field and a rule are asked for with the name of their
- * object, and that name is taken for the custom object. The test org gave it for both (run 8 of 15 November
- * 2026). Where an org refuses it, the rows are read without it. A custom object that
+ * object, and that name is taken for the custom object. The test org accepted that in both queries and named
+ * all 5 of its custom objects (run 8 of 15 November 2026). The log does not say whether a name came from a
+ * field, from a rule or from both. Where an org refuses it, the rows are read without it. A custom object that
  * no field and no rule names gets the ending `__c`, and every key that rests on such a name is a guess.
  */
 async function namesBehindIds(log: PublicLog, session: OrgSession, counter: { requests: number }): Promise<Names> {
