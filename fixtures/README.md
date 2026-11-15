@@ -6,7 +6,10 @@ org, and nothing is copied from another project.
 | Path                          | What it is                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
 | `billing-sfdx/`               | A small Salesforce project in source format: invoices, their lines, and Apex.       |
-| `expected/answer-key.v0.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v1.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v0.yaml` | The key of Phase 0, kept as the key the Apex trial was scored with.                 |
+| `formula-probes.yaml`         | One small formula for every operator, literal and function, to test a parser with.  |
+| `formula-negative/`           | Fields and a rule whose formulas cannot be deployed, and what is expected of them.  |
 | `parser-negative/`            | Apex files that do not compile, for tests of error recovery. Not part of a project. |
 | `corpora.toml`                | Public codebases, pinned by commit, that are downloaded on demand.                  |
 
@@ -14,9 +17,11 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 52 components: 2 custom objects (`Invoice__c`, `Invoice_Line__c`), 31 custom fields on them and on
-`Account`, 6 validation rules, 12 Apex classes and 1 trigger. It is small on purpose. Each file is there for a case
-that an analyser can get wrong:
+`billing-sfdx` has 86 components: 5 custom objects, 54 custom fields on them, on `Account` and on `User`, 9
+validation rules, 12 Apex classes and 1 trigger, and five components that are only there to be referred to: the
+file of custom labels with one label, a record of a custom metadata type, a custom permission and a global value
+set. Three of the objects are targets too: a custom setting, a custom metadata type and `Tax_Code__c`. It is small
+on purpose. Each file is there for a case that an analyser can get wrong:
 
 - formulas on formulas, across a lookup, through the owner, with a comment and with a field name inside text;
 - two roll-up summaries and a lookup filter;
@@ -30,11 +35,30 @@ that an analyser can get wrong:
   variable that is named like an object;
 - `Unused_Field__c`, which nothing refers to. Its name stands in comments and in text only.
 
+Phase 1 added 34 components, and changed no file that was there. The new fields and rules are these cases:
+
+- a formula across three relationships, the last of them the owner of an account (`Account_Owner_Email__c`), the
+  parent of an account, and a hierarchy field of the user;
+- the global variables: `$Setup` with a custom setting, `$Label`, `$Permission`, `$CustomMetadata` with a record,
+  `$User` with a standard and a custom field, `$Profile`, `$UserRole`, `$Organization`, `$RecordType`, and
+  `$ObjectType` inside `VLOOKUP`;
+- `CASE`, `INCLUDES` and `TEXT` on picklists, a dependent picklist with its controlling field, and two picklists
+  that take their values from a global value set;
+- a name in a comment, in text with double quotes, in text with single quotes, and after a quote that a backslash
+  keeps inside the text (`Status_Notice__c`);
+- a field `Value__c` beside the function `VALUE`, and `ACCOUNT__R` written in capitals;
+- `Owner:User` and `Owner:Queue`, a default value that is a formula, a lookup filter that names `$User` and a
+  field of the record that holds the lookup, and a roll-up summary with two filter lines.
+
 The project is valid as far as the Salesforce source library can tell: the check resolves every file to a component.
-The live-org workflow deployed it to a Developer Edition org on 12 November 2026. Salesforce accepted all 52
-components on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves that it
-passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md). No file of the project
-had to be changed.
+The live-org workflow deployed the 52 components of Phase 0 to a Developer Edition org on 12 November 2026.
+Salesforce accepted them on the first try, so the Apex compiles. **The Apex test was not run**, so nothing proves
+that it passes. What the runs showed is in [`real-org.md`](../docs/research/phase-0/real-org.md).
+
+**The 34 components of Phase 1 have not been deployed.** The workflow can only deploy from `main`, so Salesforce
+sees them after the pull request that added them is merged. Until that run, nothing but my reading says that
+Salesforce accepts the new formulas. If it refuses one, the file and its entries in the key are corrected in a
+pull request of their own.
 
 ## The answer key
 
@@ -79,7 +103,8 @@ One reference looks like this:
 | `note`             | Why the entry is there, for the reader.                                                                 |
 | `phase` (per file) | The roadmap phase whose analyser must find it: `1` for fields and rules, `3` for Apex.                  |
 
-Values of `via`: `formula`, `filter`, `summary`, `lookup` and `display-field` in metadata files; `field` (plain field
+Values of `via`: `formula`, `filter`, `summary`, `lookup`, `display-field`, `controlling-field` and `value-set` in
+metadata files; `field` (plain field
 access), `soql`, `sosl`, `dml`, `token` (a field or object token, or a describe call), `text` (a name that stands in
 text: a query built as a string, or `get` and `put` by name) and `declaration` in Apex.
 
@@ -100,6 +125,14 @@ have is wrong.
 - `get` and `put` with a field token are a read and a write of the field, `via: token` and `confirmed`: the compiler
   has checked the token.
 - `extends` to a class of the project, and the object of a trigger.
+- A field behind a global variable of a formula is a `reads` of that field: `$Setup.Billing_Settings__c.Grace_Days__c`
+  reads the field of the custom setting, `$User.Department` the field of the user, `$Profile.Name` the name of the
+  profile. The same holds for `$UserRole`, `$Organization` and `$RecordType`, and for a field that `VLOOKUP` names
+  with `$ObjectType.Tax_Code__c.Fields.Rate__c`.
+- `$CustomMetadata.Billing_Rule__mdt.Default.Max_Amount__c` is a `reads` of the field of the type and a `references`
+  to the record `Default`. `$Label` and `$Permission` are a `references` to the label and to the permission.
+- The default value of a field is a formula, `via: formula`. The controlling field of a dependent picklist and the
+  global value set of a picklist are `references`, `via: controlling-field` and `via: value-set`.
 - A name that stands in text is `probable` when the object is known. When the object is known and the field comes
   from a variable, the reference goes to the object and is `possible`. When the object is not known, the place is an
   unknown, also if the name of the field is a literal: `record.get('Risk_Score__c')` on a record of unknown type
@@ -119,19 +152,34 @@ what a reference is: `'... FROM Invoice__c ORDER BY ' + fieldName` holds a `prob
 - An object that only qualifies a field (`Invoice__c.Amount__c` is a reference to the field).
 - Every reference to an Apex class or to a member of one, except `extends`: calls between methods, the use of a
   constant of another class, `new` of a class. System classes and interfaces.
-- Global variables in formulas (`$User`, `$Profile`), picklist values and named credentials.
+- Picklist values and named credentials.
+- The object behind a global variable or in `$ObjectType`, and the custom metadata type of a record: the reference
+  goes to the field, as it does for `Invoice__c.Amount__c` in Apex.
+- The hierarchy field of the user names no object in its file, so it has no entry of its own. A formula that goes
+  through it reads it.
+- The values a record of a custom metadata type holds. They are read with flows, in Phase 2.
+- The global variables that name nothing that can change: `$Api`, `$System`.
 
-Later versions of the fixture add flows, custom metadata, components and permissions with the phases that read them,
-and references between Apex classes with the Apex phase.
+Version 0 of the key did not key global variables. Version 1 does, also in the rule of Phase 0 that names
+`$Profile.Name`. Everything else of version 0 is in version 1 unchanged, and the Apex part is the same entry for
+entry: the check compares the two files.
+
+Later versions of the fixture add flows, components and permissions with the phases that read them, and references
+between Apex classes with the Apex phase.
 
 ### What is marked as stretch
 
-An entry is `stretch` when finding it needs one of two things, and for no other reason:
+An entry is `stretch` when finding it needs one of three things, and for no other reason:
 
 - following a value through a local variable or a collection: a list of names joined into a query, an object that
   reaches a describe call through two variables;
 - knowing where a relationship of a standard object points, which no file of the project says: that the manager of
-  a user is a user.
+  a user is a user, the owner of an account a user, and the parent of an account an account;
+- knowing a name that only the formula language has for a standard field: `Owner:Queue.QueueName` is the name of
+  a group.
+
+Where a file of the project or the formula itself says where a relationship points, the entry is not stretch: a
+hierarchy field points at a user, and `Owner:User` takes the owner as a user.
 
 A name held in a constant of another class is not stretch: following a constant is a requirement. Nine of the 181
 Apex entries that are not stretch need it. That is just under 5 percent, so an analyser that cannot follow a constant
@@ -150,6 +198,8 @@ analyser. It checks that:
   declarations of the file, with their signatures;
 - every reference points at a component of the project or at a listed standard target;
 - no place is in a comment, and each place is in the kind of text its entry says: in a query, in a literal, in code;
+- every place of a field or a rule stands in the element its entry says (a formula, a filter, a roll-up, the target
+  of a lookup), and a place in a formula stands in no comment and in no text of it;
 - the word of an entry stands for its target: it is its name, a DML keyword, a child relationship of the project, or
   a constant of the project whose value holds the name. Only a name that comes from a variable is `possible`;
 - the kind fits: a plain field access is a write exactly when an assignment follows it, `extends` points at a class,
@@ -157,16 +207,44 @@ analyser. It checks that:
 - the list of unreferenced fields is the list of fields no entry points at;
 - no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
   the tiers and operations follow the rules above;
-- the numbers this page quotes are the numbers of the key: 228 references (44 in fields and rules, 184 in Apex), 4
-  of them stretch, 21 negatives and 5 unknowns.
+- the numbers this page quotes are the numbers of the key: 287 references (103 in fields and rules, 184 in Apex), 7
+  of them stretch, 31 negatives and 5 unknowns;
+- version 0 of the key still names places that exist, has nothing that version 1 has not, and has the same Apex
+  part.
 
 When a line of the project moves, the check fails and names the entry. The files of the project are stored with LF
 line endings on every system and are not formatted by Prettier, because the key records their lines.
 
 The check reads the files only as text. It cannot tell which of two objects a field of the same name belongs to,
 which object a DML statement writes, whether an entry deserves its stretch mark, or whether an entry is missing.
-That is what the second reading of the key and the code review are for. Of 20 defects planted in the key one at a
-time, the check found 17. The three it let pass are of these kinds.
+That is what the second reading of the key and the code review are for. Of 20 defects planted in version 0 of the
+key one at a time, the check found 17. The three it let pass are of these kinds. No defect was planted in the
+entries that version 1 added.
+
+## Formula probes
+
+`formula-probes.yaml` holds 177 small formulas: one for every operator, every kind of literal, every kind of name
+and every function. A parser of formulas must read each without a problem. Each probe lists by hand the names its
+formula holds, and `packages/engine/test/formula-fixtures.test.ts` compares that list with what a simple scan of
+the text finds.
+
+- The operators, the literals and the characters of a name are taken from the grammar of the open-source formula
+  engine of Salesforce (`github.com/salesforce/formula-engine`, commit `118bbca8`).
+- The 104 functions are the ones the help page "Formula Operators and Functions by Context" lists. The page was
+  fetched on 15 November 2026, and the fetch gave only its first two thirds as written. Of the 104 names, 85 were
+  read as written. 17 stand only in a summary of the rest of the page and also in the formula engine. Two,
+  `PICKLISTCOUNT` and `TRUNC`, stand only in that summary. Each probe says where its name was seen.
+- The probes are not deployed, so Salesforce has not checked them. The kinds of their arguments are plausible and
+  not verified. Eight functions are marked as not usable in a field or a rule, from the same summary.
+
+## Formulas that cannot be deployed
+
+`formula-negative/` holds ten fields and one rule of `Invoice__c` in the layout of the project, and
+`expected.yaml`, which says of each whether its formula parses and what is expected of the names in it. Six
+formulas do not parse. Five name something that is not there: a field, a relationship, a field of the parent, a
+label, and two fields of a package. No file has the name of a file of the project, so a test lays the folder over a
+copy of the project. They are written so that Salesforce refuses them, which is not verified: none was sent to
+Salesforce.
 
 ## Public codebases
 

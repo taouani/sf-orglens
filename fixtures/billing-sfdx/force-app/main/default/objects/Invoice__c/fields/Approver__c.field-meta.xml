@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver__c</fullName>
+    <label>Approver</label>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <lookupFilter>
+        <active>true</active>
+        <errorMessage>The approver must work in your department, and a paid invoice takes none.</errorMessage>
+        <filterItems>
+            <field>User.Department</field>
+            <operation>equals</operation>
+            <valueField>$User.Department</valueField>
+        </filterItems>
+        <filterItems>
+            <field>$Source.Status__c</field>
+            <operation>notEqual</operation>
+            <value>Paid</value>
+        </filterItems>
+        <isOptional>false</isOptional>
+    </lookupFilter>
+    <referenceTo>User</referenceTo>
+    <relationshipName>Invoices_To_Approve</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

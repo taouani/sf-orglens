@@ -1,0 +1,102 @@
+# What an analyser must say about the files of this folder.
+#
+# The files are written so that Salesforce refuses each of them. That is not verified: none was ever sent to
+# Salesforce. They lie in the layout of `main/default` of the project billing-sfdx, and none has the name of a
+# file of that project, so a test lays them over a copy of the project and analyses the whole. ../README.md says
+# more.
+#
+# One file: { file, from, parses, why } and what is expected of the names in it:
+#   refs        references an analyser must find, as in the answer key. `via` is always `formula`. In a formula that
+#               does not parse, a name is found by its token and the reference is `probable`.
+#   unresolved  names that are of no namespace and that nothing in the project defines. Each is a finding.
+#   external    names with the prefix of a package that is not in the project.
+# A file with none of the three holds no name.
+
+version: 1
+project: billing-sfdx
+
+files:
+  - file: objects/Invoice__c/fields/Bad_Open_Call__c.field-meta.xml
+    from: CustomField:invoice__c.bad_open_call__c
+    parses: false
+    why: The call is not closed.
+    refs:
+      - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, tier: probable }
+      - { line: 4, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, tier: probable }
+
+  - file: objects/Invoice__c/fields/Bad_Open_Text__c.field-meta.xml
+    from: CustomField:invoice__c.bad_open_text__c
+    parses: false
+    why: The text is not closed.
+    refs:
+      - { line: 4, match: Legacy_Code__c, kind: reads, to: CustomField:invoice__c.legacy_code__c, tier: probable }
+
+  - file: objects/Invoice__c/fields/Bad_Open_Comment__c.field-meta.xml
+    from: CustomField:invoice__c.bad_open_comment__c
+    parses: false
+    why: The comment is not closed.
+    refs:
+      - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, tier: probable }
+
+  - file: objects/Invoice__c/fields/Bad_Two_Operators__c.field-meta.xml
+    from: CustomField:invoice__c.bad_two_operators__c
+    parses: false
+    why: Two operators stand side by side.
+    refs:
+      - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, tier: probable }
+      - { line: 4, match: Tax_Rate__c, kind: reads, to: CustomField:invoice__c.tax_rate__c, tier: probable }
+
+  - file: objects/Invoice__c/fields/Bad_Empty__c.field-meta.xml
+    from: CustomField:invoice__c.bad_empty__c
+    parses: false
+    why: The formula is empty.
+
+  - file: objects/Invoice__c/validationRules/Bad_Extra_Bracket.validationRule-meta.xml
+    from: ValidationRule:invoice__c.bad_extra_bracket
+    parses: false
+    why: One closing bracket too many, over several lines.
+    refs:
+      - { line: 6, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, tier: probable }
+      - { line: 7, match: Paid_Date__c, kind: reads, to: CustomField:invoice__c.paid_date__c, tier: probable }
+
+  - file: objects/Invoice__c/fields/Missing_Field__c.field-meta.xml
+    from: CustomField:invoice__c.missing_field__c
+    parses: true
+    why: The formula names a field the object does not have.
+    refs:
+      - { line: 4, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c }
+    unresolved:
+      - { line: 4, match: Not_There__c }
+
+  - file: objects/Invoice__c/fields/Missing_Relationship__c.field-meta.xml
+    from: CustomField:invoice__c.missing_relationship__c
+    parses: true
+    why: The formula goes through a relationship the object does not have. What follows it cannot be followed.
+    unresolved:
+      - { line: 4, match: Nowhere__r }
+
+  - file: objects/Invoice__c/fields/Missing_Field_Of_Parent__c.field-meta.xml
+    from: CustomField:invoice__c.missing_field_of_parent__c
+    parses: true
+    why: The relationship exists. The field at its end is a custom field that no file of the project defines.
+    refs:
+      - { line: 4, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c }
+    unresolved:
+      - { line: 4, match: Not_There__c }
+
+  - file: objects/Invoice__c/fields/Missing_Label__c.field-meta.xml
+    from: CustomField:invoice__c.missing_label__c
+    parses: true
+    why: The formula names a custom label the project does not have.
+    unresolved:
+      - { line: 4, match: Not_There }
+
+  - file: objects/Invoice__c/fields/Other_Namespace__c.field-meta.xml
+    from: CustomField:invoice__c.other_namespace__c
+    parses: true
+    why: Two fields of a package that is not in the project, one of them on another object.
+    refs:
+      - { line: 4, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c }
+    external:
+      - { line: 4, match: acme__Score__c }
+      - { line: 4, match: acme__Rating__c }

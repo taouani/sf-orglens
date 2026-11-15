@@ -78,14 +78,25 @@ describe('the files of a retrieve', () => {
         .tree.files.filter((path) => path.endsWith('.cls'))
         .map((path) => `ApexClass:${path.slice(path.lastIndexOf('/') + 1, -'.cls'.length)}`),
       'ApexTrigger:InvoiceTrigger',
+      'CustomLabels:CustomLabels',
+      'CustomMetadata:Billing_Rule.Default',
       'CustomObject:Account',
+      'CustomObject:Billing_Rule__mdt',
+      'CustomObject:Billing_Settings__c',
       'CustomObject:Invoice__c',
       'CustomObject:Invoice_Line__c',
+      'CustomObject:Tax_Code__c',
+      'CustomObject:User',
+      'CustomPermission:Approve_Large_Invoices',
+      'GlobalValueSet:Billing_Region',
     ]);
     const unpacked = await unpackRetrieve(zip, workDir());
+    expect(unpacked.problems).toEqual([]);
+    expect(unpacked.unresolved).toEqual([]);
     const fixture = readFolders(FIXTURE, ['main/default']).tree.files.map((path) => path.slice('main/default/'.length));
     expect(unpacked.tree.files.filter((path) => !fixture.includes(path))).toEqual([
       'objects/Account/Account.object-meta.xml',
+      'objects/User/User.object-meta.xml',
     ]);
     expect(fixture.filter((path) => !unpacked.tree.files.includes(path))).toEqual([]);
     // Apex comes back byte for byte. XML is written again by the library and is compared by Phase 1, not here.

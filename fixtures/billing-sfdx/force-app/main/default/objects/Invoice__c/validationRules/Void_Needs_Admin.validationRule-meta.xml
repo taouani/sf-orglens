@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Void_Needs_Admin</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  ISPICKVAL(Status__c, 'Void'),
+  $Profile.Name &lt;&gt; 'System Administrator',
+  $User.Department &lt;&gt; 'Finance',
+  $UserRole.Name &lt;&gt; 'Controller',
+  $Organization.Country &lt;&gt; 'France',
+  $RecordType.Name &lt;&gt; 'Credit Note'
+)</errorConditionFormula>
+    <errorMessage>Only an administrator or the finance department can void an invoice.</errorMessage>
+</ValidationRule>

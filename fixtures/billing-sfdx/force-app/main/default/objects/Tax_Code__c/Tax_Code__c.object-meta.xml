@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>A tax code and its rate. A validation rule looks the rate up by the name. Fixture object of the OrgLens tests.</description>
+    <label>Tax Code</label>
+    <nameField>
+        <label>Tax Code</label>
+        <type>Text</type>
+    </nameField>
+    <pluralLabel>Tax Codes</pluralLabel>
+    <sharingModel>ReadWrite</sharingModel>
+</CustomObject>

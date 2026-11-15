@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status_Notice__c</fullName>
+    <formula>/* Legacy_Code__c was shown here until 2024 */
+IF(
+  Days_Overdue__c &gt; 0,
+  $Label.Overdue_Notice &amp; " for 'Amount__c' " &amp; 'and "Tax_Rate__c"' &amp; ' it\'s Paid_Date__c',
+  ""
+)</formula>
+    <label>Status Notice</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Text</type>
+</CustomField>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Bad_Extra_Bracket</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  Amount__c &gt; 0,
+  ISBLANK(Paid_Date__c))
+)</errorConditionFormula>
+    <errorMessage>This rule has one closing bracket too many.</errorMessage>
+</ValidationRule>

@@ -56,7 +56,17 @@ describe('the requests to the Metadata API', () => {
     const metadata = await api();
     expect(metadata.apiVersion).toBe('66.0');
     const types = await metadata.describe();
-    expect(types.map((type) => type.name).sort()).toEqual(['ApexClass', 'ApexTrigger', 'CustomObject', 'Report']);
+    expect(types.map((type) => type.name).sort()).toEqual([
+      'ApexClass',
+      'ApexTrigger',
+      'CustomLabels',
+      'CustomMetadata',
+      'CustomObject',
+      'CustomPermission',
+      'GlobalValueSet',
+      'Report',
+    ]);
+    expect(types.find((type) => type.name === 'CustomLabels')?.children).toEqual(['CustomLabel']);
     expect(types.find((type) => type.name === 'CustomObject')?.children).toContain('CustomField');
     expect(types.find((type) => type.name === 'Report')?.inFolder).toBe(true);
     expect(types.find((type) => type.name === 'ApexClass')).toEqual({
