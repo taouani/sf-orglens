@@ -19,8 +19,8 @@
  * one of them (`deploy-fixture.ts`, `read-org.ts`). Of a message in
  * another form, a tool may show the words of a short list of everyday
  * words and nothing else, and of a name of the org how it is built
- * (`everydayWords` and `nameForm` in `read-org.ts`). Of a file that could
- * not be read as metadata, a tool may show the first folder and the ending
+ * (`everydayWords` here and `nameForm` in `read-org.ts`). Of a file that
+ * could not be read as metadata, a tool may show the first folder and the ending
  * where they are words of the source format (`placeForm`). Of a symbol
  * table of a class of the fixture project, a tool may show the names of
  * its fields, and a text whose every word is one of the fixture project
@@ -123,4 +123,89 @@ export function publicLog(print: (line: string) => void = console.log): PublicLo
     },
     lines,
   };
+}
+
+/**
+ * Words a message of Salesforce or of a library is made of whatever it is about, in lower case. A message of a
+ * form that is not known is shown in these words only (`everydayWords`).
+ */
+const EVERYDAY_WORDS: ReadonlySet<string> = new Set(
+  (
+    'a an the of in on at to for from with without by into as and or not no nor is are was were be been being it ' +
+    'its this that these those there here if when while because than then so but all any each every some one ' +
+    'more most only also already still currently can cannot could may might must should will would do does did ' +
+    'done has have had please you your we our unable failed fail fails failure error errors warning warnings ' +
+    'problem invalid valid unknown known missing found find exist exists existing available unavailable ' +
+    'supported unsupported enabled disabled allowed required requires need needs ensure check correct ' +
+    'incorrect proper improper insufficient too many much large larger small limit limits exceeded maximum ' +
+    'minimum size number count during before after retrieve retrieved retrieving retrieval retrievable deploy ' +
+    'deployed load loaded loading read reading write access accessible permission permissions input output ' +
+    'received request requested result results entity entities type types name named names file files folder ' +
+    'folders metadata component components package packages packaged namespace managed unmanaged installed ' +
+    'organization org api version versions object objects field fields record records standard custom value ' +
+    'values set sets translation translations translated language languages setting settings feature features ' +
+    'license licenses user users profile profiles id ids db database capitalization member members wildcard ' +
+    'manifest zip xml parse parsed parsing resolve resolved element elements expected unexpected ' +
+    'duplicate empty null undefined defined registry suffix directory path content parent child children ' +
+    // Words of a problem with a formula, which a deploy reports.
+    'formula formulas function functions parameter parameters default syntax reference references referenced ' +
+    'use used'
+  ).split(' '),
+);
+
+/** What stands in quotes or in brackets in a message is a name or a value: straight and curly quotes, backticks. */
+const QUOTED = /'[^']*'|"[^"]*"|\u2018[^\u2019]*\u2019|\u201C[^\u201D]*\u201D|`[^`]*`|\[[^\]]*\]/g;
+/** A quote that has no partner. */
+const QUOTE = /['"\u2018\u2019\u201C\u201D`[\]]/;
+/** The end of the name of a file: a dot and an ending. */
+const FILE_END = /\.[A-Za-z0-9]+(?:-meta\.xml)?[.,:;)]*$/;
+/** A path with spaces in it is looked for over this many words at most. */
+const PATH_WORDS = 12;
+
+/**
+ * A text that is not ours, in the words of a short list of everyday words and nothing else: every other word,
+ * every number, everything in quotes or brackets and every path of a file is left out and shown as `…`. `names`
+ * are words that are kept as well where they follow the word "type", such as the names of the metadata types.
+ *
+ * It says what kind of message it is. No word comes out that is not of the list. A name that stands in a message
+ * without quotes and holds words of the list can leave those words behind: "Error" of a layout that is called
+ * "Error Layout".
+ */
+export function everydayWords(said: unknown, names: ReadonlySet<string> = new Set()): string {
+  // The apostrophe of "can't" is no quote: the word is left out as a whole.
+  let plain = (typeof said === 'string' ? said : '')
+    .replace(/(?<=[A-Za-z])['\u2019](?=[A-Za-z])/g, '\u0001')
+    .replace(QUOTED, ' \u0000 ');
+  // A quote without a partner: what follows may be a name, so the text ends there.
+  const open = plain.search(QUOTE);
+  if (open !== -1) plain = `${plain.slice(0, open)} \u0000`;
+  const words = plain
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, 60);
+  const kept: string[] = [];
+  const leaveOut = (): void => {
+    if (kept.at(-1) !== '…') kept.push('…');
+  };
+  let afterType = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] ?? '';
+    if (/[/\\]/.test(word) && !FILE_END.test(word)) {
+      // A path whose folders or file have spaces in their names goes on to the word with the ending of the file.
+      const end = words.slice(index + 1, index + 1 + PATH_WORDS).findIndex((later) => FILE_END.test(later));
+      if (end !== -1) index += end + 1;
+      leaveOut();
+      afterType = false;
+      continue;
+    }
+    const [, opening = '', core = '', closing = ''] = /^(\(?)(.*?)([.,:;)]*)$/.exec(word) ?? [];
+    const letters = /^[A-Za-z]+$/.test(core);
+    if (letters && (EVERYDAY_WORDS.has(core.toLowerCase()) || (afterType && names.has(core)))) {
+      kept.push(`${opening}${core}${closing}`);
+    } else {
+      leaveOut();
+    }
+    afterType = letters && core.toLowerCase() === 'type';
+  }
+  return kept.join(' ');
 }

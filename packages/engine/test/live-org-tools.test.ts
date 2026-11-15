@@ -15,17 +15,9 @@ import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
 import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
-import { publicLog, type PublicLog } from './live/public-log.ts';
+import { everydayWords, publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
-import {
-  everydayWords,
-  fileDifference,
-  missingLines,
-  nameForm,
-  placeForm,
-  readOrg,
-  remarkForm,
-} from './live/read-org.ts';
+import { fileDifference, missingLines, nameForm, placeForm, readOrg, remarkForm } from './live/read-org.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -173,6 +165,10 @@ describe('a problem of a deploy, as it is printed', () => {
     "Unexpected token '}'.",
     "Missing ';' at 'return'",
     'Field Amount__c does not exist. Check spelling.',
+    // A global variable of a formula, of the fixture project and of the platform.
+    'Field $User.Department does not exist. Check spelling.',
+    'Field $RecordType.Name does not exist. Check spelling.',
+    'Field Status__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Illegal assignment from Decimal to String',
     'Entity is not org-accessible',
   ])('shows the known form: %s', (problem) => {
@@ -180,14 +176,31 @@ describe('a problem of a deploy, as it is printed', () => {
   });
 
   it.each([
-    'Something Salesforce never said before about https://other.example',
-    'Variable does not exist: Amount__c and more that is not of the form',
+    ['Something Salesforce never said before about https://other.example', '… before …'],
+    [
+      'Variable does not exist: Amount__c and more that is not of the form',
+      '… does not exist: … and more that is not of the …',
+    ],
     // A signature is not a place for prose.
-    'Invalid type: the quick brown fox of Initech Corp jumps over the lazy admin',
-    'Illegal assignment from everything the org said about Initech to nothing at all',
-    '',
-    undefined,
-  ])('does not show a text of another form: %s', (problem) => {
+    ['Invalid type: the quick brown fox of Initech Corp jumps over the lazy admin', 'Invalid type: the … of … the …'],
+    [
+      'Illegal assignment from everything the org said about Initech to nothing at all',
+      '… from … the org … to … at all',
+    ],
+    // A name in quotes stays out as a whole, with the everyday words it holds.
+    ["Something of the layout named 'Default Use' cannot be found", '… of the … named … cannot be found'],
+    // A problem with a formula, as a deploy can report it: what it is about stays out, what kind it is comes out.
+    [
+      'The default value formula for Region__c uses a function that is not supported: TEXT of the picklist Secret_Plan__c',
+      'The default value formula for … a function that is not supported: … of the …',
+    ],
+  ])('shows of a text of another form its everyday words and nothing else: %s', (problem, everyday) => {
+    expect(shownProblem(log, problem, words)).toBe(
+      `not shown, because it is not of a known form. ${where} Its everyday words: ${everyday}`,
+    );
+  });
+
+  it.each(['', undefined, 'Initech 42'])('shows nothing of a text without an everyday word: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(`not shown, because it is not of a known form. ${where}`);
   });
 
@@ -197,6 +210,10 @@ describe('a problem of a deploy, as it is printed', () => {
     'Invalid type: acme',
     'Illegal assignment from Decimal to Initech',
     "Unexpected token 'SecretPlan'.",
+    'Field $Secret.Plan does not exist. Check spelling.',
+    // A variable of the platform with a field the fixture project does not hold.
+    'Field $User.Secret_Plan__c does not exist. Check spelling.',
+    'Field Secret_Plan__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Method does not exist or incorrect signature: void post(List<Secret_Plan__c>) from the type InvoiceService',
   ])('does not show a known form that names something the fixture project does not hold: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(
@@ -206,9 +223,12 @@ describe('a problem of a deploy, as it is printed', () => {
 
   it('shows of a problem about something else than a component of the fixture project only a form without names', () => {
     expect(shownProblem(log, 'Entity is not org-accessible', words, false)).toBe('Entity is not org-accessible');
-    expect(shownProblem(log, 'Variable does not exist: Amount__c', words, false)).toBe(
-      `not shown, because it is not of a known form. ${where}`,
-    );
+    const about = `not shown, because it is about something that is not a component of the fixture project. ${where}`;
+    expect(shownProblem(log, 'Variable does not exist: Amount__c', words, false)).toBe(about);
+    // A name that is an everyday word stays out too: the form is known, so the place is known to hold a name.
+    expect(shownProblem(log, 'Invalid type: Settings', words, false)).toBe(about);
+    expect(shownProblem(log, 'Variable does not exist: Profile', words, false)).toBe(about);
+    expect(shownProblem(log, 'Field $User.Default does not exist. Check spelling.', words, false)).toBe(about);
   });
 
   it('shows of a class that has to be compiled again only that it is one', () => {
@@ -526,11 +546,11 @@ describe('deploying the fixture project', () => {
       '1. ApexClass InvoiceService, file classes/InvoiceService.cls, line 14, column 9',
       '   Problem: Variable does not exist: Amount__c',
       '2. ApexClass InvoiceSelector, file classes/InvoiceSelector.cls, line 3, column 1',
-      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.',
+      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it. Its everyday words: The user … of … may not do this',
       '3. CustomObject (a name that is not of the fixture project)',
       '   Problem: Entity is not org-accessible',
       '4. ApexClass (a name that is not of the fixture project), line 2, column 4',
-      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it.',
+      '   Problem: not shown, because it is about something that is not a component of the fixture project. The page "Deployment Status" in the Setup of the test org shows it.',
       '5. ApexClass InvoiceBatch, file classes/InvoiceBatch.cls, line 5, column 2',
       '   Problem: not shown, because it names something that is not in the fixture project. The page "Deployment Status" in the Setup of the test org shows it.',
     ]);
@@ -1125,7 +1145,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'The rows with a component that is not of the fixture project, by type: ApexClass to CustomField 2, ApexClass to CustomObject 1, Flow to CustomField 1',
     );
     expect(output).toContain(
-      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
+      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
     );
     expect(output).toMatch(/^ApexClass +CustomField +\d+ +1$/m);
     expect(output).toMatch(/^ApexClass +CustomObject \(of Salesforce\) +\d+ +1$/m);
@@ -1228,7 +1248,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toMatch(/^ApexTrigger +1 +ok$/m);
     expect(output).toContain('1 query was cut off at the limit or failed, so rows are missing.');
     expect(output).toContain(
-      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
+      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
     );
     // The step does not fail for it, and says at its end that the answer is not whole.
     expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
@@ -1425,7 +1445,7 @@ describe('a tool of the live-org workflow as a program', () => {
     expect(probed.stderr).toBe('');
     expect(probed.stdout).toContain('One query without a filter: 0 rows in 1 page.\n');
     expect(probed.stdout).toContain(
-      'The answer key holds 190 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
+      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
     );
     expect(probed.stdout).toContain('Classes of the fixture project: 12. Found: 0. With a symbol table: 0.\n');
     expect(probed.code).toBe(0);

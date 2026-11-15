@@ -171,13 +171,20 @@ Build:
 - A deploy of the new fixture to the test org, and a run of the probe of Phase 0.
 
 Status on 15 November 2026, with the pull request that holds the fixture and the key. Built: the 35 new
-components, `answer-key.v1.yaml` with 107 references in fields and rules (63 more than version 0), the probes
-(178 formulas) and the folder `fixtures/formula-negative` (10 files), each with a check. Not done: the deploy and
-the run of the probe, which the workflow can only do from `main`, so after the merge. Until then nothing but my
-reading says that Salesforce accepts the new formulas. Your reading of ten entries is open too.
+components, `answer-key.v1.yaml` with 106 references in fields and rules (62 more than version 0), the probes
+(178 formulas) and the folder `fixtures/formula-negative` (10 files), each with a check.
 
-Four things differ from the list above:
+The first deploy, on the same day, was refused for two of the 87 components, and Salesforce changed nothing in
+the test org: the rule that held `$RecordType.Name` and the field with the default value
+`TEXT($User.Billing_Region__c)`. The log names the two components and not the reason. Both are corrected in a pull request of their own. Not done: a deploy that Salesforce accepts, and the run of the probe.
+The workflow can only do both from `main`. Until then nothing but my reading says that Salesforce accepts the
+corrected formulas. Your reading of ten entries is open too.
 
+Five things differ from the list above:
+
+- The fixture has no `$RecordType`. Salesforce refused the rule that had it. That the variable is the reason,
+  because `Invoice__c` has no record type, is my reading. A probe has it, the key does not. To key it, the project
+  would need a record type, which is one more metadata type in the fixture. That is not done.
 - The fixture also has `$UserRole`, and the folder of what cannot be deployed also has a relationship and a
   label that do not exist.
 - The list of functions for the probes is the one of the help page of Salesforce, and the fetch of that page gave

@@ -490,7 +490,7 @@ describe('the answer key', () => {
       stretch: key.references.filter((reference) => reference.stretch).length,
       negatives: key.negatives.length,
       unknowns: key.unknowns.length,
-    }).toEqual({ version: 1, components: 87, phase1: 107, phase3: 184, stretch: 7, negatives: 33, unknowns: 5 });
+    }).toEqual({ version: 1, components: 87, phase1: 106, phase3: 184, stretch: 7, negatives: 31, unknowns: 5 });
   });
 });
 
