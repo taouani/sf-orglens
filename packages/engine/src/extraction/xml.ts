@@ -11,9 +11,12 @@
  * mark, with LF or CRLF. Names are resolved against the namespaces the file declares.
  *
  * What it does not know it refuses, with an issue that says where it stopped, and it gives no tree then. It
- * never repairs a file and never guesses. It refuses a file that is not well-formed, and four things that
+ * never repairs a file and never guesses. It refuses a file that is not well-formed, and six things that
  * well-formed XML can hold and metadata files do not: a document type declaration, a processing instruction, an
- * encoding other than UTF-8, and an element that holds both text and elements.
+ * encoding other than UTF-8, a version other than 1.0, an element that holds both text and elements, and
+ * elements that are nested more than 256 deep.
+ *
+ * One thing that XML forbids is read: a comment may hold two hyphens, because people write that.
  *
  * Two things are not kept: comments, and the white space between the child elements of an element.
  *
@@ -79,7 +82,11 @@ export interface XmlElement {
   readonly attributes: readonly XmlAttribute[];
   /** The child elements in the order of the file. */
   readonly children: readonly XmlElement[];
-  /** The text of an element without child elements, which can be empty. `null` for an element that has some. */
+  /**
+   * The text of an element without child elements, as it stands: nothing is trimmed. `null` for an element that
+   * has child elements. An element with nothing in it has the empty text, whether it is written as `<a/>`, as
+   * `<a></a>` or with a comment only, so a value that is empty and a group without members look the same.
+   */
   readonly text: XmlText | null;
   /** The index in the file of the `<` of the start tag. */
   readonly start: number;
@@ -98,6 +105,7 @@ interface XmlDeclaration {
   readonly standalone: boolean | null;
 }
 
+/** A file that was read. It holds the whole text of the file for as long as it is held itself. */
 export interface XmlDocument {
   readonly root: XmlElement;
   readonly declaration: XmlDeclaration | null;
@@ -120,7 +128,12 @@ export type XmlIssueCode = 'XML_NOT_UTF8' | 'XML_MALFORMED' | 'XML_UNSUPPORTED';
 
 interface XmlIssue {
   readonly code: XmlIssueCode;
-  /** One sentence or two, in plain words. It holds no text of the file besides names of elements and attributes. */
+  /**
+   * One sentence or two, in plain words. Of the text of the file it holds names only: of an element, an
+   * attribute, a prefix or an entity, each cut after `LONGEST_NAME_SHOWN` characters. In a file that is not
+   * well-formed, a name is what stands where a name is expected, which can be a word of a text after a "<" or
+   * an "&".
+   */
   readonly message: string;
   /** Where the reader stopped. `null` when the bytes are not text, because a line needs text. */
   readonly place: XmlPlace | null;
@@ -152,16 +165,20 @@ const EQUALS = 0x3d;
 const GREATER = 0x3e;
 const QUESTION = 0x3f;
 
-/** What XML 1.0 allows at the start of a name and inside one (production 4 and 4a of the fifth edition). */
-const NAME_START =
-  ':A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F' +
+/**
+ * What XML 1.0 allows at the start of a name and inside one (production 4 and 4a of the fifth edition). The
+ * part of a name before a colon and the part after it start like a name without a colon (Namespaces in XML).
+ */
+const PART_START =
+  'A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F' +
   '\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u{10000}-\\u{EFFFF}';
 // eslint-disable-next-line no-misleading-character-class -- The class lists the combining marks one by one, as XML does.
-const NAME = new RegExp(`[${NAME_START}][${NAME_START}\\-.0-9\\u0300-\\u036F\\u203F-\\u2040\\u00B7]*`, 'uy');
+const NAME = new RegExp(`[:${PART_START}][:${PART_START}\\-.0-9\\u0300-\\u036F\\u203F-\\u2040\\u00B7]*`, 'uy');
+const STARTS_LIKE_A_NAME = new RegExp(`^[${PART_START}]`, 'u');
 
 /** A character XML 1.0 does not allow anywhere in a file. A lone surrogate cannot come out of UTF-8. */
 // eslint-disable-next-line no-control-regex -- The control characters are what is looked for.
-const FORBIDDEN_CHARACTER = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/;
+const FORBIDDEN_CHARACTER = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/;
 
 /** One part of the declaration: a name, `=`, and a value in quotes. */
 const DECLARATION_PART = /[ \t\r\n]+([A-Za-z]+)[ \t\r\n]*=[ \t\r\n]*(?:"([^"<]*)"|'([^'<]*)')/y;
@@ -170,10 +187,29 @@ const DECLARATION_END = /[ \t\r\n]*\?>/y;
 /** Something other than the white space of XML. */
 const NOT_WHITE_SPACE = /[^ \t\r\n]/;
 
-/** A reference is looked for over this many characters at most. A character reference may have leading zeros. */
-const LONGEST_REFERENCE = 40;
+/** A character reference, in decimal or in hexadecimal. It may have any number of leading zeros. */
+const CHARACTER_REFERENCE = /&#(?:0*([0-9]+)|x0*([0-9A-Fa-f]+));/y;
 
-const ENTITIES: Readonly<Record<string, string>> = { lt: '<', gt: '>', amp: '&', apos: "'", quot: '"' };
+/** The five entities XML has without a document type. A map, so that `constructor` is not one of them. */
+const ENTITIES: ReadonlyMap<string, string> = new Map([
+  ['lt', '<'],
+  ['gt', '>'],
+  ['amp', '&'],
+  ['apos', "'"],
+  ['quot', '"'],
+]);
+
+/** Elements may be nested this deep. The files of the public codebases go 8 deep. */
+const DEEPEST_NESTING = 256;
+
+/** A name is shown in a message up to this many characters. */
+const LONGEST_NAME_SHOWN = 60;
+
+/** A name as a message shows it: in quotes, and cut if it is long. */
+function shown(name: string): string {
+  if (name.length <= LONGEST_NAME_SHOWN) return `"${name}"`;
+  return `"${Array.from(name).slice(0, LONGEST_NAME_SHOWN).join('')}..."`;
+}
 
 /** Ends the reading. It never leaves `readXml`. */
 class Refusal extends Error {
@@ -263,13 +299,11 @@ interface Open {
   readonly children: XmlElement[];
   readonly start: number;
   readonly contentStart: number;
-  /** The prefixes that are declared here, with the namespace of each. The empty prefix is the default. */
-  readonly scope: ReadonlyMap<string, string>;
+  /** The prefixes this element declares, each with the namespace it stood for before, or "" if it stood for none. */
+  readonly shadowed: readonly (readonly [prefix: string, before: string])[];
   /** The text read so far since the start tag or the last child element. */
   text: Builder;
 }
-
-const NO_NAMESPACES: ReadonlyMap<string, string> = new Map([['xml', XML_NAMESPACE]]);
 
 /** The prefix and the local part of a name. */
 function splitName(name: string, index: number): { prefix: string; local: string } {
@@ -277,8 +311,8 @@ function splitName(name: string, index: number): { prefix: string; local: string
   if (colon === -1) return { prefix: '', local: name };
   const prefix = name.slice(0, colon);
   const local = name.slice(colon + 1);
-  if (prefix === '' || local === '' || local.includes(':')) {
-    malformed(`The name "${name}" is not a prefix, one colon and a name.`, index);
+  if (prefix === '' || local.includes(':') || !STARTS_LIKE_A_NAME.test(local)) {
+    malformed(`The name ${shown(name)} is not a prefix, one colon and a name.`, index);
   }
   return { prefix, local };
 }
@@ -302,21 +336,26 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
 
   /** Reads the reference that starts with the `&` at `index`. */
   const reference = (index: number): { decoded: string; end: number } => {
-    let end = index + 1;
-    while (end < length && end - index < LONGEST_REFERENCE && at(end) !== SEMICOLON) end += 1;
-    const body = at(end) === SEMICOLON ? text.slice(index + 1, end) : '';
-    const entity = ENTITIES[body];
-    if (entity !== undefined) return { decoded: entity, end: end + 1 };
-    const digits = /^#(?:([0-9]+)|x([0-9A-Fa-f]+))$/.exec(body);
+    CHARACTER_REFERENCE.lastIndex = index;
+    const digits = CHARACTER_REFERENCE.exec(text);
     if (digits === null) {
-      return malformed(
-        nameAt(index + 1) === body && body !== ''
-          ? `The entity "${body}" is not known. Without a document type, XML has five: lt, gt, amp, apos and quot.`
-          : 'An "&" that starts no reference. In text, an "&" is written as "&amp;".',
-        index,
-      );
+      const name = nameAt(index + 1);
+      if (name === null || at(index + 1 + name.length) !== SEMICOLON) {
+        return malformed('An "&" that starts no reference. In text, an "&" is written as "&amp;".', index);
+      }
+      const entity = ENTITIES.get(name);
+      if (entity === undefined) {
+        return malformed(
+          `The entity ${shown(name)} is not known. Without a document type, XML has five: lt, gt, amp, apos and quot.`,
+          index,
+        );
+      }
+      return { decoded: entity, end: index + name.length + 2 };
     }
-    const point = digits[1] === undefined ? Number.parseInt(digits[2] ?? '', 16) : Number.parseInt(digits[1], 10);
+    const end = CHARACTER_REFERENCE.lastIndex;
+    const number = digits[1] ?? digits[2] ?? '';
+    // A number of any length: one that is too large for a character is refused below like any other.
+    const point = Number.parseInt(number, digits[1] === undefined ? 16 : 10);
     const allowed =
       point === TAB ||
       point === LF ||
@@ -325,7 +364,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
       (point >= 0xe000 && point <= 0xfffd) ||
       (point >= 0x10000 && point <= 0x10ffff);
     if (!allowed) malformed('A character reference names a character that XML does not allow.', index);
-    return { decoded: String.fromCodePoint(point), end: end + 1 };
+    return { decoded: String.fromCodePoint(point), end };
   };
 
   /** Adds the text from `from` to `to`. Inside a CDATA section (`plain`) a reference is not one. */
@@ -424,48 +463,67 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
   if (position >= length) malformed('The file has no element.', length);
   if (at(position) !== LESS) malformed('Text stands before the first element.', position);
 
-  /** Reads the start tag at `index` and gives the element it opens, or the whole element if the tag closes itself. */
-  const startTag = (index: number, parent: Open | null): { open: Open; closed: boolean; end: number } => {
+  /**
+   * The prefixes that are declared where the reader stands, with the namespace of each. The empty prefix is the
+   * default. A start tag adds to it and the end tag takes that back, so a file with many prefixes costs no more
+   * than its length. A prefix that is no longer declared stays with the namespace "", which no prefix can be
+   * declared as: taking it out of the map is slow when the map is large.
+   */
+  const scope = new Map<string, string>([['xml', XML_NAMESPACE]]);
+  /** Takes back what a tag declared. A tag declares a prefix once at most, so the order does not matter. */
+  const leave = (shadowed: Open['shadowed']): void => {
+    for (const [prefix, before] of shadowed) scope.set(prefix, before);
+  };
+
+  /**
+   * Reads the start tag at `index`, the tag of an element that stands `depth` elements deep. A tag that closes
+   * itself is the whole element.
+   */
+  const startTag = (index: number, depth: number): { open: Open; closed: boolean; end: number } => {
     const name = nameAt(index + 1);
     if (name === null) return refuseSpecial(index);
+    if (depth >= DEEPEST_NESTING) {
+      unsupported(`Elements are nested more than ${String(DEEPEST_NESTING)} deep, which is not read.`, index);
+    }
     const written: { name: string; value: XmlText; start: number; end: number }[] = [];
     const names = new Set<string>();
     let next = index + 1 + name.length;
     let closed = false;
     for (;;) {
       const here = afterWhiteSpace(next);
-      if (here >= length) malformed(`The file ends inside the tag of "${name}".`, index);
+      if (here >= length) malformed(`The file ends inside the tag of ${shown(name)}.`, index);
       if (at(here) === GREATER) {
         next = here + 1;
         break;
       }
       if (at(here) === SLASH) {
-        if (at(here + 1) !== GREATER) malformed(`In the tag of "${name}", a "/" is not followed by ">".`, here);
+        if (at(here + 1) !== GREATER) malformed(`In the tag of ${shown(name)}, a "/" is not followed by ">".`, here);
         next = here + 2;
         closed = true;
         break;
       }
       const attribute = nameAt(here);
-      if (attribute === null) malformed(`The tag of "${name}" holds something that is not an attribute.`, here);
+      if (attribute === null) malformed(`The tag of ${shown(name)} holds something that is not an attribute.`, here);
       else {
-        if (here === next) malformed(`In the tag of "${name}", white space must stand before an attribute.`, here);
-        if (names.has(attribute)) malformed(`The tag of "${name}" has the attribute "${attribute}" twice.`, here);
+        if (here === next) malformed(`In the tag of ${shown(name)}, white space must stand before an attribute.`, here);
+        if (names.has(attribute))
+          malformed(`The tag of ${shown(name)} has the attribute ${shown(attribute)} twice.`, here);
         names.add(attribute);
         const equals = afterWhiteSpace(here + attribute.length);
-        if (at(equals) !== EQUALS) malformed(`The attribute "${attribute}" has no "=".`, here);
+        if (at(equals) !== EQUALS) malformed(`The attribute ${shown(attribute)} has no "=".`, here);
         const quote = afterWhiteSpace(equals + 1);
         const mark = at(quote);
         if (mark !== DOUBLE_QUOTE && mark !== SINGLE_QUOTE) {
-          malformed(`The value of the attribute "${attribute}" does not stand in quotes.`, here);
+          malformed(`The value of the attribute ${shown(attribute)} does not stand in quotes.`, here);
         }
         const value = builderAt(quote + 1);
         let run = quote + 1;
         let end = quote + 1;
         for (;;) {
-          if (end >= length) malformed(`The value of the attribute "${attribute}" is not closed.`, quote);
+          if (end >= length) malformed(`The value of the attribute ${shown(attribute)} is not closed.`, quote);
           const code = at(end);
           if (code === mark) break;
-          if (code === LESS) malformed(`The value of the attribute "${attribute}" holds a "<".`, end);
+          if (code === LESS) malformed(`The value of the attribute ${shown(attribute)} holds a "<".`, end);
           if (code === AMPERSAND || code === CR || code === LF || code === TAB) {
             if (end > run) addLiteral(value, text, run, end);
             const decoded = code === AMPERSAND ? reference(end) : null;
@@ -484,20 +542,27 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
     }
 
     // The namespaces this tag declares, then the names of the tag and of its attributes.
-    let scope = parent?.scope ?? NO_NAMESPACES;
+    const shadowed: [prefix: string, before: string][] = [];
     for (const { name: attribute, value, start } of written) {
       if (attribute !== 'xmlns' && !attribute.startsWith('xmlns:')) continue;
       const prefix = attribute === 'xmlns' ? '' : attribute.slice(6);
       if (prefix !== '' && value.value === '')
-        malformed(`The prefix "${prefix}" is declared without a namespace.`, start);
-      if (prefix === 'xmlns' || (prefix === 'xml') !== (value.value === XML_NAMESPACE)) {
-        malformed(`The declaration "${attribute}" changes a prefix that XML reserves.`, start);
+        malformed(`The prefix ${shown(prefix)} is declared without a namespace.`, start);
+      if (
+        prefix === 'xmlns' ||
+        value.value === XMLNS_NAMESPACE ||
+        (prefix === 'xml') !== (value.value === XML_NAMESPACE)
+      ) {
+        malformed(`The declaration ${shown(attribute)} changes a prefix or uses a namespace that XML reserves.`, start);
       }
-      if (scope === (parent?.scope ?? NO_NAMESPACES)) scope = new Map(scope);
-      (scope as Map<string, string>).set(prefix, value.value);
+      shadowed.push([prefix, scope.get(prefix) ?? '']);
+      scope.set(prefix, value.value);
     }
-    const namespaceOf = (prefix: string, of: string, where: number): string =>
-      scope.get(prefix) ?? malformed(`The prefix "${prefix}" of "${of}" is not declared.`, where);
+    const namespaceOf = (prefix: string, of: string, where: number): string => {
+      const namespace = scope.get(prefix) ?? '';
+      if (namespace === '') malformed(`The prefix ${shown(prefix)} of ${shown(of)} is not declared.`, where);
+      return namespace;
+    };
     const own = splitName(name, index + 1);
     const attributes: XmlAttribute[] = [];
     const resolved = new Set<string>();
@@ -511,7 +576,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
             : namespaceOf(prefix, attribute, start);
       if (namespace !== null) {
         const key = `${namespace} ${local}`;
-        if (resolved.has(key)) malformed(`The tag of "${name}" has the attribute "${local}" twice.`, start);
+        if (resolved.has(key)) malformed(`The tag of ${shown(name)} has the attribute ${shown(local)} twice.`, start);
         resolved.add(key);
       }
       attributes.push({ name: attribute, local, namespace, value, start, end });
@@ -520,6 +585,8 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
     const fallback = scope.get('') ?? '';
     const namespace =
       own.prefix === '' ? (fallback === '' ? null : fallback) : namespaceOf(own.prefix, name, index + 1);
+    // What a tag that closes itself declares holds for its own names only.
+    if (closed) leave(shadowed);
     return {
       open: {
         name,
@@ -529,7 +596,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
         children: [],
         start: index,
         contentStart: next,
-        scope,
+        shadowed,
         text: builderAt(next),
       },
       closed,
@@ -542,7 +609,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
     const other = NOT_WHITE_SPACE.exec(open.text.value);
     if (other !== null) {
       unsupported(
-        `The element "${open.name}" holds both text and elements, which is not read.`,
+        `The element ${shown(open.name)} holds both text and elements, which is not read.`,
         open.text.starts?.[other.index] ?? open.text.start + other.index,
       );
     }
@@ -580,7 +647,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
     if (open !== undefined) {
       // Text up to the next tag.
       const tag = text.indexOf('<', position);
-      if (tag === -1) malformed(`The file ends before the element "${open.name}" is closed.`, length);
+      if (tag === -1) malformed(`The file ends before the element ${shown(open.name)} is closed.`, length);
       if (tag > position) addText(open.text, position, tag, false);
       position = tag;
     }
@@ -591,13 +658,14 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
         malformed(
           name === null
             ? 'After "</" a name must follow.'
-            : `The end tag of "${name}" stands where "${open.name}" is open.`,
+            : `The end tag of ${shown(name)} stands where ${shown(open.name)} is open.`,
           position,
         );
       }
       const end = afterWhiteSpace(position + 2 + open.name.length);
-      if (at(end) !== GREATER) malformed(`The end tag of "${open.name}" is not closed.`, position);
+      if (at(end) !== GREATER) malformed(`The end tag of ${shown(open.name)} is not closed.`, position);
       stack.pop();
+      leave(open.shadowed);
       root = placed(element(open, position, end + 1, false));
       position = end + 1;
     } else if (at(position + 1) === BANG && starts(position, '<!--')) {
@@ -610,7 +678,7 @@ function parse(text: string): { declaration: XmlDeclaration | null; root: XmlEle
     } else if (at(position + 1) === BANG || at(position + 1) === QUESTION) {
       refuseSpecial(position);
     } else {
-      const tag = startTag(position, open ?? null);
+      const tag = startTag(position, stack.length);
       if (open !== undefined) {
         noTextBetween(open);
         open.text = builderAt(tag.end);
@@ -728,7 +796,8 @@ export function readXml(bytes: Uint8Array): XmlReading {
  * Where a part of a text stands in the file: from the start of the code unit `from` to the end of the code unit
  * before `to`. Of an empty part: the place where the code unit `from` starts, or the end of the text.
  *
- * A character that the file writes as a reference starts at its `&` and ends after its `;`.
+ * A character that the file writes as a reference starts at its `&` and ends after its `;`. A comment or the
+ * marks of a CDATA section between two characters of the part lie inside what is given.
  */
 export function sourceOf(text: XmlText, from: number, to: number = from + 1): { start: number; end: number } {
   const length = text.value.length;
@@ -740,12 +809,15 @@ export function sourceOf(text: XmlText, from: number, to: number = from + 1): { 
   return { start, end };
 }
 
-/** The first child element with this local name, or `null`. */
+/**
+ * The first child element with this local name, or `null`. The namespace is not looked at: most metadata files
+ * declare the namespace of the Metadata API, some that of the Tooling API, and some declare none.
+ */
 export function childOf(element: XmlElement, local: string): XmlElement | null {
   return element.children.find((child) => child.local === local) ?? null;
 }
 
-/** The child elements with this local name, in the order of the file. */
+/** The child elements with this local name, in the order of the file. The namespace is not looked at. */
 export function childrenOf(element: XmlElement, local: string): XmlElement[] {
   return element.children.filter((child) => child.local === local);
 }
@@ -757,6 +829,7 @@ export function attributeOf(element: XmlElement, local: string, namespace: strin
 
 /** True if the element says that it has no value: `xsi:nil="true"`. */
 export function isNil(element: XmlElement): boolean {
-  const value = attributeOf(element, 'nil', XSI_NAMESPACE)?.value.value.trim();
+  // XML Schema takes away the white space of XML around the value, and no other kind of space.
+  const value = attributeOf(element, 'nil', XSI_NAMESPACE)?.value.value.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
   return value === 'true' || value === '1';
 }

@@ -27,16 +27,29 @@ interface Model {
 /** Where one code unit of a value was written: from `start` to `end` in the file. */
 type Span = readonly [start: number, end: number];
 
+/** What the writer knows about an attribute it wrote. */
+interface WrittenAttribute {
+  /** Where the name starts, and where the closing quote ends. */
+  readonly start: number;
+  readonly end: number;
+  /** Where an empty value stands: after the opening quote. */
+  readonly empty: number;
+  readonly value: readonly Span[];
+}
+
 /** What the writer knows about an element it wrote. */
 interface Written {
   readonly model: Model;
   readonly start: number;
   readonly end: number;
+  /** After the start tag and before the end tag. Of a tag that closes itself: both are its end. */
+  readonly contentStart: number;
+  readonly contentEnd: number;
   /** The place of each code unit of the text, for an element without children. */
   readonly text: readonly Span[];
   /** Where an empty text stands: after the start tag, or after a tag that closes itself. */
   readonly empty: number;
-  readonly attributes: readonly (readonly Span[])[];
+  readonly attributes: readonly WrittenAttribute[];
   readonly children: readonly Written[];
 }
 
@@ -83,7 +96,10 @@ function chooser(seed: number): (below: number) => number {
 const ENTITY: Readonly<Record<string, string>> = { '<': 'lt', '>': 'gt', '&': 'amp', "'": 'apos', '"': 'quot' };
 
 /** Writes a model as a file and notes where everything stands. */
-function write(root: Model, seed: number): { file: string; written: Written; mark: boolean; plain: PlainElement } {
+function write(
+  root: Model,
+  seed: number,
+): { file: string; written: Written; mark: boolean; plain: PlainElement; fallback: string | null } {
   const choose = chooser(seed);
   const one = <T>(...options: readonly T[]): T => options[choose(options.length)] as T;
   let file = '';
@@ -113,7 +129,6 @@ function write(root: Model, seed: number): { file: string; written: Written; mar
     let index = 0;
     while (index < characters.length) {
       const character = characters[index] ?? '';
-      const before = characters[index - 1];
       const way = choose(10);
       if (way === 0) comment();
       if (way === 1 && character !== '\r') {
@@ -139,9 +154,9 @@ function write(root: Model, seed: number): { file: string; written: Written; mar
         continue;
       }
       const entity = ENTITY[character];
-      // A ">" after a "]" could end a CDATA section that is not there, so it is never written as itself then.
+      // A ">" after "]]" would end a CDATA section that is not there, so it is not written as itself then.
       const asItself =
-        character !== '<' && character !== '&' && character !== '\r' && !(character === '>' && before === ']');
+        character !== '<' && character !== '&' && character !== '\r' && !(character === '>' && file.endsWith(']]'));
       let span: Span;
       if (entity !== undefined && (way < 6 || !asItself) && way !== 9) span = put(`&${entity};`);
       else if (!asItself || way >= 8) span = put(reference(character));
@@ -177,20 +192,34 @@ function write(root: Model, seed: number): { file: string; written: Written; mar
   const element = (node: Model, declarations: readonly (readonly [string, string])[]): Written => {
     const start = file.length;
     put(`<${node.name}`);
-    const attributes: (readonly Span[])[] = [];
+    const attributes: WrittenAttribute[] = [];
     for (const [name, decoded] of [...declarations, ...node.attributes]) {
       put(one(' ', ' ', '  ', '\t', lineEnd(), `${lineEnd()}  `));
+      const from = file.length;
       put(`${name}${one('', '', ' ')}=${one('', '', ' ', lineEnd())}`);
       const quote = one('"', '"', "'");
       put(quote);
-      attributes.push(attributeValue(decoded, quote));
+      const empty = file.length;
+      const spans = attributeValue(decoded, quote);
       put(quote);
+      attributes.push({ start: from, end: file.length, empty, value: spans });
     }
     put(one('', '', ' ', lineEnd()));
     const withoutContent = node.children.length === 0 && node.text === '';
     if (withoutContent && choose(2) === 0) {
       put('/>');
-      return { model: node, start, end: file.length, text: [], empty: file.length, attributes, children: [] };
+      const end = file.length;
+      return {
+        model: node,
+        start,
+        end,
+        contentStart: end,
+        contentEnd: end,
+        text: [],
+        empty: end,
+        attributes,
+        children: [],
+      };
     }
     put('>');
     const empty = file.length;
@@ -205,8 +234,19 @@ function write(root: Model, seed: number): { file: string; written: Written; mar
       }
       put(space());
     }
+    const contentEnd = file.length;
     put(`</${node.name}${one('', '', '', ' ', lineEnd())}>`);
-    return { model: node, start, end: file.length, text: spans, empty, attributes, children };
+    return {
+      model: node,
+      start,
+      end: file.length,
+      contentStart: empty,
+      contentEnd,
+      text: spans,
+      empty,
+      attributes,
+      children,
+    };
   };
 
   // What stands before the first element.
@@ -237,7 +277,8 @@ function write(root: Model, seed: number): { file: string; written: Written; mar
     children: node.children.map((child) => plain(child, [])),
     text: node.children.length > 0 ? null : node.text,
   });
-  return { file, written, mark: choose(4) === 0, plain: plain(root, declarations) };
+  const fallback = declarations.some(([name]) => name === 'xmlns') ? 'urn:default' : null;
+  return { file, written, mark: choose(4) === 0, plain: plain(root, declarations), fallback };
 }
 
 const encode = (file: string, mark: boolean): Uint8Array => {
@@ -264,9 +305,16 @@ function checkText(file: string, text: XmlText, spans: readonly Span[], empty: n
   expect(text.ends === null).toBe(asItIs);
 }
 
-function checkElement(document: XmlDocument, bytes: Uint8Array, element: XmlElement, written: Written): void {
+function checkElement(
+  document: XmlDocument,
+  bytes: Uint8Array,
+  element: XmlElement,
+  written: Written,
+  fallback: string | null,
+): void {
   const file = document.text;
   expect([element.start, element.end]).toEqual([written.start, written.end]);
+  expect([element.contentStart, element.contentEnd]).toEqual([written.contentStart, written.contentEnd]);
   expect(file.startsWith(`<${written.model.name}`, element.start)).toBe(true);
   expect(file.charAt(element.end - 1)).toBe('>');
   // The place of the start: line and column as counted by hand, and the bytes hold the same text.
@@ -277,16 +325,15 @@ function checkElement(document: XmlDocument, bytes: Uint8Array, element: XmlElem
   // Names and namespaces.
   const [prefix, local] = written.model.name.includes(':') ? written.model.name.split(':') : ['', written.model.name];
   expect(element.local).toBe(local);
-  const fallback = document.root.attributes.some((attribute) => attribute.name === 'xmlns') ? 'urn:default' : null;
   expect(element.namespace).toBe(prefix === 'p' ? 'urn:p' : fallback);
   // Attributes: each value with its places, in the order of the file.
   expect(element.attributes.length).toBe(written.attributes.length);
   for (const [index, attribute] of element.attributes.entries()) {
-    const quote = attribute.end - 1;
+    const noted = written.attributes[index];
+    if (noted === undefined) throw new Error('The reader gives an attribute that was not written.');
+    expect([attribute.start, attribute.end]).toEqual([noted.start, noted.end]);
     expect(file.startsWith(attribute.name, attribute.start)).toBe(true);
-    expect(file.charAt(quote)).toMatch(/["']/);
-    checkText(file, attribute.value, written.attributes[index] ?? [], quote);
-    expect(attribute.value.end <= quote).toBe(true);
+    checkText(file, attribute.value, noted.value, noted.empty);
     expect(attribute.namespace).toBe(
       attribute.name.startsWith('xmlns') ? XMLNS_NAMESPACE : attribute.name.startsWith('p:') ? 'urn:p' : null,
     );
@@ -301,7 +348,7 @@ function checkElement(document: XmlDocument, bytes: Uint8Array, element: XmlElem
   }
   for (const [index, child] of element.children.entries()) {
     const other = written.children[index];
-    if (other !== undefined) checkElement(document, bytes, child, other);
+    if (other !== undefined) checkElement(document, bytes, child, other, fallback);
   }
 }
 
@@ -309,7 +356,7 @@ describe('reading random documents', () => {
   it('gives back the names and values that were written, and the place of each', () => {
     fc.assert(
       fc.property(model, fc.integer(), (root, seed) => {
-        const { file, written, mark, plain } = write(root, seed);
+        const { file, written, mark, plain, fallback } = write(root, seed);
         const bytes = encode(file, mark);
         const reading = readXml(bytes);
         expect(reading.issue).toBeNull();
@@ -317,7 +364,7 @@ describe('reading random documents', () => {
         expect(reading.document.byteOrderMark).toBe(mark);
         expect(reading.document.text).toBe(file);
         expect(plainOf(reading.document.root)).toEqual(plain);
-        checkElement(reading.document, bytes, reading.document.root, written);
+        checkElement(reading.document, bytes, reading.document.root, written, fallback);
       }),
       { numRuns: 1500 },
     );

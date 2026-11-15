@@ -7,7 +7,13 @@
  * through its package entry point. The same rules are enforced a second time
  * by the ESLint rule in tools/eslint-plugin-orglens.js.
  */
-const { layers, salesforceLayer, salesforcePackages, clientForbiddenPackages } = require('./layers.cjs');
+const {
+  layers,
+  salesforceLayer,
+  salesforcePackages,
+  clientForbiddenPackages,
+  engineForbiddenPackages,
+} = require('./layers.cjs');
 
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const layerPath = (layer) => `^packages/engine/src/${layer}/`;
@@ -51,6 +57,13 @@ const forbidden = [
     severity: 'error',
     from: { pathNot: layerPath(salesforceLayer) },
     to: { path: packagePath(salesforcePackages) },
+  },
+  {
+    name: 'engine-reads-xml-with-its-own-reader',
+    comment: 'The code of the engine reads XML with extraction/xml.ts (decision record 0039). Its tests may differ.',
+    severity: 'error',
+    from: { path: '^packages/engine/src/' },
+    to: { path: packagePath(engineForbiddenPackages) },
   },
   {
     name: 'layers-never-import-the-entry-point',

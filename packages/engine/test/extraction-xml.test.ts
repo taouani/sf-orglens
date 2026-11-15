@@ -24,6 +24,8 @@ import { plainOf, secondOpinion, withAttributeSpaces } from './helpers/xml-opini
 const root = join(import.meta.dirname, '../../..');
 const METADATA = 'http://soap.sforce.com/2006/04/metadata';
 
+const NBSP = String.fromCodePoint(0xa0);
+
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 /** Reads a text that must be read without an issue. */
@@ -361,6 +363,102 @@ describe('attributes and namespaces', () => {
   });
 });
 
+describe('the edges of what the reader reads', () => {
+  it('reads a "]" before a ">" in a text, which is not the end of a CDATA section', () => {
+    const document = read('<a>a]>b ]] > c] ]></a>');
+    const text = textOf(document.root);
+    expect(text.value).toBe('a]>b ]] > c] ]>');
+    expect(text.starts).toBeNull();
+    // After a CDATA section or a comment, a ">" stands alone.
+    expect(textOf(read('<a>]]<!-- x -->></a>').root).value).toBe(']]>');
+    expect(textOf(read('<a><![CDATA[]]]]>></a>').root).value).toBe(']]>');
+    expect(textOf(read('<a>]]&gt;</a>').root).value).toBe(']]>');
+  });
+
+  it('reads a character reference with any number of zeros, up to the last character', () => {
+    const zeros = '0'.repeat(50);
+    const document = read(`<a k="&#x${zeros}41;">&#${zeros}65;&#x10FFFF;&#1114111;&#xD7FF;&#xE000;&#xFFFD;</a>`);
+    const text = textOf(document.root);
+    const last = String.fromCodePoint(0x10ffff);
+    expect(text.value).toBe(`A${last}${last}${String.fromCodePoint(0xd7ff, 0xe000, 0xfffd)}`);
+    expect(written(document, text, 0)).toBe(`&#${zeros}65;`);
+    // A character outside the basic plane is two code units, and both stand where the reference stands.
+    expect(written(document, text, 1)).toBe('&#x10FFFF;');
+    expect(written(document, text, 2)).toBe('&#x10FFFF;');
+    expect(written(document, text, 3, 5)).toBe('&#1114111;');
+    expect(attributeOf(document.root, 'k')?.value.value).toBe('A');
+  });
+
+  it('says where the content of an element starts and ends', () => {
+    const document = read('<a>\n  <b>x</b>\n  <c/>\n  <d k="1"></d>\n</a>');
+    const places = (element: XmlElement | null): unknown[] => [
+      element?.start,
+      element?.contentStart,
+      element?.contentEnd,
+      element?.end,
+    ];
+    expect(places(document.root)).toEqual([0, 3, 38, 42]);
+    expect(places(childOf(document.root, 'b'))).toEqual([6, 9, 10, 14]);
+    expect(places(childOf(document.root, 'c'))).toEqual([17, 21, 21, 21]);
+    expect(places(childOf(document.root, 'd'))).toEqual([24, 33, 33, 37]);
+    expect(document.text.slice(3, 38)).toBe('\n  <b>x</b>\n  <c/>\n  <d k="1"></d>\n');
+  });
+
+  it('counts a CR at the end of the file as a line end, and a place inside a character of two code units', () => {
+    const ended = read('<a/>\r');
+    expect(ended.place(4)).toEqual({ line: 1, column: 5, offset: 4 });
+    expect(ended.place(5)).toEqual({ line: 2, column: 1, offset: 5 });
+    const pair = read(`<a>${String.fromCodePoint(0x1f600)}</a>`);
+    expect(pair.place(3)).toEqual({ line: 1, column: 4, offset: 3 });
+    // Between the two code units of one character: the column goes on, the bytes are those of its start.
+    expect(pair.place(4)).toEqual({ line: 1, column: 5, offset: 3 });
+    expect(pair.place(5)).toEqual({ line: 1, column: 6, offset: 7 });
+  });
+
+  it('takes back the namespaces of an element at its end tag', () => {
+    const document = read(
+      [
+        '<a xmlns="urn:1" xmlns:p="urn:p1">',
+        '<b xmlns="urn:2" xmlns:p="urn:p2" xmlns:q="urn:q"><p:c/><d/></b>',
+        '<p:e/>',
+        '<f xmlns="" xmlns:p="urn:p3" p:k="1"/>',
+        '<g p:k="1"/>',
+        '</a>',
+      ].join(''),
+    );
+    const namespaces = (element: XmlElement): unknown[] => [
+      element.name,
+      element.namespace,
+      ...element.attributes.filter(({ local }) => local === 'k').map(({ namespace }) => namespace),
+      ...element.children.map(namespaces),
+    ];
+    expect(namespaces(document.root)).toEqual([
+      'a',
+      'urn:1',
+      ['b', 'urn:2', ['p:c', 'urn:p2'], ['d', 'urn:2']],
+      ['p:e', 'urn:p1'],
+      ['f', null, 'urn:p3'],
+      ['g', 'urn:1', 'urn:p1'],
+    ]);
+    // A prefix that an element declared is not declared after it, also when the element closed itself.
+    for (const file of ['<a><b xmlns:q="urn:q"></b><q:c/></a>', '<a><b xmlns:q="urn:q"/><c q:k="1"/></a>']) {
+      expect(readXml(bytesOf(file)).issue?.message).toMatch(/^The prefix "q" of "q:(c|k)" is not declared\.$/);
+    }
+  });
+
+  it('takes away only the white space of XML around the value of xsi:nil', () => {
+    const nil = (value: string): boolean => isNil(read(`<a xmlns:xsi="${XSI_NAMESPACE}" xsi:nil="${value}"/>`).root);
+    expect([nil('true'), nil('1'), nil(' true '), nil('&#9;1&#10;')]).toEqual([true, true, true, true]);
+    expect([nil('false'), nil('0'), nil(''), nil('TRUE'), nil(`${NBSP}true`)]).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+});
+
 describe('what the reader refuses', () => {
   const refusals: [what: string, file: string, code: XmlIssueCode, line: number, column: number][] = [
     ['an empty file', '', 'XML_MALFORMED', 1, 1],
@@ -399,11 +497,22 @@ describe('what the reader refuses', () => {
     ['a reference to half a character', '<a>&#xD800;</a>', 'XML_MALFORMED', 1, 4],
     ['a reference beyond the last character', '<a>&#x110000;</a>', 'XML_MALFORMED', 1, 4],
     ['a reference in an attribute that is none', '<a k="&x"/>', 'XML_MALFORMED', 1, 7],
+    ['an entity named like a part of every object', '<a>&constructor;</a>', 'XML_MALFORMED', 1, 4],
+    ['an entity named like a function of every object', '<a>&toString;</a>', 'XML_MALFORMED', 1, 4],
+    ['an entity named like the prototype of an object', '<a>&__proto__;</a>', 'XML_MALFORMED', 1, 4],
+    ['such an entity in an attribute', '<a k="&valueOf;"/>', 'XML_MALFORMED', 1, 7],
+    ['a reference to the first character XML does not allow', '<a>&#x1;</a>', 'XML_MALFORMED', 1, 4],
+    ['a reference to U+FFFE', '<a>&#xFFFE;</a>', 'XML_MALFORMED', 1, 4],
+    ['a reference to U+FFFF', '<a>&#65535;</a>', 'XML_MALFORMED', 1, 4],
+    ['a reference one beyond the last character, in decimal', '<a>&#1114112;</a>', 'XML_MALFORMED', 1, 4],
+    ['a reference with more digits than a character has', '<a>&#x10000041;</a>', 'XML_MALFORMED', 1, 4],
     ['a character XML does not allow', '<a>\u0001</a>', 'XML_MALFORMED', 1, 4],
     ['the end of a CDATA section in a text', '<a>x]]></a>', 'XML_MALFORMED', 1, 5],
     ['a CDATA section that is not closed', '<a><![CDATA[x</a>', 'XML_MALFORMED', 1, 4],
     ['a CDATA section outside the first element', '<![CDATA[x]]><a/>', 'XML_MALFORMED', 1, 1],
     ['a comment that is not closed', '<a><!-- x</a>', 'XML_MALFORMED', 1, 4],
+    ['a comment whose start is taken for its end', '<a><!--></a>', 'XML_MALFORMED', 1, 4],
+    ['a comment whose start is taken for its end, with one more hyphen', '<a><!---></a>', 'XML_MALFORMED', 1, 4],
     ['a "<!" that starts nothing known', '<a><!ELEMENT b></a>', 'XML_MALFORMED', 1, 4],
     ['a declaration after a line', '\n<?xml version="1.0"?><a/>', 'XML_MALFORMED', 2, 1],
     ['a declaration inside an element', '<a><?xml version="1.0"?></a>', 'XML_MALFORMED', 1, 4],
@@ -417,7 +526,28 @@ describe('what the reader refuses', () => {
     ['a prefix that is declared further in', '<a><b xmlns:p="urn:p"/><p:c/></a>', 'XML_MALFORMED', 1, 25],
     ['a name with two colons', '<a:b:c xmlns:a="urn:a"/>', 'XML_MALFORMED', 1, 2],
     ['a name that ends with a colon', '<a: xmlns:a="urn:a"/>', 'XML_MALFORMED', 1, 2],
+    ['a part after the colon that starts with a hyphen', '<p:-b xmlns:p="urn:p"/>', 'XML_MALFORMED', 1, 2],
+    ['a part after the colon that starts with a digit', '<p:1 xmlns:p="urn:p"/>', 'XML_MALFORMED', 1, 2],
+    [
+      'an attribute whose part after the colon starts with a dot',
+      '<a xmlns:p="urn:p" p:.k="1"/>',
+      'XML_MALFORMED',
+      1,
+      20,
+    ],
+    ['a prefix that starts with a hyphen', '<a xmlns:-="urn:p"/>', 'XML_MALFORMED', 1, 4],
+    ['an element with the prefix xmlns', '<xmlns:a/>', 'XML_MALFORMED', 1, 2],
     ['a prefix declared as nothing', '<a xmlns:p=""/>', 'XML_MALFORMED', 1, 4],
+    ['the prefix xmlns declared', '<a xmlns:xmlns="urn:x"/>', 'XML_MALFORMED', 1, 4],
+    ['a prefix declared as the namespace of declarations', `<a xmlns:p="${XMLNS_NAMESPACE}"/>`, 'XML_MALFORMED', 1, 4],
+    ['the default declared as the namespace of declarations', `<a xmlns="${XMLNS_NAMESPACE}"/>`, 'XML_MALFORMED', 1, 4],
+    [
+      'the default declared as the namespace of the prefix xml',
+      '<a xmlns="http://www.w3.org/XML/1998/namespace"/>',
+      'XML_MALFORMED',
+      1,
+      4,
+    ],
     ['the prefix xml declared as something else', '<a xmlns:xml="urn:x"/>', 'XML_MALFORMED', 1, 4],
     [
       'the same attribute under two prefixes',
@@ -437,6 +567,14 @@ describe('what the reader refuses', () => {
     ['text after a child element', '<a>\n<b/>\n  x\n</a>', 'XML_UNSUPPORTED', 3, 3],
     ['text between child elements, as a reference', '<a><b/>&#65;<b/></a>', 'XML_UNSUPPORTED', 1, 8],
     ['text beside a child element, in a CDATA section', '<a><b/> <![CDATA[x]]></a>', 'XML_UNSUPPORTED', 1, 18],
+    // A space that does not break is not white space in XML: in a tag it is a fault, between elements it is text.
+    ['a space that does not break in a tag', `<a${NBSP}k="1"/>`, 'XML_MALFORMED', 1, 3],
+    ['a space that does not break between child elements', `<a><b/>${NBSP}<b/></a>`, 'XML_UNSUPPORTED', 1, 8],
+    ['a name that starts with the Greek question mark', `<${String.fromCodePoint(0x37e)}/>`, 'XML_MALFORMED', 1, 1],
+    ['a name that holds the Greek question mark', `<a${String.fromCodePoint(0x37e)}/>`, 'XML_MALFORMED', 1, 3],
+    ['a name that starts beyond the characters of names', `<${String.fromCodePoint(0xf0000)}/>`, 'XML_MALFORMED', 1, 1],
+    ['elements nested 257 deep', `${'<a>'.repeat(257)}${'</a>'.repeat(257)}`, 'XML_UNSUPPORTED', 1, 769],
+    ['a tag that closes itself 257 deep', `${'<a>'.repeat(256)}<b/>${'</a>'.repeat(256)}`, 'XML_UNSUPPORTED', 1, 769],
   ];
 
   it.each(refusals)('refuses %s', (_what, file, code, line, column) => {
@@ -518,8 +656,8 @@ describe('what the reader refuses', () => {
     expect([...codes].sort()).toEqual(['XML_MALFORMED', 'XML_UNSUPPORTED']);
   });
 
-  it('reads a file with elements nested ten thousand deep', () => {
-    const depth = 10_000;
+  it('reads elements nested 256 deep, and refuses a file of any depth without an exception', () => {
+    const depth = 256;
     const document = read(`${'<a>'.repeat(depth)}x${'</a>'.repeat(depth)}`);
     let element = document.root;
     let seen = 1;
@@ -529,6 +667,66 @@ describe('what the reader refuses', () => {
     }
     expect(seen).toBe(depth);
     expect(element.text?.value).toBe('x');
+    // What follows the reader can walk a tree by calling itself: no tree is deeper than this.
+    expect(plainOf(document.root).name).toBe('a');
+    const deep = readXml(bytesOf(`${'<a>'.repeat(100_000)}${'</a>'.repeat(100_000)}`));
+    expect(deep.document).toBeNull();
+    expect(deep.issue?.message).toBe('Elements are nested more than 256 deep, which is not read.');
+  });
+
+  it.each([0x0, 0x8, 0xb, 0xc, 0xe, 0x1f, 0xfffe, 0xffff])(
+    'refuses the character %i, which XML does not allow, wherever it stands',
+    (code) => {
+      const character = String.fromCodePoint(code);
+      for (const [file, column] of [
+        [`<a>${character}</a>`, 4],
+        [`<a k="${character}"/>`, 7],
+        [`<a><!--${character}--></a>`, 8],
+        [`<a><![CDATA[${character}]]></a>`, 13],
+        [`<a/>${character}`, 5],
+      ] as const) {
+        const reading = readXml(bytesOf(file));
+        expect(reading.document).toBeNull();
+        expect(reading.issue?.code).toBe('XML_MALFORMED');
+        expect([reading.issue?.place?.line, reading.issue?.place?.column]).toEqual([1, column]);
+      }
+    },
+  );
+
+  it.each([0x9, 0xa, 0x20, 0x7f, 0x85, 0xd7ff, 0xe000, 0xfffd])('reads the character %i, which XML allows', (code) => {
+    const character = String.fromCodePoint(code);
+    expect(textOf(read(`<a>x${character}y</a>`).root).value).toBe(`x${character}y`);
+  });
+
+  it('cuts a long name in a message', () => {
+    const long = 'n'.repeat(100);
+    expect(readXml(bytesOf(`<${long} "`)).issue?.message).toBe(
+      `The tag of "${'n'.repeat(60)}..." holds something that is not an attribute.`,
+    );
+    expect(readXml(bytesOf(`<a>&${long};</a>`)).issue?.message).toMatch(
+      new RegExp(`^The entity "n{60}\\.\\.\\." is not`),
+    );
+    // A name of 60 characters is shown whole, and a cut never leaves half a character.
+    expect(readXml(bytesOf(`<${'n'.repeat(60)} "`)).issue?.message).toContain(`"${'n'.repeat(60)}"`);
+    const astral = String.fromCodePoint(0x10000);
+    expect(readXml(bytesOf(`<${astral.repeat(61)} "`)).issue?.message).toContain(`"${astral.repeat(60)}..."`);
+  });
+
+  it('reads a file with very many prefixes in the time its length takes', () => {
+    // A root that declares 8,000 prefixes, and 32,000 children that declare one each: 0.6 MB.
+    const declarations = Array.from({ length: 8000 }, (_, index) => `xmlns:p${String(index)}="urn:${String(index)}"`);
+    const wide = `<r ${declarations.join(' ')}>${'<a xmlns:x="urn:x"/>'.repeat(32_000)}</r>`;
+    // 256 elements in each other, each of which declares 30 prefixes of its own.
+    const nested = Array.from({ length: 256 }, (_, depth) => {
+      const own = Array.from({ length: 30 }, (__, index) => `xmlns:q${String(depth)}_${String(index)}="urn:q"`);
+      return `<a ${own.join(' ')}>`;
+    });
+    const deep = `${nested.join('')}${'</a>'.repeat(256)}`;
+    const before = performance.now();
+    expect(read(wide).root.children).toHaveLength(32_000);
+    expect(read(deep).root.attributes).toHaveLength(30);
+    // A reader that copies the prefixes for each element needs more than twenty seconds for the first file.
+    expect(performance.now() - before).toBeLessThan(5000);
   });
 });
 

@@ -244,20 +244,40 @@ and decision record [0039](../adr/0039-a-reader-of-our-own-for-xml.md).
   decoded character. [xml-readers.md](../research/phase-1/xml-readers.md) has the list.
 - **All three points above are met.** The reader gives back the names, the values and the places of 1,500 random
   documents, and the values `fast-xml-parser` gives for them. It reads the 11,338 `-meta.xml` files of the three
-  public codebases without a problem, to the values `fast-xml-parser` gives, in a third of a second. 68 kinds of
+  public codebases without a problem, to the values `fast-xml-parser` gives, in a third of a second. 95 kinds of
   file that it must refuse give an issue each, and so does every start of a file that is cut off, and random
   bytes.
+- **The review of the pull request found one fault against the third point, and it is corrected.** An entity
+  named like a built-in property of an object of JavaScript, such as `&constructor;`, was read as a text. The
+  review also found that a file with thousands of namespace prefixes took minutes, or all the memory. It takes
+  the time of its length now. The record has what the review compared the reader with.
 - CI does not download the public codebases. The test over them ran on my machine and is skipped in CI.
 
-Five things differ from what Q8 and the list above say, or are choices of mine that you can strike:
+Six things differ from what Q8 and the list above say, or are choices of mine that you can strike:
 
-- The reader is about 760 lines, of them about 580 of code and types. Q8 said "about 300 lines".
-- It refuses four things that well-formed XML can hold: a document type declaration, a processing instruction,
-  an encoding other than UTF-8, and an element with both text and elements. No file of the fixture project or
-  of the public codebases holds one. Whether a file of a real org does is not known.
+- The reader is about 840 lines, of them about 620 of code and types. Q8 said "about 300 lines".
+- It refuses six things that well-formed XML can hold: a document type declaration, a processing instruction,
+  an encoding other than UTF-8, a version other than 1.0, an element with both text and elements, and elements
+  nested more than 256 deep. No file of the fixture project or of the public codebases holds one, and the
+  deepest of them is 8 deep. Whether a file of a real org does is not known.
+- The sentence of an issue names what stands where a name is expected, cut after 60 characters. In a file that
+  is not well-formed that can be a word of a formula. WP4 decides where such a sentence is shown.
 - It does not keep comments, nor the white space between child elements.
 - It resolves names against the namespaces a file declares, and refuses a prefix that is not declared.
 - A column counts UTF-16 code units. A character outside the basic plane, such as an emoji, counts as two.
+
+Five things the review noted for WP4, which builds on the reader:
+
+- 131 of the 11,338 files have a root element outside the namespace of the Metadata API: 68 use that of the
+  Tooling API, and 63 translations of objects declare none. So an analyser finds an element by its name without
+  the namespace, and does not ask for the namespace on the root.
+- An element with nothing in it has the empty text, however it is written. A value that is empty and a group
+  without members look the same.
+- The text of an element is not trimmed.
+- `core/references.ts` does not say which unit a column has. WP4 says it there, before a second parser gives
+  columns.
+- The markup of Aura and Visualforce is not XML that this reader reads: it uses prefixes it does not declare and
+  the entities of HTML. That is right for `-meta.xml` files and a limit for later phases.
 
 ### WP3 Components and references in the store
 

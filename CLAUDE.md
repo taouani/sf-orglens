@@ -81,7 +81,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   changes it.
 - XML is read with the reader of the engine, `extraction/xml.ts` (decision record 0039). It gives the place of
   every element and of every character of a text, and refuses a file it does not know with an issue. No code
-  of the engine imports `fast-xml-parser`: it is the second opinion in the tests of the reader.
+  of the engine imports `fast-xml-parser`: it is the second opinion in the tests of the reader, and the tools of
+  the layer rules refuse it elsewhere.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

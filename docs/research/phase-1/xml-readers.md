@@ -28,7 +28,7 @@ npm registry on 15 November 2026.
 
 | Library | Version, licence | Last change on npm | What it gives for places | The place of each decoded character |
 | --- | --- | --- | --- | --- |
-| `fast-xml-parser` | 5.12.1, MIT (5.12.0 is in the tree) | November 2026 | With `captureMetaData`, the index where a tag starts. No line, no end, nothing for text. `[package]` | No |
+| `fast-xml-parser` | 5.12.1, MIT (5.12.0 is in the tree) | November 2026 | With `captureMetaData`, the index where an element starts and where it ends. No line, nothing for text. `[package]` | No |
 | `@xmldom/xmldom` | 0.9.12, MIT | August 2026 | A line and a column for each node. `[package]` | No |
 | `saxes` | 6.0.0, ISC | May 2022 | The line and column of the parser when an event is given. `[package]` | No |
 | `sax` | 1.6.1, BlueOak-1.0.0 (in the tree) | July 2026 | As `saxes`. `[unverified]`: taken from its kind, its files were not read for this. | No |
