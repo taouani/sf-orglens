@@ -976,6 +976,17 @@ describe('asking the org what Salesforce knows about references', () => {
     ],
   });
 
+  /** The object of a field or of a rule, as a query that asks for its name gets it. */
+  const object = (name: string): Row => ({ attributes: { type: 'EntityDefinition' }, QualifiedApiName: name });
+  /** A custom field. The object is an id of a custom object, or the name of a standard object. */
+  const field = (n: number, name: string, table: string, objectName: string, namespace: string | null = null): Row => ({
+    Id: id('00N', n),
+    DeveloperName: name,
+    NamespacePrefix: namespace,
+    TableEnumOrId: table.slice(0, 15),
+    EntityDefinition: object(objectName),
+  });
+
   /** A small org: parts of the fixture project, and a class, an object and a flow beside it. */
   const tables = (): Record<string, Row[]> => ({
     CustomObject: [
@@ -984,13 +995,13 @@ describe('asking the org what Salesforce knows about references', () => {
       { Id: PLAN, DeveloperName: 'Secret_Plan', NamespacePrefix: null },
     ],
     CustomField: [
-      { Id: id('00N', 1), DeveloperName: 'Amount', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
-      { Id: id('00N', 2), DeveloperName: 'Status', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
-      { Id: id('00N', 3), DeveloperName: 'Status', NamespacePrefix: null, TableEnumOrId: LINE.slice(0, 15) },
-      { Id: id('00N', 4), DeveloperName: 'Tier', NamespacePrefix: null, TableEnumOrId: 'Account' },
-      { Id: id('00N', 5), DeveloperName: 'Is_Key_Account', NamespacePrefix: null, TableEnumOrId: 'Account' },
-      { Id: id('00N', 6), DeveloperName: 'Unused_Field', NamespacePrefix: null, TableEnumOrId: INVOICE.slice(0, 15) },
-      { Id: id('00N', 9), DeveloperName: 'Takeover_Date', NamespacePrefix: null, TableEnumOrId: PLAN.slice(0, 15) },
+      field(1, 'Amount', INVOICE, 'Invoice__c'),
+      field(2, 'Status', INVOICE, 'Invoice__c'),
+      field(3, 'Status', LINE, 'Invoice_Line__c'),
+      field(4, 'Tier', 'Account', 'Account'),
+      field(5, 'Is_Key_Account', 'Account', 'Account'),
+      field(6, 'Unused_Field', INVOICE, 'Invoice__c'),
+      field(9, 'Takeover_Date', PLAN, 'Secret_Plan__c'),
     ],
     ValidationRule: [
       {
@@ -998,6 +1009,7 @@ describe('asking the org what Salesforce knows about references', () => {
         ValidationName: 'Locked_When_Paid',
         NamespacePrefix: null,
         EntityDefinitionId: INVOICE.slice(0, 15),
+        EntityDefinition: object('Invoice__c'),
       },
     ],
     ApexClass: [
@@ -1303,12 +1315,7 @@ describe('asking the org what Salesforce knows about references', () => {
   it('does not count a query that failed when the first query gave every row', async () => {
     const org = tables();
     // A field of a package with the name of a field of the fixture project.
-    org['CustomField']?.push({
-      Id: id('00N', 7),
-      DeveloperName: 'Amount',
-      NamespacePrefix: 'hidden',
-      TableEnumOrId: INVOICE.slice(0, 15),
-    });
+    org['CustomField']?.push(field(7, 'Amount', INVOICE, 'Invoice__c', 'hidden'));
     org['MetadataComponentDependency']?.push(
       dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 7), 'Amount'),
     );
@@ -1336,33 +1343,25 @@ describe('asking the org what Salesforce knows about references', () => {
     expectNothingForeign(output);
   });
 
-  /** The small org with the custom metadata type of the fixture project, the rule that names a record of it, and a type beside it. */
+  const RULE_TYPE = id('01I', 3);
+  const SECRET_TYPE = id('01I', 8);
+  const RULE = id('03d', 2);
+  const RECORD = id('m00', 1);
+
+  /**
+   * The small org with the custom metadata type of the fixture project, the rule that names a record of it, and
+   * a type beside it. How the Dependency API writes a row about a record is an assumption of the tool, and so
+   * of these rows: no org has been seen to give one.
+   */
   const withCustomMetadata = (): Record<string, Row[]> => {
-    const RULE_TYPE = id('01I', 3);
-    const SECRET_TYPE = id('01I', 8);
-    const RULE = id('03d', 2);
-    const RECORD = id('m00', 1);
-    const object = (name: string): Row => ({ attributes: { type: 'EntityDefinition' }, QualifiedApiName: name });
     const org = tables();
     org['CustomObject']?.push(
       { Id: RULE_TYPE, DeveloperName: 'Billing_Rule', NamespacePrefix: null },
       { Id: SECRET_TYPE, DeveloperName: 'Secret_Rule', NamespacePrefix: null },
     );
     org['CustomField']?.push(
-      {
-        Id: id('00N', 10),
-        DeveloperName: 'Max_Amount',
-        NamespacePrefix: null,
-        TableEnumOrId: RULE_TYPE.slice(0, 15),
-        EntityDefinition: object('Billing_Rule__mdt'),
-      },
-      {
-        Id: id('00N', 11),
-        DeveloperName: 'Takeover_Limit',
-        NamespacePrefix: null,
-        TableEnumOrId: SECRET_TYPE.slice(0, 15),
-        EntityDefinition: object('Secret_Rule__mdt'),
-      },
+      field(10, 'Max_Amount', RULE_TYPE, 'Billing_Rule__mdt'),
+      field(11, 'Takeover_Limit', SECRET_TYPE, 'Secret_Rule__mdt'),
     );
     org['ValidationRule']?.push({
       Id: RULE,
@@ -1378,9 +1377,13 @@ describe('asking the org what Salesforce knows about references', () => {
       // Not in the answer key: the type itself, from the rule and from the record.
       dependency('ValidationRule', RULE, 'Large_Amount_Needs_Permission', 'CustomObject', RULE_TYPE, 'Billing_Rule'),
       dependency('Billing_Rule__mdt', RECORD, 'Default', 'CustomObject', RULE_TYPE, 'Billing_Rule'),
-      // A record the fixture project does not hold, of its type and of a type beside it.
-      dependency('ApexClass', id('01p', 9), 'SecretPlan', 'Billing_Rule__mdt', id('m00', 2), 'Takeover'),
-      dependency('ApexClass', id('01p', 9), 'SecretPlan', 'Secret_Rule__mdt', id('m01', 1), 'Default'),
+      // From a class of the fixture project to a record it does not hold, of its type and of a type beside it,
+      // and to a record of its name whose type has a prefix of a package or another type before the dot.
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'BILLING_RULE__MDT', id('m00', 2), 'Takeover'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'Secret_Rule__mdt', id('m01', 1), 'Default'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'hidden__Billing_Rule__mdt', id('m02', 1), 'Default'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'Billing_Rule__mdt', id('m00', 3), 'Secret_Rule.Default'),
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'Secret Rule', id('m03', 1), 'Default'),
       dependency('ApexClass', id('01p', 9), 'SecretPlan', 'CustomField', id('00N', 11), 'Takeover_Limit'),
     );
     return org;
@@ -1395,13 +1398,13 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(asked).toContain(
       'SELECT Id, DeveloperName, NamespacePrefix, TableEnumOrId, EntityDefinition.QualifiedApiName FROM CustomField',
     );
+    expect(asked).toContain(
+      'SELECT Id, ValidationName, NamespacePrefix, EntityDefinitionId, EntityDefinition.QualifiedApiName FROM ValidationRule',
+    );
     expect(output).toContain(
       'Rows read to find the names behind the ids: CustomObject 5, CustomField 9, ValidationRule 2, ApexClass 4, ApexTrigger 1.',
     );
-    // The object of the first rule is named by the second, which sits on the same object.
-    expect(output).toContain(
-      'Custom objects: 5. A field or a rule of the object gave the name of 3. The names of the other 2 are built with the ending __c, which is wrong for a custom metadata type.',
-    );
+    expect(output).toContain('Custom objects: 5. A field or a rule of the object gave the name of 5.\n');
     expect(output).toContain(
       '- reported  ValidationRule:invoice__c.large_amount_needs_permission -> CustomField:billing_rule__mdt.max_amount__c  (formula)',
     );
@@ -1412,57 +1415,158 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain(
       '- reported  ValidationRule:invoice__c.locked_when_paid -> CustomField:invoice__c.status__c',
     );
-    expect(output).toContain('- CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt');
+    // The type itself, which the key does not hold as a target of the rule.
+    expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 5.');
+    expect(output).toContain('- CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt\n');
     expect(output).toContain(
-      '- ValidationRule:invoice__c.large_amount_needs_permission -> CustomObject:billing_rule__mdt',
+      '- ValidationRule:invoice__c.large_amount_needs_permission -> CustomObject:billing_rule__mdt\n',
     );
-    // A record that is not of the fixture project is counted under its type where the type is of the project.
+    // A record that is not of the fixture project is counted, under the type where that is one of the project.
     expect(output).toContain(
-      'The rows with a component that is not of the fixture project, by type: ApexClass to (a type that is not shown) 1, ApexClass to billing_rule__mdt (an object of the fixture project) 1, ApexClass to CustomField 3, ApexClass to CustomObject 1, Flow to CustomField 1',
+      'The rows with a component that is not of the fixture project, by type: ApexClass to (a type that is not shown, and ends in __mdt) 2, ApexClass to (a type that is not shown) 1, ApexClass to billing_rule__mdt (a custom metadata type of the fixture project) 2, ApexClass to CustomField 3, ApexClass to CustomObject 1, Flow to CustomField 1',
     );
+    expect(output).not.toContain('CustomMetadata:billing_rule.takeover');
     expect(output).not.toContain('::warning::');
-    expect(output).not.toContain('Secret_Rule');
-    expect(output).not.toContain('secret_rule');
+    expect(output).not.toMatch(/secret_rule/i);
+    expect(output).not.toContain('BILLING_RULE');
     expectNothingForeign(output);
   });
 
-  it('keeps the name it builds for an object when the org refuses the name, or gives one that does not fit', async () => {
-    tooling(withCustomMetadata(), {
+  it('finds a record whose name holds its type, in the two ways the API may write it', async () => {
+    const org = withCustomMetadata();
+    org['MetadataComponentDependency'] = [
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'Billing_Rule__mdt', RECORD, 'Billing_Rule.Default'),
+      dependency('ApexClass', id('01p', 2), 'InvoiceSelector', 'CustomMetadata', RECORD, 'Billing_Rule.Default'),
+      // Not a record of the fixture project, and a name that is the record alone under the type of all records.
+      dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomMetadata', id('m00', 2), 'Billing_Rule.Takeover'),
+      dependency('ApexTrigger', id('01q', 1), 'InvoiceTrigger', 'CustomMetadata', RECORD, 'Default'),
+    ];
+    tooling(org);
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 3.');
+    expect(output).toContain('- ApexClass:invoiceservice -> CustomMetadata:billing_rule.default\n');
+    expect(output).toContain('- ApexClass:invoiceselector -> CustomMetadata:billing_rule.default\n');
+    // One record of the project has that name, so the pair is found, and marked as found by a name.
+    expect(output).toContain('- ApexTrigger:invoicetrigger -> CustomMetadata:billing_rule.default  (by name)');
+    expect(output).toContain(
+      'The rows with a component that is not of the fixture project, by type: ApexClass to CustomMetadata 1',
+    );
+    expectNothingForeign(output);
+  });
+
+  it('says that the answer is not whole when the org refuses the name of the object of a field', async () => {
+    const asked = tooling(withCustomMetadata(), {
       fault: (soql) =>
         soql.includes('EntityDefinition.QualifiedApiName FROM CustomField') ? 'INVALID_FIELD' : undefined,
     });
-    const refused = collected();
-    await probeOrg(refused.log, { env: environment() });
-    expect(refused.log.failed).toBe(false);
-    expect(refused.text()).toContain(
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    // First without the prefix of a package, then without the name of the object.
+    expect(asked.filter((soql) => soql.endsWith('FROM CustomField'))).toEqual([
+      'SELECT Id, DeveloperName, NamespacePrefix, TableEnumOrId, EntityDefinition.QualifiedApiName FROM CustomField',
+      'SELECT Id, DeveloperName, TableEnumOrId, EntityDefinition.QualifiedApiName FROM CustomField',
+      'SELECT Id, DeveloperName, NamespacePrefix, TableEnumOrId FROM CustomField',
+    ]);
+    expect(output).toContain(
       'CustomField 9 without the name of the object (INVALID_FIELD), ValidationRule 2, ApexClass 4, ApexTrigger 1.',
     );
-    expect(refused.text()).toContain(
-      'Custom objects: 5. A field or a rule of the object gave the name of 1. The names of the other 4 are built with the ending __c, which is wrong for a custom metadata type.',
+    // The rules name the one object they sit on.
+    expect(output).toContain(
+      'Custom objects: 5. A field or a rule of the object gave the name of 1. The names of the other 4 are built with the ending __c, which is a guess: a custom metadata type ends in __mdt. A pair that rests on such a name is marked "by name".\n',
     );
     // The field of the custom metadata type is then a field of an object the fixture project does not hold.
-    expect(refused.text()).toContain(
+    expect(output).toContain(
       '- missing   ValidationRule:invoice__c.large_amount_needs_permission -> CustomField:billing_rule__mdt.max_amount__c  (formula)',
     );
-    expect(refused.text()).toContain(
+    expect(output).toContain(
       '- reported  ValidationRule:invoice__c.locked_when_paid -> CustomField:invoice__c.status__c',
     );
-    expectNothingForeign(refused.text());
+    // A field of an object whose name is built is found, and not counted as reported.
+    expect(output).toContain('- ApexClass:invoiceservice -> CustomField:invoice_line__c.status__c  (by name)');
+    expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(output);
+  });
 
-    // A name that does not start with the name of the object is not taken.
-    const org = withCustomMetadata();
-    for (const row of org['CustomField'] ?? []) {
-      if (row['DeveloperName'] === 'Max_Amount') row['EntityDefinition'] = { QualifiedApiName: 'Invoice__c' };
-    }
-    tooling(org);
-    const unfit = collected();
-    await probeOrg(unfit.log, { env: environment() });
-    expect(unfit.text()).toContain('Custom objects: 5. A field or a rule of the object gave the name of 2.');
-    expect(unfit.text()).toContain(
-      '- missing   ValidationRule:invoice__c.large_amount_needs_permission -> CustomField:billing_rule__mdt.max_amount__c  (formula)',
+  it('reads without what the org refuses, and stops at a failure that is not about a field', async () => {
+    // The rules cannot be asked for with the name of their object. The fields still name the objects.
+    const rules = tooling(withCustomMetadata(), {
+      fault: (soql) =>
+        soql.includes('EntityDefinition.QualifiedApiName FROM ValidationRule') ? 'INVALID_FIELD' : undefined,
+    });
+    const first = collected();
+    await probeOrg(first.log, { env: environment() });
+    expect(rules.filter((soql) => soql.endsWith('FROM ValidationRule'))).toHaveLength(3);
+    expect(first.text()).toContain('ValidationRule 2 without the name of the object (INVALID_FIELD), ApexClass 4');
+    expect(first.text()).toContain('Custom objects: 5. A field or a rule of the object gave the name of 5.\n');
+    expect(first.text()).toContain(
+      '- reported  ValidationRule:invoice__c.large_amount_needs_permission -> CustomField:billing_rule__mdt.max_amount__c  (formula)',
     );
-    expect(unfit.text()).toContain('- reported  ApexClass:invoiceservice -> CustomField:invoice__c.amount__c');
-    expectNothingForeign(unfit.text());
+    expect(first.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(first.text());
+
+    // The fields can be asked for with neither of the two.
+    const fields = tooling(withCustomMetadata(), {
+      fault: (soql) =>
+        /(NamespacePrefix|EntityDefinition\.).* FROM CustomField$/.test(soql) ? 'MALFORMED_QUERY' : undefined,
+    });
+    const second = collected();
+    await probeOrg(second.log, { env: environment() });
+    expect(fields.filter((soql) => soql.endsWith('FROM CustomField'))).toHaveLength(4);
+    expect(second.text()).toContain(
+      'CustomField 9 without NamespacePrefix and the name of the object (MALFORMED_QUERY), ValidationRule 2',
+    );
+    expectNothingForeign(second.text());
+
+    // A failure that asking for less does not answer: one request, and the rows are missing.
+    const down = tooling(withCustomMetadata(), {
+      fault: (soql) => (soql.endsWith('FROM CustomField') ? 'REQUEST_TIMEOUT' : undefined),
+    });
+    const third = collected();
+    await probeOrg(third.log, { env: environment() });
+    expect(down.filter((soql) => soql.endsWith('FROM CustomField'))).toHaveLength(1);
+    expect(third.text()).toContain('CustomField failed (REQUEST_TIMEOUT), ValidationRule 2');
+    expect(third.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
+    expectNothingForeign(third.text());
+  });
+
+  it('keeps the name it builds for an object when the name the org gives does not fit', async () => {
+    const run = async (name: string, also?: string): Promise<string> => {
+      const org = withCustomMetadata();
+      for (const row of org['CustomField'] ?? []) {
+        if (row['DeveloperName'] === 'Max_Amount') row['EntityDefinition'] = object(name);
+      }
+      if (also !== undefined) org['CustomField']?.push(field(12, 'Min_Amount', RULE_TYPE, also));
+      tooling(org);
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment() });
+      expectNothingForeign(text());
+      return text();
+    };
+    const pair =
+      'ValidationRule:invoice__c.large_amount_needs_permission -> CustomField:billing_rule__mdt.max_amount__c  (formula)';
+    const unfit =
+      'Custom objects: 5. A field or a rule of the object gave the name of 4. The name of the other one is built with the ending __c, which is a guess: a custom metadata type ends in __mdt. A pair that rests on such a name is marked "by name". For 1 of them the org gave a name that does not fit the object, or more than one name.\n';
+
+    // The name of another object, a name that goes on after the developer name, one with two endings, one
+    // without the two underscores, and two fields that name the object differently.
+    for (const name of ['Invoice__c', 'Billing_RuleX__mdt', 'Billing_Rule__mdt__x', 'Billing_Rule_mdt']) {
+      const output = await run(name);
+      expect(output).toContain(unfit);
+      expect(output).toContain(`- missing   ${pair}`);
+      // The type is then named with the ending of a custom object, which the fixture project does not hold.
+      expect(output).not.toContain('CustomObject:billing_rule__mdt');
+    }
+    const differing = await run('Billing_Rule__mdt', 'Billing_Rule__c');
+    expect(differing).toContain(unfit);
+    expect(differing).toContain(`- missing   ${pair}`);
+    // The same name twice is one name, in whatever case.
+    const twice = await run('Billing_Rule__mdt', 'Billing_Rule__mdt');
+    expect(twice).toContain('Custom objects: 5. A field or a rule of the object gave the name of 5.\n');
+    expect(twice).toContain(`- reported  ${pair}`);
   });
 
   it('marks a pair that only the name of a field gives, and does not count it as reported', async () => {
@@ -1474,7 +1578,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('CustomField failed (INVALID_TYPE)');
     // Without the object of a field, the row could be about a field of that name of any object.
     expect(output).toContain(
-      'The Dependency API reports 2 of them. 2 more are matched by the name of a field or of a rule alone, because the org gave no object for the id. They are marked "by name" and not counted as reported.',
+      'The Dependency API reports 2 of them. 2 more are matched by a name alone, because the org gave no object for the id of a field or of a rule, or no ending for the name of a custom object. They are marked "by name" and not counted as reported.',
     );
     expect(output).toContain('- by name   ApexClass:invoiceservice -> CustomField:invoice__c.amount__c  (field, soql)');
     expect(output).toContain('- reported  ApexTrigger:invoicetrigger -> CustomObject:invoice__c  (declaration)');
