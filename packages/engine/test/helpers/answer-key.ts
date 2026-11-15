@@ -1,5 +1,8 @@
 /**
- * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v0.yaml`).
+ * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v1.yaml`).
+ *
+ * Version 0 of the key (`answer-key.v0.yaml`) is kept: it is the key the Apex trial of Phase 0 was scored with.
+ * It can still be read here, and `fixture-key.test.ts` holds its Apex part equal to that of version 1.
  *
  * The key is written by hand, so it is read strictly: an unknown field, a wrong value or a place that the text of the
  * project does not contain is a problem, and all problems are reported together. A place is written as a line and a
@@ -18,9 +21,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 /** The folder `fixtures` of the repository. */
 export const FIXTURES_DIR = join(here, '../../../../fixtures');
-const KEY_FILE = join(FIXTURES_DIR, 'expected/answer-key.v0.yaml');
 
-/** The kinds of reference the key uses. Calls and uses of a type are not keyed in version 0. */
+/** The versions of the key that exist. The newest one describes the whole project. */
+type KeyVersion = 0 | 1;
+const keyFile = (version: KeyVersion): string => join(FIXTURES_DIR, `expected/answer-key.v${String(version)}.yaml`);
+
+/** The kinds of reference the key uses. Calls and uses of a type are not keyed. */
 const KEY_KINDS = ['reads', 'writes', 'references', 'extends', 'triggers-on'] as const;
 type KeyKind = (typeof KEY_KINDS)[number];
 
@@ -31,6 +37,8 @@ const KEY_VIAS = [
   'summary',
   'lookup',
   'display-field',
+  'controlling-field',
+  'value-set',
   'field',
   'soql',
   'sosl',
@@ -119,10 +127,14 @@ export function columnOf(line: string, match: string, nth: number): number | und
   return undefined;
 }
 
-/** Reads and checks the answer key. Throws one error that lists every problem. */
-export function loadAnswerKey(): AnswerKey {
+/**
+ * Reads and checks the answer key. Throws one error that lists every problem.
+ *
+ * Without a version it reads the newest key. Version 0 lists only the components the project had in Phase 0.
+ */
+export function loadAnswerKey(wanted: KeyVersion = 1): AnswerKey {
   const problems: string[] = [];
-  const root: unknown = parse(readFileSync(KEY_FILE, 'utf8'));
+  const root: unknown = parse(readFileSync(keyFile(wanted), 'utf8'));
   if (!isDict(root)) throw new Error('The answer key is not a mapping.');
 
   /** Reports the fields of a mapping that are not allowed. */
@@ -176,6 +188,7 @@ export function loadAnswerKey(): AnswerKey {
     'unknowns',
   ]);
   const version = count('version', root['version']);
+  if (version !== wanted) problems.push(`version: the file of version ${String(wanted)} says ${String(version)}.`);
   const project = text('project', root['project']);
   const projectDir = join(FIXTURES_DIR, project);
 

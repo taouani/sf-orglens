@@ -53,7 +53,7 @@ const isApex = (file: string): boolean => file.endsWith('.cls') || file.endsWith
 const placeOf = (entry: { file: string; line: number; column: number }): string =>
   `${entry.file}:${String(entry.line)}:${String(entry.column)}`;
 
-export function score(analysis: Analysis, key: Key = loadAnswerKey()): Score {
+export function score(analysis: Analysis, key: Key = loadAnswerKey(0)): Score {
   const entries = key.references.filter((entry) => isApex(entry.file));
   const taken = new Set<KeyReference>();
   const pairs: Pair[] = [];

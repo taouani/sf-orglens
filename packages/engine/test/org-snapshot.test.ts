@@ -1,10 +1,11 @@
 /**
  * Snapshots of an org, against a mock org on this machine that holds the
- * fixture project (`helpers/mock-org.ts`, `helpers/mock-metadata.ts`).
+ * fixture project or a part of it (`helpers/mock-org.ts`,
+ * `helpers/mock-metadata.ts`).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -13,7 +14,6 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { readLocalSource } from '../src/sources/local.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
@@ -22,7 +22,15 @@ import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 
-const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
+/** The package directory of the fixture project. */
+const WHOLE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
+/**
+ * The part of the fixture project that the mock org of these tests holds: its classes, its trigger and three of its
+ * objects with their fields and rules. An org retrieves that as 16 components by name, in 29 files. The tests of how
+ * a retrieve is split, repeated and continued count with these two numbers, so the part does not grow when the
+ * project gets a new type. One test takes a snapshot of an org that holds the whole project.
+ */
+const PART = ['classes', 'triggers', 'objects/Account', 'objects/Invoice__c', 'objects/Invoice_Line__c'];
 const ORG_ID = '00Dxx0000000001EAA';
 const OTHER_ORG_ID = '00Dxx0000000002EAA';
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
@@ -35,26 +43,28 @@ org_id = "${ORG_ID}"
 `;
 
 const dirs = tempDirs();
+const copies = tempDirs();
 let mock: MockOrg;
 let metadata: MockMetadata;
-/** The files of the fixture project as a repository holds them, without the package directory. */
+/** A copy of the part of the project: the folder the mock org is made from. */
+let FIXTURE: string;
+/** The files of the part as a repository holds them, without the package directory. */
 let fixtureFiles: string[];
+/** The files of the whole project, in the same form. */
+let wholeFiles: string[];
 
 beforeAll(async () => {
   mock = await startMockOrg();
-  const reading = await readLocalSource(FIXTURES_DIR, {
-    kind: 'git',
-    name: 'fixture',
-    description: null,
-    repo: 'billing-sfdx',
-    ref: null,
-    paths: ['force-app'],
-    tracks: null,
-  });
-  fixtureFiles = reading.tree.files.map((path) => path.replace('force-app/main/default/', ''));
+  FIXTURE = join(copies.next(), 'force-app');
+  for (const folder of PART) {
+    cpSync(join(WHOLE, 'main/default', folder), join(FIXTURE, 'main/default', folder), { recursive: true });
+  }
+  fixtureFiles = walk(join(FIXTURE, 'main/default'));
+  wholeFiles = walk(join(WHOLE, 'main/default'));
 });
 afterAll(async () => {
   await mock.close();
+  copies.cleanUp();
 });
 beforeEach(async () => {
   metadata = await metadataFromSource(FIXTURE);
@@ -80,7 +90,7 @@ afterEach(async () => {
   dirs.cleanUp();
 });
 
-/** What an org snapshot of the fixture holds: its files, and the file of the standard object it has fields of. */
+/** What a snapshot of the mock org holds: the files of the part, and the file of the standard object it has fields of. */
 const expectedFiles = (): string[] => [...fixtureFiles, 'objects/Account/Account.object-meta.xml'].sort();
 
 async function failure(
@@ -192,6 +202,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       );
 
     it('stores the files of every component the org lists, in the form a repository holds them', async () => {
+      // This org holds the whole project, with every type it has. The project has only fields of two standard
+      // objects, and the org hands out the file of each of them.
+      metadata = await metadataFromSource(WHOLE);
+      mock.metadata = metadata;
+      const expected = [
+        ...wholeFiles,
+        'objects/Account/Account.object-meta.xml',
+        'objects/User/User.object-meta.xml',
+      ].sort();
       const dir = workspaceDir();
       const workspace = await openWorkspace({ root: dir, env });
       const events: SnapshotProgress[] = [];
@@ -204,7 +223,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         status: 'complete',
         apiVersion: '66.0',
         commit: null,
-        files: expectedFiles().length,
+        files: expected.length,
       });
       expect(report.snapshot.startedAt).toMatch(UTC);
       expect(report.snapshot.finishedAt).toMatch(UTC);
@@ -212,9 +231,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
         { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, listing: 'ok', note: null },
         { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 31, retrieved: 31, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 3, retrieved: 3, analysed: 0, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomField', listed: 54, retrieved: 54, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomMetadata', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'ValidationRule', listed: 10, retrieved: 10, analysed: 0, listing: 'ok', note: null },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'RecordType')).toEqual({
@@ -226,16 +250,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         note: null,
       });
 
-      // The same files as a snapshot of the folder, and the same content for what Salesforce does not rewrite.
-      expect(stored(dir, 1)).toEqual(expectedFiles());
-      for (const path of fixtureFiles.filter((one) => /\.(?:cls|trigger)$/.test(one))) {
-        expect(content(dir, 1, path).equals(readFileSync(join(FIXTURE, 'main/default', path))), path).toBe(true);
+      // The files of the folder, and the same content for what Salesforce does not rewrite.
+      expect(stored(dir, 1)).toEqual(expected);
+      for (const path of wholeFiles.filter((one) => /\.(?:cls|trigger)$/.test(one))) {
+        expect(content(dir, 1, path).equals(readFileSync(join(WHOLE, 'main/default', path))), path).toBe(true);
       }
 
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       expect(events.slice(-2)).toEqual([
-        { step: 'planned', snapshot: 1, components: 53, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
       ]);
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.
@@ -256,7 +280,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 53, listed: 53, retrieved: 53, ids: 53, dates: 53 });
+        ).toEqual({ items: 89, listed: 89, retrieved: 89, ids: 89, dates: 89 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -317,7 +341,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot.status).toBe('partial');
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => path.startsWith('objects/')));
       expect(typeOf(report, 'ApexClass')).toMatchObject({ listed: 12, retrieved: 0 });
-      expect(typeOf(report, 'CustomField')).toMatchObject({ listed: 31, retrieved: 31 });
+      expect(typeOf(report, 'CustomField')).toMatchObject({ listed: 48, retrieved: 48 });
       const failed = report.issues.filter((issue) => issue.code === 'RETRIEVE_FAILED');
       expect(failed).toHaveLength(13);
       expect(failed[0]).toEqual({

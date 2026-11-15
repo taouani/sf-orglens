@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Is_My_Region__c</fullName>
+    <formula>TEXT($User.Billing_Region__c) = TEXT(Account__r.Billing_Region__c)</formula>
+    <label>In My Region</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Checkbox</type>
+</CustomField>

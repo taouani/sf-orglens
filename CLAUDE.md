@@ -115,9 +115,13 @@ Run `pnpm run check` before every push.
 - Expected outputs larger than a few lines are golden files in `test/golden/`, compared byte for byte with
   `toMatchFileSnapshot`. Review a changed golden file like code. Never regenerate one just to make a test pass.
 - All text is LF on every platform. Fixtures record line and column positions.
-- `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v0.yaml` belong together
+- `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v1.yaml` belong together
   (`fixtures/README.md`). The key is written by hand and is never changed to make an analyser pass. Change a fixture
   file and its entries in the key in the same pull request. `fixture-key.test.ts` says which entries moved.
+  `answer-key.v0.yaml` is the key of Phase 0, which the Apex trial is scored with. Its Apex part and that of
+  version 1 are the same, and the test fails when they differ: change an Apex entry in both files.
+- A test of how a retrieve is split, repeated or continued uses the part of the project that `org-snapshot.test.ts`
+  names, so that its numbers do not move when the project gets a new type.
 - Tests need no network and no org. A test that needs a Git repository makes one with the Git helper of its
   package (`packages/engine/test/helpers/git-repo.ts`, `packages/cli/test/helpers/git.ts`). The helpers start Git
   without the `GIT_` variables and the Git settings of the machine, so that a test run from a hook cannot write

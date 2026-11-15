@@ -170,6 +170,25 @@ Build:
   documents, every operator and every kind of literal. Expected: each is read without a problem.
 - A deploy of the new fixture to the test org, and a run of the probe of Phase 0.
 
+Status on 15 November 2026, with the pull request that holds the fixture and the key. Built: the 35 new
+components, `answer-key.v1.yaml` with 107 references in fields and rules (63 more than version 0), the probes
+(178 formulas) and the folder `fixtures/formula-negative` (10 files), each with a check. Not done: the deploy and
+the run of the probe, which the workflow can only do from `main`, so after the merge. Until then nothing but my
+reading says that Salesforce accepts the new formulas. Your reading of ten entries is open too.
+
+Four things differ from the list above:
+
+- The fixture also has `$UserRole`, and the folder of what cannot be deployed also has a relationship and a
+  label that do not exist.
+- The list of functions for the probes is the one of the help page of Salesforce, and the fetch of that page gave
+  only two thirds of it as written. [fixtures/README.md](../../fixtures/README.md#formula-probes) says which
+  names were read how.
+- The probes are not deployed. "Every function Salesforce documents" is therefore a list of calls a parser must
+  read, not a list of formulas Salesforce accepts.
+- The tests of how a retrieve is split, repeated and continued now run against a fixed part of the project, so
+  that their numbers do not move each time the project gets a type. One test takes a snapshot of a mock org with
+  the whole project, with every new type in it.
+
 Accepted when:
 
 - Salesforce accepts the deploy, which shows that every formula of the fixture is valid.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Large_Amount_Needs_Permission</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(
+  Amount__c &gt; $CustomMetadata.Billing_Rule__mdt.Default.Max_Amount__c,
+  NOT($Permission.Approve_Large_Invoices)
+)</errorConditionFormula>
+    <errorDisplayField>Amount__c</errorDisplayField>
+    <errorMessage>An amount above the limit of the billing rule needs the permission to approve large invoices.</errorMessage>
+</ValidationRule>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Owner_Label__c</fullName>
+    <formula>IF(
+  ISBLANK(Owner:Queue.Id),
+  Owner:User.Username,
+  Owner:Queue.QueueName
+)</formula>
+    <label>Owner Label</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <type>Text</type>
+</CustomField>

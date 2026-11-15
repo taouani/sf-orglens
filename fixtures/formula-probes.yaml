@@ -1,0 +1,228 @@
+# Formula probes: one small formula for every operator, every kind of literal, every kind of name and every
+# function of the formula language of Salesforce. An analyser must read each of them without a problem.
+#
+# What is not probed: a text that runs over two lines, which the grammar of the engine refuses and the formula
+# editor of Salesforce may accept, and the named arguments in square brackets of old buttons.
+#
+# The probes test the reading of a formula, not what it means. They are not deployed, so Salesforce has not
+# checked them: the kinds of the arguments are plausible and not verified. Each formula is written for the object
+# Invoice__c of the project billing-sfdx, and names only fields that project has. ../README.md says more.
+#
+# One probe: { covers, formula, names } and, where it applies: seen, where, note.
+#   covers   the operator, literal, kind of name or function the probe is there for. No two probes cover the same.
+#   formula  the formula, as the text of the element, with no entities of XML.
+#   names    every name of the formula that is not the name of a call and not TRUE, FALSE, NULL or NOT, in the
+#            order they stand, each as it is written with its dots. A name in a comment or in a text is not one.
+#   seen     for a function: where the name was seen. See `sources`.
+#   where    `elsewhere` for a function that Salesforce offers in a report, a button, a page or an action, and not
+#            in a formula field or a validation rule. Phase 1 reads no formula of that kind. The call is read anyway.
+#            The mark is written from the summary of the help page and is not verified.
+
+version: 1
+object: Invoice__c
+
+sources:
+  # The help page "Formula Operators and Functions by Context" of Salesforce, fetched on 15 November 2026. It names
+  # no release. The fetch gave the first two thirds of the page as it is written, and a summary of the rest.
+  help: The name stands in the part of the help page that was fetched as written.
+  help-summary: The name stands only in the summary of the rest of the page. It was not read as written.
+  # github.com/salesforce/formula-engine at commit 118bbca82d0791eab43c413aff4f243d0f0af59e. Its grammar is the
+  # source of the operators, the literals and the characters of a name below.
+  engine: The name stands in the code of the open-source formula engine of Salesforce, implemented or only named.
+
+probes:
+  # ---------------------------------------------------------------- operators
+  - { covers: "+", formula: "Amount__c + 1", names: [Amount__c] }
+  - { covers: "-", formula: "Amount__c - 1", names: [Amount__c] }
+  - { covers: "*", formula: "Amount__c * Tax_Rate__c", names: [Amount__c, Tax_Rate__c] }
+  - { covers: "/", formula: "Amount__c / 2", names: [Amount__c] }
+  - { covers: "^", formula: "Amount__c ^ 2", names: [Amount__c] }
+  - { covers: "()", formula: "(Amount__c + 1) * (2 - Tax_Rate__c)", names: [Amount__c, Tax_Rate__c] }
+  - { covers: "unary -", formula: "-Amount__c + -(1)", names: [Amount__c] }
+  - { covers: "unary +", formula: "+Amount__c", names: [Amount__c] }
+  - { covers: "=", formula: "Amount__c = 0", names: [Amount__c] }
+  - { covers: "==", formula: "Amount__c == 0", names: [Amount__c] }
+  - { covers: "<>", formula: "Amount__c <> 0", names: [Amount__c] }
+  - { covers: "!=", formula: "Amount__c != 0", names: [Amount__c] }
+  - { covers: "<", formula: "Amount__c < 10", names: [Amount__c] }
+  - { covers: ">", formula: "Amount__c > 10", names: [Amount__c] }
+  - { covers: "<=", formula: "Amount__c <= 10", names: [Amount__c] }
+  - { covers: ">=", formula: "Amount__c >= 10", names: [Amount__c] }
+  - { covers: "&&", formula: "Amount__c > 0 && Tax_Rate__c > 0", names: [Amount__c, Tax_Rate__c] }
+  - { covers: "||", formula: "Amount__c > 0 || Tax_Rate__c > 0", names: [Amount__c, Tax_Rate__c] }
+  - { covers: "!", formula: "!(Amount__c > 0)", names: [Amount__c] }
+  - { covers: "NOT as an operator", formula: "NOT Is_Mine__c", names: [Is_Mine__c], note: "The grammar reads NOT before a name without brackets." }
+  - { covers: "&", formula: "Legacy_Code__c & External_Id__c", names: [Legacy_Code__c, External_Id__c] }
+  - { covers: "+ on text", formula: "Legacy_Code__c + '-' + External_Id__c", names: [Legacy_Code__c, External_Id__c] }
+  - { covers: "no spaces", formula: "Amount__c*2+Tax_Rate__c/4-1", names: [Amount__c, Tax_Rate__c] }
+  - { covers: "lines and tabs", formula: "IF(\n\tAmount__c > 0,\n\t1,\n\t0\n)", names: [Amount__c] }
+  - { covers: "CRLF", formula: "IF(\r\n  Amount__c > 0,\r\n  1,\r\n  0\r\n)", names: [Amount__c] }
+
+  # ---------------------------------------------------------------- literals
+  - { covers: "whole number", formula: "42", names: [] }
+  - { covers: "decimal number", formula: "0.075 * Amount__c", names: [Amount__c] }
+  - { covers: "text in double quotes", formula: "\"Paid\"", names: [] }
+  - { covers: "text in single quotes", formula: "'Paid'", names: [] }
+  - { covers: "empty text", formula: "\"\" & ''", names: [] }
+  - { covers: "single quote in double quotes", formula: "\"it's Amount__c\"", names: [] }
+  - { covers: "double quote in single quotes", formula: "'the \"Amount__c\"'", names: [] }
+  - { covers: "escaped quotes", formula: "\"a \\\"Amount__c\\\" b\" & 'it\\'s Tax_Rate__c'", names: [] }
+  - { covers: "escaped backslash", formula: "\"C:\\\\\" & Legacy_Code__c", names: [Legacy_Code__c], note: "The text ends after the second backslash." }
+  - { covers: "escaped line and tab", formula: "\"a\\nb\\tc\\r\" & 'A\\NB\\TC\\R'", names: [] }
+  - { covers: "comment marks in a text", formula: "\"/* not a comment */\" & Legacy_Code__c", names: [Legacy_Code__c] }
+  - { covers: "TRUE", formula: "TRUE", names: [] }
+  - { covers: "FALSE", formula: "FALSE", names: [] }
+  - { covers: "NULL", formula: "IF(Amount__c > 0, Amount__c, NULL)", names: [Amount__c, Amount__c] }
+  - { covers: "true and false in another case", formula: "IF(true, False, tRuE)", names: [] }
+  - { covers: "null in another case", formula: "BLANKVALUE(Amount__c, null)", names: [Amount__c] }
+  - { covers: "comment", formula: "/* Paid_Date__c */ Amount__c", names: [Amount__c] }
+  - { covers: "comment over lines", formula: "Amount__c /* first\nPaid_Date__c\nlast */ + 1", names: [Amount__c] }
+  - { covers: "comment at the end", formula: "Amount__c /* Paid_Date__c */", names: [Amount__c] }
+  - { covers: "quote in a comment", formula: "/* it's \"so */ Amount__c", names: [Amount__c] }
+  - { covers: "star and slash in a comment", formula: "/* a * b / c ** // */ Amount__c", names: [Amount__c] }
+  - { covers: "end of a comment after a backslash", formula: "/* a \\*/ Paid_Date__c */ Amount__c", names: [Amount__c], note: "The grammar keeps the comment open after a backslash." }
+
+  # ---------------------------------------------------------------- names
+  - { covers: "field", formula: "Amount__c", names: [Amount__c] }
+  - { covers: "standard field", formula: "Name & Id", names: [Name, Id] }
+  - { covers: "relationship", formula: "Account__r.Tier__c", names: [Account__r.Tier__c] }
+  - { covers: "two relationships", formula: "Account__r.Owner.Email", names: [Account__r.Owner.Email] }
+  - { covers: "name in another case", formula: "AMOUNT__C + amount__c", names: [AMOUNT__C, amount__c] }
+  - { covers: "function in another case", formula: "if(isblank(Amount__c), 0, Abs(Amount__c))", names: [Amount__c, Amount__c] }
+  - { covers: "field named like a function", formula: "VALUE(Legacy_Code__c) + Value__c", names: [Legacy_Code__c, Value__c], note: "Value__c is a field of Invoice_Line__c. The probe is about the word, not about the object." }
+  - { covers: "Owner:User", formula: "Owner:User.Email", names: ["Owner:User.Email"] }
+  - { covers: "Owner:Queue", formula: "Owner:Queue.QueueName", names: ["Owner:Queue.QueueName"] }
+  - { covers: "$User", formula: "$User.Id = OwnerId", names: [$User.Id, OwnerId] }
+  - { covers: "$User custom field", formula: "TEXT($User.Billing_Region__c)", names: [$User.Billing_Region__c] }
+  - { covers: "$Profile", formula: "$Profile.Name", names: [$Profile.Name] }
+  - { covers: "$UserRole", formula: "$UserRole.Name", names: [$UserRole.Name] }
+  - { covers: "$Organization", formula: "$Organization.Country", names: [$Organization.Country] }
+  - { covers: "$RecordType", formula: "$RecordType.Name", names: [$RecordType.Name] }
+  - { covers: "$Setup", formula: "$Setup.Billing_Settings__c.Grace_Days__c", names: [$Setup.Billing_Settings__c.Grace_Days__c] }
+  - { covers: "$Label", formula: "$Label.Overdue_Notice", names: [$Label.Overdue_Notice] }
+  - { covers: "$Permission", formula: "$Permission.Approve_Large_Invoices", names: [$Permission.Approve_Large_Invoices] }
+  - { covers: "$CustomMetadata", formula: "$CustomMetadata.Billing_Rule__mdt.Default.Max_Amount__c", names: [$CustomMetadata.Billing_Rule__mdt.Default.Max_Amount__c] }
+  - { covers: "$ObjectType", formula: "$ObjectType.Tax_Code__c.Fields.Rate__c", names: [$ObjectType.Tax_Code__c.Fields.Rate__c] }
+  - { covers: "$Api", formula: "$Api.Session_ID", names: [$Api.Session_ID] }
+  - { covers: "$System", formula: "$System.OriginDateTime", names: [$System.OriginDateTime] }
+  - { covers: "name with a namespace", formula: "acme__Score__c + Account__r.acme__Rating__c", names: [acme__Score__c, Account__r.acme__Rating__c], note: "The fields do not exist in the project. The names are read all the same." }
+  - { covers: "name that begins like a word of the language", formula: "Notes & Trueness & Nullable & Falsehood", names: [Notes, Trueness, Nullable, Falsehood], note: "The fields do not exist in the project." }
+  - { covers: "call of an unknown function", formula: "NOSUCHFUNCTION(Amount__c, 1)", names: [Amount__c], note: "A call is any name before a bracket." }
+  - { covers: "call with a space before the bracket", formula: "ABS (Amount__c)", names: [Amount__c] }
+  - { covers: "call without arguments in a call", formula: "IF(TODAY() > Due_Date__c, NOW(), NOW())", names: [Due_Date__c] }
+
+  # ---------------------------------------------------------------- functions: date and time
+  - { covers: ADDMONTHS, seen: [help, engine], formula: "ADDMONTHS(Due_Date__c, 1)", names: [Due_Date__c] }
+  - { covers: DATE, seen: [help, engine], formula: "DATE(2026, 1, 31)", names: [] }
+  - { covers: DATEVALUE, seen: [help, engine], formula: "DATEVALUE(CreatedDate)", names: [CreatedDate] }
+  - { covers: DATETIMEVALUE, seen: [help, engine], formula: "DATETIMEVALUE(\"2026-01-31 12:00:00\")", names: [] }
+  - { covers: DAY, seen: [help, engine], formula: "DAY(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: DAYOFYEAR, seen: [help-summary, engine], formula: "DAYOFYEAR(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: FORMATDURATION, seen: [help-summary, engine], formula: "FORMATDURATION(CreatedDate, NOW())", names: [CreatedDate] }
+  - { covers: HOUR, seen: [help, engine], formula: "HOUR(TIMEVALUE(CreatedDate))", names: [CreatedDate] }
+  - { covers: ISOWEEK, seen: [help-summary, engine], formula: "ISOWEEK(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: ISOYEAR, seen: [help-summary, engine], formula: "ISOYEAR(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: MILLISECOND, seen: [help, engine], formula: "MILLISECOND(TIMENOW())", names: [] }
+  - { covers: MINUTE, seen: [help, engine], formula: "MINUTE(TIMENOW())", names: [] }
+  - { covers: MONTH, seen: [help, engine], formula: "MONTH(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: NOW, seen: [help, engine], formula: "NOW() - CreatedDate", names: [CreatedDate] }
+  - { covers: SECOND, seen: [help, engine], formula: "SECOND(TIMENOW())", names: [] }
+  - { covers: TIMENOW, seen: [help, engine], formula: "TIMENOW()", names: [] }
+  - { covers: TIMEVALUE, seen: [help, engine], formula: "TIMEVALUE(\"17:30:45.125\")", names: [] }
+  - { covers: TODAY, seen: [help, engine], formula: "TODAY() - Due_Date__c", names: [Due_Date__c] }
+  - { covers: UNIXTIMESTAMP, seen: [help-summary, engine], formula: "UNIXTIMESTAMP(CreatedDate)", names: [CreatedDate] }
+  - { covers: WEEKDAY, seen: [help, engine], formula: "WEEKDAY(Due_Date__c)", names: [Due_Date__c] }
+  - { covers: YEAR, seen: [help, engine], formula: "YEAR(Due_Date__c)", names: [Due_Date__c] }
+
+  # ---------------------------------------------------------------- functions: logical
+  - { covers: AND, seen: [help, engine], formula: "AND(Amount__c > 0, Tax_Rate__c > 0, Is_Mine__c)", names: [Amount__c, Tax_Rate__c, Is_Mine__c] }
+  - { covers: BLANKVALUE, seen: [help, engine], formula: "BLANKVALUE(Paid_Date__c, Due_Date__c)", names: [Paid_Date__c, Due_Date__c] }
+  - { covers: CASE, seen: [help, engine], formula: "CASE(Status__c, 'Draft', 1, 'Sent', 2, 0)", names: [Status__c] }
+  - { covers: IF, seen: [help, engine], formula: "IF(Amount__c > 0, Amount__c, 0)", names: [Amount__c, Amount__c] }
+  - { covers: ISBLANK, seen: [help, engine], formula: "ISBLANK(Paid_Date__c)", names: [Paid_Date__c] }
+  - { covers: ISCLONE, seen: [help, engine], formula: "ISCLONE()", names: [] }
+  - { covers: ISNEW, seen: [help, engine], formula: "ISNEW()", names: [] }
+  - { covers: ISNULL, seen: [help, engine], formula: "ISNULL(Paid_Date__c)", names: [Paid_Date__c] }
+  - { covers: ISNUMBER, seen: [help, engine], formula: "ISNUMBER(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: NOT, seen: [help, engine], formula: "NOT(ISBLANK(Paid_Date__c))", names: [Paid_Date__c] }
+  - { covers: NULLVALUE, seen: [help, engine], formula: "NULLVALUE(Amount__c, 0)", names: [Amount__c] }
+  - { covers: OR, seen: [help, engine], formula: "OR(Amount__c > 0, Is_Mine__c)", names: [Amount__c, Is_Mine__c] }
+  - { covers: PRIORVALUE, seen: [help, engine], formula: "PRIORVALUE(Amount__c) <> Amount__c", names: [Amount__c, Amount__c] }
+
+  # ---------------------------------------------------------------- functions: math
+  - { covers: ABS, seen: [help, engine], formula: "ABS(Amount__c)", names: [Amount__c] }
+  - { covers: ACOS, seen: [help-summary, engine], formula: "ACOS(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: ASIN, seen: [help-summary, engine], formula: "ASIN(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: ATAN, seen: [help-summary, engine], formula: "ATAN(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: ATAN2, seen: [help-summary, engine], formula: "ATAN2(Amount__c, Tax_Rate__c)", names: [Amount__c, Tax_Rate__c] }
+  - { covers: CEILING, seen: [help, engine], formula: "CEILING(Amount__c)", names: [Amount__c] }
+  - { covers: CHR, seen: [help-summary, engine], formula: "CHR(65)", names: [] }
+  - { covers: COS, seen: [help-summary, engine], formula: "COS(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: DISTANCE, seen: [help, engine], formula: "DISTANCE(GEOLOCATION(48.85, 2.35), GEOLOCATION(52.52, 13.4), 'km')", names: [] }
+  - { covers: EXP, seen: [help, engine], formula: "EXP(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: FLOOR, seen: [help, engine], formula: "FLOOR(Amount__c)", names: [Amount__c] }
+  - { covers: FROMUNIXTIME, seen: [help-summary, engine], formula: "FROMUNIXTIME(1767225600)", names: [] }
+  - { covers: GEOLOCATION, seen: [help, engine], formula: "GEOLOCATION(48.85, 2.35)", names: [] }
+  - { covers: LN, seen: [help, engine], formula: "LN(Amount__c)", names: [Amount__c] }
+  - { covers: LOG, seen: [help, engine], formula: "LOG(Amount__c)", names: [Amount__c] }
+  - { covers: MAX, seen: [help, engine], formula: "MAX(Amount__c, Total__c, 0)", names: [Amount__c, Total__c] }
+  - { covers: MCEILING, seen: [help, engine], formula: "MCEILING(Amount__c)", names: [Amount__c] }
+  - { covers: MFLOOR, seen: [help, engine], formula: "MFLOOR(Amount__c)", names: [Amount__c] }
+  - { covers: MIN, seen: [help, engine], formula: "MIN(Amount__c, Total__c)", names: [Amount__c, Total__c] }
+  - { covers: MOD, seen: [help, engine], formula: "MOD(Days_Overdue__c, 7)", names: [Days_Overdue__c] }
+  - { covers: PI, seen: [help-summary, engine], formula: "PI() * 2", names: [] }
+  - { covers: PICKLISTCOUNT, seen: [help-summary], formula: "PICKLISTCOUNT(Channels__c)", names: [Channels__c] }
+  - { covers: ROUND, seen: [help, engine], formula: "ROUND(Amount__c * Tax_Rate__c, 2)", names: [Amount__c, Tax_Rate__c] }
+  - { covers: SIN, seen: [help-summary, engine], formula: "SIN(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: SQRT, seen: [help, engine], formula: "SQRT(Amount__c)", names: [Amount__c] }
+  - { covers: TAN, seen: [help-summary, engine], formula: "TAN(Tax_Rate__c)", names: [Tax_Rate__c] }
+  - { covers: TRUNC, seen: [help-summary], formula: "TRUNC(Amount__c, 1)", names: [Amount__c] }
+
+  # ---------------------------------------------------------------- functions: text
+  - { covers: ASCII, seen: [help-summary, engine], formula: "ASCII(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: BEGINS, seen: [help, engine], formula: "BEGINS(Legacy_Code__c, 'INV')", names: [Legacy_Code__c] }
+  - { covers: BR, seen: [help], formula: "Legacy_Code__c & BR() & External_Id__c", names: [Legacy_Code__c, External_Id__c] }
+  - { covers: CASESAFEID, seen: [help, engine], formula: "CASESAFEID(Id)", names: [Id] }
+  - { covers: CONTAINS, seen: [help, engine], formula: "CONTAINS(Legacy_Code__c, 'X')", names: [Legacy_Code__c] }
+  - { covers: FIND, seen: [help, engine], formula: "FIND('-', Legacy_Code__c, 1)", names: [Legacy_Code__c] }
+  - { covers: GETSESSIONID, seen: [help], formula: "GETSESSIONID()", names: [] }
+  - { covers: HTMLENCODE, seen: [help, engine], formula: "HTMLENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: HYPERLINK, seen: [help], formula: "HYPERLINK('/' & Account__c, Account__r.Name, '_self')", names: [Account__c, Account__r.Name] }
+  - { covers: IMAGE, seen: [help], formula: "IMAGE('/img/samples/flag_green.gif', 'Green', 16, 16)", names: [] }
+  - { covers: INCLUDES, seen: [help], formula: "INCLUDES(Channels__c, 'Email')", names: [Channels__c] }
+  - { covers: INITCAP, seen: [help-summary, engine], formula: "INITCAP(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: ISPICKVAL, seen: [help, engine], formula: "ISPICKVAL(Status__c, 'Paid')", names: [Status__c] }
+  - { covers: JSENCODE, seen: [help, engine], formula: "JSENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: JSINHTMLENCODE, seen: [help], formula: "JSINHTMLENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: LEFT, seen: [help, engine], formula: "LEFT(Legacy_Code__c, 3)", names: [Legacy_Code__c] }
+  - { covers: LEN, seen: [help, engine], formula: "LEN(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: LOWER, seen: [help, engine], formula: "LOWER(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: LPAD, seen: [help, engine], formula: "LPAD(Legacy_Code__c, 10, '0')", names: [Legacy_Code__c] }
+  - { covers: MID, seen: [help, engine], formula: "MID(Legacy_Code__c, 2, 3)", names: [Legacy_Code__c] }
+  - { covers: REVERSE, seen: [help, engine], formula: "REVERSE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: RIGHT, seen: [help, engine], formula: "RIGHT(Legacy_Code__c, 3)", names: [Legacy_Code__c] }
+  - { covers: RPAD, seen: [help, engine], formula: "RPAD(Legacy_Code__c, 10, ' ')", names: [Legacy_Code__c] }
+  - { covers: SUBSTITUTE, seen: [help, engine], formula: "SUBSTITUTE(Legacy_Code__c, '-', '')", names: [Legacy_Code__c] }
+  - { covers: TEXT, seen: [help, engine], formula: "TEXT(Status__c) & TEXT(Amount__c)", names: [Status__c, Amount__c] }
+  - { covers: TRIM, seen: [help, engine], formula: "TRIM(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: UPPER, seen: [help, engine], formula: "UPPER(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: URLENCODE, seen: [help, engine], formula: "URLENCODE(Legacy_Code__c)", names: [Legacy_Code__c] }
+  - { covers: VALUE, seen: [help, engine], formula: "VALUE(Legacy_Code__c)", names: [Legacy_Code__c] }
+
+  # ---------------------------------------------------------------- functions: advanced
+  - { covers: CURRENCYRATE, seen: [help], formula: "Amount__c * CURRENCYRATE('EUR')", names: [Amount__c] }
+  - { covers: ISCHANGED, seen: [help, engine], formula: "ISCHANGED(Status__c)", names: [Status__c] }
+  - { covers: PREDICT, seen: [help, engine], formula: "PREDICT('0ORxx0000000001', Amount__c, Tax_Rate__c)", names: [Amount__c, Tax_Rate__c] }
+  - { covers: REGEX, seen: [help, engine], formula: "REGEX(Legacy_Code__c, \"[A-Z]{3}-\\\\d+\")", names: [Legacy_Code__c] }
+  - { covers: VLOOKUP, seen: [help, engine], formula: "VLOOKUP($ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c)", names: [$ObjectType.Tax_Code__c.Fields.Rate__c, $ObjectType.Tax_Code__c.Fields.Name, Tax_Code_Name__c] }
+  - { covers: IMAGEPROXYURL, seen: [help], where: elsewhere, formula: "IMAGEPROXYURL('https://example.com/logo.png')", names: [] }
+
+  # ---------------------------------------------------------------- functions: not in a field or a rule
+  - { covers: JUNCTIONIDLIST, seen: [help], where: elsewhere, formula: "JUNCTIONIDLIST(Account__c, Billing_Contact__c)", names: [Account__c, Billing_Contact__c], note: "As far as I know it is offered only for a value an action fills in. Not verified." }
+  - { covers: GETRECORDIDS, seen: [help], where: elsewhere, formula: "GETRECORDIDS($ObjectType.Invoice__c)", names: [$ObjectType.Invoice__c] }
+  - { covers: INCLUDE, seen: [help], where: elsewhere, formula: "INCLUDE($SControl.Header_Snippet)", names: [$SControl.Header_Snippet], note: "The form with named arguments in square brackets is not probed." }
+  - { covers: LINKTO, seen: [help], where: elsewhere, formula: "LINKTO('Open', $Action.Account.View, Account__c)", names: [$Action.Account.View, Account__c] }
+  - { covers: REQUIRESCRIPT, seen: [help], where: elsewhere, formula: "REQUIRESCRIPT('/soap/ajax/66.0/connection.js')", names: [] }
+  - { covers: URLFOR, seen: [help], where: elsewhere, formula: "URLFOR($Action.Account.View, Account__c)", names: [$Action.Account.View, Account__c] }
+  - { covers: PARENTGROUPVAL, seen: [help, engine], where: elsewhere, formula: "PARENTGROUPVAL(AMOUNT:SUM, GRAND_SUMMARY)", names: ["AMOUNT:SUM", GRAND_SUMMARY], note: "A formula of a report. Its names are columns and groupings, not fields." }
+  - { covers: PREVGROUPVAL, seen: [help, engine], where: elsewhere, formula: "PREVGROUPVAL(AMOUNT:SUM, CLOSE_DATE, 1)", names: ["AMOUNT:SUM", CLOSE_DATE], note: "A formula of a report." }

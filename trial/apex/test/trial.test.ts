@@ -48,7 +48,7 @@ describe.each(['apex-parser', 'tree-sitter'])('the resolver on %s', (name) => {
   it('reaches the pass marks of the plan on the answer key', () => {
     const analysis = analyses.get(name);
     if (analysis === undefined) throw new Error('No analysis.');
-    const key = loadAnswerKey();
+    const key = loadAnswerKey(0);
     const result = score(analysis, key);
     const lines = report(name, result).join('\n');
     // The pass marks of the plan: recall at least 95 %, precision at least 98 %, the kind right on at least 99 %
@@ -65,7 +65,7 @@ describe.each(['apex-parser', 'tree-sitter'])('the resolver on %s', (name) => {
     // true, so that the report cannot say 181 of 181 while the resolver finds 172.
     const analysis = analyses.get(name);
     if (analysis === undefined) throw new Error('No analysis.');
-    const key = loadAnswerKey();
+    const key = loadAnswerKey(0);
     const result = score(analysis, key);
     const lines = report(name, result).join('\n');
     expect(

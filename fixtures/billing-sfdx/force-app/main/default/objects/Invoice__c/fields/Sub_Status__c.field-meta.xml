@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Sub_Status__c</fullName>
+    <description>A dependent picklist. The status controls which values can be chosen.</description>
+    <label>Sub Status</label>
+    <required>false</required>
+    <valueSet>
+        <controllingField>Status__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Awaiting Approval</fullName>
+                <default>false</default>
+                <label>Awaiting Approval</label>
+            </value>
+            <value>
+                <fullName>Reminder Sent</fullName>
+                <default>false</default>
+                <label>Reminder Sent</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>Draft</controllingFieldValue>
+            <valueName>Awaiting Approval</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Sent</controllingFieldValue>
+            <valueName>Reminder Sent</valueName>
+        </valueSettings>
+    </valueSet>
+    <type>Picklist</type>
+</CustomField>

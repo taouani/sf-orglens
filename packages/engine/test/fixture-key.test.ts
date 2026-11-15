@@ -17,24 +17,31 @@ import { outlineApex, type ApexOutline } from './helpers/apex-outline.ts';
 const key = loadAnswerKey();
 const projectDir = join(FIXTURES_DIR, key.project);
 
-/** The component that owns each file of the project, as the Salesforce library sees it. */
-function resolveProject(): Map<string, ComponentKey> {
+/**
+ * The components of the project and the component that owns each file, as the Salesforce library sees them.
+ *
+ * A file of labels holds a component for the file and one for each label in it. The file is owned by the first.
+ */
+function resolveProject(): { owners: Map<string, ComponentKey>; resolved: Set<ComponentKey> } {
   const owners = new Map<string, ComponentKey>();
+  const resolved = new Set<ComponentKey>();
   const visit = (component: SourceComponent): void => {
     const owner = buildKey({ type: component.type.name, fullName: component.fullName });
+    resolved.add(owner);
     for (const file of [component.xml, component.content]) {
       // The content of an object is its folder. Only files are owned.
       if (file !== undefined && statSync(file).isFile()) {
-        owners.set(relative(projectDir, file).split(sep).join('/'), owner);
+        const path = relative(projectDir, file).split(sep).join('/');
+        if (!owners.has(path)) owners.set(path, owner);
       }
     }
     component.getChildren().forEach(visit);
   };
   new MetadataResolver().getComponentsFromPath(join(projectDir, 'force-app')).forEach(visit);
-  return owners;
+  return { owners, resolved };
 }
 
-const owners = resolveProject();
+const { owners, resolved } = resolveProject();
 const inProject = new Set<ComponentKey>(key.components.map((component) => component.key));
 const standard = new Set<ComponentKey>(key.standard);
 
@@ -60,7 +67,92 @@ function outline(file: string): ApexOutline {
 }
 
 /** The ways a metadata file names a target. Every other way belongs to Apex. */
-const METADATA_VIA: ReadonlySet<string> = new Set(['formula', 'filter', 'summary', 'lookup', 'display-field']);
+const METADATA_VIA: ReadonlySet<string> = new Set([
+  'formula',
+  'filter',
+  'summary',
+  'lookup',
+  'display-field',
+  'controlling-field',
+  'value-set',
+]);
+
+/** The types a formula or a field can name besides fields and objects. Such a target is referred to, never read. */
+const NAMED_ONLY: ReadonlySet<string> = new Set([
+  'CustomLabel',
+  'CustomMetadata',
+  'CustomPermission',
+  'GlobalValueSet',
+]);
+
+/**
+ * Where a reference of each kind of naming stands in a field or a rule: the element that holds the word, and for a
+ * filter the element around that one. `reads` lists the elements in which the reference is a read. In every other
+ * element it is a `references`.
+ */
+const PLACE_OF_VIA: Readonly<
+  Record<string, { in: readonly string[]; within?: readonly string[]; reads: readonly string[] }>
+> = {
+  formula: {
+    in: ['formula', 'errorConditionFormula', 'defaultValue'],
+    reads: ['formula', 'errorConditionFormula', 'defaultValue'],
+  },
+  filter: {
+    in: ['field', 'valueField'],
+    within: ['lookupFilter', 'summaryFilterItems'],
+    reads: ['field', 'valueField'],
+  },
+  summary: { in: ['summarizedField', 'summaryForeignKey'], reads: ['summarizedField'] },
+  lookup: { in: ['referenceTo'], reads: [] },
+  'display-field': { in: ['errorDisplayField'], reads: [] },
+  'controlling-field': { in: ['controllingField'], reads: [] },
+  'value-set': { in: ['valueSetName'], reads: [] },
+};
+
+/**
+ * Where a place of a metadata file stands: the elements around it, from the outside in, and whether it is code of a
+ * formula, a comment of it or a text of it. The formula is read as the file holds it, with its entities.
+ */
+function metadataPlace(file: string, line: number, column: number): { elements: string[]; region: string } {
+  const text = readProjectFile(file);
+  const lines = text.split('\n');
+  const offset = lines.slice(0, line - 1).reduce((sum, one) => sum + one.length + 1, 0) + column - 1;
+  const elements: string[] = [];
+  let contentStart = 0;
+  for (const tag of text.matchAll(/<(\/?)([A-Za-z]\w*)[^>]*?(\/?)>/g)) {
+    if (tag.index >= offset) break;
+    if (tag[1] === '/') elements.pop();
+    else if (tag[3] !== '/') elements.push(tag[2] ?? '');
+    contentStart = tag.index + tag[0].length;
+  }
+  let region = 'code';
+  let at = contentStart;
+  while (at < offset) {
+    const rest = text.slice(at, at + 6);
+    const quote = rest.startsWith('&quot;') ? '"' : rest.startsWith('&apos;') ? "'" : /^["']/.test(rest) ? rest[0] : '';
+    const step = rest.startsWith('&quot;') || rest.startsWith('&apos;') ? 6 : 1;
+    if (region === 'code') {
+      if (rest.startsWith('/*')) region = 'comment';
+      else if (quote !== '') region = `text ${quote ?? ''}`;
+      at += rest.startsWith('/*') ? 2 : step;
+    } else if (region === 'comment') {
+      // A backslash keeps the end of a comment inside it.
+      if (rest.startsWith('\\*/')) at += 3;
+      else {
+        if (rest.startsWith('*/')) region = 'code';
+        at += rest.startsWith('*/') ? 2 : 1;
+      }
+    } else {
+      // In a text, a backslash takes the next character with it.
+      if (rest.startsWith('\\')) at += 2;
+      else {
+        if (region === `text ${quote ?? ''}`) region = 'code';
+        at += step;
+      }
+    }
+  }
+  return { elements, region: region.startsWith('text') ? 'text' : region };
+}
 
 /** Every `static final` field of the project, by its name in lower case, with the text it is set to. */
 const constants = new Map<string, string>();
@@ -112,7 +204,7 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
 
 describe('the fixture project', () => {
   it('contains exactly the components the key lists', () => {
-    expect([...new Set(owners.values())].sort()).toEqual([...inProject].sort());
+    expect([...resolved].sort()).toEqual([...inProject].sort());
     expect(inProject.size).toBe(key.components.length);
   });
 
@@ -287,6 +379,40 @@ describe('the answer key', () => {
     expect(wrong).toEqual([]);
   });
 
+  it('names every place of a field or a rule in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
+    const wrong: string[] = [];
+    for (const reference of key.references) {
+      if (isApex(reference.file)) continue;
+      const { elements, region } = metadataPlace(reference.file, reference.line, reference.column);
+      const place = PLACE_OF_VIA[reference.via];
+      const innermost = elements.at(-1) ?? '';
+      const around = place?.within;
+      if (
+        place === undefined ||
+        !place.in.includes(innermost) ||
+        (around !== undefined && !elements.some((element) => around.includes(element)))
+      ) {
+        wrong.push(`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`);
+        continue;
+      }
+      if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
+      // A field that is used is read. A field or an object that is only named is referred to, and so is everything
+      // that is neither a field nor an object.
+      const target = parseKey(reference.to).type;
+      const expected = place.reads.includes(innermost) && target === 'CustomField' ? 'reads' : 'references';
+      if (reference.kind !== expected) wrong.push(`${reference.id}: ${reference.kind}, expected ${expected}`);
+    }
+    expect(wrong).toEqual([]);
+    // The check can tell the three apart. The names in the comment and in the texts of this field are negatives.
+    const notice = 'force-app/main/default/objects/Invoice__c/fields/Status_Notice__c.field-meta.xml';
+    const regions = key.negatives
+      .filter((negative) => negative.file === notice)
+      .map((negative) => metadataPlace(notice, negative.line, negative.column).region);
+    expect(regions).toContain('comment');
+    expect(regions).toContain('text');
+    expect(regions).not.toContain('code');
+  });
+
   it('names every target by a word that stands for it', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
@@ -310,7 +436,9 @@ describe('the answer key', () => {
           ? target === 'ApexClass' && reference.via === 'declaration'
           : reference.kind === 'triggers-on'
             ? target === 'CustomObject' && from.type === 'ApexTrigger' && reference.via === 'declaration'
-            : target === 'CustomField' || target === 'CustomObject';
+            : target === 'CustomField' ||
+              target === 'CustomObject' ||
+              (NAMED_ONLY.has(target) && reference.kind === 'references' && !isApex(reference.file));
       if (!fits) wrong.push(`${reference.id}: ${reference.kind} to a ${target}`);
 
       if (!isApex(reference.file)) continue;
@@ -362,6 +490,47 @@ describe('the answer key', () => {
       stretch: key.references.filter((reference) => reference.stretch).length,
       negatives: key.negatives.length,
       unknowns: key.unknowns.length,
+    }).toEqual({ version: 1, components: 87, phase1: 107, phase3: 184, stretch: 7, negatives: 33, unknowns: 5 });
+  });
+});
+
+describe('version 0 of the answer key', () => {
+  // The Apex trial of Phase 0 was scored with version 0, and its report quotes the numbers of that key. Version 0
+  // lists the project as it was then, so it is not checked against the components of the project of today.
+  const old = loadAnswerKey(0);
+  const idOf = (place: { file: string; line: number; column: number }, target: string): string =>
+    `${place.file}:${String(place.line)}:${String(place.column)}:${target}`;
+
+  it('still names places that exist, and has the numbers the report of Phase 0 quotes', () => {
+    const byPhase = (phase: number): number => old.references.filter((reference) => reference.phase === phase).length;
+    expect({
+      version: old.version,
+      components: old.components.length,
+      phase1: byPhase(1),
+      phase3: byPhase(3),
+      stretch: old.references.filter((reference) => reference.stretch).length,
+      negatives: old.negatives.length,
+      unknowns: old.unknowns.length,
     }).toEqual({ version: 0, components: 52, phase1: 44, phase3: 184, stretch: 4, negatives: 21, unknowns: 5 });
+  });
+
+  it('has the Apex part of version 1, entry for entry', () => {
+    const apex = (from: typeof key): unknown[] => from.references.filter((reference) => reference.phase === 3);
+    expect(apex(key)).toEqual(apex(old));
+    expect(key.unknowns).toEqual(old.unknowns);
+    expect(key.negatives.filter((negative) => isApex(negative.file))).toEqual(
+      old.negatives.filter((negative) => isApex(negative.file)),
+    );
+  });
+
+  it('has nothing that version 1 has not', () => {
+    const whole = (reference: (typeof key.references)[number]): string =>
+      `${reference.id}:${reference.from}:${reference.via}:${reference.tier}:${String(reference.stretch)}`;
+    const now = new Set(key.references.map(whole));
+    expect(old.references.filter((reference) => !now.has(whole(reference)))).toEqual([]);
+    const forbidden = new Set(key.negatives.map((negative) => idOf(negative, negative.not)));
+    expect(old.negatives.filter((negative) => !forbidden.has(idOf(negative, negative.not)))).toEqual([]);
+    expect(old.components.filter((component) => !inProject.has(component.key))).toEqual([]);
+    expect(old.standard.filter((target) => !standard.has(target))).toEqual([]);
   });
 });

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status_Rank__c</fullName>
+    <formula>CASE(Status__c, 'Draft', 1, 'Sent', 2, 'Paid', 3, 0)
++ IF(INCLUDES(Channels__c, 'Email'), 10, 0)
++ LEN(TEXT(Sub_Status__c))</formula>
+    <label>Status Rank</label>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <precision>18</precision>
+    <scale>0</scale>
+    <type>Number</type>
+</CustomField>

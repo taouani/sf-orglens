@@ -356,16 +356,38 @@ describe('the inventory of the mock org', () => {
     expect(inventory.types.filter((one) => one.role === 'top').map((one) => one.type)).toEqual([
       'ApexClass',
       'ApexTrigger',
+      'CustomLabels',
+      'CustomMetadata',
       'CustomObject',
+      'CustomPermission',
+      'GlobalValueSet',
     ]);
     const counts = new Map<string, number>();
     for (const one of inventory.items) counts.set(one.type, (counts.get(one.type) ?? 0) + 1);
-    expect(Object.fromEntries(counts)).toMatchObject({ ApexTrigger: 1, CustomObject: 2 });
+    // The org lists the five objects of the project and the user, of which the project has only fields. The
+    // account, of which it has only parts too, is the parent this org does not list.
+    expect(Object.fromEntries(counts)).toMatchObject({
+      ApexTrigger: 1,
+      CustomLabel: 1,
+      CustomLabels: 1,
+      CustomMetadata: 1,
+      CustomObject: 6,
+      CustomPermission: 1,
+      GlobalValueSet: 1,
+    });
     expect(counts.get('CustomField')).toBeGreaterThan(10);
     const objects = planChunks(inventory)
       .flat()
       .filter((member) => member.type === 'CustomObject')
       .map((member) => member.fullName);
-    expect(objects).toEqual(['Account', 'Invoice_Line__c', 'Invoice__c']);
+    expect(objects).toEqual([
+      'Account',
+      'Billing_Rule__mdt',
+      'Billing_Settings__c',
+      'Invoice_Line__c',
+      'Invoice__c',
+      'Tax_Code__c',
+      'User',
+    ]);
   });
 });
