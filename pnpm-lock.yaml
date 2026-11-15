@@ -245,6 +245,9 @@ importers:
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
+      fast-xml-parser:
+        specifier: 5.12.0
+        version: 5.12.0
       jszip:
         specifier: 3.10.2
         version: 3.10.2

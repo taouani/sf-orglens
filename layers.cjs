@@ -18,7 +18,20 @@ const salesforcePackages = ['@salesforce', '@jsforce', 'jsforce'];
 /** Packages a client must never import: clients reach data only through the engine API. */
 const clientForbiddenPackages = ['node:sqlite', 'sqlite', 'better-sqlite3', 'fast-xml-parser'];
 
+/**
+ * Packages the code of the engine must never import. Its tests may: `fast-xml-parser` is the second opinion in
+ * the tests of the XML reader of the engine (decision record 0039).
+ */
+const engineForbiddenPackages = ['fast-xml-parser'];
+
 /** The name of the engine package, the only engine import a client may use. */
 const enginePackage = '@sf-orglens/engine';
 
-module.exports = { layers, salesforceLayer, salesforcePackages, clientForbiddenPackages, enginePackage };
+module.exports = {
+  layers,
+  salesforceLayer,
+  salesforcePackages,
+  clientForbiddenPackages,
+  engineForbiddenPackages,
+  enginePackage,
+};

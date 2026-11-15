@@ -18,7 +18,8 @@
 import path from 'node:path';
 import layering from '../layers.cjs';
 
-const { layers, salesforceLayer, salesforcePackages, clientForbiddenPackages, enginePackage } = layering;
+const { layers, salesforceLayer, salesforcePackages, clientForbiddenPackages, engineForbiddenPackages, enginePackage } =
+  layering;
 
 const ENGINE_SRC = 'packages/engine/src';
 const ENGINE_ENTRY = `${ENGINE_SRC}/index.ts`;
@@ -49,6 +50,7 @@ const messages = {
   clientInternalImport: 'Clients use only the public engine API: import from "{{enginePackage}}" and nothing below it.',
   salesforceImport: 'Only the {{layer}} layer of the engine may import the Salesforce libraries.',
   clientForbiddenImport: 'Clients never use "{{specifier}}" directly. They reach data only through the engine API.',
+  engineForbiddenImport: 'The code of the engine never imports "{{specifier}}". Only its tests may.',
 };
 
 const layersRule = {
@@ -109,6 +111,9 @@ const layersRule = {
       }
       if (origin.kind === 'client' && clientForbiddenPackages.some((name) => matchesPackage(specifier, name))) {
         context.report({ node, messageId: 'clientForbiddenImport', data: { specifier } });
+      }
+      if (inEngineSource && engineForbiddenPackages.some((name) => matchesPackage(specifier, name))) {
+        context.report({ node, messageId: 'engineForbiddenImport', data: { specifier } });
       }
     }
 

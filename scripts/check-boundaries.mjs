@@ -26,7 +26,13 @@ import orglensPlugin from '../tools/eslint-plugin-orglens.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { layers, salesforceLayer, salesforcePackages, clientForbiddenPackages } = require('../layers.cjs');
+const {
+  layers,
+  salesforceLayer,
+  salesforcePackages,
+  clientForbiddenPackages,
+  engineForbiddenPackages,
+} = require('../layers.cjs');
 const cruiserConfig = require('../.dependency-cruiser.cjs');
 
 const ESLINT_RULE = 'orglens/layers';
@@ -42,6 +48,7 @@ const EXPECTED_LAYERS = ['core', 'sources', 'extraction', 'store', 'engines', 'a
 const EXPECTED_SALESFORCE_LAYER = 'sources';
 const EXPECTED_SALESFORCE_PACKAGES = ['@salesforce', '@jsforce', 'jsforce'];
 const EXPECTED_CLIENT_FORBIDDEN = ['node:sqlite', 'better-sqlite3', 'fast-xml-parser'];
+const EXPECTED_ENGINE_FORBIDDEN = ['fast-xml-parser'];
 
 const failures = [];
 let passed = 0;
@@ -189,6 +196,22 @@ salesforcePackages.forEach((name, index) => {
 probe(`${ENGINE}/store/${MARK}sf_dynamic__.ts`, "export const load = () => import('@salesforce/core');", salesforce);
 probe(`${CLI}/src/${MARK}sf_dynamic__.ts`, "export const load = () => import('@salesforce/core');", salesforce);
 
+// The code of the engine reads XML with its own reader. Its tests may ask a second opinion.
+const ownReader = { eslint: 'engineForbiddenImport', cruise: 'engine-reads-xml-with-its-own-reader' };
+engineForbiddenPackages.forEach((name, index) => {
+  for (const layer of layers) {
+    probe(`${ENGINE}/${layer}/${MARK}engine_forbidden_${String(index)}__.ts`, `export * from '${name}';`, ownReader);
+  }
+  probe(
+    `${ENGINE}/extraction/${MARK}engine_forbidden_dynamic_${String(index)}__.ts`,
+    `export const load = () => import('${name}');`,
+    ownReader,
+  );
+  probe(`packages/engine/test/${MARK}engine_forbidden_${String(index)}__.ts`, `export * from '${name}';`, {
+    clean: true,
+  });
+});
+
 // Clients use the engine by its package name only, and never the store or the parsers.
 probe(`${CLI}/src/${MARK}allowed__.ts`, "export { engineVersion } from '@sf-orglens/engine';", {
   clean: true,
@@ -285,6 +308,9 @@ for (const name of EXPECTED_SALESFORCE_PACKAGES) {
 }
 for (const name of EXPECTED_CLIENT_FORBIDDEN) {
   note(clientForbiddenPackages.includes(name), `layers.cjs keeps ${name} away from clients`);
+}
+for (const name of EXPECTED_ENGINE_FORBIDDEN) {
+  note(engineForbiddenPackages.includes(name), `layers.cjs keeps ${name} away from the code of the engine`);
 }
 
 removeProbes(); // left over from an interrupted run

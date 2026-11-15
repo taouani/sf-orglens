@@ -9,7 +9,7 @@ are summarised in the decision log of the [re-architecture plan](../plans/re-arc
 "Decisions" column gives the plan ids each record covers. Record 0001 and the records from 0023 on are decisions made
 during the build, with one exception: record 0034 replaces 0008 and covers plan decision A4, which was changed on
 2026-11-12. Record 0018 was completed on 2026-11-13 with the parser the maintainer chose. Records 0035 to 0037 are not
-decisions of the build either: they hold what the maintainer answered to the Phase 1 plan on 2026-11-15. Record 0038 holds the change the maintainer made when approving that plan on the same day, and supersedes 0036.
+decisions of the build either: they hold what the maintainer answered to the Phase 1 plan on 2026-11-15. Record 0038 holds the change the maintainer made when approving that plan on the same day, and supersedes 0036. Record 0039 holds the answer to question Q8 of that plan, and was written with the reader it is about.
 
 | Record                                                 | Title                                                                                           | Status                                                          | Decisions  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
@@ -51,6 +51,7 @@ decisions of the build either: they hold what the maintainer answered to the Pha
 | [0036](0036-what-a-snapshot-of-an-org-reads.md)        | A snapshot of an org reads the logic tier by default, and is complete when all of it came back  | Superseded by [0038](0038-a-snapshot-reads-every-type.md)       |            |
 | [0037](0037-performance-targets.md)                    | Performance targets, for an org of 100,000 components                                           | Accepted                                                        |            |
 | [0038](0038-a-snapshot-reads-every-type.md)            | A snapshot of an org reads every type, and references are found phase by phase                  | Accepted                                                        |            |
+| [0039](0039-a-reader-of-our-own-for-xml.md)            | The engine reads XML with a reader of its own                                                   | Accepted                                                        |            |
 
 ## Writing a record
 
@@ -70,7 +71,6 @@ the table to match. A superseded record keeps its "Decisions" line and no longer
 | Decision                                                                                                                                                                                                                                                                                             | Recorded with                                   |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | A new command `orglens analyse`, which extends [0016](0016-commands-config-and-json-contract.md). The maintainer chose it on 2026-11-15 (Phase 1 plan, Q7)                                                                                                                                           | The pull request that builds the command        |
-| A reader of our own for the XML of metadata files. The maintainer chose it on 2026-11-15 (Phase 1 plan, Q8). If a maintained library that gives the place of every character is found on the first day of that work, it is taken instead and the maintainer is told                                  | The pull request that builds the reader         |
 | Whether the pre-release at the end of Phase 1 is "the first release" of records [0022](0022-public-pre-release.md) and [0027](0027-json-envelope-and-exit-codes.md), from which package names and the JSON contract are fixed. The maintainer chose the pre-release on 2026-11-15 (Phase 1 plan, Q6) | An answer of the maintainer before that release |
 
 ## Earlier prototypes
