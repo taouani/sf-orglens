@@ -71,7 +71,8 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .addHelpText(
       'after',
       '\nPre-release: an impact answer covers objects, fields and validation rules.\n' +
-        'Apex, flows and the other types are not analysed yet, and every answer says so.',
+        'Apex, flows and the other types are not analysed yet. An answer names the\n' +
+        'types it does not cover.',
     )
     .helpCommand(false)
     .configureHelp({ showGlobalOptions: true })
@@ -269,14 +270,16 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .summary('show what refers to a component')
     .description(
       'Shows what refers to a component in the latest snapshot of a source, directly or through other components: ' +
-        'each with the shortest chain of references that leads to it, the weakest confidence on that chain, ' +
-        'and the file and line of its reference. For an object, the answer is about everything it contains too. ' +
+        'each with its depth, the reference it is found by with file and line, and the weakest confidence on ' +
+        'the shortest chain of references that leads to it. For an object, the answer is about everything it ' +
+        'contains too. ' +
         'The component is named by its name (Account.Industry), by its type and name ' +
         '(CustomField:Account.Industry) or by its key. ' +
-        'The first lines say what the answer does not cover: the types of the snapshot that are not analysed yet. ' +
-        'Reads only. ' +
-        'The exit code is 5 if the answer may miss something of a type it covers, because something of the ' +
-        'source was not read or not analysed. It is 2 if no component has the name, or several have.',
+        'The first lines say whether the answer is complete, and if not, why: above all the types of the ' +
+        'snapshot that are not analysed yet. Reads only. ' +
+        'The exit code is 5 if something of the source was not read that the answer claims to cover: a type ' +
+        'that is analysed is held only in part, or the reading or the analysis had an error. ' +
+        'It is 2 if no component has the name, or several have.',
     )
     .argument('<component>', 'the name or the key of the component')
     .option('--source <name>', 'the source to ask (default: the only source of the workspace)')

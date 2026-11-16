@@ -27,7 +27,10 @@ fields and validation rules are analysed, so an answer about a real project miss
 and the other types do with a component.
 
 The plan fixes the outline, and the maintainer approved it. The points below are choices of the author, and the
-maintainer's to strike. The first one departs from a sentence of the plan and is marked.
+maintainer's to strike. The first one departs from a sentence of the plan and is marked. Four of them were made
+after the code review of the pull request: that the types an analysis reads are kept with it, that a warning
+makes an answer not complete, that a component the snapshot does not hold does the same for `--outgoing`, and
+the order between two references of the same two components.
 
 ## Decision
 
@@ -41,8 +44,9 @@ question to the store for all its components together.
   chain of references to the start.
 - **Which chain is kept.** Among the shortest chains, the one whose weakest reference is the most certain. Among
   those, the one through the component whose key comes first. Between two references of the same two
-  components, the first by file, line, column, kind, origin and resolution. No number of the database plays a
-  part, so the same snapshot gives the same answer on every machine and with both drivers.
+  components, the most certain one, then one with a place before one without, then the first by file, line,
+  column, kind, origin, resolution and the name as it was written. No number of the database plays a part, so
+  the same snapshot gives the same answer on every machine and with both drivers.
 - **A shorter chain wins over a more certain one.** A result two references away over a `possible` reference
   is shown at depth 2 as `possible`, also when a `confirmed` chain of three references exists.
   `--min-confidence` finds the other chain, because it leaves the uncertain reference out.
@@ -91,7 +95,7 @@ Such a component can be asked about and can be a result, with `name` and `file` 
 
 ### What the answer does not cover
 
-Every answer carries `notCovered`, with four parts:
+Every answer carries `notCovered`, with six parts:
 
 - `notAnalysed`: the types of the snapshot that no analyser read, with what the source lists and the snapshot
   holds of each. **Every type that is not analysed counts**, whatever the component is. The plan says "the
@@ -99,21 +103,38 @@ Every answer carries `notCovered`, with four parts:
   anywhere yet, and leaving a type out by a guess would make an answer look more complete than it is. Work
   package 9, which judges completeness per tier, can narrow this.
 - `partial`: the analysed types of which the snapshot holds less than the source lists, or whose listing
-  failed.
-- `readErrors`: the errors of the reading that name no type, such as a folder that could not be read.
+  failed. A type the analysis reads is partial also when the snapshot holds nothing of it.
+- `readErrors`: the errors of the reading that the coverage of a type does not tell, such as a folder that
+  could not be read. The two errors the coverage tells are `NOT_RETRIEVED` and `LISTING_FAILED` with a type.
+  Every other error of the reading counts, also one that names a type.
 - `analysisErrors`: the errors of the analysis.
+- `analysisWarnings`: the warnings of the analysis. A warning says that a name was not read, a path was not
+  followed to its end, or a part of a file was not found, and a reference may be missing for each. The count
+  is that of the whole snapshot, not of the components in the answer.
+- `notHeld`, for `--outgoing` only: how many of the component and the results the snapshot does not hold, such
+  as a standard field. What such a component refers to is not known.
 
-Whether a type is analysed is read from the snapshot, from the count of analysed components per type, not from
-the version of the engine that answers.
+**The types an analysis reads are kept with the analysis.** The table `snapshot_analysis` gets the column
+`types`, a JSON list, and the database moves to schema version 5. Whether a type is analysed is read from that
+list, not from the version of the engine that answers. The count of analysed components per type cannot say
+it alone: for a type of which the snapshot holds nothing, the count is zero whether an analyser reads the type
+or not, and an analysed type that is wholly missing would be listed as "not analysed yet" and leave the exit
+code at `0`. An analysis that was written before the column has no list. The count decides alone for it, with
+that weakness. `impact` only reads and does not migrate: a database of an older schema is `STORE_OUTDATED`
+until `analyse` or `snapshot` has run.
 
 Two flags are made from it:
 
-- `complete` is true only if all four parts are empty or zero.
-- `mayMiss` is true if the answer may miss something of a type it covers: `partial` is not empty, or one of the
-  two counts is not zero. A type that is not analysed yet does not make it true.
+- `complete` is true only if all six parts are empty or zero.
+- `mayMiss` is true if the answer may miss something of a type it covers: `partial` is not empty, or
+  `readErrors` or `analysisErrors` is not zero. A type that is not analysed yet does not make it true.
+- **A warning makes `complete` false and leaves `mayMiss` as it is.** Record 0043 says that a warning does not
+  make an analysis incomplete, and the plan ties the exit code `5` to what was not read. An answer that calls
+  itself complete while a name in the snapshot was not followed would say more than is known, so the word is
+  held back. `notHeld` is treated the same way.
 
-For `--outgoing`, a type that is not analysed counts only if the component or a result is of it. What a
-component refers to is known once the component itself is analysed.
+For `--outgoing`, a type that is not analysed counts only if the component, something it contains or a result
+is of it. What a component refers to is known once the component itself is analysed.
 
 The text output says in its first lines whether the answer is complete, before the first result, and lists the
 details below the results.
@@ -157,7 +178,9 @@ every statement: none walks a table.
   At twice that size, which the plan reads as the size of the targets: 8 to 9 milliseconds (76 results), and
   2.2 to 2.8 seconds for the large answers, which have 104,760 to 116,100 results and are 56 to 62 MB as JSON.
   Answering and turning the answer into JSON text took 2.5 to 3.0 seconds there. The target of 5 seconds is
-  met in the cases that were measured. Starting Node.js, loading
+  met in the cases that were measured. The series is from before the changes of the code review, which change
+  no statement of the walk. One run after them, at twice the size, gave 2.8 to 2.9 seconds for the large
+  answers, and one run of the code before them in the same hour 2.3 to 3.1 seconds. Starting Node.js, loading
   the engine and printing the answer are not in these times. Nothing was measured with a cold file cache, on
   Windows or macOS, or on a real org. [store-benchmark.md](../research/phase-1/store-benchmark.md) has the
   table.
@@ -168,9 +191,16 @@ every statement: none walks a table.
 - An answer holds references, not consequences. It does not say what breaks when a field is deleted or its
   type changes. That is the second half of record 0013, and a later phase. The first line of the text output
   says "What refers to", not "What breaks".
-- In this phase `complete` is false for every project that holds a type other than objects, fields and
-  validation rules, which is every real one. The exit code stays `0` for that, so a script cannot tell from the
+- In this phase `complete` is false for what refers to a component in every project that holds a type other
+  than objects, fields and validation rules, which is every real one. An answer with `--outgoing` can be
+  complete there. The exit code stays `0` for a type that is not analysed, so a script cannot tell from the
   exit code that Apex was not looked at. It can tell from `complete` and `notCovered`.
+- One warning anywhere in a snapshot makes every answer from it not complete, in both directions. Real
+  projects have warnings, so `complete` will seldom be true for them, also once every type is analysed. The
+  count is not narrowed to the components of the answer: a name that was not read can be a reference to any
+  component. Work package 9 can look at this again.
+- Schema version 5 is one more migration for a database of an earlier pre-release. A snapshot in it keeps its
+  analysis without the list of types until `analyse` runs for it.
 - One line of the answer shows one reference of a component to its target. Other places in the same component
   that name the same target are not listed. `coverage` and the database have them, and no command shows them
   yet.
@@ -179,8 +209,13 @@ every statement: none walks a table.
   expects is to be looked at again with Phase 3.
 - An answer can have tens of thousands of results. No option limits their number, and the text output prints
   every line.
-- A read error of the kind `RETRIEVE_FAILED` or `RESOLVE_FAILED` names no type, so it makes `mayMiss` true
-  also when what failed was of a type that is not analysed. That errs on the side of the exit code `5`.
+- A read error other than the two the coverage tells makes `mayMiss` true, also when what failed was of a type
+  that is not analysed. `RETRIEVE_FAILED` and `RESOLVE_FAILED` are of that kind. That errs on the side of the
+  exit code `5`.
+- A name alone is looked up in the types of the snapshot and the types the engine knows by name. A component
+  the snapshot does not hold, of a type that is neither, is found only with its type. A key of a part of a
+  component, written with `#`, is found only in its exact spelling. Both are to be looked at when such
+  components exist.
 - Not verified: the command was not run on a snapshot of a real org. `orglens impact` on a snapshot that was
   never analysed is tested through the engine, with its code, message and hint, and not through the command
   line: `snapshot` always analyses, so a test of the command line cannot make such a snapshot without writing

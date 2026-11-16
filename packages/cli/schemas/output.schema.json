@@ -663,31 +663,31 @@
           }
         },
         "complete": {
-          "description": "True if nothing of the source is missing from the answer: `notCovered` is empty. False says that the answer is what was found, and that `notCovered` names what could not be looked at.",
+          "description": "True if nothing is known that the answer could miss: the two lists of `notCovered` are empty and its four counts are 0. False says that the answer is what was found, and that `notCovered` names what could not be looked at.",
           "type": "boolean"
         },
         "notCovered": {
           "description": "What the answer does not cover.",
           "type": "object",
-          "required": ["notAnalysed", "partial", "readErrors", "analysisErrors"],
+          "required": ["notAnalysed", "partial", "readErrors", "analysisErrors", "analysisWarnings", "notHeld"],
           "additionalProperties": false,
           "properties": {
             "notAnalysed": {
-              "description": "The types of the snapshot that no analyser read, sorted by type. A component of such a type may refer to the component that was asked about, and is not in the answer. For `outgoing`: only the types that the component or a result is of, because what a component refers to does not depend on other types.",
+              "description": "The types of the snapshot that no analyser read, sorted by type. A component of such a type may refer to the component that was asked about, and is not in the answer. For `outgoing`: only the types of the component, of what it contains and of the results, because what a component refers to does not depend on other types.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/impactGap"
               }
             },
             "partial": {
-              "description": "The analysed types of which the snapshot holds less than the source has, sorted by type.",
+              "description": "The analysed types of which the snapshot holds less than the source has, or whose listing failed, sorted by type. A type the analysis reads is among them also when the snapshot holds nothing of it.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/impactGap"
               }
             },
             "readErrors": {
-              "description": "How many errors of the reading name no metadata type: a file or a folder that could not be read. What is missing may be of an analysed type.",
+              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type.",
               "type": "integer",
               "minimum": 0
             },
@@ -695,11 +695,21 @@
               "description": "How many errors the analysis had: a file that could not be read or placed, or a component that could not be analysed.",
               "type": "integer",
               "minimum": 0
+            },
+            "analysisWarnings": {
+              "description": "How many warnings the analysis had: a name that was not read, a path that was not followed, a formula that was not read as a whole, or a part of a file that was not found. Each can hide a reference. They make `complete` false and leave `mayMiss` as it is.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "notHeld": {
+              "description": "For `outgoing`: how many of the component and the results the snapshot refers to and does not hold, such as a standard field or a component of a package. What they refer to is not known. Always 0 for `incoming`.",
+              "type": "integer",
+              "minimum": 0
             }
           }
         },
         "mayMiss": {
-          "description": "True if the answer may miss something of a type it covers: `notCovered.partial` is not empty, or `readErrors` or `analysisErrors` is not 0. The exit code is then 5. A type that is not analysed yet does not make it true.",
+          "description": "True if something of the source was not read that the answer claims to cover: `notCovered.partial` is not empty, or `readErrors` or `analysisErrors` is not 0. The exit code is then 5. A type that is not analysed yet does not make it true, and neither does a warning of the analysis.",
           "type": "boolean"
         }
       }

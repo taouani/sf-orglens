@@ -97,10 +97,15 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     temp.cleanUp();
   });
 
-  /** A snapshot that holds the components, read as a graph. */
-  function graphOf(components: readonly AnalysedComponent[]): SnapshotGraph {
+  /** A database for the snapshots of one test. */
+  function newStore(): Store {
     const store = openStore({ path: join(temp.next(), 'orglens.sqlite'), driver });
     stores.push(store);
+    return store;
+  }
+
+  /** A snapshot that holds the components, read as a graph. Without a store, it is alone in a database. */
+  function graphOf(components: readonly AnalysedComponent[], store = newStore()): SnapshotGraph {
     const id = store.write(() =>
       insertSnapshot(store, {
         sourceId: ensureSource(store, { name: 'repo', kind: 'git', createdAt: T0 }),
@@ -114,6 +119,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     writeAnalysis(store, id, {
       engineVersion: '0.2.0',
       analysedAt: T0,
+      types: ['CustomField', 'CustomObject', 'ValidationRule'],
       components,
       work: (['parser:xml', 'parser:formula', 'dependency-api'] as const).map((origin) => ({
         origin,
@@ -168,7 +174,14 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     ]);
     expect(found).toMatchObject({ parts: 0, unresolved: [], beyondDepth: false });
     // Nothing refers to the last of the chain.
-    expect(walk(graph, D)).toEqual({ parts: 0, results: [], unresolved: [], beyondDepth: false });
+    expect(walk(graph, D)).toEqual({
+      parts: 0,
+      startTypes: ['CustomField'],
+      notHeld: 0,
+      results: [],
+      unresolved: [],
+      beyondDepth: false,
+    });
   });
 
   it('keeps the shortest path, also when a longer one is more certain', () => {
@@ -220,33 +233,96 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     }
   });
 
-  it('puts a reference without a place before those with one', () => {
-    const graph = graphOf([
+  it('shows a reference with a place before one without, and one without when there is no other', () => {
+    // What Salesforce reports has no place. The reference a parser found says where to look.
+    const reported = (from: ComponentKey): Reference =>
+      validateReference({
+        from,
+        to: A,
+        toType: 'CustomField',
+        toNameRaw: 'A__c',
+        kind: 'references',
+        origin: 'dependency-api',
+        confidence: 'confirmed',
+        resolution: 'resolved',
+      });
+    const both = [holds(A), holds(B, reported, to(A, 5)), holds(C, reported)];
+    for (const order of [both, [...both].reverse()]) {
+      const [first, second] = walk(graphOf(order), A).results;
+      expect(first?.reference).toMatchObject({ from: B, origin: 'parser:formula', file: fileOf(B), line: 5 });
+      expect(second?.reference).toEqual({
+        from: C,
+        to: A,
+        kind: 'references',
+        origin: 'dependency-api',
+        confidence: 'confirmed',
+        resolution: 'resolved',
+        file: null,
+        line: null,
+        column: null,
+      });
+    }
+  });
+
+  it('shows the most certain of the references between two components, whatever the chain before it', () => {
+    // B is found over an uncertain reference, so every chain through B is uncertain. X names B twice at the
+    // same place, once as a guess and once for sure: the answer shows the one that is sure.
+    const twice = [
       holds(A),
-      holds(B, to(A, 5), (from) =>
-        validateReference({
-          from,
-          to: A,
-          toType: 'CustomField',
-          toNameRaw: 'A__c',
-          kind: 'references',
-          origin: 'dependency-api',
-          confidence: 'confirmed',
-          resolution: 'resolved',
-        }),
-      ),
+      holds(B, tier(A, 'possible')),
+      holds(X, tier(B, 'possible', 4), tier(B, 'probable', 4), tier(B, 'possible', 2)),
+    ];
+    for (const order of [twice, [...twice].reverse()]) {
+      const found = walk(graphOf(order), A).results[1];
+      expect(found).toMatchObject({ key: X, depth: 2, confidence: 'possible' });
+      expect(found?.reference).toMatchObject({ confidence: 'probable', line: 4 });
+    }
+  });
+
+  it('answers from one snapshot, whatever the other snapshots of the database hold', () => {
+    const store = newStore();
+    // The older snapshot: C, D and the object Other__c refer to A as well.
+    const before = graphOf(
+      [holds(A), holds(B, to(A)), holds(C, to(A, 2), to(B, 3)), holds(D, to(A)), holds(THING), holds(OTHER, to(A))],
+      store,
+    );
+    // The newer one: D is gone, C no longer refers to A, and X is new.
+    const after = graphOf([holds(A), holds(B, to(A)), holds(C, to(B, 3)), holds(X, to(C)), holds(THING)], store);
+    expect(outline(walk(after, A))).toEqual([
+      [B, 1, 'confirmed', `${B} > ${A}`],
+      [C, 2, 'confirmed', `${C} > ${B} | ${B} > ${A}`],
+      [X, 3, 'confirmed', `${X} > ${C} | ${C} > ${B} | ${B} > ${A}`],
     ]);
-    expect(walk(graph, A).results[0]?.reference).toEqual({
-      from: B,
-      to: A,
-      kind: 'references',
-      origin: 'dependency-api',
-      confidence: 'confirmed',
-      resolution: 'resolved',
-      file: null,
-      line: null,
-      column: null,
-    });
+    expect(outline(walk(before, A))).toEqual([
+      [B, 1, 'confirmed', `${B} > ${A}`],
+      [C, 1, 'confirmed', `${C} > ${A}`],
+      [D, 1, 'confirmed', `${D} > ${A}`],
+      [OTHER, 1, 'confirmed', `${OTHER} > ${A}`],
+    ]);
+    // The object of the newer snapshot starts from the fields that snapshot holds, and counts only those.
+    expect(walk(after, THING)).toMatchObject({ parts: 3, results: [{ key: X, depth: 1 }] });
+    expect(walk(before, THING)).toMatchObject({ parts: 4, results: [{ key: OTHER, depth: 1 }] });
+    expect(walk(after, X, { direction: 'outgoing' }).results.map((result) => result.key)).toEqual([C, B, A]);
+  });
+
+  it('walks a level of more components than one statement takes, with as many references to choose between', () => {
+    const many = 4_500;
+    const wide = (at: number): ComponentKey => field(`Wide__c.F${String(at).padStart(4, '0')}__c`);
+    const components = [holds(A)];
+    // Every field refers to A twice, so each of them is a choice between two references by their places.
+    for (let at = 0; at < many; at += 1) components.push(holds(wide(at), to(A, 7), to(A, 3)));
+    components.push(holds(X, ...Array.from({ length: many }, (_, at) => to(wide(at), at + 1))));
+    const found = walk(graphOf(components), A);
+    expect(found.results).toHaveLength(many + 1);
+    expect(found.results.slice(0, many).every((result) => result.depth === 1 && result.reference.line === 3)).toBe(
+      true,
+    );
+    // X refers to all of them. The one whose key comes first is the way that is kept.
+    expect(found.results.at(-1)).toMatchObject({ key: X, depth: 2, reference: { to: wide(0), line: 1 } });
+    // The other way round, the walk starts from one component and finds all of them at once.
+    const down = walk(graphOf(components), X, { direction: 'outgoing' });
+    expect(down.results.map((result) => result.depth)).toEqual([...Array.from({ length: many }, () => 1), 2]);
+    expect(down.results.at(-1)).toMatchObject({ key: A, reference: { from: wide(0), line: 3 } });
   });
 
   it('ends on references that go round in a circle, and never finds the component itself', () => {
@@ -452,14 +528,19 @@ describe('what an answer does not cover', () => {
     listing: 'ok',
     ...more,
   });
-  const none = { read: 0, analysis: 0 };
+  const none = { read: 0, analysis: 0, analysisWarnings: 0 };
+  /** The types the analysis of the snapshot read. */
+  const READ = ['CustomField', 'CustomObject', 'ValidationRule'];
+  const clean = { readErrors: 0, analysisErrors: 0, analysisWarnings: 0, notHeld: 0 };
 
   it('is nothing when every type was analysed and nothing is missing', () => {
-    const gaps = impactGaps([type('CustomField'), type('CustomObject', { listed: 0, retrieved: 0 })], none);
-    expect(gaps).toEqual({ notAnalysed: [], partial: [], readErrors: 0, analysisErrors: 0 });
+    const gaps = impactGaps([type('CustomField'), type('CustomObject', { listed: 0, retrieved: 0 })], none, READ);
+    expect(gaps).toEqual({ notAnalysed: [], partial: [], ...clean });
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([true, false]);
     // A type of which the source has nothing is not one that was left out.
-    expect(coversEverything(impactGaps([type('Flow', { listed: 0, retrieved: 0, analysed: 0 })], none))).toBe(true);
+    expect(coversEverything(impactGaps([type('Flow', { listed: 0, retrieved: 0, analysed: 0 })], none, READ))).toBe(
+      true,
+    );
   });
 
   it('names the types that were not analysed, sorted, and misses nothing it claims to cover', () => {
@@ -475,6 +556,7 @@ describe('what an answer does not cover', () => {
         type('StandardValueSet', { listed: 0, retrieved: 0, analysed: 0, listing: 'unlistable' }),
       ],
       none,
+      READ,
     );
     expect(gaps.notAnalysed).toEqual([
       { type: 'ApexClass', listed: 5, retrieved: 4, listing: 'ok' },
@@ -497,6 +579,7 @@ describe('what an answer does not cover', () => {
         type('RecordType', { listed: 0, retrieved: 0, analysed: 2, listing: 'unlistable' }),
       ],
       none,
+      READ,
     );
     expect(gaps).toEqual({
       notAnalysed: [],
@@ -504,20 +587,57 @@ describe('what an answer does not cover', () => {
         { type: 'CustomField', listed: 60, retrieved: 54, listing: 'ok' },
         { type: 'ValidationRule', listed: 3, retrieved: 3, listing: 'failed' },
       ],
-      readErrors: 0,
-      analysisErrors: 0,
+      ...clean,
     });
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, true]);
   });
 
+  it('takes a type the analysis reads as analysed also when the snapshot holds nothing of it', () => {
+    const types = [
+      type('CustomField'),
+      // Four rules are listed and none came back, and the fields of the org could not be listed at all.
+      type('ValidationRule', { listed: 4, retrieved: 0, analysed: 0 }),
+      type('CustomObject', { listed: 0, retrieved: 0, analysed: 0, listing: 'failed' }),
+      // The same of a type no analyser reads.
+      type('Report', { listed: 4, retrieved: 0, analysed: 0 }),
+    ];
+    const gaps = impactGaps(types, none, READ);
+    expect(gaps.partial).toEqual([
+      { type: 'CustomObject', listed: 0, retrieved: 0, listing: 'failed' },
+      { type: 'ValidationRule', listed: 4, retrieved: 0, listing: 'ok' },
+    ]);
+    expect(gaps.notAnalysed).toEqual([{ type: 'Report', listed: 4, retrieved: 0, listing: 'ok' }]);
+    expect(mayMissSomething(gaps)).toBe(true);
+    // A type that is read and of which the source has nothing misses nothing.
+    expect(impactGaps([type('ValidationRule', { listed: 0, retrieved: 0, analysed: 0 })], none, READ)).toEqual({
+      notAnalysed: [],
+      partial: [],
+      ...clean,
+    });
+    // An analysis that kept no list of its types: the number of analysed components decides alone.
+    const old = impactGaps(types, none, null);
+    expect(old.partial).toEqual([]);
+    expect(old.notAnalysed.map((gap) => gap.type)).toEqual(['CustomObject', 'Report', 'ValidationRule']);
+  });
+
   it('counts an error of the reading or of the analysis as something an answer may miss', () => {
     for (const errors of [
-      { read: 1, analysis: 0 },
-      { read: 0, analysis: 2 },
+      { read: 1, analysis: 0, analysisWarnings: 0 },
+      { read: 0, analysis: 2, analysisWarnings: 0 },
     ]) {
-      const gaps = impactGaps([type('CustomField')], errors);
+      const gaps = impactGaps([type('CustomField')], errors, READ);
       expect(gaps).toMatchObject({ readErrors: errors.read, analysisErrors: errors.analysis });
       expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, true]);
     }
+  });
+
+  it('is not complete with a warning of the analysis or a component the snapshot does not hold', () => {
+    // A name that was not followed can be a reference the answer lacks. It is not an error, and the exit code
+    // follows errors.
+    const warned = impactGaps([type('CustomField')], { read: 0, analysis: 0, analysisWarnings: 3 }, READ);
+    expect(warned).toEqual({ notAnalysed: [], partial: [], ...clean, analysisWarnings: 3 });
+    expect([coversEverything(warned), mayMissSomething(warned)]).toEqual([false, false]);
+    const outside = { ...impactGaps([type('CustomField')], none, READ), notHeld: 1 };
+    expect([coversEverything(outside), mayMissSomething(outside)]).toEqual([false, false]);
   });
 });

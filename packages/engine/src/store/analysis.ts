@@ -84,6 +84,11 @@ export interface Analysis {
   readonly engineVersion: string;
   /** UTC, as `Date.prototype.toISOString` writes it. */
   readonly analysedAt: string;
+  /**
+   * The metadata types the analysers read. A type that is read and of which the snapshot holds nothing has no
+   * analysed component, as a type has that no analyser reads. This list tells the two apart.
+   */
+  readonly types: readonly string[];
   /** Every component of the snapshot, each key once. It is read once, so it can be made as it is read. */
   readonly components: Iterable<AnalysedComponent>;
   /** One entry for every origin that looked at the snapshot. An origin with references must have one. */
@@ -394,12 +399,14 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
       );
     }
     store.run(
-      'INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs) VALUES (?, ?, ?, ?, ?)',
+      `INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs, types)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       snapshotId,
       analysis.engineVersion,
       analysis.analysedAt,
       seen.size,
       references,
+      JSON.stringify([...new Set(analysis.types)].sort()),
     );
 
     // Only an analysis that replaced another can leave a version that no snapshot holds.
@@ -418,12 +425,14 @@ export interface AnalysisRecord {
   readonly analysedAt: string;
   readonly components: number;
   readonly references: number;
+  /** The types the analysers read, sorted. `null` for an analysis that was written before this was kept. */
+  readonly types: readonly string[] | null;
 }
 
 /** The analysis of a snapshot, or `undefined` for a snapshot that was not analysed. */
 export function readAnalysis(store: Store, snapshotId: number): AnalysisRecord | undefined {
   const row = store.get(
-    'SELECT engine_version, analysed_at, components, refs FROM snapshot_analysis WHERE snapshot_id = ?',
+    'SELECT engine_version, analysed_at, components, refs, types FROM snapshot_analysis WHERE snapshot_id = ?',
     snapshotId,
   );
   if (row === undefined) return undefined;
@@ -432,6 +441,7 @@ export function readAnalysis(store: Store, snapshotId: number): AnalysisRecord |
     analysedAt: String(row['analysed_at']),
     components: Number(row['components']),
     references: Number(row['refs']),
+    types: typeof row['types'] === 'string' ? (JSON.parse(row['types']) as string[]) : null,
   };
 }
 

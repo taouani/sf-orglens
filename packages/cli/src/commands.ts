@@ -636,6 +636,14 @@ function gapReasons(gaps: ImpactGaps): string[] {
   if (gaps.analysisErrors > 0) {
     reasons.push(`the analysis had ${count(gaps.analysisErrors, 'error', 'errors')}`);
   }
+  if (gaps.analysisWarnings > 0) {
+    reasons.push(`the analysis had ${count(gaps.analysisWarnings, 'warning', 'warnings')}`);
+  }
+  if (gaps.notHeld > 0) {
+    reasons.push(
+      `the snapshot does not hold ${count(gaps.notHeld, 'component', 'components')} of the answer, so what ${gaps.notHeld === 1 ? 'it refers' : 'they refer'} to is not known`,
+    );
+  }
   return reasons;
 }
 
@@ -662,13 +670,15 @@ function impactLines(report: ImpactReport): string[] {
   if (reasons.length === 0) {
     lines.push(
       incoming
-        ? 'The answer is complete: every type of the snapshot was analysed, and nothing is missing.'
-        : 'The answer is complete: every component in it was analysed.',
+        ? 'The answer is complete: every type of the snapshot was analysed, without an error or a warning.'
+        : 'The answer is complete: the snapshot holds every component in it, and each was analysed, without an error or a warning.',
     );
   } else {
     lines.push(`The answer is not complete: ${reasons.join(', and ')}. The details are below the answer.`);
   }
-  if (!incoming && notCovered.notAnalysed.some((gap) => gap.type === component.type)) {
+  if (!incoming && component.name === null) {
+    lines.push('The snapshot does not hold the component itself: what it refers to is not known.');
+  } else if (!incoming && notCovered.notAnalysed.some((gap) => gap.type === component.type)) {
     lines.push(`${component.type} is not analysed yet: what the component itself refers to is not known.`);
   }
 
@@ -753,6 +763,18 @@ function impactLines(report: ImpactReport): string[] {
     lines.push(
       '',
       `The analysis had ${count(notCovered.analysisErrors, 'error', 'errors')}: something of an analysed type was not read. See: ${about}`,
+    );
+  }
+  if (notCovered.analysisWarnings > 0) {
+    lines.push(
+      '',
+      `The analysis had ${count(notCovered.analysisWarnings, 'warning', 'warnings')}: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: ${about}`,
+    );
+  }
+  if (notCovered.notHeld > 0) {
+    lines.push(
+      '',
+      `The snapshot does not hold ${count(notCovered.notHeld, 'component', 'components')} of the answer, such as a standard field or a component of a package. What ${notCovered.notHeld === 1 ? 'it refers' : 'they refer'} to is not known.`,
     );
   }
   return lines;

@@ -107,7 +107,7 @@ describe('orglens impact', () => {
     expect(outgoing).toMatchObject({ code: 0, stderr: '' });
     expect(outgoing.stdout.split('\n')).toEqual([
       'What CustomField:invoice__c.total__c (Invoice__c.Total__c) refers to, in snapshot #1 of "fixture".',
-      'The answer is complete: every component in it was analysed.',
+      'The answer is complete: the snapshot holds every component in it, and each was analysed, without an error or a warning.',
       '',
       'It refers to 2 components, directly.',
       '',
@@ -131,6 +131,64 @@ describe('orglens impact', () => {
       'ApexClass  12      12',
       '',
     ]);
+  });
+
+  it('lists the names a component refers to that have no component, and says what the analysis did not follow', async () => {
+    const dir = await fixtureWorkspace((root) => {
+      // A field that no file defines, a standard field, and a relationship that no file defines: the path
+      // behind it is not followed, which is the warning.
+      writeFileSync(
+        join(root, OBJECTS, 'Invoice__c', 'fields', 'Guess__c.field-meta.xml'),
+        '<?xml version="1.0" encoding="UTF-8"?>\n<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+          '    <fullName>Guess__c</fullName>\n    <formula>Gone__c + Amount__c + LEN(Name) + Mystery__r.Size__c</formula>\n' +
+          '    <label>Guess</label>\n    <precision>16</precision>\n    <scale>2</scale>\n    <type>Number</type>\n</CustomField>\n',
+      );
+    });
+    const shown = await orglens(dir, ['impact', 'Invoice__c.Guess__c', '--outgoing']);
+    expect(shown).toMatchObject({ code: 0, stderr: '' });
+    const lines = shown.stdout.split('\n');
+    expect(lines.slice(0, 2)).toEqual([
+      'What CustomField:invoice__c.guess__c (Invoice__c.Guess__c) refers to, in snapshot #1 of "fixture".',
+      'The answer is not complete: the analysis had 1 warning, and the snapshot does not hold 1 component of the answer, so what it refers to is not known. The details are below the answer.',
+    ]);
+    const guess = 'force-app/main/default/objects/Invoice__c/fields/Guess__c.field-meta.xml:4';
+    expect(lines.slice(3)).toEqual([
+      'It refers to 2 components, directly.',
+      '',
+      'DEPTH  COMPONENT                         CONFIDENCE  KIND   REFERRED TO BY                   WHERE',
+      `1      CustomField:invoice__c.amount__c  confirmed   reads  CustomField:invoice__c.guess__c  ${guess}`,
+      `1      CustomField:invoice__c.name       confirmed   reads  CustomField:invoice__c.guess__c  ${guess}`,
+      '',
+      '2 references name something that has no component in the snapshot:',
+      'DEPTH  FROM                             KIND   TYPE         NAME        WHERE',
+      `1      CustomField:invoice__c.guess__c  reads  CustomField  Gone__c     ${guess}`,
+      `1      CustomField:invoice__c.guess__c  reads  CustomField  Mystery__r  ${guess}`,
+      '',
+      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
+      '',
+      'The snapshot does not hold 1 component of the answer, such as a standard field or a component of a package. What it refers to is not known.',
+      '',
+    ]);
+    // The same as JSON, which is checked against the schema.
+    const json = await orglensJson(dir, ['impact', 'Invoice__c.Guess__c', '--outgoing']);
+    expect(json).toMatchObject({
+      code: 0,
+      ok: true,
+      data: {
+        direction: 'outgoing',
+        unresolved: [
+          { from: 'CustomField:invoice__c.guess__c', type: 'CustomField', name: 'Gone__c', depth: 1, line: 4 },
+          { from: 'CustomField:invoice__c.guess__c', type: 'CustomField', name: 'Mystery__r', depth: 1, line: 4 },
+        ],
+        complete: false,
+        mayMiss: false,
+        notCovered: { notAnalysed: [], partial: [], analysisWarnings: 1, notHeld: 1 },
+      },
+    });
+    // The warning is about the whole snapshot, so the other direction is not complete either.
+    expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
+      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+    );
   });
 
   it('ends with 5 when the answer may miss something of a type it covers', async () => {

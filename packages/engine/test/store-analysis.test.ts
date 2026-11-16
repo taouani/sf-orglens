@@ -39,7 +39,7 @@ import {
   addCoverage,
   addIssue,
   addSnapshotFile,
-  countErrors,
+  countIssues,
   ensureSource,
   insertSnapshot,
   readIssues,
@@ -158,6 +158,7 @@ function project(): AnalysedComponent[] {
 const analysisOf = (components: Iterable<AnalysedComponent>, more: Partial<Analysis> = {}): Analysis => ({
   engineVersion: '0.2.0',
   analysedAt: T1,
+  types: ['CustomObject', 'ValidationRule', 'CustomField'],
   components,
   work: [
     { origin: 'parser:formula', components: 2, failedFiles: 0 },
@@ -243,7 +244,20 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       versionsAdded: 5,
       versionsRemoved: 0,
     });
-    expect(readAnalysis(store, id)).toEqual({ engineVersion: '0.2.0', analysedAt: T1, components: 5, references: 5 });
+    expect(readAnalysis(store, id)).toEqual({
+      engineVersion: '0.2.0',
+      analysedAt: T1,
+      components: 5,
+      references: 5,
+      // Sorted, whatever order they were given in.
+      types: ['CustomField', 'CustomObject', 'ValidationRule'],
+    });
+    // An analysis that a version before schema 5 wrote kept no list.
+    store.write(() => store.run('UPDATE snapshot_analysis SET types = NULL WHERE snapshot_id = ?', id));
+    expect(readAnalysis(store, id)?.types).toBeNull();
+    store.write(() =>
+      store.run(`UPDATE snapshot_analysis SET types = '["CustomField","CustomObject","ValidationRule"]'`),
+    );
     // Five components and the standard field that is only referred to. Four files: the object without a file has none.
     expect(counts(store)).toEqual({
       component: 6,
@@ -949,6 +963,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       analysedAt: T1,
       components: 4,
       references: 6,
+      types: ['CustomField', 'CustomObject', 'ValidationRule'],
     });
     expect(readAnalysis(store, first)?.engineVersion).toBe('0.2.0');
     // The second snapshot holds no Account any more. It still knows it, through the field a formula reads.
@@ -1166,21 +1181,23 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
-  it('counts the errors of a snapshot: those of the analysis, and those of the reading that name no type', () => {
+  it('counts the issues that bear on an answer: errors but for those the coverage tells, and warnings of the analysis', () => {
     const store = open();
     const id = snapshot(store);
     const other = snapshot(store, 'other');
-    expect(countErrors(store, id)).toEqual({ read: 0, analysis: 0 });
+    expect(countIssues(store, id)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     const read = (severity: 'error' | 'warning', code: string, details: Record<string, JsonValue> | null): void => {
       addIssue(store, id, { severity, code, message: `${code} happened.`, componentKey: null, details });
     };
     store.write(() => {
-      // The coverage of the type tells this one.
+      // The coverage of the type tells these two.
       read('error', 'NOT_RETRIEVED', { type: 'Report', count: 2 });
+      read('error', 'LISTING_FAILED', { type: 'Dashboard', code: null });
       read('error', 'FILE_UNREADABLE', { path: 'classes/A.cls' });
       read('error', 'FOLDER_MISSING', null);
-      // A type that is no text names none.
-      read('error', 'ODD', { type: 7 });
+      // Another error counts also when it names a type, and one of the two that names none does too.
+      read('error', 'ODD', { type: 'Report' });
+      read('error', 'NOT_RETRIEVED', { type: 7 });
       read('warning', 'FILES_NOT_METADATA', { count: 1 });
       addIssue(store, other, {
         severity: 'error',
@@ -1190,7 +1207,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         details: null,
       });
     });
-    expect(countErrors(store, id)).toEqual({ read: 3, analysis: 0 });
+    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
     writeAnalysis(
       store,
       id,
@@ -1202,9 +1219,9 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         ],
       }),
     );
-    expect(countErrors(store, id)).toEqual({ read: 3, analysis: 2 });
-    expect(countErrors(store, other)).toEqual({ read: 1, analysis: 0 });
-    expect(countErrors(store, 123_456)).toEqual({ read: 0, analysis: 0 });
+    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
+    expect(countIssues(store, other)).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, 123_456)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     store.close();
   });
 

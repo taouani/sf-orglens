@@ -217,10 +217,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
+        analysisWarnings: 0,
+        notHeld: 0,
       });
     });
 
-    it('is complete for a snapshot whose every type was analysed', async () => {
+    /**
+     * A workspace whose source `work` holds one object with two fields, and nothing of a type that is not
+     * analysed. The field `Heavy__c` has the formula that is given.
+     */
+    async function parcels(formula = 'Weight__c &gt; 30'): Promise<{ database: string; workspace: Workspace }> {
       const root = temp.next();
       const object = join(root, OBJECTS, 'Parcel__c');
       mkdirSync(join(object, 'fields'), { recursive: true });
@@ -237,17 +243,78 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         join(object, 'fields', 'Heavy__c.field-meta.xml'),
         xml(
           'CustomField',
-          '    <fullName>Heavy__c</fullName>\n    <formula>Weight__c &gt; 30</formula>\n    <type>Checkbox</type>\n',
+          `    <fullName>Heavy__c</fullName>\n    <formula>${formula}</formula>\n    <type>Checkbox</type>\n`,
         ),
       );
       const workspace = await openWorkspace({ root, env });
       await workspace.snapshot('work');
+      return { database: join(root, '.orglens', 'orglens.db'), workspace };
+    }
+    const NOTHING = {
+      notAnalysed: [],
+      partial: [],
+      readErrors: 0,
+      analysisErrors: 0,
+      analysisWarnings: 0,
+      notHeld: 0,
+    };
+
+    it('is complete for a snapshot whose every type was analysed', async () => {
+      const { workspace } = await parcels();
       const report = await workspace.impact('work', 'Parcel__c.Weight__c');
       expect(outline(report)).toEqual([['CustomField:parcel__c.heavy__c', 1, 'confirmed']]);
-      expect(report).toMatchObject({
+      expect(report).toMatchObject({ complete: true, mayMiss: false, notCovered: NOTHING });
+      // The other way round too: the snapshot holds both ends.
+      expect(await workspace.impact('work', 'Parcel__c.Heavy__c', { outgoing: true })).toMatchObject({
+        results: [{ key: 'CustomField:parcel__c.weight__c' }],
         complete: true,
+        notCovered: NOTHING,
+      });
+    });
+
+    it('is not complete when the analysis did not follow a name, and does not call that a miss', async () => {
+      // Nothing says where the relationship leads, so the field after it is not looked up. It may be the one
+      // that is asked about.
+      const { workspace } = await parcels('Mystery__r.Weight__c &gt; 30');
+      const report = await workspace.impact('work', 'Parcel__c.Weight__c');
+      expect(report.results).toEqual([]);
+      expect(report).toMatchObject({
+        complete: false,
         mayMiss: false,
-        notCovered: { notAnalysed: [], partial: [], readErrors: 0, analysisErrors: 0 },
+        notCovered: { ...NOTHING, analysisWarnings: 1 },
+      });
+    });
+
+    it('may miss something when the snapshot holds nothing of a type that the analysis reads', async () => {
+      const { database, workspace } = await parcels();
+      // What an org leaves behind that lists four rules and hands out none, and that cannot list its reports.
+      inStore(database, (store) => {
+        addCoverage(store, 1, {
+          type: 'ValidationRule',
+          listed: 4,
+          retrieved: 0,
+          analysed: 0,
+          listing: 'ok',
+          note: null,
+        });
+        addCoverage(store, 1, { type: 'Report', listed: 0, retrieved: 0, analysed: 0, listing: 'failed', note: null });
+      });
+      const report = await workspace.impact('work', 'Parcel__c.Weight__c');
+      // A rule may read the field. Rules are analysed, so the answer claims to cover them, and it cannot.
+      expect(report).toMatchObject({
+        complete: false,
+        mayMiss: true,
+        notCovered: {
+          ...NOTHING,
+          partial: [{ type: 'ValidationRule', listed: 4, retrieved: 0, listing: 'ok' }],
+          notAnalysed: [{ type: 'Report', listed: 0, retrieved: 0, listing: 'failed' }],
+        },
+      });
+      // An analysis that an older version wrote kept no list of the types it read.
+      inStore(database, (store) => store.run('UPDATE snapshot_analysis SET types = NULL'));
+      expect((await workspace.impact('work', 'Parcel__c.Weight__c')).notCovered).toMatchObject({
+        partial: [],
+        notAnalysed: [{ type: 'Report' }, { type: 'ValidationRule' }],
       });
     });
 
@@ -317,6 +384,34 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(total.results[0]?.reference).toMatchObject({ from: 'CustomField:invoice__c.total__c', to: AMOUNT });
       // Both ends were analysed: what a field refers to does not depend on Apex.
       expect(total).toMatchObject({ complete: true, mayMiss: false, notCovered: { notAnalysed: [] } });
+
+      // What an object contains counts too: the record of a custom metadata type is of a type that is not
+      // analysed, so what the type with its records refers to is not known.
+      const settings = await workspace.impact('fixture', 'Billing_Rule__mdt', { outgoing: true });
+      expect(settings.parts).toBe(2);
+      expect(settings).toMatchObject({
+        results: [],
+        complete: false,
+        notCovered: { notAnalysed: [{ type: 'CustomMetadata' }], notHeld: 0 },
+      });
+
+      // A standard field has no file in a repository. What it refers to is not known, and neither is what a
+      // result refers to that the snapshot does not hold.
+      const standard = await workspace.impact('fixture', 'User.Department', { outgoing: true });
+      expect(standard).toMatchObject({
+        component: { name: null, file: null },
+        results: [],
+        complete: false,
+        mayMiss: false,
+        notCovered: { notAnalysed: [], notHeld: 1 },
+      });
+      const account = await workspace.impact('fixture', 'Account', { outgoing: true });
+      expect(account.results.filter((result) => result.name === null).map((result) => result.key)).toEqual([
+        'CustomObject:contact',
+      ]);
+      expect(account).toMatchObject({ complete: false, notCovered: { notHeld: 1 } });
+      // What refers to a component is asked of the components that are held, so this never counts there.
+      expect((await workspace.impact('fixture', 'User.Department')).notCovered.notHeld).toBe(0);
 
       // A rule that reads a custom permission and a record of custom metadata: what those refer to is not known.
       const rule = await workspace.impact('fixture', 'Invoice__c.Large_Amount_Needs_Permission', { outgoing: true });

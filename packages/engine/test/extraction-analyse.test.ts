@@ -262,6 +262,7 @@ describe('the analysis of the fixture project', () => {
       const written = writeAnalysis(store, snapshot, {
         engineVersion: '0.2.0',
         analysedAt: at,
+        types: analysis.types,
         components: analysis.components,
         work: analysis.work,
         issues: analysis.issues,

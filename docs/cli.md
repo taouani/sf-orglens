@@ -7,8 +7,8 @@ The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exi
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
 org, take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its
 objects, fields and validation rules, with the formulas in them. `orglens impact` answers what refers to a
-component from those types alone. Nothing else of a snapshot is analysed yet, and every answer says so. Reading
-an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
+component from those types alone. Nothing else of a snapshot is analysed yet, and an answer names the types it
+does not cover. Reading an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
 org, by a tool of the tests ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot`
 itself has not been run against Salesforce.
 
@@ -357,10 +357,12 @@ The example is shortened: the command prints every line and every path in full.
 
 **How the component is named.** By its name (`Account.Industry`), by its type and name
 (`CustomField:Account.Industry`) or by its key (`CustomField:account.industry`). Upper and lower case do not
-matter. A name alone is looked up among all types. If it fits components of several types, the command ends with
-`COMPONENT_AMBIGUOUS` and lists their keys. The snapshot also knows a component that it does not hold and that
-something in it refers to, such as a standard field: `orglens impact Account.Name` works in a repository that has
-no file for that field.
+matter. A name alone is looked up among the types the snapshot holds and the types OrgLens knows by name. If it
+fits components of several types, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys. The snapshot
+also knows a component that it does not hold and that something in it refers to, such as a standard field:
+`orglens impact Account.Name` works in a repository that has no file for that field. A component of that kind
+whose type is neither in the snapshot nor known to OrgLens by name is not found by its name alone: name it with
+its type.
 
 **What the answer holds.**
 
@@ -384,27 +386,42 @@ no file for that field.
   refer to. A name that has no key, so that no component stands for it, is listed in a table of its own.
 
 **What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
-the answer says whether it is complete. Below the results it names what it does not cover:
+the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
 
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each.
   A component of such a type can refer to the component and is not in the answer. In this pre-release, that is
   every type except objects, fields and validation rules;
-- the analysed types of which the snapshot holds less than the source has;
+- the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
-  them.
+  them;
+- how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
+  to its end, or a part of a file was not found. A reference may be missing for each;
+- for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a
+  component of a package. What such a component refers to is not known.
 
-For `--outgoing`, a type that is not analysed counts only if the component or a result is of it: what a
-component refers to is known once the component itself is analysed.
+An answer is complete only if none of these applies. The warnings are those of the whole snapshot, not only
+those of the components in the answer.
 
-Whether a type is analysed is read from the snapshot, not from the version of OrgLens that answers. A snapshot
-that an older version analysed covers what that version read. `orglens analyse <source>` analyses it again.
+For `--outgoing`, a type that is not analysed counts only if the component, something it contains or a result
+is of it: what a component refers to is known once the component itself is analysed.
+
+Whether a type is analysed is read from the snapshot, not from the version of OrgLens that answers: an analysis
+records the types it read. A snapshot that an older version analysed covers what that version read.
+`orglens analyse <source>` analyses it again. An analysis from before the database kept that list (schema
+version 4 or older) has none, and a type then counts as analysed if the snapshot holds an analysed component of
+it. An analysed type of which such a snapshot holds nothing is listed as not analysed there, not as partial.
+
+`impact` only reads, so it does not migrate a database that an older version of OrgLens wrote. It ends with
+`STORE_OUTDATED`. `orglens analyse <source>` or `orglens snapshot <source>` migrates the database.
 
 **Exit codes.** `0` for an answer that misses nothing of a type it covers. Types that are not analysed yet do
-not change that: every answer names them, and a script would otherwise fail on every run. `5` if the answer may
-miss something of a type it covers: an analysed type is partial in the snapshot, a file or a folder could not be
-read, or the analysis had an error. `2` if no component has the name or several have, and for a workspace with
-several sources when `--source` is missing. A snapshot that was never analysed ends with
-`SNAPSHOT_NOT_ANALYSED` and the exit code `1`, and the hint names the command that analyses it.
+not change that: the answer names them, and a script would otherwise fail on every run. Warnings of the analysis
+and components the snapshot does not hold do not change it either. `5` if the answer may miss something of a type
+it covers: an analysed type is partial in the snapshot, a file or a folder could not be read, or the analysis
+had an error. `2` if no component has the name or several have, and for a workspace with several sources when
+`--source` is missing. A snapshot that was never analysed ends with `SNAPSHOT_NOT_ANALYSED` and the exit code
+`1`, and the hint names the command that analyses it. A script that needs a complete answer reads
+`data.complete`: the exit code `0` does not say it.
 
 **The data of `--json`:**
 
@@ -420,9 +437,9 @@ several sources when `--source` is missing. A snapshot that was never analysed e
 | `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`.                                                                                                     |
 | `reference`     | The reference a result is found by, with `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result and `to` is one reference nearer. For `outgoing` it is the other way round. |
 | `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
-| `complete`      | `true` if nothing of the source is missing from the answer: every type of the snapshot was analysed, the snapshot holds every component of them, and there was no error.                                                                        |
-| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors` and `analysisErrors`: numbers.                                                                                                       |
-| `mayMiss`       | `true` if the answer may miss something of a type it covers. This is what the exit code `5` says.                                                                                                                                               |
+| `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                    |
+| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`.                                       |
+| `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                     |
 
 **The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
 reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the
@@ -436,7 +453,10 @@ What is not done, and what a user should know:
 - The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
   changes. That is a later phase.
 - Only objects, fields and validation rules are analysed. Apex, flows, layouts, permissions and the other types
-  follow in later phases, and until then every answer about a real project says that it is not complete.
+  follow in later phases. Until then an answer about what refers to a component of a real project says that it
+  is not complete. An answer with `--outgoing` can be complete, because it needs only the component and its
+  results to be analysed.
+- The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
 - An answer can be large: a field that much of an org rests on can have tens of thousands of results.
   `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.
 - A snapshot of an org that is still running or was given up cannot be asked. The command ends with

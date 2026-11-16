@@ -21,7 +21,7 @@ import {
 import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import type { Store } from '../store/open.ts';
-import { countErrors, readCoverage, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
+import { countIssues, readCoverage, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
 import { noSnapshot } from './snapshot.ts';
 
 export interface ImpactQuery {
@@ -67,19 +67,22 @@ export interface ImpactReport {
   /** For `outgoing`: the references to a name that has no key, so that no component stands for it. */
   readonly unresolved: readonly ImpactUnresolved[];
   /**
-   * True if nothing of the source is missing from the answer: every type of the snapshot was analysed, the
-   * snapshot holds every component of them, and the analysis had no error. False says that the answer is what
-   * was found, and that `notCovered` names what could not be looked at.
+   * True if nothing is known that the answer could miss: every type of the snapshot was analysed, the snapshot
+   * holds every component of them, and the reading and the analysis had neither an error nor, for the
+   * analysis, a warning. False says that the answer is what was found, and that `notCovered` names what could
+   * not be looked at.
    */
   readonly complete: boolean;
   /**
-   * For `outgoing`, `notAnalysed` holds only the types the component or a result is of: what a component
-   * refers to does not depend on the other types.
+   * For `outgoing`, `notAnalysed` holds only the types of the component, of what it contains and of the
+   * results: what a component refers to does not depend on the other types. `notHeld` counts the component
+   * and the results that the snapshot does not hold.
    */
   readonly notCovered: ImpactGaps;
   /**
-   * True if the answer may miss something of a type it covers: `notCovered.partial` is not empty, or one of the
-   * two counts of errors is not zero. A type that is not analysed yet does not make it true.
+   * True if something of the source was not read that the answer claims to cover: `notCovered.partial` is not
+   * empty, or one of the two counts of errors is not zero. A type that is not analysed yet does not make it
+   * true, and neither does a warning of the analysis.
    */
   readonly mayMiss: boolean;
 }
@@ -115,8 +118,6 @@ export function finishedSnapshot(
   );
 }
 
-const typeOfStart = (key: string): string => key.slice(0, key.indexOf(':'));
-
 /** Answers an impact question from the database. Reads only. */
 export function impactOf(store: Store, source: string, component: string, query: ImpactQuery = {}): ImpactReport {
   const { depth } = query;
@@ -149,12 +150,15 @@ export function impactOf(store: Store, source: string, component: string, query:
   const direction = query.outgoing === true ? 'outgoing' : 'incoming';
   const minConfidence = query.minConfidence ?? 'possible';
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
-  const gaps = impactGaps(types, countErrors(store, snapshot.id));
+  const gaps = impactGaps(types, countIssues(store, snapshot.id), analysis.types);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
-  // that question, a type counts only if the component or a result is of it.
-  const walked = new Set([typeOfStart(start.key), ...walk.results.map((result) => result.type)]);
+  // that question, a type counts only if the component, something it contains or a result is of it. And what
+  // a component refers to that the snapshot does not hold is not known at all.
+  const walked = new Set([...walk.startTypes, ...walk.results.map((result) => result.type)]);
   const notCovered =
-    direction === 'incoming' ? gaps : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)) };
+    direction === 'incoming'
+      ? gaps
+      : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)), notHeld: walk.notHeld };
 
   return {
     snapshot: {

@@ -728,9 +728,9 @@ Accepted when:
 
 Status on 16 November 2026, with the pull request that holds the impact engine. Built: `engines/impact.ts`
 (`walkImpact`, `findComponent`, `impactGaps`), `api/impact.ts` (`impactOf`), `Workspace.impact`, five members of
-`SnapshotGraph` for a walk, `countErrors` in `store/snapshots.ts`, the command `orglens impact`, the JSON
-Schema, `docs/cli.md`, the impact questions in `bench/store.mjs`, their tests and decision record
-[0044](../adr/0044-an-impact-answer.md).
+`SnapshotGraph` for a walk, `countIssues` in `store/snapshots.ts`, the fifth migration of the database (the
+types an analysis reads), the command `orglens impact`, the JSON Schema, `docs/cli.md`, the impact questions in
+`bench/store.mjs`, their tests and decision record [0044](../adr/0044-an-impact-answer.md).
 
 - **The four pass marks.**
   - The six golden files are there, for `Invoice__c.Amount__c`, `Account.Tier__c`, `User.Department`,
@@ -777,25 +777,48 @@ Schema, `docs/cli.md`, the impact questions in `bench/store.mjs`, their tests an
   - Without `--depth` the answer goes as far as references lead.
   - Every type that is not analysed makes an answer not complete, whatever the component is. The plan says
     "the types that can refer to the target", and nothing says yet which type can refer to which.
-  - `complete` and the exit code are two things. `complete` is false for every real project in this phase,
-    and the exit code stays `0`, as this plan says. The exit code `5` follows `mayMiss`: an analysed type is
-    partial, a file or folder was not read, or the analysis had an error.
+  - `complete` and the exit code are two things. `complete` is false for what refers to a component in every
+    real project in this phase, and the exit code stays `0`, as this plan says. The exit code `5` follows
+    `mayMiss`: an analysed type is partial, a file or folder was not read, or the analysis had an error.
+  - A warning of the analysis anywhere in the snapshot makes an answer not complete, and leaves the exit code
+    as it is. So does, for `--outgoing`, a component of the answer that the snapshot does not hold. This plan
+    names neither. Real projects have warnings, so `complete` will seldom be true for them.
+  - The types an analysis reads are stored with it, and the database moves to schema version 5. Without that
+    list, an analysed type of which the snapshot holds nothing looked like a type that is not analysed yet.
+  - The text output is one table sorted by depth, with the depth in the first column. This plan says "grouped
+    by depth". It has no heading per depth.
   - `--source` can be left out when the workspace declares exactly one source.
   - A name alone that fits components of several types is an error that lists them.
 - **For WP8.** An answer shows the origin of every reference in `reference.origin`, and the walk follows every
   origin alike. When the rows of the Dependency API are stored with the origin `dependency-api`, `impact`
   will follow them like its own unless the walk is told not to: WP8 has to decide that, with this plan's
   sentence that they are "never mixed into the answer as if OrgLens had found them". Such a row has no place,
-  and the walk and the text output already handle a reference without one.
+  and the walk and the text output already handle a reference without one. Between two references of the same
+  two components the walk shows the more certain one, and of two equally certain ones the one with a place, so
+  a row of the Dependency API does not hide the place OrgLens found.
 - **For WP9.** `impactGaps` reads the counts per type and treats every type alike. The rule that judges
-  completeness over the logic tier can narrow `notAnalysed` there. An error of the reading without a type
-  (`RETRIEVE_FAILED`, `RESOLVE_FAILED`, a folder that is missing) makes `mayMiss` true whatever it was about.
+  completeness over the logic tier can narrow `notAnalysed` there. An error of the reading other than
+  `NOT_RETRIEVED` and `LISTING_FAILED` with a type (`RETRIEVE_FAILED`, `RESOLVE_FAILED`, a folder that is
+  missing) makes `mayMiss` true whatever it was about. The warnings count for the whole snapshot: WP9 can
+  narrow them to what an answer rests on.
+- **The code review** found no wrong answer in the walk, which it also compared with a second walk of its own
+  on 150 random graphs with both drivers. It found three places where an answer said more than was known: an
+  analysed type that the snapshot does not hold at all was listed as "not analysed yet" and left the exit code
+  at `0`, an answer with `--outgoing` could call itself complete for a component the snapshot does not hold or
+  an object with parts of a type that is not analysed, and an answer could call itself complete while the
+  analysis had warnings. All three are changed, with the choices listed above.
 - **For WP10.** The times above are from synthetic orgs. WP10 measures on the public codebases and reports
   the time of the whole command, with the start of Node.js and the printing.
 - **Not done or not verified.** No option limits the number of results. An answer shows one reference per
   result, and the other places where the same component names the same target are not listed. Nothing says
   what breaks, only what refers. The command was not run on a snapshot of a real org. The size of ten times
-  the org of Phase 0 was not run.
+  the org of Phase 0 was not run. A component the snapshot does not hold, of a type that is neither in the
+  snapshot nor known to OrgLens by name, is found only when it is named with its type. A key of a part of a
+  component, written with `#`, is found only in its exact spelling: no such component exists yet. The
+  times above were measured before the changes of the code review, which change no statement of the walk. The
+  series was not run again. One run at twice the size after the changes, and one of the code before them in
+  the same hour, gave 2.8 to 2.9 and 2.3 to 3.1 seconds for the first call of the large answers: no difference
+  that one run each can show, and both slower than the series, on a machine that was busier.
 
 ### WP8 Cross-check with the Dependency API
 

@@ -10,7 +10,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
 > and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
 > fields and validation rules, with the formulas in them, and for nothing else yet. `orglens impact` shows what
-> refers to a component among those types, and says in every answer which types it does not cover. The commands
+> refers to a component among those types, and an answer names the types it does not cover. The commands
 > are `init`, `source`, `snapshot`, `analyse`, `coverage`, `impact`, `status` and `doctor`. See
 > [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
 

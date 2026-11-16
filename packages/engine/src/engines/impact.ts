@@ -97,6 +97,14 @@ export interface ImpactOptions {
 export interface ImpactWalk {
   /** How many components of the snapshot the component contains. The walk starts from them too. */
   readonly parts: number;
+  /** The metadata types of the component and of the components of the snapshot it contains, sorted. */
+  readonly startTypes: readonly string[];
+  /**
+   * For an outgoing walk: how many of the component and the results the snapshot refers to and does not hold,
+   * such as a standard field. What they refer to is not known. Always 0 for an incoming walk: a component
+   * that refers to something is held.
+   */
+  readonly notHeld: number;
   /** Sorted by depth, then by key. */
   readonly results: readonly ImpactResult[];
   /** Sorted by depth, then by the key they start from, then by place. Always empty for an incoming walk. */
@@ -122,9 +130,14 @@ const placeOf = (edge: GraphEdge): Pick<ImpactStep, 'file' | 'line' | 'column'> 
   column: edge.location?.column ?? null,
 });
 
-/** Orders two references of one level by where they stand and what they say. Negative: `a` comes first. */
+/**
+ * Orders two references between the same two components. Negative: `a` comes first. The more certain one
+ * first, then one with a place before one without, then by where they stand and what they say.
+ */
 function compareEdges(a: GraphEdge, b: GraphEdge): number {
   return (
+    CONFIDENCE_TIERS.indexOf(a.confidence) - CONFIDENCE_TIERS.indexOf(b.confidence) ||
+    Number(a.location === undefined) - Number(b.location === undefined) ||
     compareText(a.location?.file ?? '', b.location?.file ?? '') ||
     (a.location?.line ?? 0) - (b.location?.line ?? 0) ||
     (a.location?.column ?? 0) - (b.location?.column ?? 0) ||
@@ -173,9 +186,12 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   let frontier = [start.id, ...graph.below(start.id)];
   for (const id of frontier) reached.set(id, origin);
   let parts = 0;
+  const startTypes = new Set([typeOf(start.key)]);
   for (const component of graph.components(frontier)) {
     known.set(component.id, component);
-    if (component.id !== start.id && component.version !== null) parts += 1;
+    if (component.id === start.id || component.version === null) continue;
+    parts += 1;
+    startTypes.add(typeOf(component.key));
   }
 
   const componentOf = (id: number | null): GraphComponent => {
@@ -218,7 +234,8 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
       if (order < 0) found.set(id, { confidence, near, links: [link] });
       else if (order === 0) best?.links.push(link);
     }
-    // Several references between the same two components, equally certain: the first by its place is kept.
+    // Several references between the same two components that make the chain equally certain: the most
+    // certain of them is kept, then the first by its place.
     const tied = [...found.values()].filter((candidate) => candidate.links.length > 1);
     const places = new Map<GraphLink, GraphEdge>();
     const details = graph.edges(tied.flatMap((candidate) => candidate.links));
@@ -266,8 +283,10 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   });
 
   const results: ImpactResult[] = [];
+  let notHeld = !incoming && start.version === null ? 1 : 0;
   for (const [id, how] of reached) {
     if (how.link === null) continue;
+    if (!incoming && componentOf(id).version === null) notHeld += 1;
     results.push({
       ...impactComponent(componentOf(id)),
       depth: how.depth,
@@ -303,7 +322,7 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
         compareText(a.kind, b.kind),
     );
 
-  return { parts, results, unresolved, beyondDepth };
+  return { parts, startTypes: [...startTypes].sort(compareText), notHeld, results, unresolved, beyondDepth };
 }
 
 /**
@@ -389,39 +408,67 @@ export interface ImpactGaps {
   readonly readErrors: number;
   /** Errors of the analysis: a file that could not be read or placed, or a component that could not be analysed. */
   readonly analysisErrors: number;
+  /**
+   * Warnings of the analysis: a name that was not read, a path that was not followed, a formula that was not
+   * read as a whole, a part of a file that was not found. Each can hide a reference.
+   */
+  readonly analysisWarnings: number;
+  /**
+   * For what a component refers to: how many of the component and the results the snapshot does not hold,
+   * such as a standard field. What they refer to is not known. Always 0 for what refers to a component.
+   */
+  readonly notHeld: number;
 }
 
 /**
- * What an answer from a snapshot does not cover, from the counts per type and the errors of the snapshot.
+ * What an answer from a snapshot does not cover, from the counts per type and the issues of the snapshot.
  *
  * Whether a type was analysed is read from the snapshot, not from this version of the engine: a snapshot
- * that an older version analysed covers what that version read.
+ * that an older version analysed covers what that version read. `analysedTypes` are the types the analysis
+ * of the snapshot read. A type among them counts as analysed also when the snapshot holds nothing of it: if
+ * the source has components of it, they are missing from an answer that claims to cover the type. `null`
+ * for an analysis that did not keep the list: the number of analysed components then decides alone.
+ *
+ * `notHeld` is 0 here. It is known from a walk.
  */
 export function impactGaps(
   types: readonly TypeCount[],
-  errors: { readonly read: number; readonly analysis: number },
+  issues: { readonly read: number; readonly analysis: number; readonly analysisWarnings: number },
+  analysedTypes: readonly string[] | null,
 ): ImpactGaps {
   const gap = ({ type, listed, retrieved, listing }: TypeCount): ImpactGap => ({ type, listed, retrieved, listing });
   const sorted = [...types].sort((a, b) => compareText(a.type, b.type));
+  const read = new Set(analysedTypes);
+  const analysed = (type: TypeCount): boolean => type.analysed > 0 || read.has(type.type);
   return {
     notAnalysed: sorted
-      .filter((type) => type.analysed === 0 && (type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok'))
+      .filter((type) => !analysed(type) && (type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok'))
       .map(gap),
     partial: sorted
-      .filter((type) => type.analysed > 0 && (type.retrieved < type.listed || type.listing === 'failed'))
+      .filter((type) => analysed(type) && (type.retrieved < type.listed || type.listing === 'failed'))
       .map(gap),
-    readErrors: errors.read,
-    analysisErrors: errors.analysis,
+    readErrors: issues.read,
+    analysisErrors: issues.analysis,
+    analysisWarnings: issues.analysisWarnings,
+    notHeld: 0,
   };
 }
 
-/** True if an answer covers everything the source holds that can refer to a component. */
+/** True if nothing is known that an answer could miss. */
 export const coversEverything = (gaps: ImpactGaps): boolean =>
-  gaps.notAnalysed.length === 0 && gaps.partial.length === 0 && gaps.readErrors === 0 && gaps.analysisErrors === 0;
+  gaps.notAnalysed.length === 0 &&
+  gaps.partial.length === 0 &&
+  gaps.readErrors === 0 &&
+  gaps.analysisErrors === 0 &&
+  gaps.analysisWarnings === 0 &&
+  gaps.notHeld === 0;
 
 /**
- * True if an answer may miss something it claims to cover: a component of an analysed type, or a reference of
- * one. A type that is not analysed is named in the answer and is not such a miss.
+ * True if something of the source was not read that an answer claims to cover: components of an analysed
+ * type, or a file or folder of which nothing says what it held. A type that is not analysed is named in the
+ * answer and is not such a miss. A warning of the analysis does not make it true either, as it does not make
+ * an analysis incomplete (decision record 0043), though the name it is about can be a reference the answer
+ * lacks: `coversEverything` is false for it.
  */
 export const mayMissSomething = (gaps: ImpactGaps): boolean =>
   gaps.partial.length > 0 || gaps.readErrors > 0 || gaps.analysisErrors > 0;

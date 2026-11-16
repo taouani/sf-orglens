@@ -103,9 +103,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
   (`api/impact.ts`, decision record 0044). The walk goes level by level, with one question to the store per
   level. A component is found once, on a shortest chain, and holds the one reference it is found by. Which chain
   is kept depends on confidence, keys and places only, never on a number of the database. Every answer says
-  what it does not cover: `complete` is false while a type of the snapshot is not analysed, and `mayMiss`,
-  which the exit code `5` follows, is true only when something of an analysed type may be missing. A statement
-  of the graph that takes many ids starts from that list and walks no table: a test reads every query plan.
+  what it does not cover (`notCovered`). `complete` is false while anything is known that the answer could
+  miss: a type that is not analysed, a warning of the analysis, and for `--outgoing` a component the snapshot
+  does not hold. `mayMiss`, which the exit code `5` follows, is true only when something of an analysed type
+  was not read or its analysis had an error. Which types an analysis read is kept with the analysis
+  (`snapshot_analysis.types`), not derived from the version that answers. A statement of the graph that takes
+  many ids starts from that list and walks no table: a test reads every query plan.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

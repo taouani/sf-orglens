@@ -173,6 +173,7 @@ for (let s = 1; s <= snapshots; s++) {
   const written = writeAnalysis(store, snapshotId, {
     engineVersion: 'bench',
     analysedAt: at,
+    types: [],
     components,
     work: ORIGIN.map((origin) => ({ origin, components: components.length, failedFiles: 0 })),
     issues: [],
@@ -311,6 +312,7 @@ result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
   const written = writeAnalysis(store, snapshotId, {
     engineVersion: 'bench again',
     analysedAt: new Date().toISOString(),
+    types: [],
     components,
     work: ORIGIN.map((origin) => ({ origin, components: components.length, failedFiles: 0 })),
     issues: [],
