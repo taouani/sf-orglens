@@ -726,6 +726,77 @@ Accepted when:
   you named no case. A case that misses it is a mark missed, and the phase reports it.
 - `orglens impact` on a snapshot that was never analysed ends with an error that says how to analyse it.
 
+Status on 16 November 2026, with the pull request that holds the impact engine. Built: `engines/impact.ts`
+(`walkImpact`, `findComponent`, `impactGaps`), `api/impact.ts` (`impactOf`), `Workspace.impact`, five members of
+`SnapshotGraph` for a walk, `countErrors` in `store/snapshots.ts`, the command `orglens impact`, the JSON
+Schema, `docs/cli.md`, the impact questions in `bench/store.mjs`, their tests and decision record
+[0044](../adr/0044-an-impact-answer.md).
+
+- **The four pass marks.**
+  - The six golden files are there, for `Invoice__c.Amount__c`, `Account.Tier__c`, `User.Department`,
+    `Invoice__c`, `Invoice__c.Unused_Field__c` and `Invoice_Line__c.Quantity__c`, as JSON from the engine and
+    as text from the command.
+  - A test works out from the answer key alone what refers to each of 96 components of the fixture, at which
+    depth and with which confidence, and the answers are equal: 141 results. Every reference of every chain
+    is one the key holds, at the place the key gives it. The 96 are the fields, objects and rules the key
+    names. Not compared: which of two equally good chains is shown, which the key does not say.
+  - The times are below. The target of 5 seconds is met in the cases that were measured, at the size the plan
+    reads as that of your targets.
+  - A snapshot without an analysis ends with `SNAPSHOT_NOT_ANALYSED` and the hint `orglens analyse`. That is
+    tested through the engine and not through the command line, because `snapshot` always analyses.
+- **The times**, on one Linux machine, with the file in the cache of the system, in a database that was just
+  opened, three runs with the default driver. They hold the walk and the making of the answer. Starting
+  Node.js, loading the engine and printing are not in them.
+
+  | Question                         | Results                                             | Size of Phase 0, first call | Twice that size, first call |
+  | -------------------------------- | --------------------------------------------------- | --------------------------- | --------------------------- |
+  | An ordinary field, five levels   | 57 and 76                                           | 8 to 12 ms                  | 8 to 9 ms                   |
+  | An ordinary field, no limit      | 52,340 and 104,760, up to 19 and 21 references away | 0.91 to 1.10 s              | 2.16 to 2.34 s              |
+  | The most used field, five levels | 57,951 and 115,708                                  | 1.00 to 1.08 s              | 2.37 to 2.54 s              |
+  | The most used field, no limit    | 58,189 and 116,100                                  | 1.01 to 1.06 s              | 2.29 to 2.76 s              |
+
+  A second call in the same process takes about as long for the large answers, and 2 to 3 milliseconds for
+  the small one: the time goes into reading and building the answer, not into opening the database. The one
+  question at a time of WP3 took 4.0 to 4.2 and 7.6 to 10.3 seconds in the same runs.
+
+  With `better-sqlite3`, one run each: 0.9 to 1.0 seconds and 2.2 to 2.7 seconds for the large answers. Nothing was
+  measured with a cold file cache, on Windows or macOS, or on a real org. The answers from the synthetic orgs are far
+  larger than a person reads: the generator ties the org together, and a third of all components is reached from
+  an ordinary field.
+
+- **One departure from this plan**, for you to strike: a result holds the one reference it is found by, and not its
+  whole path. The other end of that reference is a result of the depth before, which holds the next one, so the whole
+  chain can be followed. With every path written out, the answer from an ordinary field of the larger org was 443 MB
+  of JSON (104,760 results, 1,361,153 references on their paths), which took 1.9 seconds to turn into text and is
+  close to the longest text Node.js can hold. With one reference per result it is 56 MB, and the answer with its JSON
+  text takes 2.5 to 2.7 seconds. If you want the paths written out, I change it back, and the answer then needs a
+  limit.
+- **Other choices of mine**, which record 0044 lists for you to strike. The ones with the most weight:
+  - A shorter chain wins over a more certain one. `--min-confidence` finds the other.
+  - A component that is found is followed from itself only, not from what it contains or what contains it.
+  - Without `--depth` the answer goes as far as references lead.
+  - Every type that is not analysed makes an answer not complete, whatever the component is. The plan says
+    "the types that can refer to the target", and nothing says yet which type can refer to which.
+  - `complete` and the exit code are two things. `complete` is false for every real project in this phase,
+    and the exit code stays `0`, as this plan says. The exit code `5` follows `mayMiss`: an analysed type is
+    partial, a file or folder was not read, or the analysis had an error.
+  - `--source` can be left out when the workspace declares exactly one source.
+  - A name alone that fits components of several types is an error that lists them.
+- **For WP8.** An answer shows the origin of every reference in `reference.origin`, and the walk follows every
+  origin alike. When the rows of the Dependency API are stored with the origin `dependency-api`, `impact`
+  will follow them like its own unless the walk is told not to: WP8 has to decide that, with this plan's
+  sentence that they are "never mixed into the answer as if OrgLens had found them". Such a row has no place,
+  and the walk and the text output already handle a reference without one.
+- **For WP9.** `impactGaps` reads the counts per type and treats every type alike. The rule that judges
+  completeness over the logic tier can narrow `notAnalysed` there. An error of the reading without a type
+  (`RETRIEVE_FAILED`, `RESOLVE_FAILED`, a folder that is missing) makes `mayMiss` true whatever it was about.
+- **For WP10.** The times above are from synthetic orgs. WP10 measures on the public codebases and reports
+  the time of the whole command, with the start of Node.js and the printing.
+- **Not done or not verified.** No option limits the number of results. An answer shows one reference per
+  result, and the other places where the same component names the same target are not listed. Nothing says
+  what breaks, only what refers. The command was not run on a snapshot of a real org. The size of ten times
+  the org of Phase 0 was not run.
+
 ### WP8 Cross-check with the Dependency API
 
 Build:

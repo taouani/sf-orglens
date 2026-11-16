@@ -454,9 +454,9 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     expect(graph.linksFrom([123_456])).toEqual([]);
     expect(graph.edges([])).toEqual([]);
     // A link that names no reference of the database is a fault, not an empty answer.
-    expect(codeOf(() => graph.edges([{ fromId: 1, toId: 2, confidence: 'confirmed', versionId: 123_456, seq: 0 }]))).toBe(
-      'INTERNAL',
-    );
+    expect(
+      codeOf(() => graph.edges([{ fromId: 1, toId: 2, confidence: 'confirmed', versionId: 123_456, seq: 0 }])),
+    ).toBe('INTERNAL');
     store.close();
   });
 

@@ -547,7 +547,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["key", "type", "name", "file", "depth", "confidence", "path"],
+            "required": ["key", "type", "name", "file", "depth", "confidence", "reference"],
             "additionalProperties": false,
             "properties": {
               "key": {
@@ -572,16 +572,12 @@
                 "minimum": 1
               },
               "confidence": {
-                "description": "The weakest confidence among the references of `path`.",
+                "description": "The weakest confidence among the references of the chain that leads to this component. Among the shortest chains the most certain one is kept. A longer chain can be more certain, and is found with --min-confidence.",
                 "enum": ["confirmed", "probable", "possible"]
               },
-              "path": {
-                "description": "A shortest chain of references between this component and the one that was asked about, or something that one contains, in the order the references follow each other: the `to` of a step is the `from` of the next. For `incoming` the chain starts at this component, for `outgoing` it ends at it. Among the shortest chains it is the most certain one. A longer chain can be more certain, and is found with --min-confidence.",
-                "type": "array",
-                "minItems": 1,
-                "items": {
-                  "$ref": "#/$defs/impactStep"
-                }
+              "reference": {
+                "description": "The reference this component is found by: the one at its end of a shortest chain of references between it and the component that was asked about. For `incoming`, `from` is this component and `to` is one reference nearer. For `outgoing` it is the other way round. The nearer end is a result of the depth before, which holds the next reference of the chain. At depth 1 it is the component that was asked about, or something that one contains, and the chain ends.",
+                "$ref": "#/$defs/impactStep"
               }
             }
           }

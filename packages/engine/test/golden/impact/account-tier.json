@@ -26,19 +26,17 @@
       "file": "force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:account.is_key_account__c",
-          "to": "CustomField:account.tier__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml",
-          "line": 5,
-          "column": 13
-        }
-      ]
+      "reference": {
+        "from": "CustomField:account.is_key_account__c",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml",
+        "line": 5,
+        "column": 13
+      }
     },
     {
       "key": "CustomField:invoice__c.account_tier__c",
@@ -47,19 +45,17 @@
       "file": "force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice__c.account_tier__c",
-          "to": "CustomField:account.tier__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml",
-          "line": 4,
-          "column": 30
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice__c.account_tier__c",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml",
+        "line": 4,
+        "column": 30
+      }
     },
     {
       "key": "ValidationRule:account.key_account_needs_contact",
@@ -68,30 +64,17 @@
       "file": "force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml",
       "depth": 2,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "ValidationRule:account.key_account_needs_contact",
-          "to": "CustomField:account.is_key_account__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml",
-          "line": 6,
-          "column": 3
-        },
-        {
-          "from": "CustomField:account.is_key_account__c",
-          "to": "CustomField:account.tier__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml",
-          "line": 5,
-          "column": 13
-        }
-      ]
+      "reference": {
+        "from": "ValidationRule:account.key_account_needs_contact",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml",
+        "line": 6,
+        "column": 3
+      }
     }
   ],
   "unresolved": [],

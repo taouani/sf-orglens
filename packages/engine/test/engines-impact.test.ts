@@ -1,6 +1,6 @@
 /**
  * The impact engine (decision record 0044), on small graphs written for each rule: what is found and at which
- * depth, which path is kept, where the walk starts and stops, and what an answer does not cover.
+ * depth, which chain is kept, where the walk starts and stops, and what an answer does not cover.
  *
  * The graphs are stored and read through `sqlGraph`, with both drivers, so that the engine is tested with the
  * order in which a database hands out references, which is no order.
@@ -24,6 +24,7 @@ import { writeAnalysis, type AnalysedComponent } from '../src/store/analysis.ts'
 import { sqlGraph, type SnapshotGraph } from '../src/store/graph.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { ensureSource, insertSnapshot } from '../src/store/snapshots.ts';
+import { chainOf } from './helpers/impact-chain.ts';
 import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 
 const T0 = '2026-01-31T09:30:00.000Z';
@@ -64,13 +65,18 @@ function holds(key: ComponentKey, ...references: ((from: ComponentKey) => Refere
   };
 }
 
-/** What a test compares of a walk: each result with its depth, its confidence and the keys along its path. */
-const outline = (walk: ImpactWalk): unknown[] =>
+/**
+ * What a test compares of a walk: each result with its depth, its confidence and the keys along its chain,
+ * which is followed from result to result.
+ */
+const outline = (walk: ImpactWalk, outgoing = false): unknown[] =>
   walk.results.map((result) => [
     result.key,
     result.depth,
     result.confidence,
-    result.path.map((step) => `${step.from} > ${step.to}`).join(' | '),
+    chainOf(walk.results, result, outgoing)
+      .map((step) => `${step.from} > ${step.to}`)
+      .join(' | '),
   ]);
 
 const A = field('Thing__c.A__c');
@@ -125,7 +131,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     return walkImpact(graph, start, options);
   };
 
-  it('finds what refers to a component directly and through others, with the path and its weakest confidence', () => {
+  it('finds what refers to a component directly and through others, with the chain and its weakest confidence', () => {
     const graph = graphOf([holds(A), holds(B, to(A, 4)), holds(C, tier(B, 'probable', 7)), holds(D, to(C, 2))]);
     const found = walk(graph, A);
     expect(outline(found)).toEqual([
@@ -141,31 +147,25 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       file: fileOf(C),
       depth: 2,
       confidence: 'probable',
-      path: [
-        {
-          from: C,
-          to: B,
-          kind: 'reads',
-          origin: 'parser:formula',
-          confidence: 'probable',
-          resolution: 'resolved',
-          file: fileOf(C),
-          line: 7,
-          column: 3,
-        },
-        {
-          from: B,
-          to: A,
-          kind: 'reads',
-          origin: 'parser:formula',
-          confidence: 'confirmed',
-          resolution: 'resolved',
-          file: fileOf(B),
-          line: 4,
-          column: 3,
-        },
-      ],
+      // The reference C is found by. Its other end is B, the result before, which holds the next one.
+      reference: {
+        from: C,
+        to: B,
+        kind: 'reads',
+        origin: 'parser:formula',
+        confidence: 'probable',
+        resolution: 'resolved',
+        file: fileOf(C),
+        line: 7,
+        column: 3,
+      },
     });
+    const last = found.results[2];
+    expect(last === undefined ? [] : chainOf(found.results, last).map((step) => [step.line, step.confidence])).toEqual([
+      [2, 'confirmed'],
+      [7, 'probable'],
+      [4, 'confirmed'],
+    ]);
     expect(found).toMatchObject({ parts: 0, unresolved: [], beyondDepth: false });
     // Nothing refers to the last of the chain.
     expect(walk(graph, D)).toEqual({ parts: 0, results: [], unresolved: [], beyondDepth: false });
@@ -216,7 +216,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       const found = walk(graphOf(order), A);
       expect(outline(found)).toEqual(expected);
       // Of the three references of P1, the first by line, then by kind.
-      expect(found.results[0]?.path[0]).toMatchObject({ line: 3, kind: 'reads', origin: 'parser:formula' });
+      expect(found.results[0]?.reference).toMatchObject({ line: 3, kind: 'reads', origin: 'parser:formula' });
     }
   });
 
@@ -236,19 +236,17 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
         }),
       ),
     ]);
-    expect(walk(graph, A).results[0]?.path).toEqual([
-      {
-        from: B,
-        to: A,
-        kind: 'references',
-        origin: 'dependency-api',
-        confidence: 'confirmed',
-        resolution: 'resolved',
-        file: null,
-        line: null,
-        column: null,
-      },
-    ]);
+    expect(walk(graph, A).results[0]?.reference).toEqual({
+      from: B,
+      to: A,
+      kind: 'references',
+      origin: 'dependency-api',
+      confidence: 'confirmed',
+      resolution: 'resolved',
+      file: null,
+      line: null,
+      column: null,
+    });
   });
 
   it('ends on references that go round in a circle, and never finds the component itself', () => {
@@ -257,7 +255,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       [B, 1, 'confirmed', `${B} > ${A}`],
       [C, 2, 'confirmed', `${C} > ${B} | ${B} > ${A}`],
     ]);
-    expect(outline(walk(graph, A, { direction: 'outgoing' }))).toEqual([
+    expect(outline(walk(graph, A, { direction: 'outgoing' }), true)).toEqual([
       [C, 1, 'confirmed', `${A} > ${C}`],
       [B, 2, 'confirmed', `${A} > ${C} | ${C} > ${B}`],
     ]);
@@ -286,7 +284,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     // The other way round, the object refers to what its parts refer to.
     const lookupOnly = walk(graph, OTHER, { direction: 'outgoing' });
     expect(lookupOnly.parts).toBe(3);
-    expect(outline(lookupOnly)).toEqual([
+    expect(outline(lookupOnly, true)).toEqual([
       [B, 1, 'confirmed', `${check} > ${B}`],
       [THING, 1, 'confirmed', `${lookup} > ${THING}`],
       [A, 2, 'confirmed', `${check} > ${B} | ${B} > ${A}`],
@@ -361,7 +359,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       holds(C),
     ]);
     const found = walk(graph, A, { direction: 'outgoing' });
-    expect(outline(found)).toEqual([
+    expect(outline(found, true)).toEqual([
       [name, 1, 'confirmed', `${A} > ${name}`],
       [B, 1, 'confirmed', `${A} > ${B}`],
       [C, 2, 'confirmed', `${A} > ${B} | ${B} > ${C}`],

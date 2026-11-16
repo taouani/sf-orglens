@@ -26,19 +26,17 @@
       "file": "force-app/main/default/objects/Invoice_Line__c/fields/Account_Owner_Email__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice_line__c.account_owner_email__c",
-          "to": "CustomField:invoice__c.account__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Invoice_Line__c/fields/Account_Owner_Email__c.field-meta.xml",
-          "line": 4,
-          "column": 25
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice_line__c.account_owner_email__c",
+        "to": "CustomField:invoice__c.account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice_Line__c/fields/Account_Owner_Email__c.field-meta.xml",
+        "line": 4,
+        "column": 25
+      }
     },
     {
       "key": "CustomField:invoice_line__c.invoice__c",
@@ -47,19 +45,17 @@
       "file": "force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice_line__c.invoice__c",
-          "to": "CustomObject:invoice__c",
-          "kind": "references",
-          "origin": "parser:xml",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml",
-          "line": 5,
-          "column": 18
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice_line__c.invoice__c",
+        "to": "CustomObject:invoice__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml",
+        "line": 5,
+        "column": 18
+      }
     }
   ],
   "unresolved": [],

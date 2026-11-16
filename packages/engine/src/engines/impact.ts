@@ -2,10 +2,14 @@
  * The impact engine: what refers to a component, directly or through others (decision record 0044).
  *
  * The walk goes level by level. The first level holds what refers to the component, the second what refers to
- * the first, and so on. A component is found once, at the level where it is first met, so the path that is kept
- * for it is a shortest one. Among the shortest paths the most certain one is kept, and among those the first
- * in an order that depends on keys and places only, never on a number of the database. The same snapshot gives
- * the same answer on every machine.
+ * the first, and so on. A component is found once, at the level where it is first met, so the chain that is
+ * kept for it is a shortest one. Among the shortest chains the most certain one is kept, and among those the
+ * first in an order that depends on keys and places only, never on a number of the database. The same snapshot
+ * gives the same answer on every machine.
+ *
+ * A result holds one reference, the one it is found by, and not its whole chain: the other end of that
+ * reference is a result too, one level nearer, and holds the next. An answer with all chains written out grows
+ * with the number of results times their depth, which was 443 MB of JSON for the largest answer measured.
  *
  * Each level is one question to the graph for all its components together. A walk from a field that half of an
  * org refers to asks a handful of questions, not one per component.
@@ -33,7 +37,7 @@ export interface ImpactComponent {
   readonly file: string | null;
 }
 
-/** One reference on a path: the component it stands in, the component it names, and where it stands. */
+/** One reference of a chain: the component it stands in, the component it names, and where it stands. */
 export interface ImpactStep {
   readonly from: ComponentKey;
   readonly to: ComponentKey;
@@ -51,14 +55,17 @@ export interface ImpactStep {
 export interface ImpactResult extends ImpactComponent {
   /** How many references lie between it and the component that was asked about. `1`: it refers to it directly. */
   readonly depth: number;
-  /** The weakest confidence among the references of `path`. */
+  /** The weakest confidence among the references of the chain that leads to it. */
   readonly confidence: ConfidenceTier;
   /**
-   * A shortest chain of references between this component and the one that was asked about, in the order the
-   * references follow each other: the `to` of a step is the `from` of the next. For what refers to a
-   * component, the chain starts at this component. For what a component refers to, it ends at it.
+   * The reference the component is found by: the one at its end of a shortest chain of references between it
+   * and the component that was asked about. For what refers to a component, `from` is this component and `to`
+   * is one reference nearer. For what a component refers to, it is the other way round.
+   *
+   * The nearer end is a result of the depth before. At depth 1 it is the component that was asked about, or
+   * something it contains. Going from result to result gives the whole chain.
    */
-  readonly path: readonly ImpactStep[];
+  readonly reference: ImpactStep;
 }
 
 /** A reference of an outgoing walk whose target has no key, so that no component stands for it. */
@@ -261,20 +268,11 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   const results: ImpactResult[] = [];
   for (const [id, how] of reached) {
     if (how.link === null) continue;
-    const path: ImpactStep[] = [];
-    let at: Reached | undefined = how;
-    while (at !== undefined && at.link !== null && at.near !== null) {
-      path.push(stepOf(edgeOf(at.link)));
-      at = reached.get(at.near);
-    }
-    // Walking back from the result gives the steps from the result to the start. For an outgoing walk the
-    // references run the other way.
-    if (!incoming) path.reverse();
     results.push({
       ...impactComponent(componentOf(id)),
       depth: how.depth,
       confidence: CONFIDENCE_TIERS[how.confidence] ?? 'possible',
-      path,
+      reference: stepOf(edgeOf(how.link)),
     });
   }
   results.sort((a, b) => a.depth - b.depth || compareText(a.key, b.key));

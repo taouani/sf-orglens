@@ -22,7 +22,11 @@ console.log(status.sources.map((source) => source.name));
 
 // What refers to a field in the latest snapshot of the source `repo`, and what the answer does not cover.
 const answer = await workspace.impact('repo', 'Account.Industry');
-console.log(answer.results.map((result) => result.key), answer.complete, answer.notCovered);
+console.log(
+  answer.results.map((result) => result.key),
+  answer.complete,
+  answer.notCovered,
+);
 ```
 
 A function of the API fails only with an `EngineError`. Its `code` is one of the stable codes in `ERROR_CODES`.

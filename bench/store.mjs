@@ -17,6 +17,7 @@
  * It builds the database in a temporary folder, prints the measurements as JSON and removes the folder, also
  * when it fails. The next run removes what an interrupted run left more than an hour ago.
  */
+import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -274,7 +275,7 @@ result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
   const ask = (field, query) => {
     const reader = openStore({ path: file, driver, readOnly: true });
     try {
-      return timed(() => {
+      const measured = timed(() => {
         const report = impactOf(reader, 'bench', keys[field], query);
         return {
           results: report.results.length,
@@ -282,6 +283,11 @@ result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
           beyond_depth: report.beyondDepth,
         };
       }, 3);
+      // What `--json` has to write for this answer, and how long turning it into text takes. Not in the times above.
+      const started = now();
+      const text = JSON.stringify(impactOf(reader, 'bench', keys[field], query));
+      const written = now() - started;
+      return { ...measured, json_mb: megabytes(Buffer.byteLength(text)), answer_and_json_ms: +written.toFixed(2) };
     } finally {
       reader.close();
     }

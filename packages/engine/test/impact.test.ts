@@ -15,6 +15,7 @@ import { CONFIDENCE_TIERS, type ConfidenceTier } from '../src/core/references.ts
 import { openStore, type Store } from '../src/store/open.ts';
 import { addCoverage, ensureSource, insertSnapshot, readCoverage } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
+import { chainOf } from './helpers/impact-chain.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 
 const temp = tempDirs();
@@ -147,7 +148,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           const found = new Map<ComponentKey, ConfidenceTier>();
           for (const reference of keyed) {
             const near = reached.get(reference.to);
-            if (near === undefined || near.depth !== depth - 1 || reached.has(reference.from)) continue;
+            if (near?.depth !== depth - 1 || reached.has(reference.from)) continue;
             const tier = weaker(near.tier, reference.tier);
             const best = found.get(reference.from);
             found.set(reference.from, best === undefined || weaker(best, tier) === best ? tier : best);
@@ -165,15 +166,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       for (const component of [...asked].sort()) {
         const report = await workspace.impact('fixture', component);
         expect([component, outline(report)]).toEqual([component, implied(component)]);
-        // Every reference on every path is one the key holds, at the place the key gives it.
+        // Every reference of every chain is one the key holds, at the place the key gives it. A chain is
+        // followed from result to result, and ends at the component or at something it contains.
         for (const result of report.results) {
-          expect(result.path).toHaveLength(result.depth);
-          expect(result.path.map(placeOf).filter((step) => !places.has(step))).toEqual([]);
-          expect(result.path[0]?.from).toBe(result.key);
-          result.path.forEach((step, at) => {
-            expect(step.to).toBe(result.path[at + 1]?.from ?? step.to);
+          const chain = chainOf(report.results, result);
+          expect(chain).toHaveLength(result.depth);
+          expect(chain.map(placeOf).filter((step) => !places.has(step))).toEqual([]);
+          expect(result.reference.from).toBe(result.key);
+          chain.forEach((step, at) => {
+            expect(step.to).toBe(chain[at + 1]?.from ?? step.to);
           });
-          const last = result.path.at(-1)?.to;
+          const last = chain.at(-1)?.to;
           expect(last === component || (last !== undefined && parentKey(last) === component)).toBe(true);
         }
         results += report.results.length;
@@ -249,7 +252,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
 
     it('may miss something when a folder of the source was not read', async () => {
-      const { root, workspace } = await setUp(0);
+      const { root } = await setUp(0);
       writeFileSync(
         join(root, 'orglens.toml'),
         'schema_version = 1\n[sources.fixture]\nkind = "git"\nrepo = "project"\npaths = ["force-app", "not-there"]\n',
@@ -261,7 +264,6 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.results).toHaveLength(7);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
-      void workspace;
     });
 
     it('may miss something when a file of an analysed type could not be read', async () => {
@@ -312,7 +314,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         [AMOUNT, 1, 'confirmed'],
         ['CustomField:invoice__c.tax_rate__c', 1, 'confirmed'],
       ]);
-      expect(total.results[0]?.path).toMatchObject([{ from: 'CustomField:invoice__c.total__c', to: AMOUNT }]);
+      expect(total.results[0]?.reference).toMatchObject({ from: 'CustomField:invoice__c.total__c', to: AMOUNT });
       // Both ends were analysed: what a field refers to does not depend on Apex.
       expect(total).toMatchObject({ complete: true, mayMiss: false, notCovered: { notAnalysed: [] } });
 
@@ -429,7 +431,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {
-      const { root, database, workspace } = await setUp(0);
+      const { database, workspace } = await setUp(0);
       // No database yet, and a database without a snapshot of the source.
       const none = { code: 'SNAPSHOT_NOT_FOUND', message: 'There is no snapshot of the source "fixture" yet.' };
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toMatchObject(none);
@@ -468,7 +470,6 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         code: 'SNAPSHOT_NOT_FOUND',
         details: { source: 'prod', snapshot: givenUp, status: 'failed' },
       });
-      void root;
     });
 
     it('reads only: a question leaves the database as it was', async () => {

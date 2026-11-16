@@ -59,7 +59,10 @@ export interface ImpactReport {
   /** True if the answer stops at `depth` and references lead further. */
   readonly beyondDepth: boolean;
   readonly minConfidence: ConfidenceTier;
-  /** Sorted by depth, then by key. What the component contains is never among them. */
+  /**
+   * Sorted by depth, then by key. What the component contains is never among them. Each holds the reference it
+   * is found by, whose other end is a result of the depth before, or the component and what it contains.
+   */
   readonly results: readonly ImpactResult[];
   /** For `outgoing`: the references to a name that has no key, so that no component stands for it. */
   readonly unresolved: readonly ImpactUnresolved[];

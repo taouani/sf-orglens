@@ -366,9 +366,9 @@ no file for that field.
 
 - One line per component that refers to the component, at any distance. `DEPTH` is the number of references
   between the two, on the shortest chain. A component is in the answer once, however many chains lead to it.
-- `REFERS TO` and `WHERE` are the last reference of that chain: what the component of the line itself refers to,
-  and the file and line where it does. For a depth of 2 and more, `REFERS TO` is another line of the answer.
-  `--json` has the whole chain for every result.
+- `REFERS TO` and `WHERE` are the reference the component is found by: what the component of the line itself
+  refers to, and the file and line where it does. For a depth of 2 and more, `REFERS TO` is another line of the
+  answer, one reference nearer, and that line shows the next reference of the chain.
 - `CONFIDENCE` is the weakest confidence on the chain. Among several chains of the same length, the answer shows
   the one whose weakest reference is the most certain.
 - One line shows one reference. If a component refers to the same target at several places, the answer shows
@@ -408,21 +408,28 @@ several sources when `--source` is missing. A snapshot that was never analysed e
 
 **The data of `--json`:**
 
-| Field           | Meaning                                                                                                                                                                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                             |
-| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                      |
-| `parts`         | How many components of the snapshot it contains.                                                                                                                                                                                                    |
-| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                           |
-| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                               |
-| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                                  |
-| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                            |
-| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `path`.                                                                                                              |
-| `path`          | The chain of references, in the order they are followed: for `incoming`, the first step starts from the result and the last ends at the component. A step has `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. |
-| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.        |
-| `complete`      | `true` if nothing of the source is missing from the answer: every type of the snapshot was analysed, the snapshot holds every component of them, and there was no error.                                                                            |
-| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors` and `analysisErrors`: numbers.                                                                                                           |
-| `mayMiss`       | `true` if the answer may miss something of a type it covers. This is what the exit code `5` says.                                                                                                                                                   |
+| Field           | Meaning                                                                                                                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                         |
+| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                  |
+| `parts`         | How many components of the snapshot it contains.                                                                                                                                                                                                |
+| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                       |
+| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                           |
+| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                              |
+| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                        |
+| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`.                                                                                                     |
+| `reference`     | The reference a result is found by, with `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result and `to` is one reference nearer. For `outgoing` it is the other way round. |
+| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
+| `complete`      | `true` if nothing of the source is missing from the answer: every type of the snapshot was analysed, the snapshot holds every component of them, and there was no error.                                                                        |
+| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors` and `analysisErrors`: numbers.                                                                                                       |
+| `mayMiss`       | `true` if the answer may miss something of a type it covers. This is what the exit code `5` says.                                                                                                                                               |
+
+**The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
+reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the
+nearer end is the component that was asked about, or something it contains, and the chain ends there. A program
+follows the chain by looking up that key among the results. An answer with every chain written out grows with
+the number of results times their depth: the largest answer that was measured had 104,760 results up to 21
+references away, and was 443 MB of JSON that way.
 
 What is not done, and what a user should know:
 
@@ -430,9 +437,8 @@ What is not done, and what a user should know:
   changes. That is a later phase.
 - Only objects, fields and validation rules are analysed. Apex, flows, layouts, permissions and the other types
   follow in later phases, and until then every answer about a real project says that it is not complete.
-- An answer can be large: a field that much of an org rests on can have tens of thousands of results, and each
-  result carries its chain. `--depth` and `--min-confidence` make it smaller. There is no option yet that limits
-  the number of results or leaves the chains out.
+- An answer can be large: a field that much of an org rests on can have tens of thousands of results.
+  `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.
 - A snapshot of an org that is still running or was given up cannot be asked. The command ends with
   `SNAPSHOT_NOT_FOUND` and the state of the snapshot in `details.status`.
 - Not verified: no snapshot of a real org was asked by the command. The answers are checked against the answer

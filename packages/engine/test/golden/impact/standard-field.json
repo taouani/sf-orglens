@@ -26,19 +26,17 @@
       "file": "force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice__c.approver__c",
-          "to": "CustomField:user.department",
-          "kind": "reads",
-          "origin": "parser:xml",
-          "confidence": "confirmed",
-          "resolution": "external",
-          "file": "force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml",
-          "line": 10,
-          "column": 25
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice__c.approver__c",
+        "to": "CustomField:user.department",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "external",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml",
+        "line": 10,
+        "column": 25
+      }
     },
     {
       "key": "CustomField:invoice__c.region__c",
@@ -47,19 +45,17 @@
       "file": "force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice__c.region__c",
-          "to": "CustomField:user.department",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "external",
-          "file": "force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml",
-          "line": 4,
-          "column": 25
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice__c.region__c",
+        "to": "CustomField:user.department",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "external",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml",
+        "line": 4,
+        "column": 25
+      }
     },
     {
       "key": "ValidationRule:invoice__c.void_needs_admin",
@@ -68,19 +64,17 @@
       "file": "force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml",
       "depth": 1,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "ValidationRule:invoice__c.void_needs_admin",
-          "to": "CustomField:user.department",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "external",
-          "file": "force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml",
-          "line": 8,
-          "column": 9
-        }
-      ]
+      "reference": {
+        "from": "ValidationRule:invoice__c.void_needs_admin",
+        "to": "CustomField:user.department",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "external",
+        "file": "force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml",
+        "line": 8,
+        "column": 9
+      }
     },
     {
       "key": "CustomField:invoice__c.approver_backup_email__c",
@@ -89,30 +83,17 @@
       "file": "force-app/main/default/objects/Invoice__c/fields/Approver_Backup_Email__c.field-meta.xml",
       "depth": 2,
       "confidence": "confirmed",
-      "path": [
-        {
-          "from": "CustomField:invoice__c.approver_backup_email__c",
-          "to": "CustomField:invoice__c.approver__c",
-          "kind": "reads",
-          "origin": "parser:formula",
-          "confidence": "confirmed",
-          "resolution": "resolved",
-          "file": "force-app/main/default/objects/Invoice__c/fields/Approver_Backup_Email__c.field-meta.xml",
-          "line": 4,
-          "column": 14
-        },
-        {
-          "from": "CustomField:invoice__c.approver__c",
-          "to": "CustomField:user.department",
-          "kind": "reads",
-          "origin": "parser:xml",
-          "confidence": "confirmed",
-          "resolution": "external",
-          "file": "force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml",
-          "line": 10,
-          "column": 25
-        }
-      ]
+      "reference": {
+        "from": "CustomField:invoice__c.approver_backup_email__c",
+        "to": "CustomField:invoice__c.approver__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Approver_Backup_Email__c.field-meta.xml",
+        "line": 4,
+        "column": 14
+      }
     }
   ],
   "unresolved": [],

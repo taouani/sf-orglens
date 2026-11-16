@@ -692,18 +692,15 @@ function impactLines(report: ImpactReport): string[] {
       '',
       ...table(
         ['DEPTH', 'COMPONENT', 'CONFIDENCE', 'KIND', incoming ? 'REFERS TO' : 'REFERRED TO BY', 'WHERE'],
-        results.map((result) => {
-          // The reference of the path that stands in the result itself, or that names it.
-          const step = incoming ? result.path[0] : result.path.at(-1);
-          return [
-            String(result.depth),
-            result.key,
-            result.confidence,
-            step?.kind ?? '',
-            (incoming ? step?.to : step?.from) ?? '',
-            step === undefined ? '' : place(step),
-          ];
-        }),
+        // The reference a result is found by: it stands in the result itself, or names it.
+        results.map(({ depth, key, confidence, reference }) => [
+          String(depth),
+          key,
+          confidence,
+          reference.kind,
+          incoming ? reference.to : reference.from,
+          place(reference),
+        ]),
       ),
     );
   }

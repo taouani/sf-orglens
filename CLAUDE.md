@@ -99,6 +99,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   A Git source is read, and its snapshot analysed, with the layout of files its own project file asks for, which
   the snapshot keeps. The project of the folder a command runs in plays no part.
   An analysis that fails as a whole never loses the snapshot.
+- An impact question is answered by `engines/impact.ts` through the interface `SnapshotGraph` of the store
+  (`api/impact.ts`, decision record 0044). The walk goes level by level, with one question to the store per
+  level. A component is found once, on a shortest chain, and holds the one reference it is found by. Which chain
+  is kept depends on confidence, keys and places only, never on a number of the database. Every answer says
+  what it does not cover: `complete` is false while a type of the snapshot is not analysed, and `mayMiss`,
+  which the exit code `5` follows, is true only when something of an analysed type may be missing. A statement
+  of the graph that takes many ids starts from that list and walks no table: a test reads every query plan.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

@@ -31,7 +31,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | Phase                | Delivers                                                                                                                                | State          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, in test |
-| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Not started    |
+| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Being built    |
 | 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started    |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started    |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started    |
