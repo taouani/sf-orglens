@@ -29,7 +29,11 @@ export interface OriginWork {
   readonly origin: ReferenceOrigin;
   /** Components the analyser looked at. */
   readonly components: number;
-  /** Files it could not read. */
+  /**
+   * Files it tried to read and could not: files that could not be opened, and files its reader refused. A file
+   * of a type that the analyser does not read is counted if the analyser opened it, which it does to say what
+   * defines a component.
+   */
   readonly failedFiles: number;
 }
 
@@ -45,4 +49,13 @@ export interface AnalysisIssue {
   /** The component the issue is about, if it is about one. */
   readonly componentKey: string | null;
   readonly details: Readonly<Record<string, JsonValue>> | null;
+}
+
+/**
+ * A text as a message shows it: at most `longest` code units of it, and never half of a character outside the
+ * basic plane, which a database cannot hold as it is.
+ */
+export function cut(text: string, longest: number): string {
+  const part = text.slice(0, longest);
+  return /[\uD800-\uDBFF]$/.test(part) && text.length > longest ? part.slice(0, -1) : part;
 }

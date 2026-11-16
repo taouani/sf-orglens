@@ -1,8 +1,8 @@
 /**
  * What the XML of an object, a field and a validation rule says: the attributes later steps need, and the
  * references that are written as names in elements: the target of a lookup, the fields of a lookup filter and
- * of a roll-up summary, the controlling field and the value set of a picklist, and the field a validation rule
- * shows its message at.
+ * of a roll-up summary, the controlling field and the value set of a picklist, the controlling field of a
+ * relationship to a field definition, and the field a validation rule shows its message at.
  *
  * Reading and resolving are two steps. Reading takes the names with their places out of one file and needs
  * nothing else, so the file can be let go. Resolving needs the model of all objects, which exists only once
@@ -14,7 +14,7 @@
 import type { JsonValue } from '../core/errors.ts';
 import type { ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference } from '../core/references.ts';
-import type { AnalysisIssue } from './analysed.ts';
+import { cut, type AnalysisIssue } from './analysed.ts';
 import { GLOBAL_OBJECTS, walkPath, type FieldFacts, type ObjectModel, type Target } from './model.ts';
 import { childOf, childrenOf, isNil, sourceOf, type XmlDocument, type XmlElement, type XmlText } from './xml.ts';
 
@@ -110,13 +110,15 @@ class Reader {
 
   /** The part of a value from `from` to `to`, as a name with its place. */
   #at(value: Value, from = 0, to = value.value.length): NameAt {
-    const { line, column } = this.#document.place(sourceOf(value.text, value.offset + from).start);
+    // The place where the part starts. A part can be empty: the end of `Contact.` is one.
+    const start = value.offset + from;
+    const { line, column } = this.#document.place(sourceOf(value.text, start, start).start);
     return { name: value.value.slice(from, to), line, column };
   }
 
   #refuse(element: XmlElement, value: Value): void {
     const { name, line, column } = this.#at(value);
-    this.unread.push({ element: element.local, text: name.slice(0, LONGEST_TEXT_SHOWN), line, column });
+    this.unread.push({ element: element.local, text: cut(name, LONGEST_TEXT_SHOWN), line, column });
   }
 
   /** A value that is one name. */
@@ -178,6 +180,8 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
     reader.path(childOf(item, 'field'), object, 'reads', 'filter');
   }
   reader.path(childOf(element, 'summaryForeignKey'), object, 'references', 'summary');
+  // A field of a custom metadata type that points at a field of an object names the field that says which object.
+  reader.path(childOf(element, 'metadataRelationshipControllingField'), object, 'references', 'controlling-field');
 
   // A picklist names its controlling field in `valueSet`. Files written before API version 38 use `picklist`.
   for (const group of [childOf(element, 'valueSet'), childOf(element, 'picklist')]) {
@@ -248,7 +252,8 @@ export function resolveReferences(
 ): { references: Reference[]; issues: AnalysisIssue[] } {
   const references: Reference[] = [];
   const issues: AnalysisIssue[] = [];
-  const add = (at: NameAt, target: Target, kind: 'reads' | 'references', via: Via): void => {
+  /** `on` is the object a field was looked for on. A field that was not found has no key, so the reference says it. */
+  const add = (at: NameAt, target: Target, kind: 'reads' | 'references', via: Via, on?: string): void => {
     references.push(
       validateReference({
         from: owner.key,
@@ -260,15 +265,16 @@ export function resolveReferences(
         confidence: 'confirmed',
         resolution: target.resolution,
         location: { file: owner.file, line: at.line, column: at.column },
-        attrs: { via },
+        attrs: target.to === null && on !== undefined ? { via, object: on } : { via },
       }),
     );
   };
 
   for (const one of raw) {
     if (one.form === 'object') add(one.at, model.object(one.at.name), 'references', one.via);
-    else if (one.form === 'field') add(one.at, model.field(owner.object, one.at.name), 'references', one.via);
-    else if (one.form === 'component') add(one.at, model.component(one.type, one.at.name), 'references', one.via);
+    else if (one.form === 'field') {
+      add(one.at, model.field(owner.object, one.at.name), 'references', one.via, owner.object);
+    } else if (one.form === 'component') add(one.at, model.component(one.type, one.at.name), 'references', one.via);
     else {
       const walk = walkPath(
         model,
@@ -277,7 +283,8 @@ export function resolveReferences(
       );
       walk.steps.forEach((target, index) => {
         const at = one.names[index];
-        if (at !== undefined) add(at, target, index === one.names.length - 1 ? one.kind : 'reads', one.via);
+        if (at !== undefined)
+          add(at, target, index === one.names.length - 1 ? one.kind : 'reads', one.via, walk.on[index]);
       });
       const last = one.names[walk.steps.length - 1];
       if (!walk.complete && last !== undefined) {

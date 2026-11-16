@@ -438,48 +438,76 @@ snapshot.
 
     | Codebase      | Components | Objects, fields and rules read | References written in XML | Paths not followed |
     | ------------- | ---------- | ------------------------------ | ------------------------- | ------------------ |
-    | apex-recipes  | 255        | 44                             | 8                         | 0                  |
-    | nebula-logger | 894        | 622                            | 46                        | 0                  |
-    | npsp          | 11,722     | 819                            | 92                        | 0                  |
+    | apex-recipes  | 255        | 44                             | 9                         | 0                  |
+    | nebula-logger | 894        | 622                            | 49                        | 0                  |
+    | npsp          | 11,722     | 819                            | 97                        | 0                  |
 
-    A text search for the same elements in the files gives the same counts of references. The largest takes
-    0.3 to 0.9 seconds on one Linux machine.
+    A search of the files for the elements that are read gives the same counts of references. The largest
+    takes 0.3 to 0.9 seconds on one Linux machine.
 
 - **The count for WP10 is 0, 0 and 0, and it says little.** No file of the three writes a path through a
   standard relationship in XML. The table of relationships and the rule for names were exercised by tests
   only. Formulas use such paths far more, so the count that matters comes with WP5.
-- **Eighteen choices are mine**, and record 0041 lists them for you to strike. The ones with the most weight:
-  - A custom name that is not found has no key. The reference keeps the name as written, and "what refers to a
-    field that does not exist" cannot be asked by key.
+- **The review of the pull request found one fault that would have cost an org its components, and it is
+  corrected.** An org hands out an object as one file. The first version made components of the fields and the
+  rules in it and of nothing else, so record types, list views, field sets, compact layouts, web links,
+  business processes, sharing reasons and indexes had no row in a snapshot of an org and one in a snapshot of
+  the repository. The fixture project has none of these, so the test on the mock org did not show it. All ten
+  kinds are components now, and a test compares one object in both forms. The fixture project was not given a
+  record type or a list view: that changes the answer key and what is deployed to the test org, and belongs to
+  a pull request of its own if you want it.
+- **The review found eleven more points, all taken up.** A value that ends with a dot made the analysis of its
+  field fail, and inside the file of an object it took the parts after it along. A file name with a backslash
+  made the whole analysis fail. Custom fields of an activity were called unresolved when a task or an event
+  named them. The count of files that failed left out files that could not be opened. An object in two package
+  folders was read from one. The record and `CLAUDE.md` said things the code did not do. Eleven planted faults were not
+  caught by a test, for which tests were added. One guard still has no test, and the record says which.
+- **Twenty-one choices are mine**, and record 0041 lists them for you to strike. The ones with the most weight:
+  - A custom name that is not found has no key. The reference keeps the name as written and, for a field, the
+    object it was looked for on. "What refers to a field that does not exist" cannot be asked by key.
   - A standard field without a file is always `external`. A typing error in such a name is not found.
   - `Owner` is taken as a user and `Parent` as the object itself, which is wrong for the few objects where the
     owner can be a queue or the parent is of another kind.
-  - The fields and rules inside the file of an object, as an org hands them out, become components. The source
-    library does not list them, so the analysis counts more components than the list: 15 more in NPSP, which
-    are objects of which it holds fields and no file.
+  - The parts inside the file of an object become components, and an object of which the source holds only
+    parts gets a component that is not defined. The source library lists neither, so the analysis counts more
+    components than the list: 15 more in NPSP, all of them objects of which it holds parts and no file.
+  - A custom field named on a task or an event is looked for at `Activity`, and a name that ends in `__pc` on
+    an account at the contact.
   - A reference says in an attribute `via` how the source names its target.
 - **One thing differs from this plan.** It says that coverage counts the paths that were not followed. Each one
   is an issue `PATH_NOT_FOLLOWED`, and the count is the number of those issues. The coverage table of WP3 has
   no column for it.
+- **One thing was added to this plan.** The field of a custom metadata type that points at a field of an object
+  names the field that says which object (`metadataRelationshipControllingField`). It is read as a reference:
+  the public codebases write it 9 times.
+- **`core/keys.ts` changed.** It knew five kinds of parts whose parent is an object. It knows the ten now, so a
+  compact layout or a web link has its object as its parent.
 - **The two points WP3 left for this package are done.** `core/references.ts` says which unit a column has, and
   refuses a line the database cannot hold and a name with half of a surrogate pair.
 - **The sentence of the reader about a malformed file**, which WP2 left to this package, is part of the issue in
   the workspace database. That database is on the machine of the user and holds the file itself. The public
   log of the live-org workflow keeps its own rule.
 - **For WP5.** The resolver of formulas uses `walkPath`, the model and `GLOBAL_OBJECTS` as they are, and the
-  same two steps: read the names with their places, resolve them when every file was read. `readField` already
-  marks a field that has a formula. The namespace of a package project is not known to the model, and
-  `Owner:User` needs a way to say which object a relationship leads to.
+  same two steps: read the names with their places, resolve them when every file was read. `walkPath` says for
+  each name which object it was looked for on, so an unresolved field at the end of a path can say where it
+  was expected. `readField` already marks a field that has a formula. Still missing in the model: the
+  namespace of a package project, a way for `Owner:User` to say which object a relationship leads to, and the
+  relationship of a person-account field (`__pr`).
 - **For WP6.** The components come from `resolveComponents` on the stored files of a snapshot, then
   `analyseSource`, then `writeAnalysis`. The coverage per type has to count the parts and the objects the
   analysis adds to the list. The eleven issue codes of record 0041 go into `docs/cli.md` with the command that
-  shows them, and WP6 decides which of them make a snapshot incomplete.
-- **Not done or not verified.** Formulas. The name field, compact layouts, search layouts and record types of
-  an object. The field an indirect lookup matches on. Fields of person accounts, which are called `unresolved`.
-  Whether the files an org hands out for standard fields name the object a lookup points at: if not, a
-  standard relationship of an org snapshot is resolved by its name and the table, as in a repository. Nothing
-  was run against a real org. The reference vocabulary still names the origin `symboltable`, which this plan
-  wanted removed with WP3 (record 0040 notes it).
+  shows them, and WP6 decides which of them make a snapshot incomplete. The analysis catches its own faults
+  component by component, and WP6 should still not assume that it cannot throw. In the file of an object as an
+  org hands it out, a line added near the top gives every field and rule below it with a reference a new
+  version, because places are part of a version. WP6 decides whether the places of a part are counted from the
+  start of the part.
+- **Not done or not verified.** Formulas. What a record type, a list view, a field set, a compact layout, a web
+  link, an index and an action override name. The name field and the search layouts of an object. The field an
+  indirect lookup matches on. Whether a standard field named on a custom object exists. Whether the files an
+  org hands out for standard fields name the object a lookup points at: if not, a standard relationship of an
+  org snapshot is resolved by its name and the table, as in a repository. Nothing was run against a real org,
+  and memory on a large org was not measured. The reference vocabulary still names the origin `symboltable`,
+  which this plan wanted removed with WP3 (record 0040 notes it).
 
 ### WP5 Formulas
 

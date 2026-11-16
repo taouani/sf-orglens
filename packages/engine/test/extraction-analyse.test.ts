@@ -8,10 +8,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { registry } from '@salesforce/source-deploy-retrieve';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { buildKey, type ComponentKey } from '../src/core/keys.ts';
+import { buildKey, parentKey, type ComponentKey } from '../src/core/keys.ts';
 import type { Reference } from '../src/core/references.ts';
-import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
+import { analyseSource, OBJECT_PARTS, type SourceAnalysis } from '../src/extraction/analyse.ts';
 import type { AnalysedComponent, AnalysisIssue } from '../src/extraction/analysed.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents, type ResolvedComponent } from '../src/sources/resolve.ts';
@@ -359,8 +360,69 @@ describe('names that are not found', () => {
       'CustomField',
       'CustomField',
     ]);
+    // A field that has no key says which object it was looked for on. An object and a value set have no such object.
+    expect(unresolved.map((one) => one.attrs)).toEqual([
+      { via: 'lookup' },
+      { via: 'controlling-field', object: 'Invoice__c' },
+      { via: 'value-set' },
+      { via: 'summary', object: 'Ghost__c' },
+      { via: 'summary', object: 'Ghost__c' },
+    ]);
     // A name that is not found is a reference, not an issue.
     expect(analysis.issues).toEqual([]);
+  });
+
+  it('finds a custom field of an activity from a task, and a field of a person account at the contact', () => {
+    const source = new Source();
+    source.field('Activity', 'Stage__c', '<type>Text</type>');
+    source.field('Contact', 'Level__c', '<type>Text</type>');
+    source.rule('Task', 'Staged', '<errorDisplayField>Stage__c</errorDisplayField>');
+    source.rule('Event', 'Staged', '<errorDisplayField>Stage__c</errorDisplayField>');
+    source.rule('Account', 'Levelled', '<errorDisplayField>Level__pc</errorDisplayField>');
+    source.rule('Account', 'Lost', '<errorDisplayField>Lost__pc</errorDisplayField>');
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([
+      '4:24 references CustomField:contact.level__c [Level__pc] resolved display-field',
+      '4:24 references null [Lost__pc] unresolved display-field',
+      '4:24 references CustomField:activity.stage__c [Stage__c] resolved display-field',
+      '4:24 references CustomField:activity.stage__c [Stage__c] resolved display-field',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('follows a standard relationship to an object that only a lookup names', () => {
+    const source = new Source();
+    source.field('Opportunity', 'Region__c', '<referenceTo>Territory2</referenceTo>', '<type>Lookup</type>');
+    source.field(
+      'Opportunity',
+      'Depot__c',
+      '<lookupFilter><filterItems><field>$Source.Territory2.Name</field></filterItems></lookupFilter>',
+    );
+    const analysis = source.analyse();
+    expect(told(analysis, key('CustomField', 'Opportunity.Depot__c'))).toEqual([
+      // `$Source` starts at column 39, after four spaces and three start tags of 14, 13 and 7 characters.
+      '4:47 reads CustomField:opportunity.territory2id [Territory2] external filter',
+      '4:58 reads CustomField:territory2.name [Name] external filter',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('reads the field that says which object a relationship to a field definition is about', () => {
+    const source = new Source();
+    source.object('Rule__mdt');
+    source.field('Rule__mdt', 'Object__c', '<referenceTo>EntityDefinition</referenceTo>');
+    source.field(
+      'Rule__mdt',
+      'Field__c',
+      '<metadataRelationshipControllingField',
+      '>Rule__mdt.Object__c</metadataRelationshipControllingField>',
+      '<referenceTo>FieldDefinition</referenceTo>',
+    );
+    expect(told(source.analyse(), key('CustomField', 'Rule__mdt.Field__c'))).toEqual([
+      // The targets of a lookup are read first. The path stands on the line after its start tag.
+      '6:18 references CustomObject:fielddefinition [FieldDefinition] external lookup',
+      '5:16 references CustomField:rule__mdt.object__c [Object__c] resolved controlling-field',
+    ]);
   });
 });
 
@@ -481,6 +543,80 @@ describe('a path of names in a filter', () => {
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Odd__c').attrs).toEqual({
       type: 'Lookup',
       referenceTo: ['My Object'],
+    });
+  });
+});
+
+describe('a value that is almost a name', () => {
+  it('is not read when a path ends with a dot, and the rest of the field is', () => {
+    const source = new Source();
+    source.object('Invoice__c');
+    source.field(
+      'Invoice__c',
+      'Contact__c',
+      '<lookupFilter><filterItems><field>Contact.</field></filterItems></lookupFilter>',
+      '<referenceTo>Contact</referenceTo>',
+      '<summarizedField>Line__c.</summarizedField>',
+      '<type>Lookup</type>',
+    );
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual(['5:18 references CustomObject:contact [Contact] external lookup']);
+    expect(analysis.issues.map((issue) => `${issue.code} ${issue.message}`)).toEqual([
+      'NAME_NOT_READ objects/Invoice__c/fields/Contact__c.field-meta.xml, line 4: the element "field" holds "Contact.", which is not read as a name.',
+      'NAME_NOT_READ objects/Invoice__c/fields/Contact__c.field-meta.xml, line 6: the element "summarizedField" holds "Line__c.", which is not read as a name.',
+    ]);
+    expect(componentOf(analysis, 'CustomField', 'Invoice__c.Contact__c').attrs).toEqual({
+      type: 'Lookup',
+      referenceTo: ['Contact'],
+    });
+  });
+
+  it('is not read when a global variable stands where one name belongs', () => {
+    const source = new Source();
+    source.field('Invoice__c', 'Owner__c', '<referenceTo>$User</referenceTo>');
+    source.rule('Invoice__c', 'Shown', '<errorDisplayField>$Name</errorDisplayField>');
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([]);
+    expect(codes(analysis.issues)).toEqual(['warning NAME_NOT_READ', 'warning NAME_NOT_READ']);
+  });
+
+  it('reads nothing from an element that says it has no value', () => {
+    const source = new Source();
+    const nil = 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"';
+    source.field(
+      'Invoice__c',
+      'Empty__c',
+      `<referenceTo ${nil}/>`,
+      `<summarizedField ${nil}>Line__c.Amount__c</summarizedField>`,
+    );
+    source.rule('Invoice__c', 'Shown', `<errorDisplayField ${nil}/>`, `<active ${nil}>true</active>`);
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([]);
+    expect(analysis.issues).toEqual([]);
+    expect(componentOf(analysis, 'CustomField', 'Invoice__c.Empty__c').attrs).toEqual({});
+    expect(componentOf(analysis, 'ValidationRule', 'Invoice__c.Shown').attrs).toEqual({});
+  });
+
+  it('reads the variable for the own object in any case, and every object a lookup names', () => {
+    const source = new Source();
+    source.object('Invoice__c');
+    source.field('Invoice__c', 'Amount__c', '<type>Currency</type>');
+    source.field(
+      'Invoice__c',
+      'Who__c',
+      '<lookupFilter><filterItems><valueField>$SOURCE.Amount__c</valueField></filterItems></lookupFilter>',
+      '<referenceTo>Contact</referenceTo>',
+      '<referenceTo>Lead</referenceTo>',
+    );
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([
+      '5:18 references CustomObject:contact [Contact] external lookup',
+      '6:18 references CustomObject:lead [Lead] external lookup',
+      // `$SOURCE` starts at column 44, after four spaces and three start tags of 14, 13 and 12 characters.
+      '4:52 reads CustomField:invoice__c.amount__c [Amount__c] resolved filter',
+    ]);
+    expect(componentOf(analysis, 'CustomField', 'Invoice__c.Who__c').attrs).toEqual({
+      referenceTo: ['Contact', 'Lead'],
     });
   });
 });
@@ -660,6 +796,35 @@ describe('a component that is an element of the file of its parent', () => {
     expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
   });
 
+  it('is defined by the first element of its name when the file holds two', () => {
+    const first = '<labels><fullName>Greeting</fullName><value>first</value></labels>';
+    const { source } = build(
+      xml('CustomLabels', first, '<labels><fullName>Greeting</fullName><value>second</value></labels>'),
+    );
+    const analysis = source.analyse();
+    expect(hex(componentOf(analysis, 'CustomLabel', 'Greeting').definition?.contentHash)).toBe(sha(first));
+  });
+
+  it('is defined by the path of a file that cannot be read, which is reported once', () => {
+    const { source, file } = build(labels('Greeting', 'Farewell'));
+    source.broken.add(file);
+    const analysis = source.analyse();
+    // The file is asked for three times: for the labels as a whole, and for each of the two.
+    expect(analysis.issues).toEqual([
+      {
+        severity: 'error',
+        code: 'FILE_UNREADABLE',
+        message: `${file} could not be read.`,
+        componentKey: null,
+        details: { path: file },
+      },
+    ]);
+    expect(
+      analysis.components.map((one) => `${String(one.definition?.path)} ${hex(one.definition?.contentHash)}`),
+    ).toEqual([`${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
+  });
+
   it('finds a part whose full name starts with the name of its parent', () => {
     const source = new Source();
     const content = xml('Workflow', '<rules><fullName>Late Fee</fullName></rules>');
@@ -704,6 +869,28 @@ describe('an object the source holds only parts of', () => {
     ]);
     expect(analysis.components).toHaveLength(8);
     expect(analysis.issues).toEqual([]);
+  });
+
+  it('gets one for a part of any kind, and for a record that spells the suffix of its type', () => {
+    const source = new Source();
+    const type = source.file('objects/Lead/recordTypes/Web.recordType-meta.xml', xml('RecordType'));
+    source.listed.push({ type: 'RecordType', fullName: 'Lead.Web', files: [type] });
+    const layout = source.file('objects/Asset/compactLayouts/Short.compactLayout-meta.xml', xml('CompactLayout'));
+    source.listed.push({ type: 'CompactLayout', fullName: 'Asset.Short', files: [layout] });
+    const record = source.file('customMetadata/Other__mdt.Default.md-meta.xml', xml('CustomMetadata'));
+    source.listed.push({ type: 'CustomMetadata', fullName: 'Other__mdt.Default', files: [record] });
+    source.field('Invoice__c', 'Other__c', '<referenceTo>Other__mdt</referenceTo>');
+    const analysis = source.analyse();
+    expect(analysis.components.filter((one) => one.definition === null).map((one) => `${one.key} ${one.name}`)).toEqual(
+      [
+        'CustomObject:asset Asset',
+        'CustomObject:invoice__c Invoice__c',
+        'CustomObject:lead Lead',
+        'CustomObject:other__mdt Other__mdt',
+      ],
+    );
+    // The snapshot knows the type of the record, so a lookup to it has a key.
+    expect(told(analysis)).toEqual(['4:18 references CustomObject:other__mdt [Other__mdt] external lookup']);
   });
 
   it('is not defined either when the list names a component and gives no file for it', () => {
@@ -841,9 +1028,11 @@ describe('what goes wrong in one component', () => {
       sha(`- ${lost}\n`),
     );
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
+    // Both files count as files that could not be read, also the one of a type that is not analysed.
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }]);
   });
 
-  it('reports two names that fold to one key, keeps the first and merges nothing', () => {
+  it('reports two names that fold to one key, keeps the first by name and merges nothing', () => {
     const source = build();
     const second = source.fieldFile(
       'Invoice__c',
@@ -851,18 +1040,20 @@ describe('what goes wrong in one component', () => {
       xml('CustomField', '<fullName>AMOUNT__c</fullName>', '<type>Text</type>'),
     );
     const analysis = source.analyse();
+    // `AMOUNT__c` comes before `Amount__c` in the order of code units, wherever it stands in the list.
     expect(analysis.components.filter((one) => one.key === amount.key)).toMatchObject([
-      { name: 'Invoice__c.Amount__c', attrs: { type: 'Currency' } },
+      { name: 'Invoice__c.AMOUNT__c', definition: { path: second }, attrs: { type: 'Text' } },
     ]);
     expect(analysis.issues).toEqual([
       {
         severity: 'error',
         code: 'KEY_COLLISION',
-        message: `"Invoice__c.AMOUNT__c" (${second}) and "Invoice__c.Amount__c" (objects/Invoice__c/fields/Amount__c.field-meta.xml) have the same key ${amount.key}. The first one is kept.`,
+        message: `"Invoice__c.Amount__c" (objects/Invoice__c/fields/Amount__c.field-meta.xml) and "Invoice__c.AMOUNT__c" (${second}) have the same key ${amount.key}. The first one is kept.`,
         componentKey: amount.key,
-        details: { kept: 'Invoice__c.Amount__c', dropped: 'Invoice__c.AMOUNT__c' },
+        details: { kept: 'Invoice__c.AMOUNT__c', dropped: 'Invoice__c.Amount__c' },
       },
     ]);
+    expect(analyseSource(source.tree, [...source.listed].reverse())).toEqual(analysis);
   });
 
   it('reports a name that cannot be a key, and gives it no component', () => {
@@ -881,11 +1072,20 @@ describe('what goes wrong in one component', () => {
 
   it('survives a fault of its own: the component keeps its row, and the others their analysis', () => {
     const source = build();
+    const file = source.file(
+      'objects/Invoice__c/fields/Faulty__c.field-meta.xml',
+      xml('CustomField', '<fullName>Faulty__c</fullName>'),
+    );
+    // A component that fails the first time it is asked where it stands, which no source does.
+    let asked = 0;
     const faulty: ResolvedComponent = {
       type: 'CustomField',
       fullName: 'Invoice__c.Faulty__c',
-      get files(): readonly string[] {
-        throw new Error('A fault that no source causes.');
+      files: [file],
+      get within(): never {
+        asked += 1;
+        if (asked === 1) throw new Error(`A fault that no source causes. ${'x'.repeat(300)}`);
+        return undefined as never;
       },
     };
     const analysis = analyseSource(source.tree, [faulty, ...source.listed]);
@@ -893,18 +1093,234 @@ describe('what goes wrong in one component', () => {
       {
         severity: 'error',
         code: 'ANALYSIS_FAILED',
-        message: 'The analysis of a CustomField failed: A fault that no source causes.',
+        // The message of a fault is cut.
+        message: `The analysis of a CustomField failed: A fault that no source causes. ${'x'.repeat(169)}`,
         componentKey: 'CustomField:invoice__c.faulty__c',
-        details: { type: 'CustomField' },
+        details: { type: 'CustomField', path: file },
       },
     ]);
+    // The file is there, so the component is defined, and nothing of it was analysed.
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Faulty__c')).toEqual({
       key: 'CustomField:invoice__c.faulty__c',
       name: 'Invoice__c.Faulty__c',
-      definition: null,
+      definition: { path: file, contentHash: Buffer.from(sha(source.files.get(file) ?? ''), 'hex') },
       attrs: null,
       references: [],
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+  });
+
+  it('survives a path that a reference cannot hold: the component is defined and not analysed', () => {
+    const source = build();
+    // A backslash can be part of a file name on Linux and macOS, and the place of a reference refuses it.
+    const file = source.file(
+      'objects/Invoice__c/fields/Odd\\Name__c.field-meta.xml',
+      xml('CustomField', '<fullName>Odd__c</fullName>', '<referenceTo>Account</referenceTo>', '<type>Lookup</type>'),
+    );
+    source.listed.push({ type: 'CustomField', fullName: 'Invoice__c.Odd__c', files: [file] });
+    const analysis = source.analyse();
+    expect(analysis.issues).toMatchObject([
+      {
+        severity: 'error',
+        code: 'ANALYSIS_FAILED',
+        componentKey: 'CustomField:invoice__c.odd__c',
+        details: { type: 'CustomField', path: file },
+      },
+    ]);
+    expect(componentOf(analysis, 'CustomField', 'Invoice__c.Odd__c')).toMatchObject({
+      definition: { path: file },
+      attrs: null,
+      references: [],
+    });
+    expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
+    // The component that failed is not counted as looked at.
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+  });
+
+  it('cuts a text it shows between two characters, never inside one', () => {
+    const source = build();
+    const long = `${'x'.repeat(59)}\u{1F600} tail`;
+    source.field('Invoice__c', 'Long__c', `<referenceTo>${long}</referenceTo>`);
+    const [issue] = source.analyse().issues;
+    expect(issue).toMatchObject({ severity: 'warning', code: 'NAME_NOT_READ' });
+    expect(issue?.message.isWellFormed()).toBe(true);
+    expect(issue?.message).toContain(`holds "${'x'.repeat(59)}", which`);
+  });
+});
+
+describe('the parts of the file of an object', () => {
+  /** One part of each kind, as an element of the file of the object and as a file of its own. */
+  const PARTS: readonly { group: string; type: string; suffix: string; name: string }[] = [
+    { group: 'businessProcesses', type: 'BusinessProcess', suffix: 'businessProcess', name: 'Retail' },
+    { group: 'compactLayouts', type: 'CompactLayout', suffix: 'compactLayout', name: 'Short' },
+    { group: 'fields', type: 'CustomField', suffix: 'field', name: 'Weight__c' },
+    { group: 'fieldSets', type: 'FieldSet', suffix: 'fieldSet', name: 'Sizes' },
+    { group: 'indexes', type: 'Index', suffix: 'index', name: 'ByWeight' },
+    { group: 'listViews', type: 'ListView', suffix: 'listView', name: 'Heavy' },
+    { group: 'recordTypes', type: 'RecordType', suffix: 'recordType', name: 'Big' },
+    { group: 'sharingReasons', type: 'SharingReason', suffix: 'sharingReason', name: 'Carrier__c' },
+    { group: 'validationRules', type: 'ValidationRule', suffix: 'validationRule', name: 'Weighed' },
+    { group: 'webLinks', type: 'WebLink', suffix: 'webLink', name: 'Track' },
+  ];
+
+  it('knows the parts the Salesforce library knows, and each has the object as its parent', () => {
+    const known = Object.values(registry.types['customobject']?.children?.types ?? {}).map(
+      (type) => [type.directoryName, type.name] as const,
+    );
+    expect(Object.entries(OBJECT_PARTS).sort()).toEqual(known.sort());
+    expect(PARTS.map((part) => [part.group, part.type]).sort()).toEqual(Object.entries(OBJECT_PARTS).sort());
+    for (const type of Object.values(OBJECT_PARTS)) {
+      expect(parentKey(key(type, 'Parcel__c.Part')), type).toBe('CustomObject:parcel__c');
+    }
+  });
+
+  it('are the same components whether the object is one file or a folder of files', async () => {
+    // As an org hands the object out, and as a repository in the metadata format holds it.
+    const whole = new Source();
+    const file = whole.file(
+      'objects/Parcel__c.object',
+      xml('CustomObject', ...PARTS.map((part) => `<${part.group}><fullName>${part.name}</fullName></${part.group}>`)),
+    );
+    // As a project in the source format holds it.
+    const split = new Source();
+    split.file('objects/Parcel__c/Parcel__c.object-meta.xml', xml('CustomObject'));
+    for (const part of PARTS) {
+      split.file(
+        `objects/Parcel__c/${part.group}/${part.name}.${part.suffix}-meta.xml`,
+        xml(part.type, `<fullName>${part.name}</fullName>`),
+      );
+    }
+    const analysed = async (source: Source): Promise<SourceAnalysis> =>
+      analyseSource(source.tree, (await resolveComponents(source.tree, [''])).components);
+    const [one, many] = [await analysed(whole), await analysed(split)];
+
+    const expected = ['CustomObject:parcel__c', ...PARTS.map((part) => key(part.type, `Parcel__c.${part.name}`))];
+    expect(one.components.map((component) => component.key)).toEqual(expected.sort());
+    expect(many.components.map((component) => component.key)).toEqual(expected.sort());
+    expect(one.components.map((component) => component.name)).toEqual(
+      many.components.map((component) => component.name),
+    );
+    expect([...one.issues, ...many.issues]).toEqual([]);
+    // Each part of the one file is defined by its element. Only the object, the field and the rule are read.
+    for (const part of PARTS) {
+      const component = componentOf(one, part.type, `Parcel__c.${part.name}`);
+      expect(component.definition?.path).toBe(file);
+      expect(hex(component.definition?.contentHash)).toBe(
+        sha(`<${part.group}><fullName>${part.name}</fullName></${part.group}>`),
+      );
+    }
+    const read = (analysis: SourceAnalysis): string[] =>
+      analysis.components.filter((component) => component.attrs !== null).map((component) => component.key);
+    expect(read(one)).toEqual([
+      'CustomField:parcel__c.weight__c',
+      'CustomObject:parcel__c',
+      'ValidationRule:parcel__c.weighed',
+    ]);
+    expect(read(many)).toEqual(read(one));
+    expect(one.work).toEqual(many.work);
+  });
+
+  it('are read with the object of the file as their own, and their names without the space around them', () => {
+    const source = new Source();
+    const file = source.file(
+      'objects/Parcel__c.object',
+      xml(
+        'CustomObject',
+        '<fields><fullName>Weight__c</fullName><type>Number</type></fields>',
+        '<fields>',
+        '    <fullName>',
+        '        Carrier__c',
+        '    </fullName>',
+        '    <lookupFilter><filterItems><valueField>$Source.Weight__c</valueField></filterItems></lookupFilter>',
+        '    <referenceTo>Account</referenceTo>',
+        '</fields>',
+      ),
+    );
+    source.listed.push({ type: 'CustomObject', fullName: 'Parcel__c', files: [file] });
+    const analysis = source.analyse();
+    expect(analysis.components.map((one) => one.name)).toEqual([
+      'Parcel__c.Carrier__c',
+      'Parcel__c.Weight__c',
+      'Parcel__c',
+    ]);
+    expect(told(analysis, key('CustomField', 'Parcel__c.Carrier__c'))).toEqual([
+      '9:22 references CustomObject:account [Account] external lookup',
+      // `$Source` starts at column 48, after eight spaces and three start tags of 14, 13 and 12 characters.
+      '8:56 reads CustomField:parcel__c.weight__c [Weight__c] resolved filter',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('keep their rows when one of them holds a value that is no name', () => {
+    const source = new Source();
+    const file = source.file(
+      'objects/Parcel__c.object',
+      xml(
+        'CustomObject',
+        '<fields><fullName>A__c</fullName><type>Text</type></fields>',
+        '<fields><fullName>B__c</fullName><summarizedField>Line__c.</summarizedField></fields>',
+        '<fields><fullName>C__c</fullName><type>Text</type></fields>',
+        '<validationRules><fullName>R</fullName><errorDisplayField>C__c</errorDisplayField></validationRules>',
+      ),
+    );
+    source.listed.push({ type: 'CustomObject', fullName: 'Parcel__c', files: [file] });
+    const analysis = source.analyse();
+    expect(
+      analysis.components.map((one) => `${one.key} ${String(one.definition?.path)} ${String(one.attrs !== null)}`),
+    ).toEqual([
+      `CustomField:parcel__c.a__c ${file} true`,
+      `CustomField:parcel__c.b__c ${file} true`,
+      `CustomField:parcel__c.c__c ${file} true`,
+      `CustomObject:parcel__c ${file} true`,
+      `ValidationRule:parcel__c.r ${file} true`,
+    ]);
+    expect(codes(analysis.issues)).toEqual(['warning NAME_NOT_READ']);
+    expect(told(analysis)).toEqual(['6:63 references CustomField:parcel__c.c__c [C__c] resolved display-field']);
+  });
+});
+
+describe('an object that lies in two package folders', () => {
+  it('is read from both of its files, and the first says what both say', () => {
+    const source = new Source();
+    const first = source.file(
+      'a/objects/Parcel__c/Parcel__c.object-meta.xml',
+      xml('CustomObject', '<customSettingsType>List</customSettingsType>', '<label>Parcel</label>'),
+    );
+    const second = source.file(
+      'b/objects/Parcel__c/Parcel__c.object-meta.xml',
+      xml(
+        'CustomObject',
+        '<customSettingsType>Hierarchy</customSettingsType>',
+        '<fields><fullName>Weight__c</fullName><type>Number</type></fields>',
+      ),
+    );
+    source.listed.push({ type: 'CustomObject', fullName: 'Parcel__c', files: [first, second] });
+    const analysis = source.analyse();
+    const parcel = componentOf(analysis, 'CustomObject', 'Parcel__c');
+    expect(parcel.attrs).toEqual({ customSettingsType: 'List' });
+    expect(parcel.definition?.path).toBe(first);
+    expect(hex(parcel.definition?.contentHash)).toBe(
+      sha(`${sha(source.files.get(first) ?? '')} ${first}\n${sha(source.files.get(second) ?? '')} ${second}\n`),
+    );
+    // The field in the second file is a component too.
+    expect(componentOf(analysis, 'CustomField', 'Parcel__c.Weight__c')).toMatchObject({
+      definition: { path: second },
+      attrs: { type: 'Number' },
+    });
+    expect(analysis.issues).toEqual([]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+  });
+
+  it('gets the same name for an object without a file however its parts are listed', () => {
+    const source = new Source();
+    source.file('a/objects/account/fields/X__c.field-meta.xml', xml('CustomField', '<fullName>X__c</fullName>'));
+    source.file('b/objects/Account/fields/Y__c.field-meta.xml', xml('CustomField', '<fullName>Y__c</fullName>'));
+    source.listed.push({ type: 'CustomField', fullName: 'account.X__c', files: [...source.files.keys()].slice(0, 1) });
+    source.listed.push({ type: 'CustomField', fullName: 'Account.Y__c', files: [...source.files.keys()].slice(1) });
+    const analysis = source.analyse();
+    // `Account.Y__c` comes before `account.X__c` in the order of code units, and its spelling is taken.
+    expect(componentOf(analysis, 'CustomObject', 'Account').name).toBe('Account');
+    expect(analyseSource(source.tree, [...source.listed].reverse())).toEqual(analysis);
   });
 });

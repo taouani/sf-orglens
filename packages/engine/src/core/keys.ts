@@ -117,11 +117,16 @@ const CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 
 /** Types whose full name is `Parent.Child`, where the parent is an object. */
 const CHILD_OF_OBJECT: ReadonlySet<string> = new Set([
+  'BusinessProcess',
+  'CompactLayout',
   'CustomField',
-  'ValidationRule',
-  'RecordType',
   'FieldSet',
+  'Index',
   'ListView',
+  'RecordType',
+  'SharingReason',
+  'ValidationRule',
+  'WebLink',
 ]);
 
 function invalid(message: string, details: Record<string, string>): EngineError {

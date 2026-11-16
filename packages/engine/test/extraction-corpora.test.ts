@@ -26,20 +26,21 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * - `components`: the rows. NPSP has 15 more than the source library lists: objects of which it holds fields
  *   and no file, most of them objects of the packages it builds on.
  * - `analysed`: the objects, fields and validation rules that were read.
- * - `references`: the references written in XML, by how the source names the target.
+ * - `references`: the references written in XML, by how the source names the target. The controlling fields are
+ *   those of relationships to a field definition: no file of the three names one for a picklist.
  */
 const EXPECTED: Readonly<Record<string, { components: number; analysed: number; references: Record<string, number> }>> =
   {
-    'apex-recipes': { components: 255, analysed: 44, references: { lookup: 8 } },
+    'apex-recipes': { components: 255, analysed: 44, references: { 'controlling-field': 1, lookup: 8 } },
     'nebula-logger': {
       components: 894,
       analysed: 622,
-      references: { 'display-field': 4, filter: 7, lookup: 17, summary: 16, 'value-set': 2 },
+      references: { 'controlling-field': 3, 'display-field': 4, filter: 7, lookup: 17, summary: 16, 'value-set': 2 },
     },
     npsp: {
       components: 11_722,
       analysed: 819,
-      references: { 'display-field': 2, filter: 7, lookup: 77, summary: 4, 'value-set': 2 },
+      references: { 'controlling-field': 5, 'display-field': 2, filter: 7, lookup: 77, summary: 4, 'value-set': 2 },
     },
   };
 

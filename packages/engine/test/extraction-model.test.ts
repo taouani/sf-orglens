@@ -18,7 +18,7 @@ const field = (fullName: string): ComponentKey => key('CustomField', fullName);
 
 /**
  * A small snapshot: an invoice with its file, an account of which the snapshot holds two fields and no file,
- * and a user with a hierarchy field.
+ * a user with a hierarchy field, and a custom field each of the activity and of the contact.
  */
 function model(): ObjectModel {
   const fields = new Map<ComponentKey, FieldFacts>([
@@ -30,6 +30,8 @@ function model(): ObjectModel {
     [field('Account.Tier__c'), { type: 'Picklist', referenceTo: [] }],
     [field('Account.SponsorId'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
     [field('User.Backup__c'), { type: 'Hierarchy', referenceTo: [] }],
+    [field('Activity.Stage__c'), { type: 'Text', referenceTo: [] }],
+    [field('Contact.Level__c'), { type: 'Text', referenceTo: [] }],
   ]);
   return buildModel({
     defined: new Set([
@@ -165,6 +167,31 @@ describe('what becomes of the name of a field', () => {
     ]);
     expect(resolutions('Invoice__c', ['Nowhere__Latitude__s'])).toEqual(['unresolved null']);
   });
+
+  it('looks for a custom field of a task or an event at the activity, where Salesforce keeps it', () => {
+    expect(resolutions('Task', ['Stage__c', 'Subject', 'Other__c', 'ns__Stage__c'])).toEqual([
+      'resolved CustomField:activity.stage__c',
+      'external CustomField:task.subject',
+      'unresolved null',
+      'external CustomField:activity.ns__stage__c',
+    ]);
+    expect(resolutions('event', ['STAGE__C'])).toEqual(['resolved CustomField:activity.stage__c']);
+    expect(resolutions('Activity', ['Stage__c'])).toEqual(['resolved CustomField:activity.stage__c']);
+  });
+
+  it('looks for a field of a person account at the contact, and only from the account', () => {
+    expect(resolutions('Account', ['Level__pc', 'LEVEL__PC', 'Lost__pc', 'ns__Level__pc', 'Tier__c'])).toEqual([
+      'resolved CustomField:contact.level__c',
+      'resolved CustomField:contact.level__c',
+      'unresolved null',
+      'external CustomField:contact.ns__level__c',
+      'resolved CustomField:account.tier__c',
+    ]);
+    expect(resolutions('Contact', ['Level__pc', 'Level__c'])).toEqual([
+      'unresolved null',
+      'resolved CustomField:contact.level__c',
+    ]);
+  });
 });
 
 describe('what becomes of the name of another component', () => {
@@ -272,6 +299,20 @@ describe('walking a path', () => {
 
   it('walks nothing for no names', () => {
     expect(walk('Invoice__c', [])).toEqual({ steps: [], complete: true });
+  });
+
+  it('says for each name which object it was looked for on, also for the one it stopped at', () => {
+    expect(walkPath(model(), 'Invoice__c', ['Account__r', 'Owner', 'Manager', 'Email']).on).toEqual([
+      'Invoice__c',
+      'Account',
+      'User',
+      'User',
+    ]);
+    expect(walkPath(model(), 'Invoice__c', ['Account__r', 'Missing__r', 'Owner', 'Email']).on).toEqual([
+      'Invoice__c',
+      'Account',
+    ]);
+    expect(walkPath(model(), 'Invoice__c', []).on).toEqual([]);
   });
 });
 

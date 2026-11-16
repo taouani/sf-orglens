@@ -58,6 +58,9 @@ export interface ModelInput {
   readonly fields: ReadonlyMap<ComponentKey, FieldFacts>;
 }
 
+/** A custom field of a contact as a person account shows it: `Level__pc` of the account is `Level__c` of the contact. */
+const PERSON_ACCOUNT_FIELD = /__pc$/i;
+
 /** The object of the record that holds a relationship. */
 const SELF = '';
 
@@ -139,7 +142,15 @@ export function buildModel(input: ModelInput): ObjectModel {
     return unresolved('CustomObject');
   };
 
-  const field = (objectName: string, name: string): Target => {
+  const field = (written: string, writtenName: string): Target => {
+    // Two objects show custom fields that belong to another: a task and an event those of `Activity`, and an
+    // account those of the contact of a person account, spelled `__pc`.
+    const folded = foldName(written);
+    const custom = isCustomName(writtenName);
+    const ofActivity = custom && (folded === 'task' || folded === 'event');
+    const ofContact = custom && folded === 'account' && PERSON_ACCOUNT_FIELD.test(writtenName);
+    const objectName = ofActivity ? 'Activity' : ofContact ? 'Contact' : written;
+    const name = ofContact ? `${writtenName.slice(0, -2)}c` : writtenName;
     const key = keyOf('CustomField', `${objectName}.${name}`);
     if (key === null) return unresolved('CustomField');
     if (defined.has(key)) return resolved(key, 'CustomField');
@@ -183,6 +194,8 @@ export function buildModel(input: ModelInput): ObjectModel {
 interface Walk {
   /** The target of each name that was reached, in the order of the path. */
   readonly steps: readonly Target[];
+  /** For each of them, the name of the object it was looked for on. */
+  readonly on: readonly string[];
   /** True if the last name was reached. False: it is not known where the last step that was reached leads. */
   readonly complete: boolean;
 }
@@ -196,16 +209,18 @@ interface Walk {
  */
 export function walkPath(model: ObjectModel, start: string, names: readonly string[]): Walk {
   const steps: Target[] = [];
+  const on: string[] = [];
   let current = start;
   for (const [index, name] of names.entries()) {
+    on.push(current);
     if (index === names.length - 1) {
       steps.push(model.field(current, name));
       break;
     }
     const { field, leadsTo } = model.relationship(current, name);
     steps.push(field);
-    if (leadsTo === null) return { steps, complete: false };
+    if (leadsTo === null) return { steps, on, complete: false };
     current = leadsTo;
   }
-  return { steps, complete: true };
+  return { steps, on, complete: true };
 }

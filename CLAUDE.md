@@ -85,8 +85,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
   the layer rules refuse it elsewhere.
 - An analysis is `analyseSource` (`extraction/analyse.ts`): from a `SourceTree` and the list of its components to
   a component for each, with references and issues. An analyser reads names with their places first and resolves
-  them against the model of objects (`extraction/model.ts`) afterwards. It drops nothing without an issue, and a
-  name it does not find is `unresolved` or `external`, never guessed (decision record 0041).
+  them against the model of objects (`extraction/model.ts`) afterwards. A component it is handed is never dropped
+  without an issue, a failure costs one component, and a name it does not find is `unresolved` or `external`,
+  never guessed. Decision record 0041 has the rules and lists what is not read yet.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 
