@@ -2,8 +2,9 @@
  * Checks the two sets of formulas that Phase 1 added beside the fixture project: the probes
  * (`fixtures/formula-probes.yaml`) and the formulas that cannot be deployed (`fixtures/formula-negative`).
  *
- * Like the tests of the answer key, these tests analyse nothing. They check that the files say what they claim,
- * before the analyser exists that is scored with them.
+ * Like the tests of the answer key, these tests analyse nothing. They check that the files say what they claim.
+ * `extraction-formula.test.ts` reads the probes with the reader of the engine, and
+ * `extraction-analyse-formula.test.ts` analyses the formulas that cannot be deployed.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -11,6 +12,7 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { buildKey, parseKey } from '../src/core/keys.ts';
 import { columnOf, FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
+import { scanNames as namesOf } from './helpers/formula-scan.ts';
 
 type Dict = Readonly<Record<string, unknown>>;
 const isDict = (value: unknown): value is Dict => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -24,41 +26,6 @@ const fieldNames = new Set(
   key.components.filter((one) => one.type === 'CustomField').map((one) => one.fullName.split('.')[1]?.toLowerCase()),
 );
 const known = new Set<string>([...key.components.map((one) => one.key), ...key.standard]);
-
-/** The words of the formula language that are no names. */
-const WORDS = new Set(['true', 'false', 'null', 'not']);
-
-/**
- * The names of a formula, found in the simplest way: the formula without its comments and its texts, and in it
- * every word that no bracket follows. It is not a parser. It is a second opinion on what a probe lists by hand.
- */
-function namesOf(formula: string): string[] {
-  let code = '';
-  for (let at = 0; at < formula.length;) {
-    const here = formula[at] ?? '';
-    if (formula.startsWith('/*', at)) {
-      // A backslash keeps the end of a comment inside it.
-      at += 2;
-      while (at < formula.length && !formula.startsWith('*/', at)) at += formula.startsWith('\\*/', at) ? 3 : 1;
-      at += 2;
-      code += ' ';
-    } else if (here === '"' || here === "'") {
-      at += 1;
-      while (at < formula.length && formula[at] !== here) at += formula[at] === '\\' ? 2 : 1;
-      at += 1;
-      code += ' ';
-    } else {
-      code += here;
-      at += 1;
-    }
-  }
-  const names: string[] = [];
-  for (const found of code.matchAll(/[A-Za-z$][A-Za-z0-9_$:.#]*/g)) {
-    const after = code.slice(found.index + found[0].length).trimStart();
-    if (!after.startsWith('(') && !WORDS.has(found[0].toLowerCase())) names.push(found[0]);
-  }
-  return names;
-}
 
 describe('the formula probes', () => {
   const root = parse(readFileSync(join(FIXTURES_DIR, 'formula-probes.yaml'), 'utf8')) as Dict;

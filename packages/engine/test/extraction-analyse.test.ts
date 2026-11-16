@@ -1,6 +1,6 @@
 /**
  * The analysis of a source: a component for everything it holds, and the references of objects, fields and
- * validation rules that are written in XML.
+ * validation rules, those that are written in XML and those that stand in a formula.
  *
  * The first part runs on the fixture project and is measured with its answer key. The second part runs on
  * small sources that are written here, for what the fixture project does not have.
@@ -10,10 +10,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { registry } from '@salesforce/source-deploy-retrieve';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { buildKey, parentKey, type ComponentKey } from '../src/core/keys.ts';
+import { parentKey } from '../src/core/keys.ts';
 import type { Reference } from '../src/core/references.ts';
 import { analyseSource, OBJECT_PARTS, type SourceAnalysis } from '../src/extraction/analyse.ts';
-import type { AnalysedComponent, AnalysisIssue } from '../src/extraction/analysed.ts';
+import type { AnalysedComponent } from '../src/extraction/analysed.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents, type ResolvedComponent } from '../src/sources/resolve.ts';
 import type { SourceTree } from '../src/sources/tree.ts';
@@ -23,19 +23,13 @@ import { openStore } from '../src/store/open.ts';
 import { ensureSource, insertSnapshot } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
+import { codes, HEAD, key, Source, told, valueOf, viaOf, xml, XMLNS } from './helpers/written-source.ts';
 
-const key = (type: string, fullName: string): ComponentKey => buildKey({ type, fullName });
 const hex = (bytes: Uint8Array | undefined): string => Buffer.from(bytes ?? []).toString('hex');
 const sha = (content: Uint8Array | string): string => createHash('sha256').update(content).digest('hex');
 
 /** How the answer key names the references that are written in XML. Everything else in a field or a rule is a formula. */
 const XML_VIAS = ['lookup', 'filter', 'summary', 'display-field', 'controlling-field', 'value-set'];
-
-/** How the source names the target of a reference, as the reference keeps it. */
-const viaOf = (reference: Reference): string => {
-  const via = reference.attrs?.['via'];
-  return typeof via === 'string' ? via : 'none';
-};
 
 /** A reference as the answer key identifies one, and how the source names its target. */
 const idOf = (reference: Reference): string =>
@@ -46,7 +40,6 @@ const componentOf = (analysis: SourceAnalysis, type: string, fullName: string): 
   if (found === undefined) throw new Error(`The analysis has no ${type} ${fullName}.`);
   return found;
 };
-const codes = (issues: readonly AnalysisIssue[]): string[] => issues.map((issue) => `${issue.severity} ${issue.code}`);
 
 describe('the analysis of the fixture project', () => {
   const answers = loadAnswerKey();
@@ -80,23 +73,26 @@ describe('the analysis of the fixture project', () => {
     }
   });
 
-  it('finds every reference of the key that is written in XML, where the key says, and no other', () => {
-    const expected = answers.references
-      .filter((one) => XML_VIAS.includes(one.via))
-      .map((one) => `${one.id} ${one.via}`);
-    expect(expected).toHaveLength(26);
-    expect(references.map(idOf).sort()).toEqual(expected.sort());
+  it('finds every reference of the key for a field or a rule, where the key says, and no other', () => {
+    // Phase 1 of the key is what fields and validation rules say. Everything else in it is Apex.
+    const keyed = answers.references.filter((one) => one.phase === 1);
+    expect(keyed.filter((one) => XML_VIAS.includes(one.via))).toHaveLength(26);
+    expect(keyed.filter((one) => one.via === 'formula')).toHaveLength(80);
+    expect(keyed).toHaveLength(106);
+    // The key calls four of them a stretch: a miss would not count. All four are found, so the lists are equal.
+    expect(keyed.filter((one) => one.stretch)).toHaveLength(4);
+    expect(references.map(idOf).sort()).toEqual(keyed.map((one) => `${one.id} ${one.via}`).sort());
   });
 
-  it('gives each reference the component its file defines, the tier confirmed and the origin of the reader', () => {
-    const starts = new Map(
-      answers.references.map((one) => [`${one.id} ${one.via}`, { from: one.from, match: one.match }]),
-    );
+  it('gives each reference the component its file defines, the tier of the key and the origin of its reader', () => {
+    const starts = new Map(answers.references.map((one) => [`${one.id} ${one.via}`, one]));
     for (const reference of references) {
       const keyed = starts.get(idOf(reference));
       expect(reference.from, idOf(reference)).toBe(keyed?.from);
       expect(reference.toNameRaw, idOf(reference)).toBe(keyed?.match);
-      expect(reference).toMatchObject({ origin: 'parser:xml', confidence: 'confirmed' });
+      expect(reference.confidence, idOf(reference)).toBe(keyed?.tier);
+      expect(reference.confidence, idOf(reference)).toBe('confirmed');
+      expect(reference.origin, idOf(reference)).toBe(keyed?.via === 'formula' ? 'parser:formula' : 'parser:xml');
     }
   });
 
@@ -105,14 +101,51 @@ describe('the analysis of the fixture project', () => {
       const standard = reference.to !== null && answers.standard.includes(reference.to);
       expect(reference.resolution, idOf(reference)).toBe(standard ? 'external' : 'resolved');
     }
-    expect(references.filter((one) => one.resolution === 'external').map((one) => one.to)).toEqual([
-      'CustomObject:contact',
-      'CustomObject:account',
-      'CustomObject:user',
-      'CustomField:user.department',
-      'CustomField:user.department',
-      'CustomObject:contact',
+    // What Salesforce provides and a field or a rule of the project names. The key lists five more, for Apex.
+    const external = new Set(references.filter((one) => one.resolution === 'external').map((one) => one.to));
+    expect([...external].sort()).toEqual([
+      'CustomField:account.industry',
+      'CustomField:account.name',
+      'CustomField:account.ownerid',
+      'CustomField:account.parentid',
       'CustomField:contact.accountid',
+      'CustomField:group.name',
+      'CustomField:invoice__c.name',
+      'CustomField:invoice__c.ownerid',
+      'CustomField:organization.country',
+      'CustomField:profile.name',
+      'CustomField:tax_code__c.name',
+      'CustomField:user.department',
+      'CustomField:user.email',
+      'CustomField:user.managerid',
+      'CustomField:user.username',
+      'CustomField:userrole.name',
+      'CustomObject:account',
+      'CustomObject:contact',
+      'CustomObject:user',
+    ]);
+  });
+
+  it('refers to a label, a permission and a record of a custom metadata type by their keys', () => {
+    const others = references.filter((one) => one.origin === 'parser:formula' && one.toType !== 'CustomField');
+    expect(others.map((one) => `${one.kind} ${String(one.to)} [${one.toNameRaw}] ${one.resolution}`).sort()).toEqual([
+      'references CustomLabel:overdue_notice [Overdue_Notice] resolved',
+      'references CustomMetadata:billing_rule.default [Default] resolved',
+      'references CustomPermission:approve_large_invoices [Approve_Large_Invoices] resolved',
+    ]);
+  });
+
+  it('keeps the value a formula compares a picklist with', () => {
+    const compared = references.filter((one) => valueOf(one) !== null);
+    expect(compared.map((one) => `${String(one.to)} ${String(valueOf(one))}`).sort()).toEqual([
+      'CustomField:account.tier__c Gold',
+      'CustomField:invoice__c.channels__c Email',
+      'CustomField:invoice__c.status__c Paid',
+      'CustomField:invoice__c.status__c Paid',
+      'CustomField:invoice__c.status__c Paid',
+      'CustomField:invoice__c.status__c Paid',
+      'CustomField:invoice__c.status__c Void',
+      'CustomField:invoice__c.status__c Void',
     ]);
   });
 
@@ -127,8 +160,12 @@ describe('the analysis of the fixture project', () => {
 
   it('raises no issue, and counts the objects, fields and rules it looked at', () => {
     expect(analysis.issues).toEqual([]);
-    // 5 objects, 54 fields and 10 rules. The two objects without a file were not looked at.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 69, failedFiles: 0 }]);
+    // 5 objects, 54 fields and 10 rules. The two objects without a file were not looked at. 34 of the fields
+    // and rules hold a formula or a default value.
+    expect(analysis.work).toEqual([
+      { origin: 'parser:xml', components: 69, failedFiles: 0 },
+      { origin: 'parser:formula', components: 34, failedFiles: 0 },
+    ]);
   });
 
   it('keeps what later steps need of a field, a rule and an object', () => {
@@ -226,19 +263,28 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      expect(written).toMatchObject({ components: 89, references: 26 });
+      expect(written).toMatchObject({ components: 89, references: 106 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
       expect(
         graph
           .referencesTo(status?.id ?? 0)
-          .map((one) => `${one.from} ${one.kind} ${viaOf(one)}`)
+          .map((one) => `${one.from} ${one.kind} ${viaOf(one)} ${one.origin}`)
           .sort(),
       ).toEqual([
-        'CustomField:invoice__c.approver__c reads filter',
-        'CustomField:invoice__c.sub_status__c references controlling-field',
-        'ValidationRule:invoice__c.paid_cannot_be_reopened references display-field',
+        'CustomField:invoice__c.approver__c reads filter parser:xml',
+        'CustomField:invoice__c.days_overdue__c reads formula parser:formula',
+        'CustomField:invoice__c.status_rank__c reads formula parser:formula',
+        'CustomField:invoice__c.sub_status__c references controlling-field parser:xml',
+        'ValidationRule:invoice__c.locked_when_paid reads formula parser:formula',
+        // The rule names the field three times in its formula, and once as the field of its message.
+        'ValidationRule:invoice__c.paid_cannot_be_reopened reads formula parser:formula',
+        'ValidationRule:invoice__c.paid_cannot_be_reopened reads formula parser:formula',
+        'ValidationRule:invoice__c.paid_cannot_be_reopened reads formula parser:formula',
+        'ValidationRule:invoice__c.paid_cannot_be_reopened references display-field parser:xml',
+        'ValidationRule:invoice__c.paid_requires_paid_date reads formula parser:formula',
+        'ValidationRule:invoice__c.void_needs_admin reads formula parser:formula',
       ]);
       // The standard object the project holds fields of is a component of the snapshot, without a file.
       expect(graph.find(key('CustomObject', 'Account'))?.version).toEqual({ name: 'Account', path: null, attrs: null });
@@ -246,74 +292,6 @@ describe('the analysis of the fixture project', () => {
     });
   });
 });
-
-const XMLNS = 'http://soap.sforce.com/2006/04/metadata';
-const HEAD = '<?xml version="1.0" encoding="UTF-8"?>';
-const xml = (root: string, ...lines: string[]): string =>
-  [HEAD, `<${root} xmlns="${XMLNS}">`, ...lines.map((line) => `    ${line}`), `</${root}>`, ''].join('\n');
-
-/** A source that is written in a test: files by path, and the components they make up. */
-class Source {
-  readonly files = new Map<string, Uint8Array>();
-  readonly listed: ResolvedComponent[] = [];
-  /** Paths that fail when they are read. */
-  readonly broken = new Set<string>();
-
-  file(path: string, content: string | Uint8Array): string {
-    this.files.set(path, typeof content === 'string' ? Buffer.from(content, 'utf8') : content);
-    return path;
-  }
-
-  object(name: string, ...lines: string[]): string {
-    const path = this.file(`objects/${name}/${name}.object-meta.xml`, xml('CustomObject', ...lines));
-    this.listed.push({ type: 'CustomObject', fullName: name, files: [path] });
-    return path;
-  }
-
-  field(object: string, name: string, ...lines: string[]): string {
-    return this.fieldFile(object, name, xml('CustomField', `<fullName>${name}</fullName>`, ...lines));
-  }
-
-  fieldFile(object: string, name: string, content: string | Uint8Array): string {
-    const path = this.file(`objects/${object}/fields/${name}.field-meta.xml`, content);
-    this.listed.push({ type: 'CustomField', fullName: `${object}.${name}`, files: [path] });
-    return path;
-  }
-
-  rule(object: string, name: string, ...lines: string[]): string {
-    const path = this.file(
-      `objects/${object}/validationRules/${name}.validationRule-meta.xml`,
-      xml('ValidationRule', `<fullName>${name}</fullName>`, ...lines),
-    );
-    this.listed.push({ type: 'ValidationRule', fullName: `${object}.${name}`, files: [path] });
-    return path;
-  }
-
-  get tree(): SourceTree {
-    return {
-      files: [...this.files.keys()].sort(),
-      read: (path) => {
-        const content = this.files.get(path);
-        if (content === undefined || this.broken.has(path)) throw new Error(`${path} cannot be read.`);
-        return content;
-      },
-    };
-  }
-
-  analyse(): SourceAnalysis {
-    return analyseSource(this.tree, this.listed);
-  }
-}
-
-/** The references of an analysis as `line:column kind target [name] resolution via`, in the order of the files. */
-const told = (analysis: SourceAnalysis, from?: ComponentKey): string[] =>
-  analysis.components
-    .filter((one) => from === undefined || one.key === from)
-    .flatMap((one) => one.references)
-    .map(
-      (one) =>
-        `${String(one.location?.line)}:${String(one.location?.column)} ${one.kind} ${String(one.to)} [${one.toNameRaw}] ${one.resolution} ${viaOf(one)}`,
-    );
 
 describe('names that are not found', () => {
   it('are unresolved without a key when they are custom, and external with a key otherwise', () => {
@@ -720,7 +698,7 @@ describe('fields and rules inside the file of their object', () => {
       sha(lines.join('\n')),
       sha(lines.slice(10, 15).join('\n').trim()),
     ]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }]);
 
     // The element without a name is not dropped in silence.
     expect(analysis.issues).toEqual([
@@ -763,7 +741,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(analysis.issues).toEqual([]);
     // No file of an analysed type was read.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }]);
   });
 
   it('is defined by the whole file when its element is not found, and an issue says so', () => {
@@ -793,7 +771,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(codes(analysis.issues)).toEqual(['error XML_MALFORMED']);
     expect(analysis.issues[0]?.details).toMatchObject({ path: file });
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
   });
 
   it('is defined by the first element of its name when the file holds two', () => {
@@ -822,7 +800,7 @@ describe('a component that is an element of the file of its parent', () => {
     expect(
       analysis.components.map((one) => `${String(one.definition?.path)} ${hex(one.definition?.contentHash)}`),
     ).toEqual([`${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
   });
 
   it('finds a part whose full name starts with the name of its parent', () => {
@@ -953,7 +931,7 @@ describe('what goes wrong in one component', () => {
       details: { path: file, line: 4, column: 15 },
     });
     expect(analysis.issues[0]?.message.startsWith(`${file}: `)).toBe(true);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }]);
   });
 
   it('reports bytes that are no text without a place', () => {
@@ -988,7 +966,7 @@ describe('what goes wrong in one component', () => {
     ]);
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Rule__c')).toMatchObject({ attrs: null, references: [] });
     // The file was read as XML: it did not fail.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
   });
 
   it('keeps a component whose file cannot be read, and says so once', () => {
@@ -1029,7 +1007,7 @@ describe('what goes wrong in one component', () => {
     );
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // Both files count as files that could not be read, also the one of a type that is not analysed.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }]);
   });
 
   it('reports two names that fold to one key, keeps the first by name and merges nothing', () => {
@@ -1108,7 +1086,7 @@ describe('what goes wrong in one component', () => {
       references: [],
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
   });
 
   it('survives a path that a reference cannot hold: the component is defined and not analysed', () => {
@@ -1135,7 +1113,7 @@ describe('what goes wrong in one component', () => {
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // The component that failed is not counted as looked at.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
   });
 
   it('cuts a text it shows between two characters, never inside one', () => {
@@ -1309,7 +1287,7 @@ describe('an object that lies in two package folders', () => {
       attrs: { type: 'Number' },
     });
     expect(analysis.issues).toEqual([]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
   });
 
   it('gets the same name for an object without a file however its parts are listed', () => {

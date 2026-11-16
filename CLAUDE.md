@@ -88,6 +88,10 @@ packages/cli   the `orglens` binary                            imports only `@sf
   them against the model of objects (`extraction/model.ts`) afterwards. A component it is handed is never dropped
   without an issue, a failure costs one component, and a name it does not find is `unresolved` or `external`,
   never guessed. Decision record 0041 has the rules and lists what is not read yet.
+- A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
+  of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
+  name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the
+  names among its tokens are `probable`. `fixtures/formula-probes.yaml` must be read without a problem.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

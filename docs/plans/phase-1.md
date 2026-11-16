@@ -537,6 +537,78 @@ Accepted when:
 - Every formula of the public codebases is read without a problem, or the report says which and why.
 - The tests of the parser run on the three systems.
 
+Status on 16 November 2026, with the pull request that holds the reader of formulas. Built:
+`extraction/formula.ts` (`parseFormula`, `namesOfTree`, `namesOfTokens`), `extraction/formula-names.ts`
+(`usesOfName`), the formulas in `extraction/objects.ts` and `extraction/analyse.ts`, hints for `walkPath` in
+`extraction/model.ts`, their tests and decision record [0042](../adr/0042-the-names-in-a-formula.md). No command
+runs the analysis yet: WP6 writes it into a snapshot.
+
+- **Pass mark 1 of Q5 is met.** The analysis finds the 106 references that the key holds for fields and
+  validation rules: the 26 written in XML and 80 in formulas, each at the line and the column the key says,
+  and no other. The four that the key marks as a stretch are found too. None of the places where the key
+  forbids a reference is hit, and no issue is raised.
+- **Pass mark 2 is met.** Every formula of the three public codebases is read as a whole. A simple scan that is
+  no parser finds the same names in each formula. A test pins the numbers and is skipped where the codebases
+  are not downloaded, which CI does not do.
+
+  | Codebase      | Formulas and default values | Of them formulas of fields and conditions | References from formulas | Paths not followed |
+  | ------------- | --------------------------- | ----------------------------------------- | ------------------------ | ------------------ |
+  | apex-recipes  | 1                           | 0                                         | 0                        | 0                  |
+  | nebula-logger | 142                         | 65                                        | 387                      | 0                  |
+  | npsp          | 168                         | 16                                        | 58                       | 4                  |
+
+  Of the references, 372 and 38 are `resolved` and 15 and 20 `external`. None is `unresolved`. The largest
+  codebase is analysed in 0.3 to 0.9 seconds on one Linux machine, as before.
+
+- **Pass mark 3 is not measured yet.** That no pair of the Dependency API is missing on the test org is
+  measured in WP8. What can be said now is read from the record of the run of 15 November 2026
+  ([real-org.md](../research/phase-1/real-org.md)), not measured again: the rows of the API from a field or a
+  rule of the fixture are pairs of the key, which the analysis finds, and two rows from a validation rule to
+  an object, which it does not. Those two are the question this plan keeps for WP8.
+- **The 178 probes are read without a problem**, each with the names it lists. Five names are not read as a
+  name, all in probes for functions of buttons, pages and reports. The ten formulas that cannot be deployed
+  give what their file of expectations says: five warnings, `probable` references, and names that are
+  `unresolved` or `external`.
+- **The tests of the reader need no file of the machine**, so they run on the three systems with the others.
+  This is confirmed by CI on the pull request, not before.
+- **The count for WP10 is 0, 0 and 4.** The four are one formula of NPSP, on the opportunity. It goes four times
+  through a lookup of another package (`npe03__Recurring_Donation__r`), and no file of the codebase says where
+  that lookup leads. The four fields behind it have no reference. An org snapshot would hold the file of that
+  lookup and follow it.
+- **The public formulas say little about the harder parts.** None has a comment or an `Owner:User`, and seven
+  names stand behind a global variable (`$User` once, `$Setup` twice, `$Label` four times). Comments, the
+  colon and the other variables are covered by the fixture project, which Salesforce accepted in WP1, by the
+  probes, which it never saw, and by tests.
+- **Sixteen choices are mine**, and record 0042 lists them for you to strike. The ones with the most weight:
+  - A formula that is not read as a whole gives a warning, not an error, and its names are `probable`. In such
+    a formula the name of a function that stands without its bracket is taken for a field.
+  - The field `Id` at the end of a path gives no reference, as the key rules say. This now holds for a path in
+    XML too, which changes one point of record 0041: `$User.Id` in a lookup filter gave a reference and gives
+    none now.
+  - A default value is a formula, as this plan says. So the count of components with a formula includes every
+    checkbox with the default `false`.
+  - The value a picklist is compared with is kept for `ISPICKVAL` and `INCLUDES`, also through `PRIORVALUE`.
+    The values of a `CASE` and of `TEXT(Status__c) = "Paid"` are not kept.
+  - `$ObjectType.Tax_Code__c` without a field is a reference to the object. `$RecordType` is taken as the
+    object `RecordType`. A variable the reader does not know gives a warning and no reference.
+  - The order of the operators is mine and is not verified. No reference depends on it.
+  - A text may run over lines and a no-break space is white space, which is wider than the grammar of the
+    formula engine.
+- **Two points WP4 left for this package are done, one is not.** `Owner:User` says where a relationship leads,
+  and `Level__pr` on an account is followed to the contact. The namespace of a package project is still not
+  known to the analysis.
+- **The check of my work.** 58 faults were planted in the new code, one at a time. The tests noticed 56 at
+  once and the other two after two expectations were added. A 59th showed a line that did nothing, which was
+  removed.
+- **For WP6.** One more issue code, `FORMULA_NOT_READ`, goes into `docs/cli.md` with the eleven of record 0041,
+  and WP6 decides whether it makes a snapshot incomplete. The work of the origin `parser:formula` says how
+  many components hold a formula and how many files hold one that was not read as a whole. "Names not
+  resolved" and "paths not followed" have no column: they are the references with the resolution `unresolved`
+  and the issues `PATH_NOT_FOLLOWED`.
+- **Not done or not verified.** Named arguments in square brackets. Formulas outside fields and validation
+  rules. The order of the operators, a text over lines, and whether Salesforce accepts each probe. Nothing was
+  deployed in this package, and nothing was run against a real org.
+
 ### WP6 Analysis in the snapshot, and coverage
 
 Build:

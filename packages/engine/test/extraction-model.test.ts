@@ -32,6 +32,7 @@ function model(): ObjectModel {
     [field('User.Backup__c'), { type: 'Hierarchy', referenceTo: [] }],
     [field('Activity.Stage__c'), { type: 'Text', referenceTo: [] }],
     [field('Contact.Level__c'), { type: 'Text', referenceTo: [] }],
+    [field('Contact.Mentor__c'), { type: 'Lookup', referenceTo: ['User'] }],
   ]);
   return buildModel({
     defined: new Set([
@@ -227,6 +228,14 @@ describe('a step through a relationship', () => {
     expect(step('Invoice__c', 'ACCOUNT__R')).toBe('resolved CustomField:invoice__c.account__c -> Account');
   });
 
+  it('takes the relationship of a person account as the lookup field of the contact', () => {
+    expect(step('Account', 'Mentor__pr')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('Account', 'MENTOR__PR')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('Account', 'Lost__pr')).toBe('unresolved null -> null');
+    // Only an account shows the fields of a contact.
+    expect(step('Contact', 'Mentor__pr')).toBe('unresolved null -> null');
+  });
+
   it('takes a hierarchy field as a field that points at its own object', () => {
     expect(step('User', 'Backup__r')).toBe('resolved CustomField:user.backup__c -> User');
   });
@@ -295,6 +304,45 @@ describe('walking a path', () => {
       steps: ['CustomField:invoice__c.account__c', null],
       complete: false,
     });
+  });
+
+  it('believes what the source says about a relationship before the model', () => {
+    const said = (start: string, names: readonly string[], hints: Parameters<typeof walkPath>[3]): string => {
+      const { steps, on, complete } = walkPath(model(), start, names, hints);
+      return `${steps.map((one) => String(one.to)).join(' ')} on ${on.join(' ')} ${complete ? 'complete' : 'stopped'}`;
+    };
+    // The owner is taken as a user. A formula can say that it is a group.
+    expect(said('Invoice__c', ['Owner', 'Name'], [])).toBe(
+      'CustomField:invoice__c.ownerid CustomField:user.name on Invoice__c User complete',
+    );
+    expect(said('Invoice__c', ['Owner', 'Name'], [{ leadsTo: 'Group' }])).toBe(
+      'CustomField:invoice__c.ownerid CustomField:group.name on Invoice__c Group complete',
+    );
+    // Also where a file says otherwise, and where the model knows nothing.
+    expect(said('Invoice__c', ['Account__r', 'Name'], [{ leadsTo: 'Contact' }])).toBe(
+      'CustomField:invoice__c.account__c CustomField:contact.name on Invoice__c Contact complete',
+    );
+    expect(said('Invoice__c', ['Related__r', 'Name'], [{ leadsTo: 'Contact' }])).toBe(
+      'CustomField:invoice__c.related__c CustomField:contact.name on Invoice__c Contact complete',
+    );
+    // A hint is for the name at its place. The names without one are walked as ever.
+    expect(said('Invoice__c', ['Account__r', 'Owner', 'Name'], [undefined, { leadsTo: 'Group' }])).toBe(
+      'CustomField:invoice__c.account__c CustomField:account.ownerid CustomField:group.name on Invoice__c Account Group complete',
+    );
+  });
+
+  it('looks for the field at the end under the name the source says it has in metadata', () => {
+    const to = (names: readonly string[], hints: Parameters<typeof walkPath>[3]): (string | null)[] =>
+      walkPath(model(), 'Invoice__c', names, hints).steps.map((one) => one.to);
+    expect(to(['Owner', 'QueueName'], [{ leadsTo: 'Group' }, { resolveAs: 'Name' }])).toEqual([
+      'CustomField:invoice__c.ownerid',
+      'CustomField:group.name',
+    ]);
+    // Only the last name is a field. On a relationship the other name is not used.
+    expect(to(['Account__r', 'Tier__c'], [{ resolveAs: 'Owner' }, undefined])).toEqual([
+      'CustomField:invoice__c.account__c',
+      'CustomField:account.tier__c',
+    ]);
   });
 
   it('walks nothing for no names', () => {

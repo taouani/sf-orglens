@@ -1,12 +1,12 @@
 /**
  * The analysis of a source: a component for everything it holds, and for objects, fields and validation rules
- * their attributes and the references that are written in XML.
+ * their attributes, the references that are written in XML and those that stand in a formula.
  *
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
  *
  * A component it is handed is never dropped without an issue, and a failure costs the one component it happens
- * in. Decision record 0041 lists what it does not read.
+ * in. Decision records 0041 and 0042 list what it does not read.
  */
 import { hash } from 'node:crypto';
 import type { JsonValue } from '../core/errors.ts';
@@ -229,7 +229,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     try {
       if (type === 'CustomObject') return readObject(element);
       if (type === 'CustomField') return readField(document, element, beforeDot(fullName));
-      return readRule(document, element);
+      return readRule(document, element, beforeDot(fullName));
     } catch (error) {
       failed(key, type, file, error);
       return null;
@@ -383,6 +383,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   });
 
   let analysed = 0;
+  let withFormula = 0;
+  const formulasNotRead = new Set<string>();
   const components = entries.map((entry): AnalysedComponent => {
     const { key, name, definition, readings } = entry;
     const bare: AnalysedComponent = { key, name, definition, attrs: null, references: [] };
@@ -390,6 +392,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     try {
       const found: AnalysisIssue[] = [];
       const references: Reference[] = [];
+      const notRead: string[] = [];
+      let formulas = 0;
       const object = entry.type === 'CustomObject' ? name : beforeDot(name);
       for (const { file, reading } of readings) {
         for (const unread of reading.unread) {
@@ -401,15 +405,44 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
             details: { path: file, line: unread.line, column: unread.column, element: unread.element },
           });
         }
-        const resolved = resolveReferences(model, { key, file, object }, reading.references);
+        const owner = { key, file, object };
+        const resolved = resolveReferences(model, owner, reading.references, 'parser:xml');
         found.push(...resolved.issues);
         references.push(...resolved.references);
+        for (const formula of reading.formulas) {
+          formulas += 1;
+          const { problem, element } = formula;
+          if (problem !== null) {
+            notRead.push(file);
+            found.push({
+              severity: 'warning',
+              code: 'FORMULA_NOT_READ',
+              message: `${file}, line ${String(problem.line)}: the formula in "${element}" was not read as a whole. ${problem.message} The names in it are recorded as probable.`,
+              componentKey: key,
+              details: { path: file, line: problem.line, column: problem.column, element },
+            });
+          }
+          for (const unread of formula.unread) {
+            found.push({
+              severity: 'warning',
+              code: 'NAME_NOT_READ',
+              message: `${file}, line ${String(unread.line)}: the formula in "${unread.element}" holds "${unread.text}", which is not read as a name.`,
+              componentKey: key,
+              details: { path: file, line: unread.line, column: unread.column, element: unread.element },
+            });
+          }
+          const inFormula = resolveReferences(model, owner, formula.references, 'parser:formula');
+          found.push(...inFormula.issues);
+          references.push(...inFormula.references);
+        }
       }
       // Of two files of one object, the first says what both say.
       const attrs: Record<string, JsonValue> = {};
       for (const { reading } of [...readings].reverse()) Object.assign(attrs, reading.attrs);
       issues.push(...found);
       analysed += 1;
+      if (formulas > 0) withFormula += 1;
+      for (const file of notRead) formulasNotRead.add(file);
       return { key, name, definition, attrs, references };
     } catch (error) {
       failed(key, entry.type, readings[0]?.file ?? null, error);
@@ -419,5 +452,13 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   components.sort((a, b) => byCodeUnit(a.key, b.key));
 
   const failedFiles = new Set([...refused, ...unreadable]).size;
-  return { components, work: [{ origin: 'parser:xml', components: analysed, failedFiles }], issues };
+  return {
+    components,
+    work: [
+      { origin: 'parser:xml', components: analysed, failedFiles },
+      // Components with a formula, and files with a formula that was not read as a whole.
+      { origin: 'parser:formula', components: withFormula, failedFiles: formulasNotRead.size },
+    ],
+    issues,
+  };
 }

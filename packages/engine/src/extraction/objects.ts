@@ -8,21 +8,24 @@
  * nothing else, so the file can be let go. Resolving needs the model of all objects, which exists only once
  * every file was read.
  *
- * Formulas are not read here: the formula of a field, a default value and the condition of a rule are text in
- * another language.
+ * The formula of a field, its default value and the condition of a rule are text in another language.
+ * `formula.ts` reads that language, `formula-names.ts` says what a name of it stands for, and this file gives
+ * each name its place in the file.
  */
 import type { JsonValue } from '../core/errors.ts';
-import type { ComponentKey } from '../core/keys.ts';
-import { validateReference, type Reference } from '../core/references.ts';
+import { foldName, type ComponentKey } from '../core/keys.ts';
+import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
-import { GLOBAL_OBJECTS, walkPath, type FieldFacts, type ObjectModel, type Target } from './model.ts';
+import { namesOfTokens, namesOfTree, parseFormula } from './formula.ts';
+import { usesOfName, type NamePart } from './formula-names.ts';
+import { GLOBAL_OBJECTS, walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
 import { childOf, childrenOf, isNil, sourceOf, type XmlDocument, type XmlElement, type XmlText } from './xml.ts';
 
 /**
- * How the source names the target of a reference that is written in XML. It is kept on the reference, so that
- * an answer can say why one component refers to another.
+ * How the source names the target of a reference. It is kept on the reference, so that an answer can say why
+ * one component refers to another.
  */
-type Via = 'lookup' | 'filter' | 'summary' | 'controlling-field' | 'value-set' | 'display-field';
+type Via = 'lookup' | 'filter' | 'summary' | 'controlling-field' | 'value-set' | 'display-field' | 'formula';
 
 /** A name as a file writes it, and where it stands. Lines and columns start at 1. */
 interface NameAt {
@@ -31,25 +34,36 @@ interface NameAt {
   readonly column: number;
 }
 
+/** What every reference says before its names are resolved. */
+interface Raw {
+  readonly via: Via;
+  /** Set for a name that was found among the tokens of a formula that could not be read as a whole. */
+  readonly tier?: 'probable';
+}
+
 /** A reference as a file writes it, before its names are resolved. */
-export type RawReference =
-  /** The name of an object. */
-  | { readonly form: 'object'; readonly at: NameAt; readonly via: Via }
-  /** The name of a field of the object the component belongs to. */
-  | { readonly form: 'field'; readonly at: NameAt; readonly via: Via }
-  /** The name of a component of another type. */
-  | { readonly form: 'component'; readonly type: string; readonly at: NameAt; readonly via: Via }
-  /**
-   * A path of names from an object: relationships, and a field at the end. Every relationship is a read of
-   * the field behind it, and `kind` is what the path says about the field at its end.
-   */
-  | {
-      readonly form: 'path';
-      readonly start: string;
-      readonly names: readonly NameAt[];
-      readonly kind: 'reads' | 'references';
-      readonly via: Via;
-    };
+export type RawReference = Raw &
+  (
+    | /** The name of an object. */ { readonly form: 'object'; readonly at: NameAt }
+    | /** The name of a field of the object the component belongs to. */ { readonly form: 'field'; readonly at: NameAt }
+      /**
+       * The name of a component of another type. `fullName` is the name it is looked for under, where that is
+       * more than the name at the place: the record of a custom metadata type is named with its type.
+       */
+    | { readonly form: 'component'; readonly type: string; readonly at: NameAt; readonly fullName?: string }
+    /**
+     * A path of names from an object: relationships, and a field at the end. Every relationship is a read of
+     * the field behind it, and `kind` is what the path says about the field at its end. `value` is the value
+     * of a picklist that a formula compares that field with.
+     */
+    | {
+        readonly form: 'path';
+        readonly start: string;
+        readonly names: readonly (NameAt & PathHint)[];
+        readonly kind: 'reads' | 'references';
+        readonly value?: string;
+      }
+  );
 
 /** Something in a file that this reader does not read as a name. */
 interface Unread {
@@ -61,13 +75,27 @@ interface Unread {
   readonly column: number;
 }
 
+/** What one formula says. */
+interface FormulaReading {
+  /** The element that holds the formula. */
+  readonly element: string;
+  readonly references: readonly RawReference[];
+  /** The names of the formula that are not read. */
+  readonly unread: readonly Unread[];
+  /** Why the formula was not read as a whole, and where. `null` if it was. */
+  readonly problem: { readonly message: string; readonly line: number; readonly column: number } | null;
+}
+
 /** What one element of an object, a field or a rule says. */
 export interface ElementReading {
   readonly attrs: Readonly<Record<string, JsonValue>>;
   /** Of a field: what a path through it needs. */
   readonly facts: FieldFacts | null;
+  /** The references that are written as names in elements. */
   readonly references: readonly RawReference[];
   readonly unread: readonly Unread[];
+  /** The formulas of the element. */
+  readonly formulas: readonly FormulaReading[];
 }
 
 /** At most this many characters of a text that is not a name are shown in an issue. */
@@ -102,6 +130,7 @@ const children = (element: XmlElement | null, local: string): XmlElement[] =>
 class Reader {
   readonly references: RawReference[] = [];
   readonly unread: Unread[] = [];
+  readonly formulas: FormulaReading[] = [];
   readonly #document: XmlDocument;
 
   constructor(document: XmlDocument) {
@@ -157,6 +186,71 @@ class Reader {
     }
     this.references.push({ form: 'path', start, names: rest, kind, via });
   }
+
+  /**
+   * A value that is a formula. `own` is the object the formula belongs to. A formula that cannot be read as a
+   * whole still gives the names among its tokens, each marked as less certain.
+   */
+  formula(element: XmlElement | null, own: string): void {
+    const value = valueOf(element);
+    if (element === null || value === null) return;
+    const parsed = parseFormula(value.value);
+    const references: RawReference[] = [];
+    const unread: Unread[] = [];
+    const tier = parsed.tree === null ? { tier: 'probable' as const } : {};
+    const placed = (start: number, part: NamePart): NameAt & PathHint => {
+      const { leadsTo, resolveAs } = part;
+      return {
+        ...this.#at(value, start + part.from, start + part.from + part.name.length),
+        ...(leadsTo === undefined ? {} : { leadsTo }),
+        ...(resolveAs === undefined ? {} : { resolveAs }),
+      };
+    };
+    for (const name of parsed.tree === null ? namesOfTokens(parsed.tokens) : namesOfTree(parsed.tree)) {
+      const uses = usesOfName(name.text, own);
+      if (uses === null) {
+        const { line, column } = this.#at(value, name.start, name.start);
+        unread.push({ element: element.local, text: cut(name.text, LONGEST_TEXT_SHOWN), line, column });
+        continue;
+      }
+      for (const use of uses) {
+        if (use.form === 'object') {
+          references.push({ form: 'object', at: placed(name.start, use.part), via: 'formula', ...tier });
+        } else if (use.form === 'component') {
+          const { type, fullName } = use;
+          references.push({
+            form: 'component',
+            type,
+            fullName,
+            at: placed(name.start, use.part),
+            via: 'formula',
+            ...tier,
+          });
+        } else {
+          references.push({
+            form: 'path',
+            start: use.start,
+            names: use.parts.map((part) => placed(name.start, part)),
+            kind: 'reads',
+            via: 'formula',
+            ...(name.value === undefined ? {} : { value: name.value }),
+            ...tier,
+          });
+        }
+      }
+    }
+    const { problem } = parsed;
+    const stopped = problem === null ? null : this.#at(value, problem.at, problem.at);
+    this.formulas.push({
+      element: element.local,
+      references,
+      unread,
+      problem:
+        problem === null || stopped === null
+          ? null
+          : { message: problem.message, line: stopped.line, column: stopped.column },
+    });
+  }
 }
 
 /** What the element of a field says. `object` is the name of the object the field belongs to. */
@@ -194,6 +288,9 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
     }));
   }
 
+  reader.formula(childOf(element, 'formula'), object);
+  reader.formula(childOf(element, 'defaultValue'), object);
+
   const relationshipName = textOf(childOf(element, 'relationshipName'));
   return {
     attrs: {
@@ -205,12 +302,14 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
     facts: { type, referenceTo },
     references: reader.references,
     unread: reader.unread,
+    formulas: reader.formulas,
   };
 }
 
-/** What the element of a validation rule says. */
-export function readRule(document: XmlDocument, element: XmlElement): ElementReading {
+/** What the element of a validation rule says. `object` is the name of the object the rule belongs to. */
+export function readRule(document: XmlDocument, element: XmlElement, object: string): ElementReading {
   const reader = new Reader(document);
+  reader.formula(childOf(element, 'errorConditionFormula'), object);
   reader.name(childOf(element, 'errorDisplayField'), (at) => ({ form: 'field', at, via: 'display-field' }));
   const active = textOf(childOf(element, 'active'));
   return {
@@ -218,6 +317,7 @@ export function readRule(document: XmlDocument, element: XmlElement): ElementRea
     facts: null,
     references: reader.references,
     unread: reader.unread,
+    formulas: reader.formulas,
   };
 }
 
@@ -229,6 +329,7 @@ export function readObject(element: XmlElement): ElementReading {
     facts: null,
     references: [],
     unread: [],
+    formulas: [],
   };
 }
 
@@ -243,17 +344,31 @@ interface Owner {
 
 /**
  * Resolves the names one element holds against the model. Gives one reference for each name that was reached,
- * and an issue for each path that could not be walked to its end.
+ * and an issue for each path that could not be walked to its end. `origin` is the reader that found the names.
+ *
+ * The field `Id` at the end of a path gives no reference: it cannot be changed or deleted, so nothing depends
+ * on it in a way that matters. The relationships before it are read all the same.
  */
 export function resolveReferences(
   model: ObjectModel,
   owner: Owner,
   raw: readonly RawReference[],
+  origin: ReferenceOrigin,
 ): { references: Reference[]; issues: AnalysisIssue[] } {
   const references: Reference[] = [];
   const issues: AnalysisIssue[] = [];
-  /** `on` is the object a field was looked for on. A field that was not found has no key, so the reference says it. */
-  const add = (at: NameAt, target: Target, kind: 'reads' | 'references', via: Via, on?: string): void => {
+  /**
+   * `more` is what the reference says beyond how the source names its target: for a field that was not found,
+   * and so has no key, the object it was looked for on.
+   */
+  const add = (
+    at: NameAt,
+    target: Target,
+    kind: 'reads' | 'references',
+    one: Raw,
+    more: Readonly<Record<string, string>> = {},
+  ): void => {
+    const { object, ...rest } = more;
     references.push(
       validateReference({
         from: owner.key,
@@ -261,30 +376,36 @@ export function resolveReferences(
         toType: target.toType,
         toNameRaw: at.name,
         kind,
-        origin: 'parser:xml',
-        confidence: 'confirmed',
+        origin,
+        confidence: one.tier ?? 'confirmed',
         resolution: target.resolution,
         location: { file: owner.file, line: at.line, column: at.column },
-        attrs: target.to === null && on !== undefined ? { via, object: on } : { via },
+        attrs: { via: one.via, ...rest, ...(target.to === null && object !== undefined ? { object } : {}) },
       }),
     );
   };
 
   for (const one of raw) {
-    if (one.form === 'object') add(one.at, model.object(one.at.name), 'references', one.via);
+    if (one.form === 'object') add(one.at, model.object(one.at.name), 'references', one);
     else if (one.form === 'field') {
-      add(one.at, model.field(owner.object, one.at.name), 'references', one.via, owner.object);
-    } else if (one.form === 'component') add(one.at, model.component(one.type, one.at.name), 'references', one.via);
-    else {
+      add(one.at, model.field(owner.object, one.at.name), 'references', one, { object: owner.object });
+    } else if (one.form === 'component') {
+      add(one.at, model.component(one.type, one.fullName ?? one.at.name), 'references', one);
+    } else {
       const walk = walkPath(
         model,
         one.start,
         one.names.map((at) => at.name),
+        one.names,
       );
       walk.steps.forEach((target, index) => {
         const at = one.names[index];
-        if (at !== undefined)
-          add(at, target, index === one.names.length - 1 ? one.kind : 'reads', one.via, walk.on[index]);
+        const on = walk.on[index];
+        if (at === undefined || on === undefined) return;
+        const last = index === one.names.length - 1;
+        if (last && foldName(at.name) === 'id') return;
+        const value = last && one.value !== undefined ? { value: one.value } : {};
+        add(at, target, last ? one.kind : 'reads', one, { object: on, ...value });
       });
       const last = one.names[walk.steps.length - 1];
       if (!walk.complete && last !== undefined) {
