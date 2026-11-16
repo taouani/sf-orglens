@@ -287,6 +287,73 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
+  it('knows a component through what it contains, and so the parent of every component it knows', () => {
+    const store = open();
+    // Another snapshot knows an object with a field of which the snapshot under test knows nothing.
+    const other = snapshot(store, 'other');
+    const STRANGER = key('CustomObject', 'Stranger__c');
+    const STRANGE_FIELD = key('CustomField', 'Stranger__c.Field__c');
+    writeAnalysis(store, other, analysisOf([component(STRANGE_FIELD, 'Stranger__c.Field__c', 'strange.xml')]));
+    // The snapshot holds one method. Its class is no component of it, and neither are the field it reads and
+    // the object of that field.
+    const id = snapshot(store);
+    const CLASS = key('ApexClass', 'Billing');
+    const METHOD = buildKey({ type: 'ApexClass', fullName: 'Billing', subs: [{ kind: 'method', name: 'run()' }] });
+    const CLASS_FILE = 'classes/Billing.cls';
+    writeAnalysis(
+      store,
+      id,
+      analysisOf(
+        [
+          component(METHOD, 'run', CLASS_FILE, [
+            reference(METHOD, ACCOUNT_NAME, CLASS_FILE, 12, { origin: 'parser:apex', resolution: 'external' }),
+          ]),
+        ],
+        { work: [{ origin: 'parser:apex', components: 1, failedFiles: 0 }] },
+      ),
+    );
+    const graph = sqlGraph(store, id);
+    const method = graph.find(METHOD);
+    const field = graph.find(ACCOUNT_NAME);
+    // The key of a method says which class contains it.
+    expect(method?.parentId).toBe(graph.find(CLASS)?.id);
+    expect(graph.component(method?.parentId ?? 0)).toEqual({
+      id: method?.parentId,
+      key: CLASS,
+      parentId: null,
+      version: null,
+    });
+    expect(graph.component(field?.parentId ?? 0)).toEqual({
+      id: field?.parentId,
+      key: ACCOUNT,
+      parentId: null,
+      version: null,
+    });
+    expect(keysOf(graph.childrenOf(method?.parentId ?? 0))).toEqual([METHOD]);
+    expect(keysOf(graph.childrenOf(field?.parentId ?? 0))).toEqual([ACCOUNT_NAME]);
+    // What only the other snapshot knows stays unknown here, the object and what it contains.
+    const stranger = sqlGraph(store, other).find(STRANGER);
+    expect(stranger?.version).toBeNull();
+    expect(graph.find(STRANGER)).toBeUndefined();
+    expect(graph.component(stranger?.id ?? 0)).toBeUndefined();
+    expect(graph.childrenOf(stranger?.id ?? 0)).toEqual([]);
+    expect(keysOf(sqlGraph(store, other).childrenOf(stranger?.id ?? 0))).toEqual([STRANGE_FIELD]);
+    store.close();
+  });
+
+  it('keeps the file of a reference, also when it is not the file of its component', () => {
+    const store = open();
+    const id = snapshot(store);
+    const elsewhere = reference(TOTAL, AMOUNT, 'objects/Invoice__c/Invoice__c.object-meta.xml', 40);
+    writeAnalysis(store, id, analysisOf([component(TOTAL, 'Invoice__c.Total__c', TOTAL_FILE, [elsewhere])]));
+    const graph = sqlGraph(store, id);
+    expect(graph.find(TOTAL)?.version?.path).toBe(TOTAL_FILE);
+    expect(graph.referencesFrom(graph.find(TOTAL)?.id ?? 0).map((one) => one.location)).toEqual([
+      { file: OBJECT_FILE, line: 40, column: 5 },
+    ]);
+    store.close();
+  });
+
   it('adds a list and no version for a second snapshot of an unchanged source', () => {
     const store = open();
     const first = snapshot(store);
@@ -309,6 +376,62 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     expect(sqlGraph(store, second).referencesFrom(sqlGraph(store, second).find(TOTAL)?.id ?? 0)).toEqual(
       sqlGraph(store, first).referencesFrom(sqlGraph(store, first).find(TOTAL)?.id ?? 0),
     );
+    store.close();
+  });
+
+  it('takes attributes as the same whatever the order of their keys, at any depth, and a list as it is ordered', () => {
+    const store = open();
+    const field = (attrs: Record<string, JsonValue>): AnalysedComponent[] => [
+      component(AMOUNT, 'Invoice__c.Amount__c', 'amount.xml', [], attrs),
+    ];
+    const write = (attrs: Record<string, JsonValue>): number =>
+      writeAnalysis(store, snapshot(store), analysisOf(field(attrs))).versionsAdded;
+    expect(write({ type: 'Picklist', values: [{ name: 'A', flags: { b: 1, a: 2 } }, { name: 'B' }] })).toBe(1);
+    expect(write({ values: [{ flags: { a: 2, b: 1 }, name: 'A' }, { name: 'B' }], type: 'Picklist' })).toBe(0);
+    expect(write({ type: 'Picklist', values: [{ name: 'B' }, { name: 'A', flags: { b: 1, a: 2 } }] })).toBe(1);
+    // The text in the database has the keys in order, so two versions cannot hold the same text.
+    expect(store.all('SELECT attrs FROM component_version ORDER BY id').map((row) => row['attrs'])).toEqual([
+      '{"type":"Picklist","values":[{"flags":{"a":2,"b":1},"name":"A"},{"name":"B"}]}',
+      '{"type":"Picklist","values":[{"name":"B"},{"flags":{"a":2,"b":1},"name":"A"}]}',
+    ]);
+    store.close();
+  });
+
+  it('reads the hash of a content from the bytes it is given, wherever they lie in memory', () => {
+    const store = open();
+    const memory = new Uint8Array(96);
+    memory.set(sha('one'), 8);
+    memory.set(sha('two'), 48);
+    const field = (contentHash: Uint8Array): AnalysedComponent[] => [
+      { ...component(AMOUNT, 'Invoice__c.Amount__c', 'amount.xml'), definition: { path: 'amount.xml', contentHash } },
+    ];
+    const write = (contentHash: Uint8Array): number =>
+      writeAnalysis(store, snapshot(store), analysisOf(field(contentHash))).versionsAdded;
+    expect(write(sha('one'))).toBe(1);
+    expect(write(memory.subarray(8, 40))).toBe(0);
+    expect(write(memory.subarray(48, 80))).toBe(1);
+    store.close();
+  });
+
+  it('gives two components their own versions, also when everything but the key is the same', () => {
+    const store = open();
+    const id = snapshot(store);
+    const same = (componentKey: ComponentKey): AnalysedComponent => ({
+      ...component(componentKey, 'Same', 'same.xml'),
+      definition: { path: 'same.xml', contentHash: sha('same') },
+    });
+    expect(writeAnalysis(store, id, analysisOf([same(AMOUNT), same(TOTAL)])).versionsAdded).toBe(2);
+    expect(store.get('SELECT count(DISTINCT digest) AS digests, count(*) AS versions FROM component_version')).toEqual({
+      digests: 1,
+      versions: 2,
+    });
+    const graph = sqlGraph(store, id);
+    expect(
+      store.all(
+        'SELECT m.component_id FROM snapshot_component m JOIN component_version v ON v.id = m.version_id WHERE v.component_id <> m.component_id',
+      ),
+    ).toEqual([]);
+    expect(graph.find(AMOUNT)?.version).toEqual(graph.find(TOTAL)?.version);
     store.close();
   });
 
@@ -364,6 +487,55 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       (one: AnalysedComponent): AnalysedComponent => ({
         ...one,
         references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { confidence: 'probable' }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the kind of a reference',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { kind: 'writes' }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the origin of a reference',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { origin: 'dependency-api' }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the resolution of a reference',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { resolution: 'external' }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the target of a reference as it is written',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { toNameRaw: 'AMOUNT__C' }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'an attribute of a reference',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, TOTAL_FILE, 7, { attrs: { op: 'sum' } }), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the file of a reference',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: [reference(TOTAL, AMOUNT, OBJECT_FILE, 7), ...one.references.slice(1)],
+      }),
+    ],
+    [
+      'the type of a target that has no key',
+      (one: AnalysedComponent): AnalysedComponent => ({
+        ...one,
+        references: one.references.map((found) => (found.to === null ? { ...found, toType: 'CustomObject' } : found)),
       }),
     ],
     [
@@ -442,8 +614,17 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       },
     };
     const graph = sqlGraph(listening, id);
+    // Every question of the interface is asked below. A new one has to be added here.
+    expect(Object.keys(graph).sort()).toEqual([
+      'childrenOf',
+      'component',
+      'find',
+      'referencesFrom',
+      'referencesTo',
+      'snapshotId',
+    ]);
     const amount = graph.find(AMOUNT)?.id ?? 0;
-    // A key that only another snapshot would know makes `find` and `component` ask their second question.
+    // A key that only another snapshot would know makes `component` ask all it can ask.
     const stranger = store.run(
       'INSERT INTO component (key) VALUES (?)',
       key('CustomObject', 'Stranger__c'),
@@ -452,15 +633,20 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     graph.childrenOf(graph.find(INVOICE)?.id ?? 0);
     graph.referencesTo(amount);
     graph.referencesFrom(amount);
-    expect(new Set(asked.map(([sql]) => sql)).size).toBe(6);
+    expect(new Set(asked.map(([sql]) => sql)).size).toBe(7);
     for (const [sql, parameters] of asked) {
       const steps = store.all(`EXPLAIN QUERY PLAN ${sql}`, ...parameters).map((row) => String(row['detail']));
-      expect(steps.filter((step) => step.startsWith('SCAN'))).toEqual([]);
+      // No table is walked. The one thing that is, is the list a statement makes for itself of what a
+      // component contains, which it calls `b`.
+      expect(steps.filter((step) => step.startsWith('SCAN') && step !== 'SCAN b')).toEqual([]);
+      // An index that SQLite builds for the time of one statement means that it walks a table to build it.
+      expect(steps.filter((step) => step.includes('AUTOMATIC'))).toEqual([]);
       // The list of a snapshot is entered with a component or a version, never with the snapshot alone.
       for (const step of steps.filter((one) => / USING (COVERING INDEX|INDEX|PRIMARY KEY) /.test(one))) {
         expect(step).not.toMatch(/\((snapshot_id=\?)\)/);
       }
-      expect(steps[0]).toMatch(
+      const first = steps.find((step) => step.startsWith('SEARCH'));
+      expect(first).toMatch(
         /^SEARCH (c|r|m) USING .*\((key|rowid|parent_id|target_id|snapshot_id=\? AND component_id)=\?\)/,
       );
     }
@@ -497,7 +683,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       references: 6,
     });
     expect(readAnalysis(store, first)?.engineVersion).toBe('0.2.0');
-    expect(sqlGraph(store, second).find(ACCOUNT)).toBeUndefined();
+    // The second snapshot holds no Account any more. It still knows it, through the field a formula reads.
+    expect(sqlGraph(store, second).find(ACCOUNT)?.version).toBeNull();
     expect(sqlGraph(store, first).find(ACCOUNT)?.version?.name).toBe('Account');
     expect(
       readOriginCoverage(store, second).map(({ origin, components, failedFiles }) => [origin, components, failedFiles]),
@@ -543,6 +730,134 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       { origin: 'dependency-api', components: 5, failedFiles: 0, references: 1, unresolved: 0 },
     ]);
     expect(readOriginCoverage(store, id + 1)).toEqual([]);
+    store.close();
+  });
+
+  it('counts as not resolved only what is unresolved, not every target without a key', () => {
+    const store = open();
+    const id = snapshot(store);
+    // A target in a managed package that could not be given a key lies outside, and is not a name that was not found.
+    const outside = validateReference({
+      from: TOTAL,
+      to: null,
+      toType: 'ApexClass',
+      toNameRaw: 'pkg.Rates',
+      kind: 'reads',
+      origin: 'parser:formula',
+      confidence: 'probable',
+      resolution: 'external',
+      location: { file: TOTAL_FILE, line: 9, column: 1 },
+    });
+    const withOutside = project().map((one) =>
+      one.key === TOTAL ? { ...one, references: [...one.references, outside] } : one,
+    );
+    writeAnalysis(store, id, analysisOf(withOutside));
+    expect(readOriginCoverage(store, id)[0]).toEqual({
+      origin: 'parser:formula',
+      components: 2,
+      failedFiles: 0,
+      references: 5,
+      unresolved: 1,
+    });
+    const graph = sqlGraph(store, id);
+    expect(
+      graph
+        .referencesFrom(graph.find(TOTAL)?.id ?? 0)
+        .filter((one) => one.to === null)
+        .map(({ toType, toNameRaw, resolution }) => [toType, toNameRaw, resolution]),
+    ).toEqual([
+      ['CustomField', 'Dicsount__c', 'unresolved'],
+      ['ApexClass', 'pkg.Rates', 'external'],
+    ]);
+    store.close();
+  });
+
+  // The digest is what makes a version the same in two snapshots. A change to the text it is taken over
+  // gives every component of every workspace a new version, so the text is written out here once.
+  it('takes the digest of a version over a text of this form', () => {
+    const store = open();
+    const id = snapshot(store);
+    const found = [
+      reference(RULE, AMOUNT, RULE_FILE, 4, { attrs: { b: 2, a: 1 } }),
+      validateReference({
+        from: RULE,
+        to: null,
+        toType: 'CustomField',
+        toNameRaw: 'Dicsount__c',
+        kind: 'reads',
+        origin: 'dependency-api',
+        confidence: 'confirmed',
+        resolution: 'unresolved',
+      }),
+    ];
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([component(RULE, 'Invoice__c.Amount_Positive', RULE_FILE, found, { active: true })]),
+    );
+    const text = [
+      // The number of the form, the name, the file, the hash of the content, the attributes.
+      JSON.stringify([
+        1,
+        'Invoice__c.Amount_Positive',
+        RULE_FILE,
+        Buffer.from(sha(`${RULE_FILE} v1`)).toString('hex'),
+        '{"active":true}',
+      ]),
+      // The references in the order of their places, the one without a place first. Each: the target key,
+      // the type of a target without a key, the name as written, kind, origin, confidence, resolution, file,
+      // line, column, attributes.
+      JSON.stringify([
+        null,
+        'CustomField',
+        'Dicsount__c',
+        'reads',
+        'dependency-api',
+        'confirmed',
+        'unresolved',
+        null,
+        null,
+        null,
+        null,
+      ]),
+      JSON.stringify([
+        AMOUNT,
+        null,
+        // The helper of this file takes the name from the key, which is in lower case.
+        'amount__c',
+        'reads',
+        'parser:formula',
+        'confirmed',
+        'resolved',
+        RULE_FILE,
+        4,
+        5,
+        '{"a":1,"b":2}',
+      ]),
+    ].join('\n');
+    expect(store.get('SELECT digest FROM component_version')?.['digest']).toEqual(
+      new Uint8Array(createHash('sha256').update(text).digest()),
+    );
+    store.close();
+  });
+
+  it('looks for versions that no snapshot holds only when an analysis is replaced', () => {
+    const store = open();
+    const first = snapshot(store);
+    writeAnalysis(store, first, analysisOf(project()));
+    store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', first));
+    // Nothing holds the five versions now. An analysis that replaces none leaves them where they are.
+    const second = snapshot(store);
+    const one = [component(AMOUNT, 'Invoice__c.Amount__c', 'elsewhere.xml')];
+    expect(writeAnalysis(store, second, analysisOf(one)).versionsRemoved).toBe(0);
+    expect(count(store, 'component_version')).toBe(6);
+    // One that replaces another removes all of them, with their references.
+    expect(writeAnalysis(store, second, analysisOf(one)).versionsRemoved).toBe(5);
+    expect(count(store, 'component_version')).toBe(1);
+    expect(count(store, 'reference')).toBe(0);
+    // The keys and the paths stay. Nothing removes them.
+    expect(count(store, 'component')).toBe(6);
+    expect(count(store, 'file_path')).toBe(5);
     store.close();
   });
 
@@ -648,10 +963,62 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       'REFERENCE_INVALID',
     ],
     [
-      'a resolved reference without a target',
+      'a word that every object of JavaScript knows, as a kind',
       () =>
         analysisOf([
-          component(TOTAL, 'x', TOTAL_FILE, [{ ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), to: null, toType: '' }]),
+          component(TOTAL, 'x', TOTAL_FILE, [
+            { ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), kind: 'constructor' as 'reads' },
+          ]),
+        ]),
+      'REFERENCE_INVALID',
+    ],
+    [
+      'a resolved reference without a target',
+      () => analysisOf([component(TOTAL, 'x', TOTAL_FILE, [{ ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), to: null }])]),
+      'STORE_FAILED',
+    ],
+    [
+      'an unresolved reference with a target',
+      () =>
+        analysisOf([
+          component(TOTAL, 'x', TOTAL_FILE, [
+            { ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), resolution: 'unresolved' as const },
+          ]),
+        ]),
+      'STORE_FAILED',
+    ],
+    [
+      'a possible reference without a target',
+      () =>
+        analysisOf([
+          component(TOTAL, 'x', TOTAL_FILE, [
+            {
+              ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7),
+              to: null,
+              confidence: 'possible' as const,
+              resolution: 'dynamic' as const,
+            },
+          ]),
+        ]),
+      'STORE_FAILED',
+    ],
+    [
+      'a dynamic reference that is confirmed',
+      () =>
+        analysisOf([
+          component(TOTAL, 'x', TOTAL_FILE, [
+            { ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), resolution: 'dynamic' as const },
+          ]),
+        ]),
+      'STORE_FAILED',
+    ],
+    [
+      'an empty name for a target without a key',
+      () =>
+        analysisOf([
+          component(TOTAL, 'x', TOTAL_FILE, [
+            { ...reference(TOTAL, AMOUNT, TOTAL_FILE, 7), to: null, toType: '', resolution: 'external' as const },
+          ]),
         ]),
       'STORE_FAILED',
     ],

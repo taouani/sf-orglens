@@ -17,11 +17,11 @@ export interface GraphComponent {
   /** The id of the key in the database. It is the same in every snapshot. */
   readonly id: number;
   readonly key: ComponentKey;
-  /** The component that contains this one, as the key says it. It need not be known to the snapshot. */
+  /** The component that contains this one, as the key says it. The snapshot knows it, as it knows this one. */
   readonly parentId: number | null;
   /**
-   * What the snapshot holds for the component. `null`: the snapshot does not hold it, and a component of the
-   * snapshot refers to it.
+   * What the snapshot holds for the component. `null`: the snapshot does not hold it. A component of the
+   * snapshot refers to it, or to something it contains.
    */
   readonly version: {
     /** The name as the source spells it. */
@@ -42,8 +42,10 @@ export interface GraphReference extends Reference {
 export interface SnapshotGraph {
   readonly snapshotId: number;
   /**
-   * The component with this key: one the snapshot holds, or one that a component of the snapshot refers to.
-   * `undefined` for a key the snapshot does not know.
+   * The component with this key, if the snapshot knows it. It knows a component that it holds, one that a
+   * component of it refers to, and one that contains a component it knows: a repository that reads
+   * `Account.Name` knows the field and, through it, the object. `undefined` for a key the snapshot does not
+   * know, also when another snapshot of the database does.
    */
   find(key: ComponentKey): GraphComponent | undefined;
   /** The same, by id. */
@@ -73,6 +75,20 @@ const COMPONENT = `SELECT c.id AS id, c.key AS key, c.parent_id AS parent_id, m.
 const REFERRING = `SELECT 1 AS found FROM reference r
    CROSS JOIN snapshot_component s ON s.version_id = r.version_id AND s.snapshot_id = ?
   WHERE r.target_id = `;
+
+/**
+ * Finds, among everything a component contains at any depth, one component that the snapshot holds or refers
+ * to. It takes the component, then the snapshot twice.
+ */
+const CONTAINS_KNOWN = `WITH RECURSIVE below (id) AS (
+    SELECT c.id FROM component c WHERE c.parent_id = ?
+    UNION ALL
+    SELECT c.id FROM below b CROSS JOIN component c ON c.parent_id = b.id
+  )
+  SELECT 1 AS found FROM below b
+   WHERE EXISTS (SELECT 1 FROM snapshot_component m WHERE m.snapshot_id = ? AND m.component_id = b.id)
+      OR EXISTS (${REFERRING} b.id)
+   LIMIT 1`;
 
 const REFERENCE_COLUMNS = `m.component_id AS from_id, f.key AS from_key, r.target_id AS to_id, t.key AS to_key,
        r.target_type AS target_type, r.raw_name AS raw_name, r.kind AS kind, r.origin AS origin,
@@ -156,13 +172,18 @@ function referenceOf(row: SqlRow): GraphReference {
   };
 }
 
-/** The components and references of one snapshot, read from the database with one statement per question. */
+/**
+ * The components and references of one snapshot, read from the database. A question takes one statement. For
+ * a component the snapshot does not hold, up to two more find out whether the snapshot knows it.
+ */
 export function sqlGraph(store: Store, snapshotId: number): SnapshotGraph {
-  /** A component the snapshot holds, or one that it refers to. */
+  /** The component of a row, if the snapshot knows it. */
   const known = (row: SqlRow | undefined): GraphComponent | undefined => {
     if (row === undefined) return undefined;
     if (row['version_id'] !== null) return componentOf(row);
-    const referred = store.get(`${REFERRING} ? LIMIT 1`, snapshotId, Number(row['id']));
+    const id = Number(row['id']);
+    const referred =
+      store.get(`${REFERRING} ? LIMIT 1`, snapshotId, id) ?? store.get(CONTAINS_KNOWN, id, snapshotId, snapshotId);
     return referred === undefined ? undefined : componentOf(row);
   };
   return {
@@ -171,13 +192,9 @@ export function sqlGraph(store: Store, snapshotId: number): SnapshotGraph {
     component: (id) => known(store.get(`${COMPONENT} WHERE c.id = ?`, snapshotId, id)),
     childrenOf: (id) =>
       store
-        .all(
-          `${COMPONENT} WHERE c.parent_id = ? AND (m.version_id IS NOT NULL OR EXISTS (${REFERRING} c.id)) ORDER BY c.key`,
-          snapshotId,
-          id,
-          snapshotId,
-        )
-        .map(componentOf),
+        .all(`${COMPONENT} WHERE c.parent_id = ? ORDER BY c.key`, snapshotId, id)
+        .map(known)
+        .filter((child) => child !== undefined),
     referencesTo: (id) => store.all(REFERENCES_TO, snapshotId, id).map(referenceOf),
     referencesFrom: (id) => store.all(REFERENCES_FROM, snapshotId, id).map(referenceOf),
   };

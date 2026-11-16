@@ -10,7 +10,8 @@
  * Unlike bench/bench.mjs it goes through the engine: it opens the database with `openStore`, writes every
  * snapshot with `writeAnalysis` and reads with `sqlGraph`. It measures what a command will see: the size of
  * the database and the time to write one analysis. The time to make the components in memory is given apart,
- * because an analyser makes them, not the store.
+ * because an analyser makes them, not the store. That time holds the SHA-256 of every content and the reading
+ * of every attribute text, which the load time of bench/bench.mjs includes.
  *
  * It builds the database in a temporary folder, prints the measurements as JSON and removes the folder, also
  * when it fails. The next run removes what an interrupted run left more than an hour ago.
@@ -257,6 +258,25 @@ result.references_to_hub = timed(() => graph.referencesTo(graph.find(keys[hub]).
 result.references_to_leaf = timed(() => graph.referencesTo(graph.find(keys[leaf]).id).length);
 result.reach_hub_5_levels = timed(() => reach(keys[hub]), 3);
 result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
+
+// Writing the analysis of the last snapshot again, as a newer engine does for a snapshot it analyses again.
+// It finds every version there already, and then looks through all versions for those nothing holds any more.
+{
+  const { components } = analysed();
+  const started = now();
+  const written = writeAnalysis(store, snapshotId, {
+    engineVersion: 'bench again',
+    analysedAt: new Date().toISOString(),
+    components,
+    work: ORIGIN.map((origin) => ({ origin, components: components.length, failedFiles: 0 })),
+    issues: [],
+  });
+  result.write_again = {
+    write_s: seconds(now() - started),
+    versions_added: written.versionsAdded,
+    versions_removed: written.versionsRemoved,
+  };
+}
 store.close();
 
 const text = JSON.stringify(result, null, 2);

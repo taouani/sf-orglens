@@ -94,10 +94,10 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
     expect(store.get('PRAGMA foreign_keys')).toEqual({ foreign_keys: 1 });
     expect(store.get('PRAGMA synchronous')).toEqual({ synchronous: 1 });
     // In KiB. The 2 MiB of SQLite are too few for the references of a large org (decision record 0040).
-    expect(store.get('PRAGMA cache_size')).toEqual({ cache_size: -64_000 });
+    expect(store.get('PRAGMA cache_size')).toEqual({ cache_size: -65_536 });
     store.close();
     const reader = openStore({ path, driver, readOnly: true });
-    expect(reader.get('PRAGMA cache_size')).toEqual({ cache_size: -64_000 });
+    expect(reader.get('PRAGMA cache_size')).toEqual({ cache_size: -65_536 });
     reader.close();
   });
 

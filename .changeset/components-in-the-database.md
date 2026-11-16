@@ -1,6 +1,6 @@
 ---
-'@sf-orglens/engine': patch
-'sf-orglens': patch
+'@sf-orglens/engine': minor
+'sf-orglens': minor
 ---
 
 The workspace database gets tables for components and references, and is now at schema version 3. A command

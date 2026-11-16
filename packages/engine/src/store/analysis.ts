@@ -119,7 +119,10 @@ export interface AnalysisWritten {
   readonly references: number;
   /** Versions that no snapshot held before. */
   readonly versionsAdded: number;
-  /** Versions of an earlier analysis that no snapshot holds any more. They were removed with their references. */
+  /**
+   * Versions that no snapshot holds any more, removed with their references. They are looked for only when
+   * this analysis replaced another, and then all of them are removed, also those a deleted snapshot left.
+   */
   readonly versionsRemoved: number;
 }
 
@@ -154,7 +157,8 @@ function prepare(component: AnalysedComponent, reference: Reference): Prepared {
   const { location } = reference;
   const text = JSON.stringify([
     reference.to,
-    reference.toType,
+    // With a key, the type is the type of the key, and only the key is stored.
+    reference.to === null ? reference.toType : null,
     reference.toNameRaw,
     reference.kind,
     reference.origin,
@@ -181,12 +185,19 @@ function byPlace(a: Prepared, b: Prepared): number {
   return a.text < b.text ? -1 : a.text > b.text ? 1 : 0;
 }
 
+/**
+ * The number of the form of the text a digest is taken over. A change to what that text holds, or to how it
+ * is written, gives every component a new version in the next snapshot. The number says that this happened.
+ */
+const DIGEST_FORMAT = 1;
+
 const hex = (bytes: Uint8Array): string =>
   Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('hex');
 
 /** The number that stands for a value of the vocabulary. A value outside the vocabulary is refused. */
 function codeOf(family: keyof typeof REFERENCE_CODES, value: string, reference: Reference): number {
-  const code = (REFERENCE_CODES[family] as Readonly<Record<string, number | undefined>>)[value];
+  const codes: Readonly<Record<string, number>> = REFERENCE_CODES[family];
+  const code = Object.hasOwn(codes, value) ? codes[value] : undefined;
   if (code === undefined) {
     throw new EngineError('REFERENCE_INVALID', `"${value}" is not a ${family} of the reference vocabulary.`, {
       details: { from: String(reference.from), to: reference.to === null ? null : String(reference.to) },
@@ -203,8 +214,12 @@ const INSERT_REFERENCE = `INSERT INTO reference
  * Writes the analysis of a snapshot, in one transaction. An analysis the snapshot had before is replaced, and
  * the versions that only it held are removed.
  *
- * The references are trusted to have passed `validateReference`: the store checks only what it needs to write
- * them. The constraints of the tables refuse the rest, and nothing is written then.
+ * The references are trusted to have passed `validateReference`, and the store does not run it again. It
+ * checks that a reference starts from the component it is stored with and that its four values are of the
+ * vocabulary. The tables refuse a place that is no place, a name that is empty, and a resolution or a
+ * confidence that does not fit to having a target key or none. Nothing is written then. What neither checks:
+ * that a parser gave a place with a column, that a path has forward slashes, and that the type of a target
+ * without a key is a type name.
  */
 export function writeAnalysis(store: Store, snapshotId: number, analysis: Analysis): AnalysisWritten {
   return store.write(() => {
@@ -282,6 +297,7 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
       // One line for the component and one for each reference. A line is JSON, so it holds no line break.
       const lines = [
         JSON.stringify([
+          DIGEST_FORMAT,
           component.name,
           component.definition?.path ?? null,
           component.definition === null ? null : hex(component.definition.contentHash),

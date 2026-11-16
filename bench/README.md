@@ -54,7 +54,8 @@ snapshot), `int` (a full copy of every row per snapshot, with integer ids) and `
 
 `store.mjs` writes every snapshot with `writeAnalysis` and measures:
 
-- the time to write a snapshot and the size of the database after each, and the size of each table;
+- the time to write a snapshot and the size of the database after each, the size of each table, and the time to
+  write the analysis of the last snapshot again;
 - the time to find a component, to read the references to a hub field and to an ordinary field, and to walk five
   steps from each, one question at a time through `sqlGraph`.
 

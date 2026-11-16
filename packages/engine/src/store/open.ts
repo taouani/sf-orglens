@@ -37,10 +37,10 @@ const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 /** The smallest SQLite database: one page of the smallest page size. */
 const SMALLEST_DATABASE_BYTES = 512;
 /**
- * The most that a connection keeps of the database in memory, in KiB. SQLite takes the memory only as it reads
- * pages. Its own default is 2 MiB, with which writing the references of a large org is a quarter slower.
+ * The most that a connection keeps of the database in memory: 64 MiB, in KiB. SQLite takes the memory only as
+ * it reads pages. Its own default is 2 MiB, with which writing the references of a large org is slower.
  */
-const PAGE_CACHE_KIB = 64_000;
+const PAGE_CACHE_KIB = 64 * 1024;
 /** How many prepared statements a store keeps. The statements of a bulk write are few and run very often. */
 const STATEMENT_CACHE_SIZE = 64;
 

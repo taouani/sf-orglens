@@ -93,6 +93,13 @@ CREATE TABLE reference (
   attrs       TEXT CHECK (attrs IS NULL OR (json_valid(attrs) AND json_type(attrs) = 'object')),
   PRIMARY KEY (version_id, seq),
   CHECK ((target_id IS NULL) <> (target_type IS NULL)),
+  -- The rules of the vocabulary that tie two columns together. A resolved reference (1) has a target and an
+  -- unresolved one (2) has none. A possible one (confidence 3) has a target. A dynamic one (resolution 4) is
+  -- never confirmed (confidence 1).
+  CHECK (resolution <> 1 OR target_id IS NOT NULL),
+  CHECK (resolution <> 2 OR target_id IS NULL),
+  CHECK (confidence <> 3 OR target_id IS NOT NULL),
+  CHECK (resolution <> 4 OR confidence <> 1),
   CHECK ((path_id IS NULL) = (line IS NULL)),
   CHECK (col IS NULL OR line IS NOT NULL)
 ) STRICT, WITHOUT ROWID;
