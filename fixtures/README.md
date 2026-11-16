@@ -243,7 +243,7 @@ entries that version 1 added.
 `formula-probes.yaml` holds 178 small formulas: one for every operator, every kind of literal, every kind of name
 and every function. A parser of formulas must read each without a problem. Each probe lists by hand the names its
 formula holds, and `packages/engine/test/formula-fixtures.test.ts` compares that list with what a simple scan of
-the text finds.
+the text finds. `extraction-formula.test.ts` reads each probe with the reader of the engine.
 
 - The operators, the literals and the characters of a name are taken from the grammar of the open-source formula
   engine of Salesforce (`github.com/salesforce/formula-engine`, commit `118bbca8`).
@@ -262,8 +262,8 @@ the text finds.
 `expected.yaml`, which says of each whether its formula parses and what is expected of the names in it. Five
 formulas do not parse. Five name something that is not there: a field, a relationship, a field of the parent, a
 label, and two fields of a package. No file has the name of a file of the project, so a test lays the folder over a
-copy of the project. They are written so that Salesforce refuses them, which is not verified: none was sent to
-Salesforce.
+copy of the project (`extraction-analyse-formula.test.ts`). They are written so that Salesforce refuses them, which
+is not verified: none was sent to Salesforce.
 
 ## Public codebases
 

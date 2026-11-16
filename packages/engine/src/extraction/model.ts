@@ -174,7 +174,8 @@ export function buildModel(input: ModelInput): ObjectModel {
   };
 
   const relationship = (objectName: string, name: string): { field: Target; leadsTo: string | null } => {
-    const custom = /__r$/i.test(name);
+    // `Level__pr` is the relationship of the field `Level__pc`, which a person account shows of its contact.
+    const custom = /__p?r$/i.test(name);
     const behind = field(objectName, custom ? `${name.slice(0, -1)}c` : `${name}Id`);
     const facts = behind.to === null ? undefined : fields.get(behind.to);
     const [only, ...others] = facts?.referenceTo ?? [];
@@ -188,6 +189,14 @@ export function buildModel(input: ModelInput): ObjectModel {
   };
 
   return { object, field, component, relationship };
+}
+
+/** What the source says about one name of a path beyond the name. */
+export interface PathHint {
+  /** Of a relationship: the object it leads to, as `Owner:User` says in a formula. It is believed before the model. */
+  readonly leadsTo?: string;
+  /** Of the field at the end: the name it is looked for under, where the source has another name for it. */
+  readonly resolveAs?: string;
 }
 
 /** What walking a path of names gave. */
@@ -205,22 +214,30 @@ interface Walk {
  * `['Account__r', 'Owner', 'Email']` from an invoice gives the lookup field of the invoice, the owner field of
  * the account and the email field of the user.
  *
- * The walk stops after a relationship whose end is not known. The names after it have no step.
+ * The walk stops after a relationship whose end is not known. The names after it have no step. `said` holds, for
+ * the name at the same index, what the source says beyond the name.
  */
-export function walkPath(model: ObjectModel, start: string, names: readonly string[]): Walk {
+export function walkPath(
+  model: ObjectModel,
+  start: string,
+  names: readonly string[],
+  said: readonly (PathHint | undefined)[] = [],
+): Walk {
   const steps: Target[] = [];
   const on: string[] = [];
   let current = start;
   for (const [index, name] of names.entries()) {
     on.push(current);
+    const hint = said[index];
     if (index === names.length - 1) {
-      steps.push(model.field(current, name));
+      steps.push(model.field(current, hint?.resolveAs ?? name));
       break;
     }
     const { field, leadsTo } = model.relationship(current, name);
     steps.push(field);
-    if (leadsTo === null) return { steps, on, complete: false };
-    current = leadsTo;
+    const next = hint?.leadsTo ?? leadsTo;
+    if (next === null) return { steps, on, complete: false };
+    current = next;
   }
   return { steps, on, complete: true };
 }

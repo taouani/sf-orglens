@@ -330,7 +330,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fromOrg.components.map((one) => one.key)).toEqual(fromFolder.components.map((one) => one.key));
       expect(fromOrg.components).toHaveLength(89);
       expect(references(fromOrg)).toEqual(references(fromFolder));
-      expect(references(fromOrg)).toHaveLength(26);
+      expect(references(fromOrg)).toHaveLength(106);
       expect(fromOrg.components.map((one) => one.attrs)).toEqual(
         fromFolder.components.map((one) => (one.definition === null ? {} : one.attrs)),
       );
@@ -348,7 +348,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(undefinedIn(fromFolder)).toEqual(['CustomObject:account', 'CustomObject:user']);
       expect(lookupToAccount(fromOrg)).toEqual(['resolved']);
       expect(lookupToAccount(fromFolder)).toEqual(['external']);
-      expect(fromOrg.work).toEqual([{ origin: 'parser:xml', components: 71, failedFiles: 0 }]);
+      expect(fromOrg.work).toEqual([
+        { origin: 'parser:xml', components: 71, failedFiles: 0 },
+        { origin: 'parser:formula', components: 34, failedFiles: 0 },
+      ]);
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {

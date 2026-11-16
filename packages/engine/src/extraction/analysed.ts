@@ -32,7 +32,8 @@ export interface OriginWork {
   /**
    * Files it tried to read and could not: files that could not be opened, and files its reader refused. A file
    * of a type that the analyser does not read is counted if the analyser opened it, which it does to say what
-   * defines a component.
+   * defines a component. For the origin `parser:formula` it is another count: the files with a formula that
+   * was not read as a whole. The names of such a formula are recorded all the same.
    */
   readonly failedFiles: number;
 }
