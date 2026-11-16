@@ -36,8 +36,9 @@ How a formula is read:
    and commas. A name starts with a letter or `$` and goes on with letters, digits, `_`, `$`, `:`, `.` and `#`.
    A text stands in double or single quotes, and a backslash keeps the character after it. A comment stands
    between `/*` and `*/`, and `\*/` does not end it. Two things are read more widely than the grammar says: a
-   text may run over lines, and white space is everything Unicode calls white space, a no-break space among it.
-   Nothing else can be meant by either, and a formula that Salesforce refuses is not in an org.
+   text may run over lines, and white space is what a regular expression of JavaScript calls white space, a
+   no-break space and a form feed among it. Nothing else can be meant by either, and a formula that Salesforce
+   refuses is not in an org.
 2. **A call is any name before a bracket.** The reader knows no function, no number of arguments and no kind of
    value, so a function that Salesforce adds does not break it. It knows three names, for choice 9.
 3. **Operators bind in this order, the loosest first**: `||`, `&&`, the four signs of equality, the four of
@@ -50,12 +51,12 @@ How a formula is read:
 
 A formula that is not read as a whole:
 
-5. **It is kept, with a warning `FORMULA_NOT_READ`** that gives the first problem and its place in the file.
-   The names among its tokens are recorded as `probable`: every name that no bracket follows and that is not
-   `TRUE`, `FALSE`, `NULL` or `NOT`. A text or a comment that is not closed takes the rest of the formula with
-   it. A character that is no part of a formula is left out, and the tokens after it are read. Without a tree
-   the value of choice 9 is not known. In such a formula the name of a function that stands without its
-   bracket is taken for a field.
+5. **It is kept, with a warning `FORMULA_NOT_READ`** that gives the problem that stands first in the text and
+   its place in the file. The names among its tokens are recorded as `probable`, those after the problem too:
+   every name that no bracket follows and that is not `TRUE`, `FALSE`, `NULL` or `NOT`. A text or a comment
+   that is not closed takes the rest of the formula with it. A character that is no part of a formula is left
+   out, and the tokens after it are read. Without a tree the value of choice 9 is not known. In such a formula
+   the name of a function that stands without its bracket is taken for a field.
 6. **What the origin `parser:formula` counts.** Its components are those with at least one formula. A default
    value is a formula, so the `false` of a checkbox counts, and most components with a formula name nothing.
    Its files that failed are the files with a formula that was not read as a whole.
@@ -75,7 +76,9 @@ What a name stands for:
    not kept. Nothing uses the attribute in this phase.
 10. **`Owner:User` is believed before the model.** The object after the colon is where the relationship leads.
     A queue is a group: `Owner:Queue.QueueName` reads `OwnerId` and the field `Name` of `Group`, and the
-    reference keeps `QueueName` as the name that was written.
+    reference keeps `QueueName` as the name that was written. `QueueName` is the only name of a queue that
+    is known to differ. Any other name behind `Owner:Queue` is taken as a field of `Group` of that name,
+    which is wrong if the formula language has more names of its own for a queue. That is not verified.
 11. **`$User`, `$Profile`, `$UserRole` and `$Organization` are a path from that object. `$RecordType` is taken
     as a path from the object `RecordType`**, and `$Source` as one from the object of the formula, though only
     a lookup filter has that variable.
@@ -87,8 +90,11 @@ What a name stands for:
     of the field of the type.** `$Label.X` and `$Permission.X` are a `references` to the label and to the
     permission. One that no file defines is `unresolved` without a key, or `external` when its name has the
     prefix of a package. A record of a type of a package that the project should hold and does not is called
-    `external` by that rule, where `unresolved` would be right.
-14. **`$Api` and `$System` give no reference and no issue.** They name nothing that can change.
+    `external` by that rule, where `unresolved` would be right. A type that is written without `__mdt` is
+    not guessed at: the name is not read, as in choice 15.
+14. **`$Api` and `$System` give no reference and no issue.** They name nothing that can change. The same
+    holds for `$User.UITheme` and `$User.UIThemeDisplayed`, which say which interface the user sees and are
+    no field of the user. Any other name behind `$User` is taken as a field, as a standard name is anywhere.
 15. **A name behind any other variable, or one that is not built like a name, is not read.** A warning
     `NAME_NOT_READ` gives its place and its first 60 characters, and the rest of the formula is read. `$Action`,
     `$SControl` and `$Resource` are of this kind: they belong to buttons and pages, whose formulas this phase
@@ -129,20 +135,29 @@ what the source says beyond the name: the object a relationship leads to, and th
   value can use it later, and has to know that it holds only what choice 9 lists.
 - A name that is `unresolved` in a formula gives a reference without a key and no issue, like one written in
   XML. Work package 6 decides how coverage shows them.
+- An issue about a path that was not followed shows at most 60 characters of the relationship and 200 of what
+  stands after it, and keeps the first twenty names. A formula can hold a path of any length, and one written
+  in XML could before.
+- A simple scan is the second opinion on the names of the public formulas. It shares with the reader which
+  characters a name is made of and how a comment ends, so it checks what the reader does with tokens and not
+  what a token is.
 - Not read: named arguments in square brackets, which old buttons use. The square bracket is no part of a
   formula for this reader, so such a formula gives a warning and `probable` names.
 - Not read in this phase: every formula outside a field and a validation rule, such as those of flows,
   workflow rules, approval processes, buttons and reports.
-- Not verified: the order of the operators, a text over lines, and whether Salesforce accepts each of the
-  probes. The formulas of the fixture project are the exception: Salesforce accepted them when the project
-  was deployed to the test org in work package 1. Nothing was deployed for this record, and nothing was run
-  against a real org. The third pass mark of the plan, that no pair the Dependency API reports for a formula
-  field or a rule is missing, is measured on the test org in work package 8. By the record of the run of work
-  package 1, two rows of the API from a validation rule go to an object, which choice 12 and choice 13 do not
-  make a reference of: the object in `$ObjectType` inside `VLOOKUP`, and the custom metadata type behind
-  `$CustomMetadata`. The plan keeps that question for work package 8.
+- Not verified: the order of the operators, a text over lines, whether a number may have an exponent, which
+  this reader refuses, the names of a queue, and whether Salesforce accepts each of the probes. The formulas of
+  the fixture project are the exception: Salesforce accepted them when the project was deployed to the test org
+  in work package 1. Nothing was deployed for this record, and nothing was run against a real org. The third
+  pass mark of the plan, that no pair the Dependency API reports for a formula field or a rule is missing, is
+  measured on the test org in work package 8. By the record of the run of work package 1, two rows of the API
+  from a validation rule go to an object, which choice 12 and choice 13 do not make a reference of: the object
+  in `$ObjectType` inside `VLOOKUP`, and the custom metadata type behind `$CustomMetadata`. The plan keeps that
+  question for work package 8.
 - Fifty-eight faults were planted in the code of this work package, one at a time. The tests noticed 56 at
   once and the other two after two expectations were added. A 59th showed a line that did nothing, which was
-  removed.
+  removed. The review of the pull request found what this did not: a name `constructor` behind `Owner:Queue`
+  cost its field the whole analysis, and a formula with more than about 125,000 names did the same. Both are
+  corrected, and random formulas now go through the whole analysis in a test.
 - No command runs the analysis yet. Work package 6 adds `FORMULA_NOT_READ` to `docs/cli.md` with the codes of
   record 0041, and decides whether it makes a snapshot incomplete.

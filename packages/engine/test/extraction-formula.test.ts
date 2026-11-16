@@ -254,6 +254,25 @@ describe('a formula that is not read', () => {
     expect(problemOf(' /* only a comment */ ')).toBe('0: The formula holds no value.');
   });
 
+  it('tells the problem that stands first in the text, of the tokens or of the tree', () => {
+    // The second name is wrong before the character is.
+    expect(problemOf('a b #')).toBe('2: "b" stands where an operator or the end of the formula is expected.');
+    expect(problemOf('a b "x')).toBe('2: "b" stands where an operator or the end of the formula is expected.');
+    expect(problemOf('a + * b /* c')).toBe('4: "*" stands where a value is expected.');
+    // The character is wrong before the second name is.
+    expect(problemOf('a # b c')).toBe('2: The character "#" is not part of a formula.');
+    expect(problemOf('a "x b')).toBe('2: A text is not closed.');
+    // Without the character the tokens are a formula. It is not read as one.
+    const parsed = parseFormula('a @ + b');
+    expect(parsed.tree).toBeNull();
+    expect(parsed.problem).toEqual({ message: 'The character "@" is not part of a formula.', at: 2 });
+    // The tokens after the place of the problem are given, and their names with them.
+    expect(namesOfTokens(parseFormula('5.Amount__c + Tax_Rate__c').tokens).map((name) => name.text)).toEqual([
+      'Amount__c',
+      'Tax_Rate__c',
+    ]);
+  });
+
   it('says where a text or a comment starts that is not closed, and keeps the tokens before it', () => {
     const text = parseFormula('a & "no end');
     expect(text.problem).toEqual({ message: 'A text is not closed.', at: 4 });
@@ -422,6 +441,42 @@ describe('what a name of a formula stands for', () => {
     expect(uses('Owner:User.QueueName')).toEqual(['path from Invoice__c: Owner@0>User QueueName@11']);
   });
 
+  it('takes a name that every object of JavaScript has as a name like any other', () => {
+    expect(uses('Owner:Queue.Constructor')).toEqual(['path from Invoice__c: Owner@0>Group Constructor@12']);
+    expect(uses('Owner:constructor.Name')).toEqual(['path from Invoice__c: Owner@0>constructor Name@18']);
+    expect(uses('Owner:toString.valueOf')).toEqual(['path from Invoice__c: Owner@0>toString valueOf@15']);
+    expect(uses('constructor.hasOwnProperty')).toEqual(['path from Invoice__c: constructor@0 hasOwnProperty@12']);
+    expect(uses('$constructor.Name')).toBeNull();
+  });
+
+  it('gives parts that are texts and stand where they say, whatever the name holds', () => {
+    const pieces = fc.constantFrom(
+      ...['Owner', 'Queue', 'User', 'QueueName', 'Name', 'A__c', 'B__r', 'X__mdt', 'Fields', 'Std', '1', ''],
+      ...['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'prototype'],
+      ...['$User', '$Label', '$Setup', '$CustomMetadata', '$ObjectType', '$Permission', '$RecordType', '$Api'],
+    );
+    const separators = fc.constantFrom('.', '.', '.', ':', '$', '#');
+    fc.assert(
+      fc.property(fc.array(fc.tuple(pieces, separators), { minLength: 1, maxLength: 7 }), (parts) => {
+        const name = parts
+          .map(([piece, separator]) => piece + separator)
+          .join('')
+          .slice(0, -1);
+        for (const one of usesOfName(name, 'Invoice__c') ?? []) {
+          for (const found of one.form === 'path' ? one.parts : [one.part]) {
+            expect(name.startsWith(found.name, found.from)).toBe(true);
+            expect(found.name).not.toBe('');
+            expect(typeof (found.leadsTo ?? '')).toBe('string');
+            expect(typeof (found.resolveAs ?? '')).toBe('string');
+          }
+          if (one.form === 'path') expect(typeof one.start).toBe('string');
+          if (one.form === 'component') expect(typeof one.fullName).toBe('string');
+        }
+      }),
+      { seed: 20261116, numRuns: 3000 },
+    );
+  });
+
   it('is a path from the object behind a global variable', () => {
     expect(uses('$User.Department')).toEqual(['path from User: Department@6']);
     expect(uses('$user.Manager.Email')).toEqual(['path from User: Manager@6 Email@14']);
@@ -471,6 +526,15 @@ describe('what a name of a formula stands for', () => {
     expect(uses('$api')).toEqual([]);
   });
 
+  it('is no field of the user where $User says which interface the user sees', () => {
+    expect(uses('$User.UITheme')).toEqual([]);
+    expect(uses('$user.uithemedisplayed')).toEqual([]);
+    // Only directly behind the variable, and only behind this one.
+    expect(uses('$User.Manager.UITheme')).toEqual(['path from User: Manager@6 UITheme@14']);
+    expect(uses('$Profile.UITheme')).toEqual(['path from Profile: UITheme@9']);
+    expect(uses('Owner:User.UITheme')).toEqual(['path from Invoice__c: Owner@0>User UITheme@11']);
+  });
+
   it('is not read when it is built in another way, or stands behind a variable that is not known', () => {
     for (const name of [
       // Variables of buttons, pages and reports.
@@ -487,6 +551,9 @@ describe('what a name of a formula stands for', () => {
       '$Setup.Billing_Settings__c',
       '$CustomMetadata.Billing_Rule__mdt.Default',
       '$CustomMetadata.Billing_Rule__mdt',
+      // A custom metadata type without its ending is not guessed at.
+      '$CustomMetadata.Billing_Rule.Default.Max_Amount__c',
+      '$CustomMetadata.Billing_Rule__c.Default.Max_Amount__c',
       '$ObjectType',
       '$ObjectType.Account.Name',
       '$ObjectType.Account.Fields',

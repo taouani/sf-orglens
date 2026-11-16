@@ -1,6 +1,8 @@
 /**
  * A second opinion on the names of a formula. It is written without the reader of the engine, so that the two
- * can be held against each other.
+ * can be held against each other. It shares two things with the reader: which characters a name is made of, and
+ * that a backslash before the end of a comment keeps the comment open. So it checks what the reader does with
+ * tokens, not what a token is.
  */
 
 /** The words of the formula language that are no names. */

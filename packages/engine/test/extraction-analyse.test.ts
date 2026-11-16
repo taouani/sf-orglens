@@ -25,6 +25,9 @@ import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 import { codes, HEAD, key, Source, told, valueOf, viaOf, xml, XMLNS } from './helpers/written-source.ts';
 
+/** The work of the reader of formulas on a source that holds no formula it could look at. */
+const NO_FORMULA = { origin: 'parser:formula', components: 0, failedFiles: 0 };
+
 const hex = (bytes: Uint8Array | undefined): string => Buffer.from(bytes ?? []).toString('hex');
 const sha = (content: Uint8Array | string): string => createHash('sha256').update(content).digest('hex');
 
@@ -698,7 +701,7 @@ describe('fields and rules inside the file of their object', () => {
       sha(lines.join('\n')),
       sha(lines.slice(10, 15).join('\n').trim()),
     ]);
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }, NO_FORMULA]);
 
     // The element without a name is not dropped in silence.
     expect(analysis.issues).toEqual([
@@ -741,7 +744,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(analysis.issues).toEqual([]);
     // No file of an analysed type was read.
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }, NO_FORMULA]);
   });
 
   it('is defined by the whole file when its element is not found, and an issue says so', () => {
@@ -771,7 +774,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(codes(analysis.issues)).toEqual(['error XML_MALFORMED']);
     expect(analysis.issues[0]?.details).toMatchObject({ path: file });
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA]);
   });
 
   it('is defined by the first element of its name when the file holds two', () => {
@@ -800,7 +803,7 @@ describe('a component that is an element of the file of its parent', () => {
     expect(
       analysis.components.map((one) => `${String(one.definition?.path)} ${hex(one.definition?.contentHash)}`),
     ).toEqual([`${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`]);
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA]);
   });
 
   it('finds a part whose full name starts with the name of its parent', () => {
@@ -931,7 +934,7 @@ describe('what goes wrong in one component', () => {
       details: { path: file, line: 4, column: 15 },
     });
     expect(analysis.issues[0]?.message.startsWith(`${file}: `)).toBe(true);
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }, NO_FORMULA]);
   });
 
   it('reports bytes that are no text without a place', () => {
@@ -966,7 +969,7 @@ describe('what goes wrong in one component', () => {
     ]);
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Rule__c')).toMatchObject({ attrs: null, references: [] });
     // The file was read as XML: it did not fail.
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
   });
 
   it('keeps a component whose file cannot be read, and says so once', () => {
@@ -1007,7 +1010,7 @@ describe('what goes wrong in one component', () => {
     );
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // Both files count as files that could not be read, also the one of a type that is not analysed.
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }, NO_FORMULA]);
   });
 
   it('reports two names that fold to one key, keeps the first by name and merges nothing', () => {
@@ -1086,7 +1089,7 @@ describe('what goes wrong in one component', () => {
       references: [],
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
   });
 
   it('survives a path that a reference cannot hold: the component is defined and not analysed', () => {
@@ -1113,7 +1116,7 @@ describe('what goes wrong in one component', () => {
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // The component that failed is not counted as looked at.
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
   });
 
   it('cuts a text it shows between two characters, never inside one', () => {
@@ -1287,7 +1290,7 @@ describe('an object that lies in two package folders', () => {
       attrs: { type: 'Number' },
     });
     expect(analysis.issues).toEqual([]);
-    expect(analysis.work.slice(0, 1)).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
   });
 
   it('gets the same name for an object without a file however its parts are listed', () => {

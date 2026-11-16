@@ -98,8 +98,11 @@ export interface ElementReading {
   readonly formulas: readonly FormulaReading[];
 }
 
-/** At most this many characters of a text that is not a name are shown in an issue. */
+/** At most this many characters of a text that is not a name, or of one name, are shown in an issue. */
 const LONGEST_TEXT_SHOWN = 60;
+/** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
+const LONGEST_PATH_SHOWN = 200;
+const MOST_NAMES_SHOWN = 20;
 /** A name of an object, a field or a relationship, or a global variable. */
 const NAME = /^\$?[A-Za-z][A-Za-z0-9_]*$/;
 const XML_SPACE = /^[ \t\r\n]+|[ \t\r\n]+$/g;
@@ -239,17 +242,12 @@ class Reader {
         }
       }
     }
-    const { problem } = parsed;
-    const stopped = problem === null ? null : this.#at(value, problem.at, problem.at);
-    this.formulas.push({
-      element: element.local,
-      references,
-      unread,
-      problem:
-        problem === null || stopped === null
-          ? null
-          : { message: problem.message, line: stopped.line, column: stopped.column },
-    });
+    let problem: FormulaReading['problem'] = null;
+    if (parsed.problem !== null) {
+      const { line, column } = this.#at(value, parsed.problem.at, parsed.problem.at);
+      problem = { message: parsed.problem.message, line, column };
+    }
+    this.formulas.push({ element: element.local, references, unread, problem });
   }
 }
 
@@ -409,11 +407,12 @@ export function resolveReferences(
       });
       const last = one.names[walk.steps.length - 1];
       if (!walk.complete && last !== undefined) {
-        const rest = one.names.slice(walk.steps.length).map((at) => at.name);
+        // A formula can hold a path of any length. The issue shows the start of what was not followed.
+        const rest = one.names.slice(walk.steps.length, walk.steps.length + MOST_NAMES_SHOWN).map((at) => at.name);
         issues.push({
           severity: 'warning',
           code: 'PATH_NOT_FOLLOWED',
-          message: `${owner.file}, line ${String(last.line)}: it is not known which object "${last.name}" leads to, so "${rest.join('.')}" after it was not followed.`,
+          message: `${owner.file}, line ${String(last.line)}: it is not known which object "${cut(last.name, LONGEST_TEXT_SHOWN)}" leads to, so "${cut(rest.join('.'), LONGEST_PATH_SHOWN)}" after it was not followed.`,
           componentKey: owner.key,
           details: {
             path: owner.file,

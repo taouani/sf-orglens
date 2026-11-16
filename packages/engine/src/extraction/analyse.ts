@@ -407,8 +407,9 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
         }
         const owner = { key, file, object };
         const resolved = resolveReferences(model, owner, reading.references, 'parser:xml');
-        found.push(...resolved.issues);
-        references.push(...resolved.references);
+        // One at a time: a formula can hold more names than a call takes arguments.
+        for (const issue of resolved.issues) found.push(issue);
+        for (const reference of resolved.references) references.push(reference);
         for (const formula of reading.formulas) {
           formulas += 1;
           const { problem, element } = formula;
@@ -432,14 +433,14 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
             });
           }
           const inFormula = resolveReferences(model, owner, formula.references, 'parser:formula');
-          found.push(...inFormula.issues);
-          references.push(...inFormula.references);
+          for (const issue of inFormula.issues) found.push(issue);
+          for (const reference of inFormula.references) references.push(reference);
         }
       }
       // Of two files of one object, the first says what both say.
       const attrs: Record<string, JsonValue> = {};
       for (const { reading } of [...readings].reverse()) Object.assign(attrs, reading.attrs);
-      issues.push(...found);
+      for (const issue of found) issues.push(issue);
       analysed += 1;
       if (formulas > 0) withFormula += 1;
       for (const file of notRead) formulasNotRead.add(file);

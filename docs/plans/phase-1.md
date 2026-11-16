@@ -600,6 +600,17 @@ runs the analysis yet: WP6 writes it into a snapshot.
 - **The check of my work.** 58 faults were planted in the new code, one at a time. The tests noticed 56 at
   once and the other two after two expectations were added. A 59th showed a line that did nothing, which was
   removed.
+- **The review of the pull request found no wrong reference and twelve points, all taken up or answered.** Two
+  cost a component its analysis and are corrected: a name `constructor` behind `Owner:Queue`, and a formula
+  with more than about 125,000 names. Neither can come from an org. The problem that an issue tells is now the
+  one that stands first in the text. `$User.UITheme` and `$User.UIThemeDisplayed`, which validation rules use,
+  gave a reference to a field the user does not have and give none now. A custom metadata type written
+  without `__mdt` was guessed at and is not read now. An issue about a path has a bounded length. The comment
+  on the count of files that failed says what it means for formulas.
+- **For WP8.** Whether the formula language has more names of its own for a queue than `QueueName` is not
+  verified. `Owner:Queue.Email` is taken as the field `Email` of `Group`. The test org can say.
+- **For Phase 2.** The loop that turns the names of a formula into references with places is inside
+  `extraction/objects.ts`. The formulas of flows and workflow rules need it, so it moves out then.
 - **For WP6.** One more issue code, `FORMULA_NOT_READ`, goes into `docs/cli.md` with the eleven of record 0041,
   and WP6 decides whether it makes a snapshot incomplete. The work of the origin `parser:formula` says how
   many components hold a formula and how many files hold one that was not read as a whole. "Names not

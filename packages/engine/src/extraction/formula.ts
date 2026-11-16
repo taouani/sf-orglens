@@ -6,7 +6,8 @@
  * a bracket, so that a function Salesforce adds later does not break it. It does not know the functions, their
  * arguments or the kinds of their values: it reads a formula for the names in it.
  *
- * A formula it cannot read is not dropped. It says where it stopped, and gives the tokens it read up to there.
+ * A formula it cannot read is not dropped. It says where it stopped, and gives the tokens it read, those after
+ * that place too.
  */
 
 import { cut } from './analysed.ts';
@@ -54,7 +55,7 @@ export interface ParsedFormula {
    * character that is no part of a formula is left out, and the tokens after it are read.
    */
   readonly tokens: readonly FormulaToken[];
-  /** The first problem. */
+  /** The problem that stands first in the text, whether it is one of the tokens or one of the tree. */
   readonly problem: FormulaProblem | null;
 }
 
@@ -62,8 +63,9 @@ export interface ParsedFormula {
 const NAME = /[A-Za-z$][A-Za-z0-9_$:.#]*/y;
 const NUMBER = /[0-9]+(?:\.[0-9]*)?|\.[0-9]+/y;
 /**
- * White space, as Unicode knows it. The engine knows less: a formula with a no-break space between two names
- * may be one that Salesforce refuses. It is read here, because nothing else can be meant by it.
+ * White space, as a regular expression of JavaScript knows it: a no-break space and a form feed are among it.
+ * The engine knows less: a formula with a no-break space between two names may be one that Salesforce refuses.
+ * It is read here, because nothing else can be meant by it.
  */
 const SPACE = /\s+/y;
 /** The longer marks first. */
@@ -207,8 +209,7 @@ function tokensOf(text: string): { tokens: FormulaToken[]; problem: FormulaProbl
 
 /** Reads a formula. It never throws for what the text holds. */
 export function parseFormula(text: string): ParsedFormula {
-  const { tokens, problem } = tokensOf(text);
-  if (problem !== null) return { tree: null, tokens, problem };
+  const { tokens, problem: inTokens } = tokensOf(text);
 
   let next = 0;
   let depth = 0;
@@ -315,10 +316,12 @@ export function parseFormula(text: string): ParsedFormula {
     if (tokens.length === 0) throw new Stop('The formula holds no value.', 0);
     const tree = expression(0);
     if (peek() !== undefined) stop('an operator or the end of the formula');
-    return { tree, tokens, problem: null };
+    // The tokens of a text with a problem in them can make a tree all the same. It is not given.
+    return inTokens === null ? { tree, tokens, problem: null } : { tree: null, tokens, problem: inTokens };
   } catch (thrown) {
     if (!(thrown instanceof Stop)) throw thrown;
-    return { tree: null, tokens, problem: { message: thrown.message, at: thrown.at } };
+    const inTree = { message: thrown.message, at: thrown.at };
+    return { tree: null, tokens, problem: inTokens !== null && inTokens.at <= inTree.at ? inTokens : inTree };
   }
 }
 

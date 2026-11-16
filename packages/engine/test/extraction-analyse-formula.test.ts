@@ -9,6 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import fc from 'fast-check';
 import { parse } from 'yaml';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Reference } from '../src/core/references.ts';
@@ -558,6 +559,96 @@ describe('a formula that is not read as a whole', () => {
         // Four spaces before the line, two in it, and the digit: the end tag starts at column 8.
         details: { path: file, line: 5, column: 8, element: 'formula' },
       },
+    ]);
+  });
+});
+
+describe('a formula that a stranger wrote', () => {
+  it('costs nothing but itself when it holds a name that every object of JavaScript has', () => {
+    const source = billing();
+    source.field(
+      'Invoice__c',
+      'Probe__c',
+      '<defaultValue>Owner:Queue.Constructor &amp; Owner:constructor.Name &amp; constructor.toString</defaultValue>',
+      '<referenceTo>Account</referenceTo>',
+      '<type>Lookup</type>',
+    );
+    const analysis = source.analyse();
+    expect(
+      referencesOf(analysis).map((one) => `${one.kind} ${String(one.to)} [${one.toNameRaw}] ${viaOf(one)}`),
+    ).toEqual([
+      'references CustomObject:account [Account] lookup',
+      'reads CustomField:invoice__c.ownerid [Owner] formula',
+      'reads CustomField:group.constructor [Constructor] formula',
+      'reads CustomField:invoice__c.ownerid [Owner] formula',
+      'reads CustomField:constructor.name [Name] formula',
+      'reads CustomField:invoice__c.constructorid [constructor] formula',
+    ]);
+    // Nothing fails. Where a relationship that is named `constructor` leads is not known, as for any such name.
+    expect(codes(analysis.issues)).toEqual(['warning PATH_NOT_FOLLOWED']);
+    expect(analysis.components.find((one) => one.key === probe)?.attrs).toMatchObject({ type: 'Lookup' });
+  });
+
+  it('is read when it names a field more often than a call of JavaScript takes arguments', () => {
+    const names = 150_000;
+    const { analysis } = withFormula(`${'Amount__c+'.repeat(names)}1`);
+    expect(analysis.issues).toEqual([]);
+    expect(referencesOf(analysis)).toHaveLength(names);
+  }, 60_000);
+
+  it('gets an issue of a bounded length for a path of any length that is not followed', () => {
+    const { analysis, file } = withFormula(`Gone__r${'.Parent'.repeat(5000)}.Name`);
+    const twenty = Array.from({ length: 20 }, () => 'Parent');
+    expect(analysis.issues).toHaveLength(1);
+    // The first twenty names that were not followed are kept and shown.
+    expect(analysis.issues[0]?.message).toBe(
+      `${file}, line 4: it is not known which object "Gone__r" leads to, so "${twenty.join('.')}" after it was not followed.`,
+    );
+    expect(analysis.issues[0]?.details).toMatchObject({ relationship: 'Gone__r', notFollowed: twenty });
+
+    // Of long names, 60 characters of the relationship and 200 of what stands after it are shown.
+    const relationship = `${'G'.repeat(100)}__r`;
+    const long = withFormula(`${relationship}${`.${'P'.repeat(50)}`.repeat(30)}`);
+    expect(long.analysis.issues.map((issue) => issue.message)).toEqual([
+      `${long.file}, line 4: it is not known which object "${'G'.repeat(60)}" leads to, so "${`${'P'.repeat(50)}.`.repeat(4).slice(0, 200)}" after it was not followed.`,
+    ]);
+    expect(long.analysis.issues[0]?.details).toMatchObject({ relationship });
+  });
+
+  it('never costs its component the analysis, whatever it holds', () => {
+    const pieces = fc.constantFrom(
+      ...['Amount__c', 'Account__r.Tier__c', 'Owner:Queue.QueueName', 'Owner:User.', 'constructor', '$User.Id'],
+      ...['$Label.Gone', '$CustomMetadata.Rule__mdt.Std.Limit__c', '$ObjectType.Account', '$Setup.', '$Action.X'],
+      ...['IF', 'ISPICKVAL', 'PRIORVALUE', 'NOT', 'TRUE', '1', '.5', '"t"', "'t'", '"', '/*', '*/', '\\'],
+      ...['(', ')', ',', '+', '*', '=', '&amp;&amp;', '&amp;', '&lt;', '&gt;', '!', ' ', '\n', '.', ':', '#', '@', '['],
+    );
+    fc.assert(
+      fc.property(fc.array(pieces, { maxLength: 25 }), (parts) => {
+        const source = billing();
+        source.field('Invoice__c', 'Probe__c', `<formula>${parts.join('')}</formula>`, '<type>Text</type>');
+        source.rule('Invoice__c', 'Rule', `<errorConditionFormula>${parts.join('')}</errorConditionFormula>`);
+        const analysis = source.analyse();
+        const allowed = ['warning FORMULA_NOT_READ', 'warning NAME_NOT_READ', 'warning PATH_NOT_FOLLOWED'];
+        expect(codes(analysis.issues).filter((code) => !allowed.includes(code))).toEqual([]);
+        // The field keeps its analysis: its type is known.
+        expect(analysis.components.find((one) => one.key === probe)?.attrs).toMatchObject({ type: 'Text' });
+        for (const one of referencesOf(analysis)) expect(one.origin).toBe('parser:formula');
+      }),
+      { seed: 20261116, numRuns: 500 },
+    );
+  });
+
+  it('is not counted when its file could not be read, or was refused', () => {
+    const source = billing();
+    source.fieldFile('Invoice__c', 'Refused__c', '<CustomField><formula>Amount__c</formula>');
+    source.broken.add(source.field('Invoice__c', 'Unreadable__c', '<formula>Amount__c</formula>'));
+    source.field('Invoice__c', 'Read__c', '<formula>Amount__c</formula>');
+    const analysis = source.analyse();
+    expect(codes(analysis.issues).sort()).toEqual(['error FILE_UNREADABLE', 'error XML_MALFORMED']);
+    // Two objects and six fields were read, and one of them holds a formula.
+    expect(analysis.work).toEqual([
+      { origin: 'parser:xml', components: 8, failedFiles: 2 },
+      { origin: 'parser:formula', components: 1, failedFiles: 0 },
     ]);
   });
 });

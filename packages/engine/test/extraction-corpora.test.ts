@@ -151,6 +151,8 @@ describe('the analysis of the public codebases', () => {
           }
         }
         expect(differ).toEqual([]);
+        // Texts are counted here and components above. The numbers are the same in these three codebases,
+        // because no field of them has a formula and a default value.
         expect(formulas).toBe(EXPECTED[name]?.withFormula);
       },
       300_000,
