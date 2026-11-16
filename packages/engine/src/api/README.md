@@ -11,6 +11,7 @@ May import from: every other layer.
 | `doctor.ts`       | `doctor`: the checks of the environment, the workspace, the configuration, the database and logins   |
 | `snapshot.ts`     | Taking a snapshot of a Git source, and the report of a snapshot                                      |
 | `org-snapshot.ts` | Taking a snapshot of an org or a sandbox: inventory, retrieve in chunks, resume                      |
+| `analysis.ts`     | Analysing a stored snapshot from the files it holds, and the report of its analysis                  |
 | `check.ts`        | Checking a source: can it be logged in to, or read, as things are now?                               |
 | `layout.ts`       | Where a workspace keeps its files, and how the workspace of a folder is found                        |
 | `atomic-write.ts` | Replacing a configuration file in one step, and further tries where Windows says that a file is busy |

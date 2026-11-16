@@ -31,6 +31,7 @@ export type {
 export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
 
 export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
+export type { AnalysisReport, OriginReport } from './analysis.ts';
 export type { SnapshotProgress } from './org-snapshot.ts';
 export type { GitCheck, OrgCheck, SourceCheck } from './check.ts';
 

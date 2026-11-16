@@ -21,6 +21,7 @@
         "source check",
         "status",
         "snapshot",
+        "analyse",
         "coverage",
         "doctor",
         null
@@ -126,6 +127,15 @@
       "properties": {
         "ok": { "const": true },
         "command": { "const": "snapshot" },
+        "data": { "$ref": "#/$defs/coverage" },
+        "error": { "type": "null" }
+      }
+    },
+    {
+      "title": "analyse",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "analyse" },
         "data": { "$ref": "#/$defs/coverage" },
         "error": { "type": "null" }
       }
@@ -294,13 +304,31 @@
             { "type": "null" },
             {
               "type": "object",
-              "required": ["id", "status", "startedAt", "finishedAt"],
+              "required": ["id", "status", "startedAt", "finishedAt", "analysis"],
               "additionalProperties": false,
               "properties": {
                 "id": { "type": "integer" },
                 "status": { "enum": ["running", "complete", "partial", "failed"] },
                 "startedAt": { "type": "string" },
-                "finishedAt": { "type": ["string", "null"] }
+                "finishedAt": { "type": ["string", "null"] },
+                "analysis": {
+                  "description": "The analysis the snapshot has. Null for a snapshot that was not analysed: `orglens analyse` analyses it.",
+                  "anyOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "required": ["engineVersion", "analysedAt"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "engineVersion": {
+                          "description": "The version of the engine that analysed it.",
+                          "type": "string"
+                        },
+                        "analysedAt": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -334,9 +362,9 @@
       }
     },
     "coverage": {
-      "description": "What a snapshot holds, per metadata type, and everything that was observed while it was taken.",
+      "description": "What a snapshot holds, per metadata type, what its analysis found, and everything that was observed while it was taken and analysed.",
       "type": "object",
-      "required": ["snapshot", "types", "issues"],
+      "required": ["snapshot", "types", "analysis", "issues"],
       "additionalProperties": false,
       "properties": {
         "snapshot": {
@@ -364,7 +392,7 @@
             "source": { "description": "The name of the source.", "type": "string" },
             "kind": { "enum": ["org", "sandbox", "git"] },
             "status": {
-              "description": "`complete`: everything the source holds was read. `partial`: something is missing, and the issues of severity `error` say what. `running`: a snapshot of an org that is being taken, or that was interrupted and is continued by the next `snapshot`. `failed`: a snapshot of an org that was given up.",
+              "description": "What was read, whatever the analysis found. `complete`: everything the source holds was read. `partial`: something is missing, and the issues of the stage `read` and the severity `error` say what. `running`: a snapshot of an org that is being taken, or that was interrupted and is continued by the next `snapshot`. `failed`: a snapshot of an org that was given up.",
               "enum": ["running", "complete", "partial", "failed"]
             },
             "startedAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
@@ -401,7 +429,11 @@
                 "type": "integer",
                 "minimum": 0
               },
-              "analysed": { "description": "How many of them were analysed.", "type": "integer", "minimum": 0 },
+              "analysed": {
+                "description": "How many components of the type the analysis read something of. 0 for a type that this version does not analyse, and for a snapshot that was not analysed. It can be more than `retrieved`: the analysis also counts what it finds inside the files of other components, such as the fields in the file of an object.",
+                "type": "integer",
+                "minimum": 0
+              },
               "listing": {
                 "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet.",
                 "enum": ["ok", "failed", "unlistable"]
@@ -410,21 +442,88 @@
             }
           }
         },
+        "analysis": {
+          "description": "The analysis of the snapshot: the components its files make up and the references between them. Null for a snapshot that was not analysed.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/analysis" }]
+        },
         "issues": {
-          "description": "Everything that was left out, went wrong or is uncertain. A snapshot with an issue of severity `error` is partial.",
+          "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
           "type": "array",
           "items": { "$ref": "#/$defs/issue" }
         }
       }
     },
-    "issue": {
+    "analysis": {
       "type": "object",
-      "required": ["severity", "code", "message", "details"],
+      "required": ["engineVersion", "analysedAt", "components", "references", "complete", "origins"],
       "additionalProperties": false,
       "properties": {
+        "engineVersion": { "description": "The version of the engine that analysed the snapshot.", "type": "string" },
+        "analysedAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
+        "components": {
+          "description": "The components of the snapshot, with the parts the analysis found inside files and the objects that are only named.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "references": { "description": "The references it found.", "type": "integer", "minimum": 0 },
+        "complete": {
+          "description": "False if an issue of the stage `analysis` has the severity `error`: a file of the snapshot could not be read or placed, or a component could not be analysed. The exit code of `snapshot` and `analyse` is then 5.",
+          "type": "boolean"
+        },
+        "origins": {
+          "description": "One entry for each origin of references that this version analyses, in the order of the reference vocabulary.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["origin", "components", "failedFiles", "references", "unresolved", "pathsNotFollowed"],
+            "additionalProperties": false,
+            "properties": {
+              "origin": {
+                "description": "Where the references come from, such as `parser:xml` or `parser:formula`.",
+                "type": "string"
+              },
+              "components": {
+                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "failedFiles": {
+                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "references": { "description": "The references it found.", "type": "integer", "minimum": 0 },
+              "unresolved": {
+                "description": "How many of them name a target that no file of the snapshot defines.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "pathsNotFollowed": {
+                "description": "The paths of names it could not walk to their end. What stands behind the point where it stopped has no reference.",
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["stage", "severity", "code", "message", "component", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "description": "`read`: observed while the source was read. `analysis`: observed while the files of the snapshot were analysed.",
+          "enum": ["read", "analysis"]
+        },
         "severity": { "enum": ["error", "warning", "info"] },
         "code": { "description": "A stable code in upper case. Codes can be added.", "type": "string" },
         "message": { "type": "string" },
+        "component": {
+          "description": "The key of the component an issue of the analysis is about, such as `CustomField:invoice__c.total__c`. Null for an issue that is about no single component, and for every issue of the reading.",
+          "type": ["string", "null"]
+        },
         "details": { "description": "Facts about the issue. The fields depend on the code.", "type": "object" }
       }
     },

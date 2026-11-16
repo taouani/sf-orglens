@@ -77,14 +77,15 @@ const messageOf = (thrown: unknown): string =>
  *
  * The library lets a project change how files are laid out, with settings in its `sfdx-project.json`.
  * `projectDir` is the folder whose project file is asked. Without it, the library asks the project of the
- * folder the process runs in.
+ * folder the process runs in. With `null` no project is asked: the files are laid out as Salesforce hands
+ * them out, which is how the files of an org are stored.
  */
 export async function resolveComponents(
   tree: SourceTree,
   dirs: readonly string[],
-  projectDir?: string,
+  projectDir?: string | null,
 ): Promise<Resolution> {
-  const { MetadataResolver, RegistryAccess, TreeContainer } = await loadSourceLibrary();
+  const { MetadataResolver, RegistryAccess, TreeContainer, registry } = await loadSourceLibrary();
 
   // Every folder of the tree with the names in it, from the list of files.
   const folders = new Map<string, Set<string>>([['', new Set()]]);
@@ -144,7 +145,8 @@ export async function resolveComponents(
     }
   }
 
-  const resolver = new MetadataResolver(new RegistryAccess(undefined, projectDir), new Container(), false);
+  const types = projectDir === null ? new RegistryAccess(registry) : new RegistryAccess(undefined, projectDir);
+  const resolver = new MetadataResolver(types, new Container(), false);
   const problems: { at: string; message: string }[] = [];
   const owner = new Map<string, string>();
   interface Found {

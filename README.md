@@ -4,11 +4,13 @@ OrgLens tells you what a change to a Salesforce org will affect before you make 
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
 > **Pre-release.** The project is being built in the open and is not usable yet. There is no published package and
-> no analysis command. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
+> no command that answers an impact question. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to
+> see what comes when.
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
-> and immutable snapshots of an org, a sandbox or a repository folder. The commands are `init`, `source`,
-> `snapshot`, `coverage`, `status` and `doctor`. Nothing is analysed yet. See [docs/cli.md](docs/cli.md) and
+> and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
+> fields and validation rules, with the formulas in them, and for nothing else yet. The commands are `init`,
+> `source`, `snapshot`, `analyse`, `coverage`, `status` and `doctor`. See [docs/cli.md](docs/cli.md) and
 > [docs/configuration.md](docs/configuration.md).
 
 ## What it will do

@@ -471,14 +471,28 @@ describe('a path of names in a filter', () => {
         code: 'PATH_NOT_FOLLOWED',
         message: `${file}, line 5: it is not known which object "Sponsor" leads to, so "Region.Name" after it was not followed.`,
         componentKey: CONTACT,
-        details: { path: file, line: 5, column: 37, relationship: 'Sponsor', notFollowed: ['Region', 'Name'] },
+        details: {
+          path: file,
+          line: 5,
+          column: 37,
+          relationship: 'Sponsor',
+          notFollowed: ['Region', 'Name'],
+          origin: 'parser:xml',
+        },
       },
       {
         severity: 'warning',
         code: 'PATH_NOT_FOLLOWED',
         message: `${file}, line 6: it is not known which object "Missing__r" leads to, so "Name" after it was not followed.`,
         componentKey: CONTACT,
-        details: { path: file, line: 6, column: 37, relationship: 'Missing__r', notFollowed: ['Name'] },
+        details: {
+          path: file,
+          line: 6,
+          column: 37,
+          relationship: 'Missing__r',
+          notFollowed: ['Name'],
+          origin: 'parser:xml',
+        },
       },
     ]);
   });

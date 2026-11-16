@@ -242,7 +242,8 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
       },
     ];
     for (const issue of issues) addIssue(store, id, issue);
-    expect(readIssues(store, id)).toEqual(issues);
+    // An issue belongs to the reading unless an analysis wrote it.
+    expect(readIssues(store, id)).toEqual(issues.map((issue) => ({ ...issue, stage: 'read' })));
     store.close();
   });
 

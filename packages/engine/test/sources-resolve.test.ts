@@ -246,6 +246,47 @@ describe('resolving components', () => {
     ]);
   });
 
+  it('reads the files of an org as Salesforce lays them out, whatever the project of the folder says', async () => {
+    // The files of a snapshot of an org: one file with every label, and no folder of a project above them.
+    const files: Record<string, string> = {
+      'labels/CustomLabels.labels-meta.xml': LABELS,
+      'classes/Greeter.cls': 'public class Greeter {}',
+      'classes/Greeter.cls-meta.xml':
+        '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata"><apiVersion>65.0</apiVersion></ApexClass>',
+    };
+    const tree = {
+      files: Object.keys(files).sort(),
+      read: (path: string): Uint8Array => Buffer.from(files[path] ?? ''),
+    };
+    // The command runs in the repository of a user, whose project asks for another layout of labels.
+    const repository = project({
+      'sfdx-project.json': JSON.stringify({
+        packageDirectories: [{ path: 'force-app', default: true }],
+        sourceBehaviorOptions: ['decomposeCustomLabelsBeta2'],
+      }),
+    });
+    const names = (resolution: Awaited<ReturnType<typeof resolveComponents>>): string[] =>
+      resolution.components.map((component) => `${component.type}:${component.fullName}`);
+
+    const startedIn = process.cwd();
+    process.chdir(repository);
+    try {
+      const asStored = await resolveComponents(tree, [''], null);
+      expect(asStored).toMatchObject({ unresolved: [], problems: [] });
+      expect(names(asStored)).toEqual([
+        'ApexClass:Greeter',
+        'CustomLabel:Farewell',
+        'CustomLabel:Greeting',
+        'CustomLabels:CustomLabels',
+      ]);
+      // Asked for the project of the folder, the library reads the labels as that project lays them out.
+      const asTheProject = await resolveComponents(tree, ['']);
+      expect(names(asTheProject)).not.toEqual(names(asStored));
+    } finally {
+      process.chdir(startedIn);
+    }
+  });
+
   it('loses one file, not the folder, when the library cannot place a -meta.xml file', async () => {
     const orphan = 'force-app/main/default/classes/Orphan.cls-meta.xml';
     const root = project({

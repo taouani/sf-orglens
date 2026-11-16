@@ -239,6 +239,22 @@ function latest(source: SourceStatus): string {
   return `#${String(snapshot.id)} ${snapshot.status}, ${snapshot.finishedAt === null ? `started ${snapshot.startedAt}` : `finished ${snapshot.finishedAt}`}`;
 }
 
+/** Whether the latest snapshot of a source is analysed, and by which version of the engine. */
+function analysed(source: SourceStatus): string {
+  const snapshot = source.latestSnapshot;
+  if (snapshot === null) return '';
+  return snapshot.analysis === null ? 'no' : `by engine ${snapshot.analysis.engineVersion}`;
+}
+
+/** The line about a latest snapshot that is not analysed. */
+function notAnalysed(source: SourceStatus): string[] {
+  const snapshot = source.latestSnapshot;
+  if (snapshot?.analysis !== null) return [];
+  return [
+    `Snapshot #${String(snapshot.id)} of "${source.name}" is not analysed. "orglens analyse ${source.name}" analyses it.`,
+  ];
+}
+
 /** The line about a snapshot of an org that has not ended. */
 function unfinished(source: SourceStatus): string[] {
   const snapshot = source.unfinishedSnapshot;
@@ -270,10 +286,17 @@ export async function status(context: Context): Promise<Outcome> {
       ...(report.sources.length === 0
         ? [NO_SOURCES]
         : table(
-            ['SOURCE', 'KIND', 'SNAPSHOTS', 'LATEST SNAPSHOT'],
-            report.sources.map((source) => [source.name, source.kind, String(source.snapshots), latest(source)]),
+            ['SOURCE', 'KIND', 'SNAPSHOTS', 'LATEST SNAPSHOT', 'ANALYSED'],
+            report.sources.map((source) => [
+              source.name,
+              source.kind,
+              String(source.snapshots),
+              latest(source),
+              analysed(source),
+            ]),
           )),
       ...report.sources.flatMap(unfinished),
+      ...report.sources.flatMap(notAnalysed),
     ],
   };
 }
@@ -285,9 +308,77 @@ function count(number: number, one: string, many: string): string {
   return `${String(number)} ${number === 1 ? one : many}`;
 }
 
-/** The lines that describe a snapshot: one sentence, the types, and the issues. */
+/** At most this many characters of the first issue of a code are shown in the table of the analysis. */
+const LONGEST_ISSUE_SHOWN = 200;
+
+/**
+ * The lines about the analysis of a snapshot: one sentence, what each origin of references found, and the
+ * issues of the analysis. An org can have hundreds of names that are not read, so the issues are shown per
+ * code, with their number and the first of them. `--json` has them all.
+ */
+function analysisLines(report: CoverageReport): string[] {
+  const { snapshot, analysis } = report;
+  if (analysis === null) {
+    return [
+      '',
+      `The snapshot is not analysed. Analyse it with: orglens analyse ${snapshot.source} --snapshot ${String(snapshot.id)}`,
+    ];
+  }
+  const lines = [
+    '',
+    `Analysed by engine ${analysis.engineVersion}: ${count(analysis.components, 'component', 'components')}, ${count(analysis.references, 'reference', 'references')}.${
+      analysis.complete ? '' : ' The analysis is incomplete: the errors below say what was not analysed.'
+    }`,
+  ];
+  if (analysis.origins.length > 0) {
+    lines.push(
+      '',
+      ...table(
+        ['ORIGIN', 'COMPONENTS', 'REFERENCES', 'NOT RESOLVED', 'PATHS NOT FOLLOWED', 'FILES NOT READ'],
+        analysis.origins.map((origin) => [
+          origin.origin,
+          String(origin.components),
+          String(origin.references),
+          String(origin.unresolved),
+          String(origin.pathsNotFollowed),
+          String(origin.failedFiles),
+        ]),
+      ),
+    );
+    if (analysis.origins.some((origin) => origin.origin === 'parser:formula' && origin.failedFiles > 0)) {
+      lines.push('For parser:formula, FILES NOT READ counts the files with a formula that was not read as a whole.');
+    }
+  }
+  const byCode = new Map<string, { severity: string; code: string; count: number; first: string }>();
+  for (const issue of report.issues) {
+    if (issue.stage !== 'analysis') continue;
+    const id = `${issue.severity} ${issue.code}`;
+    const seen = byCode.get(id);
+    if (seen === undefined)
+      byCode.set(id, { severity: issue.severity, code: issue.code, count: 1, first: issue.message });
+    else seen.count += 1;
+  }
+  if (byCode.size > 0) {
+    lines.push(
+      '',
+      ...table(
+        ['SEVERITY', 'CODE', 'COUNT', 'THE FIRST'],
+        [...byCode.values()].map((one) => [
+          one.severity,
+          one.code,
+          String(one.count),
+          one.first.length > LONGEST_ISSUE_SHOWN ? `${one.first.slice(0, LONGEST_ISSUE_SHOWN)}...` : one.first,
+        ]),
+      ),
+    );
+  }
+  return lines;
+}
+
+/** The lines that describe a snapshot: one sentence, the types, the issues of the reading, and the analysis. */
 function coverageLines(report: CoverageReport, headline: string): string[] {
-  const { snapshot, types, issues } = report;
+  const { snapshot, types } = report;
+  const issues = report.issues.filter((issue) => issue.stage === 'read');
   // What came back although the source had not listed it, per type. The snapshot holds it.
   const unlisted = new Map<string, number>();
   for (const issue of issues) {
@@ -306,7 +397,8 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
   // nothing in a table. A type it could not list always does, and so does one of which something came back.
   const shown = types.filter(
-    (type) => type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok' || unlisted.has(type.type),
+    (type) =>
+      type.listed > 0 || type.retrieved > 0 || type.analysed > 0 || type.listing !== 'ok' || unlisted.has(type.type),
   );
   if (shown.length > 0) {
     lines.push(
@@ -337,8 +429,13 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
       ),
     );
   }
+  lines.push(...analysisLines(report));
   return lines;
 }
+
+/** The exit code for a snapshot: `partial` if something was not read, or if something was not analysed. */
+const exitOf = (report: CoverageReport): typeof EXIT.ok | typeof EXIT.partial =>
+  report.snapshot.status === 'complete' && report.analysis?.complete !== false ? EXIT.ok : EXIT.partial;
 
 /** How many components a source listed, with what is to be known about the number. */
 const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (listed: number) => string>> = {
@@ -370,10 +467,12 @@ function progressLines(source: string, write: (line: string) => void): (event: S
       write(
         `Snapshot #${String(event.snapshot)} was interrupted and is continued: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
       );
-    } else {
+    } else if (event.step === 'retrieved') {
       write(
         `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
       );
+    } else {
+      write(`Snapshot #${String(event.snapshot)}: every chunk is done. Analysing its files.`);
     }
   };
 }
@@ -399,7 +498,35 @@ export async function snapshot(
   return {
     data: report,
     lines: coverageLines(report, `Snapshot #${String(id)} of "${source}" ${SNAPSHOT_VERDICT[status]}`),
-    exitCode: status === 'complete' ? EXIT.ok : EXIT.partial,
+    exitCode: exitOf(report),
+  };
+}
+
+/** The value of `--snapshot`: the number of a snapshot. */
+function snapshotNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^[1-9][0-9]{0,14}$/.test(value)) {
+    throw new UsageError(`--snapshot takes the number of a snapshot, and "${value}" is not one.`);
+  }
+  return Number(value);
+}
+
+export async function analyse(
+  context: Context,
+  source: string,
+  options: { snapshot?: string | undefined },
+): Promise<Outcome> {
+  const id = snapshotNumber(options.snapshot);
+  const workspace = await openWorkspace(locator(context));
+  const report = await workspace.analyse(source, { snapshot: id });
+  const { status } = report.snapshot;
+  return {
+    data: report,
+    lines: coverageLines(
+      report,
+      `Snapshot #${String(report.snapshot.id)} of "${source}" was analysed from the files it holds. It ${SNAPSHOT_VERDICT[status]}`,
+    ),
+    exitCode: exitOf(report),
   };
 }
 
@@ -408,13 +535,7 @@ export async function coverage(
   source: string,
   options: { snapshot?: string | undefined },
 ): Promise<Outcome> {
-  let id: number | undefined;
-  if (options.snapshot !== undefined) {
-    if (!/^[1-9][0-9]{0,14}$/.test(options.snapshot)) {
-      throw new UsageError(`--snapshot takes the number of a snapshot, and "${options.snapshot}" is not one.`);
-    }
-    id = Number(options.snapshot);
-  }
+  const id = snapshotNumber(options.snapshot);
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.coverage(source, { snapshot: id });
   const { status, finishedAt, startedAt } = report.snapshot;

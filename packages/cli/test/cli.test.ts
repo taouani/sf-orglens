@@ -64,7 +64,7 @@ describe('orglens binary', () => {
     const io = { stdout: () => undefined, stderr: () => undefined, cwd: '.', env: {} };
     const names = (command: ReturnType<typeof buildProgram>): string[] => command.commands.map((one) => one.name());
     const program = buildProgram(io, () => undefined);
-    expect(names(program)).toEqual(['init', 'source', 'status', 'snapshot', 'coverage', 'doctor']);
+    expect(names(program)).toEqual(['init', 'source', 'status', 'snapshot', 'analyse', 'coverage', 'doctor']);
     expect(names(program.commands[1] ?? program)).toEqual(['add', 'list', 'remove', 'link', 'check']);
   });
 
@@ -78,6 +78,7 @@ describe('orglens binary', () => {
     ['source check', 'help-source-check.txt'],
     ['status', 'help-status.txt'],
     ['snapshot', 'help-snapshot.txt'],
+    ['analyse', 'help-analyse.txt'],
     ['coverage', 'help-coverage.txt'],
     ['doctor', 'help-doctor.txt'],
   ])('prints help for "%s" that matches the golden file', async (command, golden) => {

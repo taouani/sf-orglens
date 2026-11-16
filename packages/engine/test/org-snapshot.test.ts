@@ -14,10 +14,6 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
-import { readFolders } from '../src/sources/folder.ts';
-import { resolveComponents } from '../src/sources/resolve.ts';
-import type { SourceTree } from '../src/sources/tree.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
@@ -25,6 +21,13 @@ import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
+import {
+  storedComponents,
+  storedReferences,
+  withoutPlace,
+  type StoredComponent,
+  type StoredReference,
+} from './helpers/stored-analysis.ts';
 
 /** The package directory of the fixture project. */
 const WHOLE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -132,7 +135,16 @@ const operations = (): string[] =>
         : `retrieve ${call.job ?? ''}`,
     );
 
-const codes = (report: CoverageReport): string[] => report.issues.map((issue) => `${issue.severity} ${issue.code}`);
+/**
+ * The issues of the reading. The part of the project that these tests retrieve holds one formula with a
+ * relationship that no file of the part defines, so its analysis has a warning of its own, which is not what
+ * a test about the reading looks at.
+ */
+const ofReading = (report: CoverageReport): Omit<CoverageReport['issues'][number], 'stage' | 'component'>[] =>
+  report.issues
+    .filter((issue) => issue.stage === 'read')
+    .map(({ severity, code, message, details }) => ({ severity, code, message, details }));
+const codes = (report: CoverageReport): string[] => ofReading(report).map((issue) => `${issue.severity} ${issue.code}`);
 const typeOf = (report: CoverageReport, type: string): CoverageReport['types'][number] | undefined =>
   report.types.find((one) => one.type === type);
 
@@ -231,18 +243,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(report.snapshot.startedAt).toMatch(UTC);
       expect(report.snapshot.finishedAt).toMatch(UTC);
+      // Neither the reading nor the analysis has anything to say about the whole project.
       expect(report.issues).toEqual([]);
+      expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
         { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, listing: 'ok', note: null },
         { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 54, retrieved: 54, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomField', listed: 54, retrieved: 54, analysed: 54, listing: 'ok', note: null },
         { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'CustomMetadata', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null },
         { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 10, retrieved: 10, analysed: 0, listing: 'ok', note: null },
+        { type: 'ValidationRule', listed: 10, retrieved: 10, analysed: 10, listing: 'ok', note: null },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'RecordType')).toEqual({
@@ -262,9 +276,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
-      expect(events.slice(-2)).toEqual([
+      expect(events.slice(-3)).toEqual([
         { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
+        { step: 'analysing', snapshot: 1 },
       ]);
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.
       expect(metadata.retrieves).toHaveLength(1);
@@ -306,52 +321,87 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('is analysed to the components and the references that the folder of the project gives', async () => {
       metadata = await metadataFromSource(WHOLE);
       mock.metadata = metadata;
-      const dir = workspaceDir();
+      // One workspace with the org and with the folder the org was made from.
+      const dir = workspaceDir(`${CONFIG}\n[sources.repo]\nkind = "git"\nrepo = "project"\n`);
+      cpSync(join(FIXTURES_DIR, 'billing-sfdx'), join(dir, 'project'), { recursive: true });
       const workspace = await openWorkspace({ root: dir, env });
-      expect((await workspace.snapshot('prod')).snapshot.status).toBe('complete');
+      const events: SnapshotProgress[] = [];
+      const fromOrg = await workspace.snapshot('prod', { onProgress: (event) => events.push(event) });
+      const fromFolder = await workspace.snapshot('repo');
+      expect([fromOrg.snapshot, fromFolder.snapshot]).toMatchObject([
+        { id: 1, status: 'complete' },
+        { id: 2, status: 'complete' },
+      ]);
+      // The analysis is the last thing a snapshot of an org says it does.
+      expect(events.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
 
-      // The files the snapshot holds, as a tree. An org has no package directory, so the tree is the folder.
-      const held = new Map(stored(dir, 1).map((path) => [path, content(dir, 1, path)]));
-      const tree: SourceTree = {
-        files: [...held.keys()],
-        read: (path) => held.get(path) ?? Buffer.from(''),
-      };
-      const fromOrg = analyseSource(tree, (await resolveComponents(tree, [''])).components);
-      const folder = readFolders(join(FIXTURES_DIR, 'billing-sfdx'), ['force-app']).tree;
-      const fromFolder = analyseSource(folder, (await resolveComponents(folder, ['force-app'])).components);
+      const org = reading(dir, (store) => ({
+        components: storedComponents(store, 1),
+        references: storedReferences(store, 1),
+      }));
+      const folder = reading(dir, (store) => ({
+        components: storedComponents(store, 2),
+        references: storedReferences(store, 2),
+      }));
 
-      // The same keys. A line of a reference is compared within one snapshot only: an org rewrites the files.
-      const references = (analysis: SourceAnalysis): string[] =>
-        analysis.components
-          .flatMap((one) => one.references)
-          .map((one) => `${one.from} ${one.kind} ${String(one.to)} ${JSON.stringify(one.attrs)}`)
-          .sort();
-      expect(fromOrg.issues).toEqual([]);
-      expect(fromOrg.components.map((one) => one.key)).toEqual(fromFolder.components.map((one) => one.key));
-      expect(fromOrg.components).toHaveLength(89);
-      expect(references(fromOrg)).toEqual(references(fromFolder));
-      expect(references(fromOrg)).toHaveLength(106);
-      expect(fromOrg.components.map((one) => one.attrs)).toEqual(
-        fromFolder.components.map((one) => (one.definition === null ? {} : one.attrs)),
+      // The same keys and the same references. A line of a reference is compared within one snapshot only: an
+      // org rewrites the files.
+      expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
+      expect(org.components).toHaveLength(89);
+      expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
+      expect(org.references).toHaveLength(106);
+      // Every reference has its place in a file of its own snapshot.
+      const orgFiles = new Set(stored(dir, 1));
+      const folderFiles = new Set(stored(dir, 2));
+      expect(org.references.filter((one) => one.file === null || !orgFiles.has(one.file) || one.line === null)).toEqual(
+        [],
+      );
+      expect(
+        folder.references.filter((one) => one.file === null || !folderFiles.has(one.file) || one.line === null),
+      ).toEqual([]);
+      expect(org.components.map((one) => one.attrs)).toEqual(
+        folder.components.map((one) => (one.path === null ? {} : one.attrs)),
       );
 
       // The org hands out a file for the two standard objects, which the folder does not have. So the objects
       // are defined in the snapshot of the org, and a lookup to one of them is resolved there.
-      const undefinedIn = (analysis: SourceAnalysis): string[] =>
-        analysis.components.filter((one) => one.definition === null).map((one) => one.key);
-      const lookupToAccount = (analysis: SourceAnalysis): string[] =>
-        analysis.components
-          .flatMap((one) => one.references)
-          .filter((one) => one.to === 'CustomObject:account')
-          .map((one) => one.resolution);
-      expect(undefinedIn(fromOrg)).toEqual([]);
-      expect(undefinedIn(fromFolder)).toEqual(['CustomObject:account', 'CustomObject:user']);
-      expect(lookupToAccount(fromOrg)).toEqual(['resolved']);
-      expect(lookupToAccount(fromFolder)).toEqual(['external']);
-      expect(fromOrg.work).toEqual([
-        { origin: 'parser:xml', components: 71, failedFiles: 0 },
-        { origin: 'parser:formula', components: 34, failedFiles: 0 },
-      ]);
+      const undefinedIn = (components: readonly StoredComponent[]): string[] =>
+        components.filter((one) => one.path === null).map((one) => one.key);
+      const lookupToAccount = (references: readonly StoredReference[]): string[] =>
+        references.filter((one) => one.to === 'CustomObject:account').map((one) => one.resolution);
+      expect(undefinedIn(org.components)).toEqual([]);
+      expect(undefinedIn(folder.components)).toEqual(['CustomObject:account', 'CustomObject:user']);
+      expect(lookupToAccount(org.references)).toEqual(['resolved']);
+      expect(lookupToAccount(folder.references)).toEqual(['external']);
+
+      // What the reports say about it: no issue, and the two objects more that the org has a file of.
+      const xml = { failedFiles: 0, references: 26, unresolved: 0, pathsNotFollowed: 0 };
+      const formula = { components: 34, failedFiles: 0, references: 80, unresolved: 0, pathsNotFollowed: 0 };
+      expect(ofReading(fromOrg)).toEqual([]);
+      expect(fromOrg.analysis).toEqual({
+        engineVersion: fromOrg.snapshot.engineVersion,
+        analysedAt: expect.stringMatching(UTC) as string,
+        components: 89,
+        references: 106,
+        complete: true,
+        origins: [
+          { origin: 'parser:xml', components: 71, ...xml },
+          { origin: 'parser:formula', ...formula },
+        ],
+      });
+      expect(fromFolder.analysis).toMatchObject({
+        components: 89,
+        references: 106,
+        complete: true,
+        origins: [
+          { origin: 'parser:xml', components: 69, ...xml },
+          { origin: 'parser:formula', ...formula },
+        ],
+      });
+      const analysed = (report: CoverageReport): Record<string, number> =>
+        Object.fromEntries(report.types.filter((type) => type.analysed > 0).map((type) => [type.type, type.analysed]));
+      expect(analysed(fromOrg)).toEqual({ CustomField: 54, CustomObject: 7, ValidationRule: 10 });
+      expect(analysed(fromFolder)).toEqual({ CustomField: 54, CustomObject: 5, ValidationRule: 10 });
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {
@@ -365,7 +415,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // 16 members in 29 files: the whole fails, its first half fails, and so does its second half.
       expect(metadata.retrieves.map((members) => members.length)).toEqual([16, 8, 4, 8, 4, 4, 4]);
       expect(codes(report)).toEqual(['info CHUNK_SPLIT', 'info CHUNK_SPLIT', 'info CHUNK_SPLIT']);
-      expect(report.issues[0]).toEqual({
+      expect(ofReading(report)[0]).toEqual({
         severity: 'info',
         code: 'CHUNK_SPLIT',
         message:
@@ -397,7 +447,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => path.startsWith('objects/')));
       expect(typeOf(report, 'ApexClass')).toMatchObject({ listed: 12, retrieved: 0 });
       expect(typeOf(report, 'CustomField')).toMatchObject({ listed: 48, retrieved: 48 });
-      const failed = report.issues.filter((issue) => issue.code === 'RETRIEVE_FAILED');
+      const failed = ofReading(report).filter((issue) => issue.code === 'RETRIEVE_FAILED');
       expect(failed).toHaveLength(13);
       expect(failed[0]).toEqual({
         severity: 'error',
@@ -411,7 +461,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           code: 'LIMIT_EXCEEDED',
         },
       });
-      const missing = report.issues.filter((issue) => issue.code === 'NOT_RETRIEVED');
+      const missing = ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED');
       expect(missing.map((issue) => [issue.details['type'], issue.details['count']])).toEqual([
         ['ApexClass', 12],
         ['ApexTrigger', 1],
@@ -472,7 +522,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         listing: 'failed',
         note: 'INVALID_TYPE: Cannot use: ApexClass in this organization',
       });
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'error',
           code: 'LISTING_FAILED',
@@ -491,7 +541,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       expect(report.snapshot.status).toBe('partial');
       expect(typeOf(report, 'ApexClass')).toMatchObject({ listed: 12, retrieved: 11 });
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'warning',
           code: 'RETRIEVE_MESSAGES',
@@ -521,11 +571,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         type: 'CustomObject',
         listed: 2,
         retrieved: 2,
-        analysed: 0,
+        // The object that was not listed is analysed like the two that were.
+        analysed: 3,
         listing: 'ok',
         note: '1 component more came back that the org had not listed.',
       });
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'info',
           code: 'UNLISTED_COMPONENTS',
@@ -556,7 +607,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(metadata.retrieves.length).toBeGreaterThan(1);
       expect(report.snapshot.status).toBe('complete');
       expect(stored(dir, 1)).toEqual(expectedFiles());
-      expect(report.issues).toEqual(
+      expect(ofReading(report)).toEqual(
         metadata.retrieves.slice(1).map(() => ({
           severity: 'warning',
           code: 'FILE_RETRIEVED_TWICE',
@@ -581,7 +632,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         listing: 'unlistable',
         note: 'Salesforce does not list standard value sets. They are not read yet.',
       });
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'warning',
           code: 'TYPE_NOT_READ',
@@ -645,11 +696,19 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         after.filter((call) => call.operation === 'describeMetadata' || call.operation === 'listMetadata'),
       ).toEqual([]);
       expect(metadata.retrieves.slice(3).map((members) => members.length)).toEqual([8, 4, 4, 4]);
-      expect(report.issues.find((issue) => issue.code === 'SNAPSHOT_RESUMED')).toMatchObject({
+      expect(ofReading(report).find((issue) => issue.code === 'SNAPSHOT_RESUMED')).toMatchObject({
         severity: 'info',
         details: { chunksDone: 1, chunks: 3 },
       });
       expect((await workspace.status()).sources[0]).toMatchObject({ snapshots: 1, unfinishedSnapshot: null });
+      // A snapshot that was continued is analysed when it ends, like one that was read in one go.
+      expect(events.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
+      expect(report.analysis).toMatchObject({ complete: true });
+      expect(report.analysis?.components).toBeGreaterThan(0);
+      // It was analysed once, when it had ended: the one warning of the part is there once.
+      expect(report.issues.filter((issue) => issue.stage === 'analysis').map((issue) => issue.code)).toEqual([
+        'PATH_NOT_FOLLOWED',
+      ]);
     });
 
     it('asks for the job it had started when a retrieve took too long, and starts no second one', async () => {
@@ -693,13 +752,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(second.snapshot).toMatchObject({ id: 2, status: 'partial', files: 0 });
       expect(metadata.retrieves).toHaveLength(5);
       expect(chunks(dir, 2)).toEqual(['0 failed - 3']);
-      expect(second.issues[0]).toMatchObject({
+      expect(ofReading(second)[0]).toMatchObject({
         severity: 'error',
         code: 'RETRIEVE_FAILED',
         message:
           'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. Salesforce no longer knows the retrieve.',
       });
-      expect(second.issues.filter((issue) => issue.code === 'NOT_RETRIEVED')).toHaveLength(5);
+      expect(ofReading(second).filter((issue) => issue.code === 'NOT_RETRIEVED')).toHaveLength(5);
     });
 
     it('reports a request the org refuses with the code of Salesforce, and takes no snapshot when the org says nothing about itself', async () => {
@@ -750,13 +809,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       const report = await snap(dir, { restart: true });
       expect(report.snapshot).toMatchObject({ id: 2, status: 'complete' });
-      expect(report.issues).toEqual([]);
+      expect(ofReading(report)).toEqual([]);
       expect(metadata.retrieves).toHaveLength(2);
       const workspace = await openWorkspace({ root: dir, env });
       const givenUp = await workspace.coverage('prod', { snapshot: 1 });
       expect(givenUp.snapshot.status).toBe('failed');
       expect(givenUp.snapshot.finishedAt).toMatch(UTC);
-      expect(givenUp.issues).toEqual([
+      expect(ofReading(givenUp)).toEqual([
         {
           severity: 'info',
           code: 'SNAPSHOT_GIVEN_UP',
@@ -787,7 +846,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const workspace = await openWorkspace({ root: dir, env });
       const givenUp = await workspace.coverage('prod', { snapshot: 1 });
       expect(givenUp.snapshot.status).toBe('failed');
-      expect(givenUp.issues[0]?.message).toBe(
+      expect(ofReading(givenUp)[0]?.message).toBe(
         'The snapshot was interrupted and was given up, because it was begun by another version of OrgLens (0.0.0-older).',
       );
     });
@@ -864,7 +923,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       };
       const later = await snap(busy, { tuning: { pollMaxMs: 5 } });
       expect(later.snapshot.status).toBe('complete');
-      expect(later.issues).toEqual([]);
+      expect(ofReading(later)).toEqual([]);
       expect(chunks(busy, 1)).toEqual(['0 done - 1']);
     });
 
@@ -921,7 +980,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot).toMatchObject({ id: 1, status: 'partial', files: 0 });
       expect(metadata.retrieves).toHaveLength(3);
       expect(chunks(dir, 1)).toEqual(['0 failed - 3']);
-      expect(report.issues[0]).toMatchObject({
+      expect(ofReading(report)[0]).toMatchObject({
         severity: 'error',
         code: 'RETRIEVE_FAILED',
         message:
@@ -946,7 +1005,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await snap(dir, { tuning });
       expect(report.snapshot).toMatchObject({ id: 1, status: 'partial' });
       expect(metadata.retrieves).toHaveLength(3);
-      expect(report.issues.find((issue) => issue.code === 'RETRIEVE_FAILED')?.message).toBe(
+      expect(ofReading(report).find((issue) => issue.code === 'RETRIEVE_FAILED')?.message).toBe(
         'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. The retrieve did not end within 0 minutes, also after the snapshot was continued.',
       );
     });
@@ -967,7 +1026,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await snap(dir);
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
       expect(stored(dir, 1)).toEqual(expectedFiles());
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'info',
           code: 'CHUNK_SPLIT',
@@ -996,7 +1055,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // Once: the request is made again, and the snapshot is whole.
       const report = await snap(dir, { tuning: { requests } });
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
-      expect(report.issues).toEqual([]);
+      expect(ofReading(report)).toEqual([]);
       expect(zips).toBe(2);
 
       // Every time: the snapshot stops, says that the org cannot be reached, and can be continued.
@@ -1080,7 +1139,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await snap(workspaceDir());
       // A warning: the snapshot is complete in what the org listed, and still not all there is to know.
       expect(report.snapshot.status).toBe('complete');
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'warning',
           code: 'ACCESS_INCOMPLETE',
@@ -1103,7 +1162,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await snap(dir);
       expect(report.snapshot.status).toBe('partial');
       expect(stored(dir, 1)).toEqual(expectedFiles());
-      expect(report.issues).toEqual([
+      expect(ofReading(report)).toEqual([
         {
           severity: 'error',
           code: 'RESOLVE_FAILED',
@@ -1299,7 +1358,7 @@ describe('a snapshot of an org in a process of its own', () => {
     expect(second).toEqual({ stdout: `complete ${String(expectedFiles().length)}\n`, stderr: '', code: 0 });
     const report = await workspace.coverage('prod');
     expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
-    expect(report.issues.map((issue) => issue.code)).toEqual([
+    expect(ofReading(report).map((issue) => issue.code)).toEqual([
       'CHUNK_SPLIT',
       'CHUNK_SPLIT',
       'CHUNK_SPLIT',

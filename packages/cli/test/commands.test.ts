@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EngineError, ERROR_CODES, type ErrorCode } from '@sf-orglens/engine';
+import { EngineError, engineVersion, ERROR_CODES, type ErrorCode } from '@sf-orglens/engine';
 import { createWriter, EXIT, printable, table } from '../src/output.ts';
 import { commitAll as commitAllIn, withoutGit } from './helpers/git.ts';
 import { matchesSchema, orglens, orglensJson, outputSchema, tempDirs } from './helpers/run.ts';
@@ -282,7 +282,7 @@ describe('orglens status', () => {
         'Config     orglens.toml',
         'Database   .orglens/orglens.db, schema version 3, N KiB, node:sqlite',
         '',
-        'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT',
+        'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT  ANALYSED',
         'prod    org   0          none',
         '',
       ].join('\n'),
@@ -379,6 +379,15 @@ const commitAll = (dir: string): string => commitAllIn(dir, dirs.next());
 
 const NO_COMMIT = 'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository.';
 
+/** What the analysis says about the project of these tests: one class, which no analyser of this phase reads. */
+const ONE_CLASS_ANALYSED = [
+  `Analysed by engine ${engineVersion()}: 1 component, 0 references.`,
+  '',
+  'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+  'parser:xml      0           0           0             0                   0',
+  'parser:formula  0           0           0             0                   0',
+];
+
 describe('orglens snapshot and coverage', () => {
   it('takes a snapshot of a folder, says what it holds, and shows it again', async () => {
     const dir = projectWorkspace();
@@ -392,6 +401,8 @@ describe('orglens snapshot and coverage', () => {
       '',
       'SEVERITY  CODE            WHAT',
       NO_COMMIT,
+      '',
+      ...ONE_CLASS_ANALYSED,
       '',
     ]);
     expect(taken.code).toBe(0);
@@ -418,6 +429,8 @@ describe('orglens snapshot and coverage', () => {
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
         'ApexClass  1       1          0',
+        '',
+        ...ONE_CLASS_ANALYSED,
         '',
       ].join('\n'),
     );
@@ -461,11 +474,31 @@ describe('orglens snapshot and coverage', () => {
         bytes: PROJECT_BYTES,
       },
       types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null }],
+      analysis: {
+        engineVersion: engineVersion(),
+        analysedAt: expect.stringMatching(/Z$/) as string,
+        components: 1,
+        references: 0,
+        complete: true,
+        origins: [
+          { origin: 'parser:xml', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          {
+            origin: 'parser:formula',
+            components: 0,
+            failedFiles: 0,
+            references: 0,
+            unresolved: 0,
+            pathsNotFollowed: 0,
+          },
+        ],
+      },
       issues: [
         {
+          stage: 'read',
           severity: 'info',
           code: 'COMMIT_UNKNOWN',
           message: expect.any(String) as string,
+          component: null,
           details: { reason: 'NOT_A_REPOSITORY' },
         },
       ],
@@ -492,6 +525,8 @@ describe('orglens snapshot and coverage', () => {
       'warning   FILES_NOT_METADATA  1 file is not part of a metadata component and not in the snapshot.',
       NO_COMMIT.replace('COMMIT_UNKNOWN  ', 'COMMIT_UNKNOWN      '),
       '',
+      ...ONE_CLASS_ANALYSED,
+      '',
     ]);
     expect(taken).toMatchObject({ code: 5, stderr: '' });
 
@@ -499,9 +534,11 @@ describe('orglens snapshot and coverage', () => {
     const again = await orglensJson(dir, ['snapshot', 'work']);
     expect(again).toMatchObject({ code: 5, ok: true, error: null, data: { snapshot: { id: 2, status: 'partial' } } });
     expect((again.data as { issues: unknown[] }).issues).toContainEqual({
+      stage: 'read',
       severity: 'warning',
       code: 'FILES_NOT_METADATA',
       message: '1 file is not part of a metadata component and not in the snapshot.',
+      component: null,
       details: { count: 1, paths: ['force-app/main/default/classes/notes.txt'] },
     });
 
@@ -571,12 +608,170 @@ describe('orglens snapshot and coverage', () => {
   );
 
   it('needs the name of a source, and a workspace', async () => {
-    for (const command of ['snapshot', 'coverage']) {
+    for (const command of ['snapshot', 'analyse', 'coverage']) {
       const bare = await orglens(dirs.next(), [command]);
       expect(bare).toMatchObject({ code: 2, stdout: '' });
       expect(bare.stderr).toMatch(/^error: missing required argument 'source'/);
       expect((await orglensJson(dirs.next(), [command, 'work'])).error?.code).toBe('WORKSPACE_NOT_FOUND');
     }
+  });
+});
+
+/** An object with a number and a formula that reads the number, and goes through a lookup that no file defines. */
+const OBJECTS = 'force-app/main/default/objects/Parcel__c';
+const metadata = (type: string, body: string): string =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<${type} xmlns="http://soap.sforce.com/2006/04/metadata">\n${body}</${type}>\n`;
+const PARCEL: Readonly<Record<string, string>> = {
+  [`${OBJECTS}/Parcel__c.object-meta.xml`]: metadata(
+    'CustomObject',
+    '    <deploymentStatus>Deployed</deploymentStatus>\n    <label>Parcel</label>\n    <nameField>\n        <label>Parcel Name</label>\n        <type>Text</type>\n    </nameField>\n    <pluralLabel>Parcels</pluralLabel>\n    <sharingModel>ReadWrite</sharingModel>\n',
+  ),
+  [`${OBJECTS}/fields/Weight__c.field-meta.xml`]: metadata(
+    'CustomField',
+    '    <fullName>Weight__c</fullName>\n    <label>Weight</label>\n    <precision>8</precision>\n    <scale>2</scale>\n    <type>Number</type>\n',
+  ),
+  [`${OBJECTS}/fields/Heavy__c.field-meta.xml`]: metadata(
+    'CustomField',
+    '    <fullName>Heavy__c</fullName>\n    <formula>Weight__c &gt; 100 &amp;&amp; Sender__r.Name != &quot;&quot;</formula>\n    <label>Heavy</label>\n    <type>Checkbox</type>\n',
+  ),
+};
+const NOT_FOLLOWED = `warning   PATH_NOT_FOLLOWED  1      ${OBJECTS}/fields/Heavy__c.field-meta.xml, line 4: it is not known which object "Sender__r" leads to, so "Name" after it was not followed.`;
+
+describe('orglens analyse', () => {
+  it('shows what the analysis of a snapshot found, and analyses the snapshot again from its files', async () => {
+    const dir = projectWorkspace(PARCEL);
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    expect(taken.stdout.split('\n').slice(1)).toEqual([
+      '',
+      'TYPE          LISTED  RETRIEVED  ANALYSED',
+      'ApexClass     1       1          0',
+      'CustomField   2       2          2',
+      'CustomObject  1       1          1',
+      '',
+      'SEVERITY  CODE            WHAT',
+      NO_COMMIT,
+      '',
+      `Analysed by engine ${engineVersion()}: 4 components, 2 references.`,
+      '',
+      'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+      'parser:xml      3           0           0             0                   0',
+      'parser:formula  1           2           1             1                   0',
+      '',
+      'SEVERITY  CODE               COUNT  THE FIRST',
+      NOT_FOLLOWED,
+      '',
+    ]);
+    // A name that was not followed is a warning: the analysis is complete in what it reads.
+    expect(taken).toMatchObject({ code: 0, stderr: '' });
+
+    // The source is not read again: the files on disk are gone, and the analysis is the same.
+    rmSync(join(dir, 'force-app'), { recursive: true });
+    const again = await orglens(dir, ['analyse', 'work']);
+    expect(again).toMatchObject({ code: 0, stderr: '' });
+    const lines = again.stdout.split('\n');
+    expect(lines[0]).toMatch(
+      /^Snapshot #1 of "work" was analysed from the files it holds\. It is complete: 4 components in 5 files \(.+\)\.$/,
+    );
+    expect(lines.slice(1)).toEqual(taken.stdout.split('\n').slice(1));
+
+    const json = await orglensJson(dir, ['analyse', 'work', '--snapshot', '1']);
+    expect(json).toMatchObject({ code: 0, command: 'analyse', ok: true, warnings: [], error: null });
+    expect(json.data).toMatchObject({
+      snapshot: { id: 1, status: 'complete' },
+      analysis: {
+        components: 4,
+        references: 2,
+        complete: true,
+        origins: [
+          { origin: 'parser:xml', components: 3, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          {
+            origin: 'parser:formula',
+            components: 1,
+            failedFiles: 0,
+            references: 2,
+            unresolved: 1,
+            pathsNotFollowed: 1,
+          },
+        ],
+      },
+    });
+    expect((json.data as { issues: unknown[] }).issues.at(-1)).toMatchObject({
+      stage: 'analysis',
+      severity: 'warning',
+      code: 'PATH_NOT_FOLLOWED',
+      component: 'CustomField:parcel__c.heavy__c',
+    });
+    const shown = await orglensJson(dir, ['coverage', 'work']);
+    expect(shown.data).toEqual(json.data);
+  });
+
+  it('ends with 5 when the analysis is incomplete, from snapshot and from analyse, and shows it with 0', async () => {
+    const weight = `${OBJECTS}/fields/Weight__c.field-meta.xml`;
+    const dir = projectWorkspace({ ...PARCEL, [weight]: '<CustomField xmlns="x"><label>Weight' });
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    const lines = taken.stdout.split('\n');
+    // Everything was read, so the snapshot is complete. One file was not understood, so its analysis is not.
+    expect(lines[0]).toMatch(/^Snapshot #1 of "work" is complete: 4 components in 5 files/);
+    expect(lines.slice(1, 6)).toEqual([
+      '',
+      'TYPE          LISTED  RETRIEVED  ANALYSED',
+      'ApexClass     1       1          0',
+      'CustomField   2       2          1',
+      'CustomObject  1       1          1',
+    ]);
+    expect(lines.slice(9)).toEqual([
+      '',
+      `Analysed by engine ${engineVersion()}: 4 components, 2 references. The analysis is incomplete: the errors below say what was not analysed.`,
+      '',
+      'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+      'parser:xml      2           0           0             0                   1',
+      'parser:formula  1           2           1             1                   0',
+      '',
+      'SEVERITY  CODE               COUNT  THE FIRST',
+      `error     XML_MALFORMED      1      ${weight}: The file ends before the element "label" is closed.`,
+      NOT_FOLLOWED,
+      '',
+    ]);
+    expect(taken).toMatchObject({ code: 5, stderr: '' });
+
+    const again = await orglensJson(dir, ['analyse', 'work']);
+    expect(again).toMatchObject({
+      code: 5,
+      ok: true,
+      error: null,
+      data: { snapshot: { id: 1, status: 'complete' }, analysis: { complete: false } },
+    });
+    // Reading a report is not a failure, whatever the report says.
+    const shown = await orglensJson(dir, ['coverage', 'work']);
+    expect(shown).toMatchObject({ code: 0, ok: true });
+    expect(shown.data).toEqual(again.data);
+  });
+
+  it('says what stands in the way: no such source, no snapshot, no such number', async () => {
+    const dir = projectWorkspace();
+    expect(await orglens(dir, ['analyse', 'nowhere'])).toMatchObject({
+      code: 2,
+      stdout: '',
+      stderr:
+        'error: No source "nowhere" is declared in orglens.toml.\nhint: See the sources with: orglens source list\n',
+    });
+    expect(await orglens(dir, ['analyse', 'work'])).toEqual({
+      code: 2,
+      stdout: '',
+      stderr: 'error: There is no snapshot of the source "work" yet.\nhint: Take one with: orglens snapshot work\n',
+    });
+    // Asking for an analysis of nothing creates nothing.
+    expect(existsSync(join(dir, '.orglens'))).toBe(false);
+
+    await orglens(dir, ['snapshot', 'work']);
+    expect(await orglensJson(dir, ['analyse', 'work', '--snapshot', '2'])).toMatchObject({
+      code: 2,
+      command: 'analyse',
+      error: { code: 'SNAPSHOT_NOT_FOUND', details: { source: 'work', snapshot: 2 } },
+    });
+    const usage = await orglensJson(dir, ['analyse', 'work', '--snapshot=latest']);
+    expect(usage).toMatchObject({ code: 2, command: 'analyse', ok: false, error: { code: 'USAGE' } });
+    expect(usage.error?.message).toBe('--snapshot takes the number of a snapshot, and "latest" is not one.');
   });
 });
 

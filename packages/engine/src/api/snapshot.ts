@@ -6,6 +6,9 @@
  * written chunk by chunk (`org-snapshot.ts`). A reading that could not get
  * everything is stored as `partial`, with an issue for each thing that is
  * missing, so that an incomplete picture is never taken for a complete one.
+ *
+ * A snapshot that is stored is analysed (`analysis.ts`). The analysis is a
+ * second step with a transaction of its own: if it fails, the snapshot stays.
  */
 import type { GitSource } from '../core/config/config.ts';
 import { EngineError, type JsonValue } from '../core/errors.ts';
@@ -25,6 +28,7 @@ import {
   readSnapshot,
   type SnapshotIssue as StoredIssue,
 } from '../store/snapshots.ts';
+import { analyseStored, analysisReport, type AnalysisReport } from './analysis.ts';
 
 export interface SnapshotInfo {
   readonly id: number;
@@ -57,7 +61,12 @@ export interface TypeCoverage {
   readonly listed: number;
   /** How many of them are in the snapshot with all their files. */
   readonly retrieved: number;
-  /** How many of them were analysed. */
+  /**
+   * How many components of the type the analysis read. It counts what the analysis found, so it can be more
+   * than `retrieved`: a part inside the file of another component, such as a field in the file of its object,
+   * and a component that came back although the source had not listed it. `0` for a type that no analyser
+   * reads yet, and for a snapshot that was not analysed.
+   */
   readonly analysed: number;
   /**
    * - `ok`: the source said which components of the type it has.
@@ -74,14 +83,27 @@ export interface SnapshotIssue {
   /** A stable code in upper case. */
   readonly code: string;
   readonly message: string;
+  /**
+   * - `read`: observed while the source was read. An error of this step makes the snapshot `partial`.
+   * - `analysis`: observed by the analysis. An error of this step makes the analysis incomplete.
+   */
+  readonly stage: 'read' | 'analysis';
+  /** The key of the component the issue is about, if it is about one. */
+  readonly component: string | null;
   readonly details: Readonly<Record<string, JsonValue>>;
 }
 
-/** What a snapshot holds, per metadata type, and everything that was observed while it was taken. */
+/**
+ * What a snapshot holds, per metadata type, what its analysis found, and everything that was observed while
+ * it was taken and analysed.
+ */
 export interface CoverageReport {
   readonly snapshot: SnapshotInfo;
   /** Sorted by type. */
   readonly types: readonly TypeCoverage[];
+  /** `null`: the snapshot was not analysed. A snapshot taken by a version before the analysis existed is not. */
+  readonly analysis: AnalysisReport | null;
+  /** Those of the reading first, then those of the analysis. */
   readonly issues: readonly SnapshotIssue[];
 }
 
@@ -89,6 +111,8 @@ export interface CoverageReport {
 export function snapshotReport(store: Store, source: string, id?: number): CoverageReport | undefined {
   const snapshot = readSnapshot(store, source, id);
   if (snapshot === undefined) return undefined;
+  const issues = readIssues(store, snapshot.id);
+  const ofReading = (issue: { readonly stage: string }): boolean => issue.stage === 'read';
   return {
     snapshot: {
       id: snapshot.id,
@@ -104,12 +128,17 @@ export function snapshotReport(store: Store, source: string, id?: number): Cover
       bytes: snapshot.bytes,
     },
     types: readCoverage(store, snapshot.id),
-    issues: readIssues(store, snapshot.id).map(({ severity, code, message, details }) => ({
-      severity,
-      code,
-      message,
-      details: details ?? {},
-    })),
+    analysis: analysisReport(store, snapshot.id, issues),
+    issues: [...issues.filter(ofReading), ...issues.filter((issue) => !ofReading(issue))].map(
+      ({ severity, code, message, stage, componentKey, details }) => ({
+        severity,
+        code,
+        message,
+        stage,
+        component: componentKey,
+        details: details ?? {},
+      }),
+    ),
   };
 }
 
@@ -252,6 +281,7 @@ export async function takeSnapshot(
       });
       return snapshotId;
     });
+    await analyseStored(store, source.name, { id, kind: source.kind });
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
     store.checkpoint();
     const taken = snapshotReport(store, source.name, id);

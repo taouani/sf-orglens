@@ -104,6 +104,9 @@ export interface AnalysisWritten {
   readonly versionsRemoved: number;
 }
 
+/** The note of a type in the coverage of a snapshot that only the analysis found components of. */
+export const PARTS_NOTE = 'Found inside the files of other components. The source does not list them on their own.';
+
 /** A JSON value as text, with the keys of every object in order, so that equal values give equal text. */
 function canonical(value: JsonValue): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -190,7 +193,8 @@ const INSERT_REFERENCE = `INSERT INTO reference
 
 /**
  * Writes the analysis of a snapshot, in one transaction. An analysis the snapshot had before is replaced, and
- * the versions that only it held are removed.
+ * the versions that only it held are removed. The coverage per type of the snapshot gets the number of
+ * components that were analysed: those whose `attrs` are not `null`.
  *
  * The references are trusted to have passed `validateReference`, and the store does not run it again. It
  * checks that a reference starts from the component it is stored with and that its four values are of the
@@ -210,6 +214,13 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
     const replaced =
       store.get('SELECT 1 AS found FROM snapshot_analysis WHERE snapshot_id = ?', snapshotId) !== undefined;
     if (replaced) {
+      // The rows of the coverage that the analysis before added, and its numbers in the others.
+      store.run(
+        'DELETE FROM snapshot_type_coverage WHERE snapshot_id = ? AND listed = 0 AND retrieved = 0 AND note = ?',
+        snapshotId,
+        PARTS_NOTE,
+      );
+      store.run('UPDATE snapshot_type_coverage SET analysed = 0 WHERE snapshot_id = ?', snapshotId);
       store.run('DELETE FROM snapshot_component WHERE snapshot_id = ?', snapshotId);
       store.run('DELETE FROM snapshot_origin_coverage WHERE snapshot_id = ?', snapshotId);
       store.run("DELETE FROM snapshot_issue WHERE snapshot_id = ? AND stage = 'analysis'", snapshotId);
@@ -249,6 +260,8 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
     };
 
     const seen = new Set<number>();
+    /** Per type, the components of which the analysis read something. */
+    const analysed = new Map<string, number>();
     const found = new Map<ReferenceOrigin, { references: number; unresolved: number }>();
     let references = 0;
     let versionsAdded = 0;
@@ -261,6 +274,11 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
         });
       }
       seen.add(id);
+      if (component.attrs !== null) {
+        // A key starts with its type, and `componentId` has checked this one.
+        const type = component.key.slice(0, component.key.indexOf(':'));
+        analysed.set(type, (analysed.get(type) ?? 0) + 1);
+      }
 
       const prepared = component.references.map((reference) => prepare(component, reference)).sort(byPlace);
       for (const { reference } of prepared) {
@@ -348,6 +366,19 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
         one.failedFiles,
         count.references,
         count.unresolved,
+      );
+    }
+    // The coverage per type says how many components of the type were analysed. A type of which the source
+    // listed nothing and the analysis found parts, inside the files of other components, gets its row here.
+    for (const [type, count] of analysed) {
+      store.run(
+        `INSERT INTO snapshot_type_coverage (snapshot_id, type, listed, retrieved, analysed, listing, note)
+         VALUES (?, ?, 0, 0, ?, 'ok', ?)
+         ON CONFLICT (snapshot_id, type) DO UPDATE SET analysed = excluded.analysed`,
+        snapshotId,
+        type,
+        count,
+        PARTS_NOTE,
       );
     }
     for (const issue of analysis.issues) {

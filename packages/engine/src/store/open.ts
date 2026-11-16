@@ -219,7 +219,7 @@ function openOnce(options: OpenStoreOptions, busyTimeoutMs: number): Store {
       }
       if (state.version < migrations.length) {
         throw new EngineError('STORE_OUTDATED', 'The workspace database was written by an older version of OrgLens.', {
-          hint: 'Run a command that writes to the workspace, such as a snapshot, to update it.',
+          hint: 'Run a command that writes to the workspace, such as "orglens analyse" or "orglens snapshot", to update it.',
           details: { path, found: state.version, current: migrations.length },
         });
       }

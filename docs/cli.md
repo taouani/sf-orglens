@@ -5,25 +5,27 @@ The `--json` output and the exit codes are a contract: scripts, CI jobs and late
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
-org, and take snapshots of orgs, sandboxes and repository folders. No command analyses anything yet. Reading an
-org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
+org, take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its
+objects, fields and validation rules, with the formulas in them. No command answers an impact question yet, and
+nothing else of a snapshot is analysed yet. Reading an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
 org, by a tool of the tests ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot`
 itself has not been run against Salesforce.
 
 ## Commands
 
-| Command                              | What it does                                                                                | Changes                  |
-| ------------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------ |
-| `orglens init [folder]`              | Makes a folder a workspace: writes `orglens.toml` and creates the data folder `.orglens`.   | The folder               |
-| `orglens source add <name>`          | Declares an org, a sandbox or a set of repository folders in `orglens.toml`.                | `orglens.toml`           |
-| `orglens source list`                | Lists the declared sources.                                                                 | Nothing                  |
-| `orglens source remove <name>`       | Removes the declaration of a source. Snapshots already taken stay in the database.          | Both configuration files |
-| `orglens source link <name> <login>` | Chooses the Salesforce CLI login you use for an org or a sandbox.                           | `.orglens/local.toml`    |
-| `orglens source check <name>`        | Checks that a source can be read: logs in to an org, or reads the folders of a repository.  | No data                  |
-| `orglens status`                     | Shows the workspace, the state of its database and the latest snapshot of every source.     | No data                  |
-| `orglens snapshot <source>`          | Reads a source now and stores its metadata files as a new snapshot.                         | The database             |
-| `orglens coverage <source>`          | Shows what a snapshot holds per metadata type, and what was left out or went wrong.         | No data                  |
-| `orglens doctor`                     | Checks Node.js, SQLite, Git, the workspace, its configuration, its database and the logins. | No data                  |
+| Command                              | What it does                                                                                 | Changes                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------ |
+| `orglens init [folder]`              | Makes a folder a workspace: writes `orglens.toml` and creates the data folder `.orglens`.    | The folder               |
+| `orglens source add <name>`          | Declares an org, a sandbox or a set of repository folders in `orglens.toml`.                 | `orglens.toml`           |
+| `orglens source list`                | Lists the declared sources.                                                                  | Nothing                  |
+| `orglens source remove <name>`       | Removes the declaration of a source. Snapshots already taken stay in the database.           | Both configuration files |
+| `orglens source link <name> <login>` | Chooses the Salesforce CLI login you use for an org or a sandbox.                            | `.orglens/local.toml`    |
+| `orglens source check <name>`        | Checks that a source can be read: logs in to an org, or reads the folders of a repository.   | No data                  |
+| `orglens status`                     | Shows the workspace, the state of its database and the latest snapshot of every source.      | No data                  |
+| `orglens snapshot <source>`          | Reads a source now, stores its metadata files as a new snapshot, and analyses them.          | The database             |
+| `orglens analyse <source>`           | Analyses a stored snapshot again, from the files it holds. The source is not read.           | The database             |
+| `orglens coverage <source>`          | Shows what a snapshot holds per metadata type, what its analysis found, and what went wrong. | No data                  |
+| `orglens doctor`                     | Checks Node.js, SQLite, Git, the workspace, its configuration, its database and the logins.  | No data                  |
 
 `status`, `coverage` and `doctor` change neither the configuration nor the content of the database. They open the
 database to read it, and SQLite can then create its two helper files beside it (`orglens.db-wal` and
@@ -74,6 +76,8 @@ What the help texts do not say:
   that a script does not take an incomplete picture for a complete one.
 - Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing. They do not
   make a snapshot partial.
+- A snapshot is analysed as soon as it is stored. `complete` and `partial` say what was read, whatever the
+  analysis found. [The analysis of a snapshot](#the-analysis-of-a-snapshot) has its own word for that.
 
 #### A source of the kind `git`
 
@@ -180,6 +184,7 @@ Logged in to the org of "prod". It is read with API version 66.0.
 Asking the org what it holds: 240 of 312 requests answered.
 Snapshot #4: the org lists 11,862 components. They are retrieved in 9 chunks.
 Snapshot #4: 1 of 9 chunks is stored.
+Snapshot #4: every chunk is done. Analysing its files.
 ```
 
 The files of an org are always in the standard form of a Salesforce project, whatever `sfdx-project.json` of the
@@ -190,15 +195,79 @@ retrieve that is too large, folders inside folders, and whether the names in a r
 the org listed. The mock org the tests use is built from the fixture project, and was also built once from each
 of three public codebases.
 
+#### The analysis of a snapshot
+
+The analysis finds the components that the files of a snapshot make up, and which component refers to which.
+Today it reads objects, fields and validation rules: the names written in their XML, and the formula of a field,
+its default value and the condition of a rule. Every other type is stored and not analysed yet. Decision record
+[0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
+[0041](adr/0041-components-and-names-written-in-xml.md) and [0042](adr/0042-the-names-in-a-formula.md) say what
+is read and what is not.
+
+- A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
+  snapshot is stored, also for a snapshot of an org that was interrupted and continued.
+- `orglens analyse <source>` analyses the latest snapshot of a source again, or the one given with
+  `--snapshot <number>`. The source is not read, and no login is needed. The analysis the snapshot had is
+  replaced, and nothing else of the snapshot changes. Use it after an update of OrgLens that analyses more, and
+  for a snapshot that an older version took and did not analyse. It migrates a database that an older version
+  wrote.
+- An analysis is complete or incomplete. It is incomplete when an issue of the analysis has the severity
+  `error`: a file of the snapshot could not be read as XML or does not hold what its name says, a component
+  could not be analysed, or a file of the snapshot belongs to no component as this version reads it. Each such
+  issue costs the analysis that one file or component. `snapshot` and `analyse` then end with the exit code `5`,
+  with `ok: true`.
+- A warning of the analysis says that a name was not read, a path of names was not followed to its end, or a
+  formula was not read as a whole. The analysis is complete all the same: what it did not find is counted and
+  shown, and an answer that rests on it has to say so.
+- If the analysis fails as a whole, which a full disk or a fault of OrgLens can cause, the snapshot stays as it
+  was stored, without an analysis, or with the one it had. The command ends with the error of the failure. Its
+  message says that the snapshot is stored, its hint how to analyse it, and `details.snapshot` its number.
+- `analyse` refuses a snapshot of an org that has not ended or was given up, with `SNAPSHOT_NOT_FOUND` and the
+  state of the snapshot in `details.status`.
+- The files of an org are read as Salesforce lays them out, whatever the project of the folder the command runs
+  in says. The files of a repository are read as the project of the folder the command runs in lays them out,
+  as they were when the snapshot was taken.
+
+Not verified: no snapshot of a real org was analysed by the command. The test org is read by a tool of the
+tests, and what the analysis finds there is measured in a later work package.
+
+#### The report of a snapshot
+
 `orglens coverage <source>` shows the latest snapshot of a source, or the one given with `--snapshot <number>`.
-It ends with `0` also when that snapshot is partial: showing the report is what it was asked to do. The column
-`ANALYSED` is `0` for every type until the analysers arrive.
+It ends with `0` also when that snapshot is partial or its analysis is incomplete: showing the report is what it
+was asked to do. `snapshot` and `analyse` print the same report.
 
-The table of `coverage` has one line per metadata type that has components. For an org, the column `LISTED` says
+The first table has one line per metadata type that has components. For an org, the column `LISTED` says
 `not listed` for a type Salesforce never lists, and adds `(listing failed)` to the number of a type the org
-refused to list in whole or in part.
+refused to list in whole or in part. The column `ANALYSED` says of how many components of the type the analysis
+read something. It is `0` for a type that is not analysed yet. It can be larger than `RETRIEVED`: the analysis
+also counts the fields and rules it finds inside the file of an object, and a type of which the source lists
+nothing can have a line for that reason.
 
-The issue codes of today:
+Below it stand the issues of the reading, and then the analysis:
+
+```
+Analysed by engine 0.1.0: 89 components, 106 references.
+
+ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ
+parser:xml      69          26          0             0                   0
+parser:formula  34          80          0             0                   0
+```
+
+There is one line for each origin of references that this version analyses. `COMPONENTS` are the components
+the analyser looked at: for `parser:formula`, those with a formula or a default value. `NOT RESOLVED` are the
+references that name something no file of the snapshot defines. `PATHS NOT FOLLOWED` are the paths of names
+that could not be walked to their end. `FILES NOT READ` are the files the analyser tried to read and could not:
+for `parser:formula`, the files with a formula that was not read as a whole, whose names are recorded as
+`probable`. The number of components includes the parts found inside files, and the objects that are only
+named.
+
+The issues of the analysis follow, one line per code with their number and the first of them: an org can have
+hundreds. `--json` has every issue. A snapshot without an analysis says so, and names the command that analyses
+it. `orglens status` says in the column `ANALYSED` whether the latest snapshot of a source is analysed, and by
+which version of the engine.
+
+The issue codes of the reading (`stage` is `read`):
 
 | Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                     |
 | --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -217,6 +286,26 @@ An issue about several files carries their number in `details.count` and at most
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
 with its `type`, its `fullName` and the `paths` of its definitions. Only components without parts are looked at:
 a class or a field in two package directories is reported, an object whose file is in two of them is not.
+
+The issue codes of the analysis (`stage` is `analysis`), for every kind of source:
+
+| Severity  | Code                                               | Situation                                                                                                             |
+| --------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                           |
+| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read.          |
+| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                        |
+| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                            |
+| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug. |
+| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                       |
+| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component as this version reads them (`details.count`, `details.paths`).           |
+| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one. No reference is made for it.                                     |
+| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads, so the names after it have no reference (`details.origin` says whose).    |
+| `warning` | `ELEMENT_NOT_FOUND`                                | A file does not hold an element that its type always has.                                                             |
+| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                             |
+
+An issue of the analysis names the component it is about in `component`, by its key, when it is about one
+component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
+`details.path` and has `component: null`. Every issue of the reading has `component: null`.
 
 ### Logins
 
@@ -356,18 +445,19 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                                                                                                                                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                 |
-| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                      |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                            |
-| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                |
-| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                   |
-| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                            |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`). |
-| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `issues` (`severity`, `code`, `message`, `details`).                                      |
-| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                     |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                        |
+| Command         | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                                                                                                                                                                                                                                                                                                                     |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                      |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
+| `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace
@@ -397,8 +487,9 @@ release, the contract can still change with a pull request that says so.
 | `4`  | connection | A login is missing or has expired, or the org cannot be reached.              |
 | `5`  | partial    | The result is there and it is incomplete.                                     |
 
-`snapshot` ends with `5` when the snapshot it stored is partial, and `source check` when a snapshot of the folders
-would be. `source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends with `3` yet.
+`snapshot` ends with `5` when the snapshot it stored is partial or its analysis is incomplete, `analyse` when the
+snapshot it analysed is partial or its analysis is incomplete, and `source check` when a snapshot of the folders
+would be partial. `source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends with `3` yet.
 The code is fixed now, so that scripts written today keep their meaning when the commands that use it arrive.
 
 ## Error codes
@@ -414,7 +505,7 @@ The code is fixed now, so that scripts written today keep their meaning when the
 | `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                                                       |
 | `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                                                    |
 | `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                                                 |
-| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number.                                                     |
+| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number, or none that `analyse` can analyse.                 |
 | `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                                                   |
 | `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent.                          |
 | `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                                                 |

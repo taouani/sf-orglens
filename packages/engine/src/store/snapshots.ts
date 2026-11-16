@@ -6,7 +6,8 @@
  * shared with every other snapshot that holds the same content.
  */
 import { EngineError, type JsonValue } from '../core/errors.ts';
-import { putBlob } from './blobs.ts';
+import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
+import { getBlob, putBlob } from './blobs.ts';
 import type { Store } from './open.ts';
 
 type SourceKind = 'org' | 'sandbox' | 'git';
@@ -277,11 +278,17 @@ export function readCoverage(store: Store, snapshotId: number): TypeCoverage[] {
     }));
 }
 
+/** An issue as the database holds it: with the step of the snapshot it belongs to. */
+export interface StoredIssue extends SnapshotIssue {
+  /** `read`: found while the source was read. `analysis`: found by the analysis, and replaced with it. */
+  readonly stage: 'read' | 'analysis';
+}
+
 /** The issues of a snapshot, in the order they were recorded. */
-export function readIssues(store: Store, snapshotId: number): SnapshotIssue[] {
+export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
   return store
     .all(
-      'SELECT severity, code, component_key, message, details FROM snapshot_issue WHERE snapshot_id = ? ORDER BY id',
+      'SELECT severity, code, component_key, message, details, stage FROM snapshot_issue WHERE snapshot_id = ? ORDER BY id',
       snapshotId,
     )
     .map((row) => ({
@@ -290,5 +297,25 @@ export function readIssues(store: Store, snapshotId: number): SnapshotIssue[] {
       message: String(row['message']),
       componentKey: text(row['component_key']),
       details: typeof row['details'] === 'string' ? (JSON.parse(row['details']) as Record<string, JsonValue>) : null,
+      stage: row['stage'] === 'analysis' ? 'analysis' : 'read',
     }));
+}
+
+/**
+ * The files of a snapshot as a tree: sorted by code unit, each read from its blob and checked against its hash
+ * when it is asked for.
+ */
+export function snapshotTree(store: Store, snapshotId: number): SourceTree {
+  const blobs = new Map<string, number>();
+  for (const row of store.all('SELECT path, blob_id FROM snapshot_file WHERE snapshot_id = ?', snapshotId)) {
+    blobs.set(String(row['path']), Number(row['blob_id']));
+  }
+  return {
+    files: [...blobs.keys()].sort(byCodeUnit),
+    read: (path) => {
+      const blob = blobs.get(path);
+      if (blob === undefined) throw new Error(`"${path}" is not a file of this snapshot.`);
+      return getBlob(store, blob);
+    },
+  };
 }
