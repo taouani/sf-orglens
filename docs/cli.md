@@ -6,8 +6,9 @@ The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exi
 
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
 org, take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its
-objects, fields and validation rules, with the formulas in them. No command answers an impact question yet, and
-nothing else of a snapshot is analysed yet. Reading an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
+objects, fields and validation rules, with the formulas in them. `orglens impact` answers what refers to a
+component from those types alone. Nothing else of a snapshot is analysed yet, and an answer names the types it
+does not cover. Reading an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
 org, by a tool of the tests ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot`
 itself has not been run against Salesforce.
 
@@ -25,9 +26,11 @@ itself has not been run against Salesforce.
 | `orglens snapshot <source>`          | Reads a source now, stores its metadata files as a new snapshot, and analyses them.          | The database             |
 | `orglens analyse <source>`           | Analyses a stored snapshot again, from the files it holds. The source is not read.           | The database             |
 | `orglens coverage <source>`          | Shows what a snapshot holds per metadata type, what its analysis found, and what went wrong. | No data                  |
+| `orglens impact <component>`         | Shows what refers to a component in a snapshot, directly or through other components.        | No data                  |
 | `orglens doctor`                     | Checks Node.js, SQLite, Git, the workspace, its configuration, its database and the logins.  | No data                  |
 
-`status`, `coverage` and `doctor` change neither the configuration nor the content of the database. They open the
+`status`, `coverage`, `impact` and `doctor` change neither the configuration nor the content of the database. They
+open the
 database to read it, and SQLite can then create its two helper files beside it (`orglens.db-wal` and
 `orglens.db-shm`) and leave them there. Both are in the ignored folder `.orglens`.
 
@@ -41,8 +44,8 @@ What the help texts do not say:
   below an existing workspace is refused too. Both end with `WORKSPACE_EXISTS`.
 - `snapshot` of an org or a sandbox takes minutes and says on the standard error stream how far it is. With
   `--json` it says nothing there.
-- Only `init` and `snapshot` create the database. `status`, `coverage` and the `source` commands never create or
-  migrate it. `status`
+- Only `init` and `snapshot` create the database. `status`, `coverage`, `impact` and the `source` commands never
+  create or migrate it. `status`
   reports a database that is missing, outdated, newer, foreign or busy as the `state` of the store, and still exits
   with `0`: the command did what it was asked to do. `doctor` is the command that turns a problem into an exit
   code.
@@ -316,6 +319,152 @@ An issue of the analysis names the component it is about in `component`, by its 
 component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
 `details.path` and has `component: null`. Every issue of the reading has `component: null`.
 
+### Impact
+
+`orglens impact <component>` answers the question the tool is for: if this component changes or goes away, what
+is affected? It shows every component of a snapshot that refers to the component, directly or through other
+components.
+
+```
+$ orglens impact Invoice__c.Amount__c
+What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "repo".
+The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+
+7 components refer to it, 6 of them directly.
+
+DEPTH  COMPONENT                              CONFIDENCE  KIND   REFERS TO                         WHERE
+1      CustomField:invoice__c.late_fee__c     confirmed   reads  CustomField:invoice__c.amount__c  force-app/…/Late_Fee__c.field-meta.xml:6
+1      CustomField:invoice__c.total__c        confirmed   reads  CustomField:invoice__c.amount__c  force-app/…/Total__c.field-meta.xml:4
+2      CustomField:invoice__c.grand_total__c  confirmed   reads  CustomField:invoice__c.total__c   force-app/…/Grand_Total__c.field-meta.xml:4
+…
+
+Not analysed yet. A component of these types may refer to it, and is not in the answer:
+TYPE         LISTED  RETRIEVED
+ApexClass    12      12
+ApexTrigger  1       1
+…
+```
+
+The example is shortened: the command prints every line and every path in full.
+
+| Option                    | Meaning                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `--source <name>`         | The source to ask. It can be left out in a workspace that declares exactly one source.             |
+| `--snapshot <number>`     | The snapshot to ask. Default: the latest snapshot of the source that ended as complete or partial. |
+| `--depth <number>`        | How many references away from the component the answer goes at most. Default: no limit.            |
+| `--min-confidence <tier>` | Follows only references that are at least this certain: `confirmed`, `probable` or `possible`.     |
+| `--outgoing`              | Shows what the component refers to, in place of what refers to it.                                 |
+
+**How the component is named.** By its name (`Account.Industry`), by its type and name
+(`CustomField:Account.Industry`) or by its key (`CustomField:account.industry`). Upper and lower case do not
+matter. A name alone is looked up among the types the snapshot holds and the types OrgLens knows by name. If it
+fits components of several types, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys. The snapshot
+also knows a component that it does not hold and that something in it refers to, such as a standard field:
+`orglens impact Account.Name` works in a repository that has no file for that field. A component of that kind
+whose type is neither in the snapshot nor known to OrgLens by name is not found by its name alone: name it with
+its type.
+
+**What the answer holds.**
+
+- One line per component that refers to the component, at any distance. `DEPTH` is the number of references
+  between the two, on the shortest chain. A component is in the answer once, however many chains lead to it.
+- `REFERS TO` and `WHERE` are the reference the component is found by: what the component of the line itself
+  refers to, and the file and line where it does. For a depth of 2 and more, `REFERS TO` is another line of the
+  answer, one reference nearer, and that line shows the next reference of the chain.
+- `CONFIDENCE` is the weakest confidence on the chain. Among several chains of the same length, the answer shows
+  the one whose weakest reference is the most certain.
+- One line shows one reference. If a component refers to the same target at several places, the answer shows
+  one of them: the one that makes the chain most certain, and among those the first in the file. The other
+  places are not listed.
+- For a component that contains others, such as an object with its fields and validation rules, the answer is
+  about everything it contains too: what refers to any of them is in the answer. The second line says how many
+  components that are. What the component contains is never a line of the answer itself.
+- A component that is found is followed from itself only. If a field refers to the component, the answer goes
+  on with what refers to that field, not with what refers to its object or to the other fields of its object.
+- With `--depth`, the answer says whether references lead further than it goes.
+- With `--outgoing`, the same is shown in the other direction: what the component refers to, and what those
+  refer to. A name that has no key, so that no component stands for it, is listed in a table of its own.
+
+**What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
+the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
+
+- the types of the snapshot that no analyser has read yet, with the number of components the source has of each.
+  A component of such a type can refer to the component and is not in the answer. In this pre-release, that is
+  every type except objects, fields and validation rules;
+- the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
+- how many files or folders could not be read, and how many errors the analysis had, with the command that shows
+  them;
+- how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
+  to its end, or a part of a file was not found. A reference may be missing for each;
+- for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a
+  component of a package. What such a component refers to is not known.
+
+An answer is complete only if none of these applies. The warnings are those of the whole snapshot, not only
+those of the components in the answer.
+
+For `--outgoing`, a type that is not analysed counts only if the component, something it contains or a result
+is of it: what a component refers to is known once the component itself is analysed.
+
+Whether a type is analysed is read from the snapshot, not from the version of OrgLens that answers: an analysis
+records the types it read. A snapshot that an older version analysed covers what that version read.
+`orglens analyse <source>` analyses it again. An analysis from before the database kept that list (schema
+version 4 or older) has none, and a type then counts as analysed if the snapshot holds an analysed component of
+it. An analysed type of which such a snapshot holds nothing is listed as not analysed there, not as partial.
+
+`impact` only reads, so it does not migrate a database that an older version of OrgLens wrote. It ends with
+`STORE_OUTDATED`. `orglens analyse <source>` or `orglens snapshot <source>` migrates the database.
+
+**Exit codes.** `0` for an answer that misses nothing of a type it covers. Types that are not analysed yet do
+not change that: the answer names them, and a script would otherwise fail on every run. Warnings of the analysis
+and components the snapshot does not hold do not change it either. `5` if the answer may miss something of a type
+it covers: an analysed type is partial in the snapshot, a file or a folder could not be read, or the analysis
+had an error. `2` if no component has the name or several have, and for a workspace with several sources when
+`--source` is missing. A snapshot that was never analysed ends with `SNAPSHOT_NOT_ANALYSED` and the exit code
+`1`, and the hint names the command that analyses it. A script that needs a complete answer reads
+`data.complete`: the exit code `0` does not say it.
+
+**The data of `--json`:**
+
+| Field           | Meaning                                                                                                                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                         |
+| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                  |
+| `parts`         | How many components of the snapshot it contains.                                                                                                                                                                                                |
+| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                       |
+| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                           |
+| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                              |
+| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                        |
+| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`.                                                                                                     |
+| `reference`     | The reference a result is found by, with `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result and `to` is one reference nearer. For `outgoing` it is the other way round. |
+| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
+| `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                    |
+| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`.                                       |
+| `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                     |
+
+**The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
+reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the
+nearer end is the component that was asked about, or something it contains, and the chain ends there. A program
+follows the chain by looking up that key among the results. An answer with every chain written out grows with
+the number of results times their depth: the largest answer that was measured had 104,760 results up to 21
+references away, and was 443 MB of JSON that way.
+
+What is not done, and what a user should know:
+
+- The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
+  changes. That is a later phase.
+- Only objects, fields and validation rules are analysed. Apex, flows, layouts, permissions and the other types
+  follow in later phases. Until then an answer about what refers to a component of a real project says that it
+  is not complete. An answer with `--outgoing` can be complete, because it needs only the component and its
+  results to be analysed.
+- The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
+- An answer can be large: a field that much of an org rests on can have tens of thousands of results.
+  `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.
+- A snapshot of an org that is still running or was given up cannot be asked. The command ends with
+  `SNAPSHOT_NOT_FOUND` and the state of the snapshot in `details.status`.
+- Not verified: no snapshot of a real org was asked by the command. The answers are checked against the answer
+  key of the fixture project, and the time is measured on synthetic orgs
+  ([store-benchmark.md](research/phase-1/store-benchmark.md)).
+
 ### Logins
 
 OrgLens never asks for a password and stores no credential. For an org or a sandbox it uses a login that exists
@@ -465,6 +614,7 @@ with exactly and allows no other fields.
 | `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                      |
 | `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
 | `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `impact`        | `snapshot`, `component`, `parts`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
@@ -498,7 +648,9 @@ release, the contract can still change with a pull request that says so.
 
 `snapshot` ends with `5` when the snapshot it stored is partial or its analysis is incomplete, `analyse` when the
 snapshot it analysed is partial or its analysis is incomplete, and `source check` when a snapshot of the folders
-would be partial. `source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends with `3` yet.
+would be partial. `impact` ends with `5` when its answer may miss something of a type it covers (`data.mayMiss`).
+`source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends
+with `3` yet.
 The code is fixed now, so that scripts written today keep their meaning when the commands that use it arrive.
 
 ## Error codes
@@ -514,13 +666,16 @@ The code is fixed now, so that scripts written today keep their meaning when the
 | `SOURCE_EXISTS`          | 2    | A source with this name is already declared.                                                                       |
 | `SOURCE_INVALID`         | 2    | The declaration of a source breaks a rule of the configuration.                                                    |
 | `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                                                 |
-| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number, or none that `analyse` can analyse.                 |
+| `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number, or none that can be analysed or asked.              |
+| `COMPONENT_NOT_FOUND`    | 2    | The snapshot knows no component with the name that was given to `impact`.                                          |
+| `COMPONENT_AMBIGUOUS`    | 2    | The name fits components of several types. `details.candidates` lists their keys.                                  |
 | `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                                                   |
 | `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent.                          |
 | `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                                                 |
 | `WORKSPACE_IO`           | 1    | A file or folder of the workspace could not be read or written.                                                    |
 | `SOURCE_READ_FAILED`     | 1    | A source could not be read: its repository, its folders, its commit, or an org that stopped answering as expected. |
 | `SNAPSHOT_RUNNING`       | 1    | Another process is taking a snapshot of this source.                                                               |
+| `SNAPSHOT_NOT_ANALYSED`  | 1    | The snapshot has no analysis, so nothing is known about its references. The hint names the command.                |
 | `STORE_NOT_FOUND`        | 1    | The workspace has no database yet, and the command only reads.                                                     |
 | `STORE_FOREIGN`          | 1    | The file at the place of the workspace database was not created by OrgLens.                                        |
 | `STORE_NEWER`            | 1    | The database was written by a newer version of OrgLens.                                                            |

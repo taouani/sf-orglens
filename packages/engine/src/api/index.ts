@@ -32,6 +32,17 @@ export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../
 
 export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
 export type { AnalysisReport, OriginReport } from './analysis.ts';
+export type { ImpactQuery, ImpactReport } from './impact.ts';
+export type {
+  ImpactComponent,
+  ImpactGap,
+  ImpactGaps,
+  ImpactResult,
+  ImpactStep,
+  ImpactUnresolved,
+} from '../engines/impact.ts';
+export { CONFIDENCE_TIERS } from '../core/references.ts';
+export type { ConfidenceTier } from '../core/references.ts';
 export type { SnapshotProgress } from './org-snapshot.ts';
 export type { GitCheck, OrgCheck, SourceCheck } from './check.ts';
 

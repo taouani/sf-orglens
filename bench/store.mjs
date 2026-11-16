@@ -8,17 +8,20 @@
  *   snapshots  how many snapshots to write, default 2
  *
  * Unlike bench/bench.mjs it goes through the engine: it opens the database with `openStore`, writes every
- * snapshot with `writeAnalysis` and reads with `sqlGraph`. It measures what a command will see: the size of
- * the database and the time to write one analysis. The time to make the components in memory is given apart,
+ * snapshot with `writeAnalysis`, reads with `sqlGraph` and asks impact questions with `impactOf`. It measures
+ * what a command will see: the size of the database, the time to write one analysis and the time of an impact
+ * question. The time to make the components in memory is given apart,
  * because an analyser makes them, not the store. That time holds the SHA-256 of every content and the reading
  * of every attribute text, which the load time of bench/bench.mjs includes.
  *
  * It builds the database in a temporary folder, prints the measurements as JSON and removes the folder, also
  * when it fails. The next run removes what an interrupted run left more than an hour ago.
  */
+import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { impactOf } from '../packages/engine/src/api/impact.ts';
 import { buildKey } from '../packages/engine/src/core/keys.ts';
 import { writeAnalysis } from '../packages/engine/src/store/analysis.ts';
 import { loadBetterSqlite3Driver } from '../packages/engine/src/store/better-sqlite3.ts';
@@ -170,6 +173,7 @@ for (let s = 1; s <= snapshots; s++) {
   const written = writeAnalysis(store, snapshotId, {
     engineVersion: 'bench',
     analysedAt: at,
+    types: [],
     components,
     work: ORIGIN.map((origin) => ({ origin, components: components.length, failedFiles: 0 })),
     issues: [],
@@ -259,6 +263,47 @@ result.references_to_leaf = timed(() => graph.referencesTo(graph.find(keys[leaf]
 result.reach_hub_5_levels = timed(() => reach(keys[hub]), 3);
 result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
 
+// The impact question, as a command asks it (`impactOf`): the snapshot and its analysis are looked up, the
+// component is found by its key, the references are walked level by level, and what the answer does not cover
+// is read. Every case gets a database that was just opened, as a command has it: no statement is prepared and
+// the page cache of SQLite is empty. The file is in the cache of the system. Starting Node.js, loading the
+// engine and writing the answer are not in the time.
+{
+  // An ordinary field: the one in the middle of the fields that something refers to, by how many do.
+  const referred = universe.fields.filter((field) => state.alive[field] && inbound[field] > 0);
+  referred.sort((a, b) => inbound[a] - inbound[b] || a - b);
+  const ordinary = referred[referred.length >> 1];
+  const ask = (field, query) => {
+    const reader = openStore({ path: file, driver, readOnly: true });
+    try {
+      const measured = timed(() => {
+        const report = impactOf(reader, 'bench', keys[field], query);
+        return {
+          results: report.results.length,
+          deepest: report.results.at(-1)?.depth ?? 0,
+          beyond_depth: report.beyondDepth,
+        };
+      }, 3);
+      // What `--json` has to write for this answer, and how long turning it into text takes. Not in the times above.
+      const started = now();
+      const text = JSON.stringify(impactOf(reader, 'bench', keys[field], query));
+      const written = now() - started;
+      return { ...measured, json_mb: megabytes(Buffer.byteLength(text)), answer_and_json_ms: +written.toFixed(2) };
+    } finally {
+      reader.close();
+    }
+  };
+  result.impact = {
+    ordinary: { key: keys[ordinary], direct_inbound: inbound[ordinary] },
+    hub: { key: keys[hub], direct_inbound: inbound[hub] },
+    ordinary_5_levels: ask(ordinary, { depth: 5 }),
+    ordinary_no_limit: ask(ordinary, {}),
+    hub_5_levels: ask(hub, { depth: 5 }),
+    hub_no_limit: ask(hub, {}),
+    hub_confirmed_only: ask(hub, { minConfidence: 'confirmed' }),
+  };
+}
+
 // Writing the analysis of the last snapshot again, as a newer engine does for a snapshot it analyses again.
 // It finds every version there already, and then looks through all versions for those nothing holds any more.
 {
@@ -267,6 +312,7 @@ result.reach_leaf_5_levels = timed(() => reach(keys[leaf]));
   const written = writeAnalysis(store, snapshotId, {
     engineVersion: 'bench again',
     analysedAt: new Date().toISOString(),
+    types: [],
     components,
     work: ORIGIN.map((origin) => ({ origin, components: components.length, failedFiles: 0 })),
     issues: [],

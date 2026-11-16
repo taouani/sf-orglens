@@ -179,7 +179,7 @@ CREATE TABLE snapshot_analysis (
   analysed_at    TEXT NOT NULL CHECK (analysed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
   components     INTEGER NOT NULL CHECK (components >= 0),
   refs           INTEGER NOT NULL CHECK (refs >= 0)
-) STRICT;
+, types TEXT CHECK (types IS NULL OR (json_valid(types) AND json_type(types) = 'array'))) STRICT;
 
 CREATE TABLE snapshot_origin_coverage (
   snapshot_id  INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,

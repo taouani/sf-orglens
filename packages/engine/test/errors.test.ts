@@ -35,6 +35,8 @@ describe('EngineError', () => {
   // The codes are a public contract. Adding one is a deliberate change to this list.
   it('has exactly the documented codes', () => {
     expect(Object.keys(ERROR_CODES).sort()).toEqual([
+      'COMPONENT_AMBIGUOUS',
+      'COMPONENT_NOT_FOUND',
       'CONFIG_INVALID',
       'CONFIG_NOT_EDITABLE',
       'INTERNAL',
@@ -42,6 +44,7 @@ describe('EngineError', () => {
       'LOGIN_FAILED',
       'ORG_MISMATCH',
       'REFERENCE_INVALID',
+      'SNAPSHOT_NOT_ANALYSED',
       'SNAPSHOT_NOT_FOUND',
       'SNAPSHOT_RUNNING',
       'SOURCE_EXISTS',

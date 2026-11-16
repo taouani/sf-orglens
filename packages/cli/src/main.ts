@@ -1,9 +1,10 @@
 import { Command, CommanderError, Option } from 'commander';
-import { engineVersion } from '@sf-orglens/engine';
+import { CONFIDENCE_TIERS, engineVersion } from '@sf-orglens/engine';
 import {
   analyse,
   coverage,
   doctorCommand,
+  impact,
   init,
   snapshot,
   sourceAdd,
@@ -13,6 +14,7 @@ import {
   sourceRemove,
   status,
   type Context,
+  type ImpactCommandOptions,
   type SourceAddOptions,
 } from './commands.ts';
 import { createWriter, EXIT, UsageError, type ExitCode, type Io, type Outcome } from './output.ts';
@@ -66,7 +68,12 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .helpOption('-h, --help', 'show help and exit')
     .option('--json', 'write the result as one line of JSON')
     .option('--workspace <folder>', 'the workspace folder (default: found from the current folder upwards)')
-    .addHelpText('after', '\nPre-release: the commands that answer impact questions are not available yet.')
+    .addHelpText(
+      'after',
+      '\nPre-release: an impact answer covers objects, fields and validation rules.\n' +
+        'Apex, flows and the other types are not analysed yet. An answer names the\n' +
+        'types it does not cover.',
+    )
     .helpCommand(false)
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
@@ -256,6 +263,36 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .option('--snapshot <number>', 'the snapshot to show (default: the latest)')
     .action((name: string, options: { snapshot?: string }, command: Command) =>
       run('coverage', (context) => coverage(context, name, options))(command),
+    );
+
+  program
+    .command('impact')
+    .summary('show what refers to a component')
+    .description(
+      'Shows what refers to a component in the latest snapshot of a source, directly or through other components: ' +
+        'each with its depth, the reference it is found by with file and line, and the weakest confidence on ' +
+        'the shortest chain of references that leads to it. For an object, the answer is about everything it ' +
+        'contains too. ' +
+        'The component is named by its name (Account.Industry), by its type and name ' +
+        '(CustomField:Account.Industry) or by its key. ' +
+        'The first lines say whether the answer is complete, and if not, why: above all the types of the ' +
+        'snapshot that are not analysed yet. Reads only. ' +
+        'The exit code is 5 if something of the source was not read that the answer claims to cover: a type ' +
+        'that is analysed is held only in part, or the reading or the analysis had an error. ' +
+        'It is 2 if no component has the name, or several have.',
+    )
+    .argument('<component>', 'the name or the key of the component')
+    .option('--source <name>', 'the source to ask (default: the only source of the workspace)')
+    .option('--snapshot <number>', 'the snapshot to ask (default: the latest)')
+    .option('--depth <number>', 'how many references away the answer goes at most (default: no limit)')
+    .addOption(
+      new Option('--min-confidence <tier>', 'follow only references that are at least this certain')
+        .choices([...CONFIDENCE_TIERS])
+        .default('possible'),
+    )
+    .option('--outgoing', 'show what the component refers to, in place of what refers to it')
+    .action((component: string, options: ImpactCommandOptions, command: Command) =>
+      run('impact', (context) => impact(context, component, options))(command),
     );
 
   program

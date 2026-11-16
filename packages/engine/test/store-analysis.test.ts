@@ -25,7 +25,13 @@ import {
   type Analysis,
   type OriginWork,
 } from '../src/store/analysis.ts';
-import { sqlGraph, type GraphComponent, type GraphReference } from '../src/store/graph.ts';
+import {
+  sqlGraph,
+  type GraphComponent,
+  type GraphEdge,
+  type GraphLink,
+  type GraphReference,
+} from '../src/store/graph.ts';
 import { MIGRATIONS } from '../src/store/migrate.ts';
 import type { SqlValue } from '../src/store/driver.ts';
 import { openStore, type Store } from '../src/store/open.ts';
@@ -33,6 +39,7 @@ import {
   addCoverage,
   addIssue,
   addSnapshotFile,
+  countIssues,
   ensureSource,
   insertSnapshot,
   readIssues,
@@ -151,6 +158,7 @@ function project(): AnalysedComponent[] {
 const analysisOf = (components: Iterable<AnalysedComponent>, more: Partial<Analysis> = {}): Analysis => ({
   engineVersion: '0.2.0',
   analysedAt: T1,
+  types: ['CustomObject', 'ValidationRule', 'CustomField'],
   components,
   work: [
     { origin: 'parser:formula', components: 2, failedFiles: 0 },
@@ -236,7 +244,20 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       versionsAdded: 5,
       versionsRemoved: 0,
     });
-    expect(readAnalysis(store, id)).toEqual({ engineVersion: '0.2.0', analysedAt: T1, components: 5, references: 5 });
+    expect(readAnalysis(store, id)).toEqual({
+      engineVersion: '0.2.0',
+      analysedAt: T1,
+      components: 5,
+      references: 5,
+      // Sorted, whatever order they were given in.
+      types: ['CustomField', 'CustomObject', 'ValidationRule'],
+    });
+    // An analysis that a version before schema 5 wrote kept no list.
+    store.write(() => store.run('UPDATE snapshot_analysis SET types = NULL WHERE snapshot_id = ?', id));
+    expect(readAnalysis(store, id)?.types).toBeNull();
+    store.write(() =>
+      store.run(`UPDATE snapshot_analysis SET types = '["CustomField","CustomObject","ValidationRule"]'`),
+    );
     // Five components and the standard field that is only referred to. Four files: the object without a file has none.
     expect(counts(store)).toEqual({
       component: 6,
@@ -351,6 +372,190 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       [ACCOUNT_NAME, null],
     ]);
     expect(graph.childrenOf(graph.find(AMOUNT)?.id ?? 0)).toEqual([]);
+    store.close();
+  });
+
+  it('gives back everything below a component, and nothing for one that contains nothing', () => {
+    const store = open();
+    const id = snapshot(store);
+    writeAnalysis(store, id, analysisOf(project()));
+    const graph = sqlGraph(store, id);
+    const idOf = (componentKey: ComponentKey): number => graph.find(componentKey)?.id ?? 0;
+    expect(graph.below(idOf(INVOICE)).sort()).toEqual([idOf(AMOUNT), idOf(TOTAL), idOf(RULE)].sort());
+    expect(graph.below(idOf(ACCOUNT))).toEqual([idOf(ACCOUNT_NAME)]);
+    expect(graph.below(idOf(AMOUNT))).toEqual([]);
+    expect(graph.below(123_456)).toEqual([]);
+    store.close();
+  });
+
+  it('gives back many components at once, each as it is asked for alone', () => {
+    const store = open();
+    const id = snapshot(store);
+    writeAnalysis(store, id, analysisOf(project()));
+    const graph = sqlGraph(store, id);
+    const all = [INVOICE, AMOUNT, TOTAL, RULE, ACCOUNT, ACCOUNT_NAME].map((one) => graph.find(one));
+    const ids = all.map((one) => one?.id ?? 0);
+    const byId = (a: GraphComponent, b: GraphComponent): number => a.id - b.id;
+    // An id the database does not know is left out, and so is nothing else.
+    expect(graph.components([...ids, 123_456]).sort(byId)).toEqual(all.filter((one) => one !== undefined).sort(byId));
+    expect(graph.components([])).toEqual([]);
+    store.close();
+  });
+
+  it('gives back the references at many components at once: first their ends, then the rest of those asked for', () => {
+    const store = open();
+    const id = snapshot(store);
+    const written = project();
+    writeAnalysis(store, id, analysisOf(written));
+    const graph = sqlGraph(store, id);
+    const idOf = (componentKey: ComponentKey): number => graph.find(componentKey)?.id ?? 0;
+    /** The links with the rest of each: the two calls a walk makes. */
+    const whole = (links: readonly GraphLink[]): GraphEdge[] => graph.edges(links);
+    const plain = ({ fromId, toId, kind, origin, location }: GraphEdge): unknown => [
+      fromId,
+      toId,
+      kind,
+      origin,
+      location?.line ?? null,
+    ];
+    const sorted = (edges: readonly GraphEdge[]): unknown[] => edges.map(plain).sort();
+
+    const to = graph.linksTo([idOf(AMOUNT), idOf(ACCOUNT_NAME), idOf(TOTAL)]);
+    expect(sorted(whole(to))).toEqual(
+      [
+        [idOf(TOTAL), idOf(AMOUNT), 'reads', 'parser:formula', 7],
+        [idOf(RULE), idOf(AMOUNT), 'references', 'dependency-api', null],
+        [idOf(RULE), idOf(AMOUNT), 'reads', 'parser:formula', 4],
+        [idOf(TOTAL), idOf(ACCOUNT_NAME), 'reads', 'parser:formula', 7],
+      ].sort(),
+    );
+    // A link is the two ends of a reference and its confidence. The rest comes in the order of the links.
+    expect(to.map(({ fromId, toId, confidence }) => [fromId, toId, confidence]).sort()).toEqual(
+      whole(to)
+        .map(({ fromId, toId, confidence }) => [fromId, toId, confidence])
+        .sort(),
+    );
+    expect(whole([...to].reverse())).toEqual(whole(to).reverse());
+    // An edge is the reference without its keys and its attributes, and with the type of its target.
+    expect(whole(graph.linksTo([idOf(ACCOUNT_NAME)]))).toEqual([
+      {
+        fromId: idOf(TOTAL),
+        toId: idOf(ACCOUNT_NAME),
+        toType: 'CustomField',
+        toNameRaw: 'name',
+        kind: 'reads',
+        origin: 'parser:formula',
+        confidence: 'confirmed',
+        resolution: 'external',
+        location: { file: TOTAL_FILE, line: 7, column: 31 },
+      },
+    ]);
+
+    const from = whole(graph.linksFrom([idOf(TOTAL), idOf(RULE), idOf(INVOICE)]));
+    expect(sorted(from)).toEqual(
+      [
+        [idOf(TOTAL), idOf(AMOUNT), 'reads', 'parser:formula', 7],
+        [idOf(TOTAL), idOf(ACCOUNT_NAME), 'reads', 'parser:formula', 7],
+        [idOf(TOTAL), null, 'reads', 'parser:formula', 8],
+        [idOf(RULE), idOf(AMOUNT), 'references', 'dependency-api', null],
+        [idOf(RULE), idOf(AMOUNT), 'reads', 'parser:formula', 4],
+      ].sort(),
+    );
+    // A target without a key keeps its type and its spelling.
+    expect(from.find((edge) => edge.toId === null)).toMatchObject({ toType: 'CustomField', toNameRaw: 'Dicsount__c' });
+    expect(graph.linksTo([])).toEqual([]);
+    expect(graph.linksTo([idOf(TOTAL)])).toEqual([]);
+    expect(graph.linksFrom([123_456])).toEqual([]);
+    expect(graph.edges([])).toEqual([]);
+    // A link that names no reference of the database is a fault, not an empty answer.
+    expect(
+      codeOf(() => graph.edges([{ fromId: 1, toId: 2, confidence: 'confirmed', versionId: 123_456, seq: 0 }])),
+    ).toBe('INTERNAL');
+    store.close();
+  });
+
+  it('leaves out the references that are less certain than was asked for', () => {
+    const store = open();
+    const id = snapshot(store);
+    const tiers: Partial<Reference>[] = [
+      { confidence: 'confirmed' },
+      { confidence: 'probable' },
+      { confidence: 'possible', resolution: 'dynamic' },
+    ];
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([
+        component(AMOUNT, 'Invoice__c.Amount__c', 'objects/Invoice__c/fields/Amount__c.field-meta.xml'),
+        component(
+          TOTAL,
+          'Invoice__c.Total__c',
+          TOTAL_FILE,
+          tiers.map((more, at) => reference(TOTAL, AMOUNT, TOTAL_FILE, at + 1, more)),
+        ),
+      ]),
+    );
+    const graph = sqlGraph(store, id);
+    const amount = [graph.find(AMOUNT)?.id ?? 0];
+    const total = [graph.find(TOTAL)?.id ?? 0];
+    const lines = (links: readonly GraphLink[]): unknown[] =>
+      graph
+        .edges(links)
+        .map((edge) => [edge.location?.line, edge.confidence])
+        .sort();
+    const all = [
+      [1, 'confirmed'],
+      [2, 'probable'],
+      [3, 'possible'],
+    ];
+    for (const [weakest, expected] of [
+      [undefined, all],
+      ['possible', all],
+      ['probable', all.slice(0, 2)],
+      ['confirmed', all.slice(0, 1)],
+    ] as const) {
+      expect(lines(graph.linksTo(amount, weakest))).toEqual(expected);
+      expect(lines(graph.linksFrom(total, weakest))).toEqual(expected);
+    }
+    store.close();
+  });
+
+  it('asks for a long list of components in parts, and gives back all of it', () => {
+    const store = open();
+    const id = snapshot(store);
+    // More fields than one statement takes, each read by a rule of its own.
+    const many = 4_500;
+    const fields = Array.from({ length: many }, (_, at) => key('CustomField', `Invoice__c.F${String(at)}__c`));
+    const rules = fields.map((_, at) => key('ValidationRule', `Invoice__c.R${String(at)}`));
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([
+        ...fields.map((field, at) => component(field, `Invoice__c.F${String(at)}__c`, `fields/F${String(at)}.xml`)),
+        ...rules.map((rule, at) =>
+          component(rule, `Invoice__c.R${String(at)}`, `rules/R${String(at)}.xml`, [
+            reference(rule, fields[at] ?? AMOUNT, `rules/R${String(at)}.xml`, 3),
+          ]),
+        ),
+      ]),
+    );
+    const graph = sqlGraph(store, id);
+    const below = graph.below(graph.find(INVOICE)?.id ?? 0);
+    expect(below).toHaveLength(2 * many);
+    const components = graph.components(below);
+    expect(new Set(components.map((one) => one.key))).toEqual(new Set([...fields, ...rules]));
+    const fieldIds = components.filter((one) => one.key.startsWith('CustomField:')).map((one) => one.id);
+    const ruleIds = components.filter((one) => one.key.startsWith('ValidationRule:')).map((one) => one.id);
+    const to = graph.linksTo(fieldIds);
+    expect(to).toHaveLength(many);
+    expect(new Set(to.map((link) => link.fromId))).toEqual(new Set(ruleIds));
+    const from = graph.linksFrom(below);
+    expect(from).toHaveLength(many);
+    expect(new Set(from.map((link) => link.toId))).toEqual(new Set(fieldIds));
+    // The rest of every reference, asked for in parts too, in the order of the links.
+    const edges = graph.edges(from);
+    expect(edges.map((edge) => [edge.fromId, edge.toId])).toEqual(from.map((link) => [link.fromId, link.toId]));
+    expect(new Set(edges.map((edge) => edge.location?.line))).toEqual(new Set([3]));
     store.close();
   });
 
@@ -683,9 +888,14 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     const graph = sqlGraph(listening, id);
     // Every question of the interface is asked below. A new one has to be added here.
     expect(Object.keys(graph).sort()).toEqual([
+      'below',
       'childrenOf',
       'component',
+      'components',
+      'edges',
       'find',
+      'linksFrom',
+      'linksTo',
       'referencesFrom',
       'referencesTo',
       'snapshotId',
@@ -700,12 +910,17 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     graph.childrenOf(graph.find(INVOICE)?.id ?? 0);
     graph.referencesTo(amount);
     graph.referencesFrom(amount);
-    expect(new Set(asked.map(([sql]) => sql)).size).toBe(7);
+    graph.below(graph.find(INVOICE)?.id ?? 0);
+    graph.components([amount]);
+    graph.edges([...graph.linksTo([amount]), ...graph.linksFrom([amount])]);
+    expect(new Set(asked.map(([sql]) => sql)).size).toBe(12);
     for (const [sql, parameters] of asked) {
       const steps = store.all(`EXPLAIN QUERY PLAN ${sql}`, ...parameters).map((row) => String(row['detail']));
-      // No table is walked. The one thing that is, is the list a statement makes for itself of what a
-      // component contains, which it calls `b`.
-      expect(steps.filter((step) => step.startsWith('SCAN') && step !== 'SCAN b')).toEqual([]);
+      // No table is walked. What is walked is a list a statement makes for itself or is handed: what a
+      // component contains, which it calls `b` or `below`, and the ids it is asked about, which it calls `j`.
+      expect(
+        steps.filter((step) => step.startsWith('SCAN') && !/^SCAN (b|below|j VIRTUAL TABLE INDEX \d+:)$/.test(step)),
+      ).toEqual([]);
       // An index that SQLite builds for the time of one statement means that it walks a table to build it.
       expect(steps.filter((step) => step.includes('AUTOMATIC'))).toEqual([]);
       // The list of a snapshot is entered with a component or a version, never with the snapshot alone.
@@ -714,7 +929,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       }
       const first = steps.find((step) => step.startsWith('SEARCH'));
       expect(first).toMatch(
-        /^SEARCH (c|r|m) USING .*\((key|rowid|parent_id|target_id|snapshot_id=\? AND component_id)=\?\)/,
+        /^SEARCH (c|r|m) USING .*\((key|rowid|parent_id|target_id|snapshot_id=\? AND component_id|version_id=\? AND seq)=\?\)/,
       );
     }
     store.close();
@@ -748,6 +963,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       analysedAt: T1,
       components: 4,
       references: 6,
+      types: ['CustomField', 'CustomObject', 'ValidationRule'],
     });
     expect(readAnalysis(store, first)?.engineVersion).toBe('0.2.0');
     // The second snapshot holds no Account any more. It still knows it, through the field a formula reads.
@@ -962,6 +1178,50 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       { code: 'READ', stage: 'read' },
       { code: 'THIRD', stage: 'analysis' },
     ]);
+    store.close();
+  });
+
+  it('counts the issues that bear on an answer: errors but for those the coverage tells, and warnings of the analysis', () => {
+    const store = open();
+    const id = snapshot(store);
+    const other = snapshot(store, 'other');
+    expect(countIssues(store, id)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
+    const read = (severity: 'error' | 'warning', code: string, details: Record<string, JsonValue> | null): void => {
+      addIssue(store, id, { severity, code, message: `${code} happened.`, componentKey: null, details });
+    };
+    store.write(() => {
+      // The coverage of the type tells these two.
+      read('error', 'NOT_RETRIEVED', { type: 'Report', count: 2 });
+      read('error', 'LISTING_FAILED', { type: 'Dashboard', code: null });
+      read('error', 'FILE_UNREADABLE', { path: 'classes/A.cls' });
+      read('error', 'FOLDER_MISSING', null);
+      // Another error counts also when it names a type, and one of the two that names none does too.
+      read('error', 'ODD', { type: 'Report' });
+      read('error', 'NOT_RETRIEVED', { type: 7 });
+      read('warning', 'FILES_NOT_METADATA', { count: 1 });
+      addIssue(store, other, {
+        severity: 'error',
+        code: 'FOLDER_MISSING',
+        message: 'm',
+        componentKey: null,
+        details: null,
+      });
+    });
+    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
+    writeAnalysis(
+      store,
+      id,
+      analysisOf(project(), {
+        issues: [
+          { severity: 'error', code: 'RESOLVE_FAILED', message: 'm', componentKey: null, details: { at: 'x' } },
+          { severity: 'error', code: 'COMPONENT_FAILED', message: 'm', componentKey: AMOUNT, details: { type: 'X' } },
+          { severity: 'warning', code: 'PATH_NOT_FOLLOWED', message: 'm', componentKey: TOTAL, details: {} },
+        ],
+      }),
+    );
+    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
+    expect(countIssues(store, other)).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, 123_456)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     store.close();
   });
 

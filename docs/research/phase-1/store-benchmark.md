@@ -140,6 +140,60 @@ then keeps those of the snapshot. Its time therefore grows with the number of ve
 refer to it have had. With two snapshots and with ten it took the same 165 milliseconds for the hub field. More
 snapshots were not measured.
 
+## The impact question
+
+Added on 16 November 2026 with the impact engine (work package 7, decision record
+[0044](../../adr/0044-an-impact-answer.md)). The benchmark asks `impactOf`, as the command `orglens impact`
+does: the snapshot and its analysis are looked up, the component is found by its key, the references are walked
+level by level, and what the answer does not cover is read.
+
+Every case gets a database that was just opened for reading: no statement is prepared and the page cache of
+SQLite is empty. The file is in the cache of the system. Starting Node.js, loading the engine and writing the
+answer are not in the time. Two snapshots, the last one asked, three runs with the default driver. The ordinary
+field is the one in the middle of all fields that something refers to, by how many do: three references point
+at it. The hub field has 22,021 direct references at factor 1 and 40,123 at factor 2.
+
+| Question | Factor 1: results | First call | Median of the next three | Factor 2: results | First call | Median of the next three |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ordinary field, five levels | 57 | 8 to 12 ms | 2.3 to 2.7 ms | 76 | 8 to 9 ms | 2.5 to 2.8 ms |
+| Ordinary field, no limit | 52,340, up to 19 away | 0.91 to 1.10 s | 0.90 to 1.00 s | 104,760, up to 21 away | 2.16 to 2.34 s | 2.24 to 2.36 s |
+| Hub field, five levels | 57,951 | 1.00 to 1.08 s | 0.99 to 1.01 s | 115,708 | 2.37 to 2.54 s | 2.27 to 2.73 s |
+| Hub field, no limit | 58,189, up to 7 away | 1.01 to 1.06 s | 1.00 to 1.08 s | 116,100, up to 9 away | 2.29 to 2.76 s | 2.32 to 2.54 s |
+| Hub field, confirmed references only | 55,374 | 0.90 to 1.01 s | 0.91 to 0.94 s | 110,038 | 2.24 to 2.40 s | 2.17 to 2.19 s |
+
+With `better-sqlite3`, one run at each size: 0.87 to 1.02 seconds and 2.16 to 2.73 seconds for the four large
+answers, and 8 milliseconds for the small one.
+
+The target of record [0037](../../adr/0037-performance-targets.md) is 5 seconds for an org of 100,000
+components. Factor 2 is how the plan reads that size, and every case that was measured is under it. The walk
+of five steps with one question per component, which the section above measures, took 4.0 to 4.2 seconds at
+factor 1 and 7.6 to 10.3 seconds at factor 2 in the same runs.
+
+**Where the time goes.** A large answer costs about 20 microseconds per result. In one run before the last
+change below, the time was in three parts of about the same size: reading the two ends of every reference of a
+level, reading the components that were found, and reading the rest of the references that are kept. Two
+changes were made because of a profile:
+
+- The first version read every reference of a level as a row with twelve columns. Handing out the rows through
+  the driver took most of the time: 1.5 to 1.6 seconds for the large answers at factor 1, in one run. A level
+  now reads
+  five numbers per reference, and the rest only for the references that are kept.
+- The statements for many components hand back one JSON text and not one row per component or reference.
+  That took the large answers at factor 1 from 1.2 to 1.4 seconds to 1.0 to 1.2, in single runs.
+
+**The size of an answer.** As JSON, a large answer is 28 to 31 MB at factor 1 and 56 to 62 MB at factor 2.
+Answering once more and turning the answer into JSON text took 1.0 to 1.2 seconds at factor 1 and 2.5 to 3.0
+seconds at factor 2. An earlier version held the whole chain of references in every result. The answer from
+the ordinary field at factor 2 then had 1,361,153 references on its chains and was 443 MB of JSON, which took
+1.9 seconds to turn into text alone and is close to the longest text Node.js can hold. From the hub field it
+was 103 MB. That is why a result holds one reference (record 0044).
+
+These answers are far larger than one a person reads. The generator ties the org together: from an ordinary
+field, a third of all components is reached. Whether a real org looks like that is not known.
+
+Not measured: the whole command with the start of Node.js and the printing of the text output, a cold file
+cache, more than two snapshots, and factor 10.
+
 ## What this does not say
 
 - Nothing was measured on Windows, on macOS or on a real org.

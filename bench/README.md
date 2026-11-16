@@ -30,8 +30,8 @@ pnpm run bench:store bs3 1 2        # with the fallback driver
 pnpm run bench:store node 1 2 --out result.json
 ```
 
-A run with 2 snapshots takes about 20 seconds, and one with 10 snapshots of the org of twice the size about two
-minutes.
+A run with 2 snapshots takes about 35 seconds, and one with 10 snapshots of the org of twice the size about two
+and a half minutes.
 
 ## What it measures
 
@@ -57,7 +57,13 @@ snapshot), `int` (a full copy of every row per snapshot, with integer ids) and `
 - the time to write a snapshot and the size of the database after each, the size of each table, and the time to
   write the analysis of the last snapshot again;
 - the time to find a component, to read the references to a hub field and to an ordinary field, and to walk five
-  steps from each, one question at a time through `sqlGraph`.
+  steps from each, one question at a time through `sqlGraph`;
+- the impact question as a command asks it, with `impactOf` on a database that was just opened: from an
+  ordinary field and from the hub field, to a depth of five and without a limit, and from the hub field over
+  confirmed references only. For each case it gives the time of the first call, the median of the next three,
+  the number of results, the size of the answer as JSON, and the time to answer once more and turn the answer
+  into text. The ordinary field is the one in the middle of all fields that something refers to, by how many
+  do.
 
 The time to make the components in memory is given apart, because an analyser makes them and not the store.
 

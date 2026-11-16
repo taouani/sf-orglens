@@ -309,6 +309,34 @@ export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
 }
 
 /**
+ * How many issues of a snapshot bear on what an answer covers, without reading them.
+ *
+ * `read`: the errors of the reading, but for the two that the coverage of their type tells: a type that could
+ * not be listed, and components of a type that were not retrieved. Any other error counts, also one that names
+ * a type. `analysis`: the errors of the analysis. `analysisWarnings`: its warnings, each of which says that a
+ * name was not turned into a reference or that a part of a file was not found.
+ */
+export function countIssues(
+  store: Store,
+  snapshotId: number,
+): { readonly read: number; readonly analysis: number; readonly analysisWarnings: number } {
+  const row = store.get(
+    `SELECT COALESCE(SUM(severity = 'error' AND stage = 'analysis'), 0) AS analysis,
+            COALESCE(SUM(severity = 'error' AND stage <> 'analysis' AND NOT (
+              code IN ('NOT_RETRIEVED', 'LISTING_FAILED')
+              AND json_type(COALESCE(details, '{}'), '$.type') IS 'text')), 0) AS read,
+            COALESCE(SUM(severity = 'warning' AND stage = 'analysis'), 0) AS warnings
+       FROM snapshot_issue WHERE snapshot_id = ?`,
+    snapshotId,
+  );
+  return {
+    read: Number(row?.['read'] ?? 0),
+    analysis: Number(row?.['analysis'] ?? 0),
+    analysisWarnings: Number(row?.['warnings'] ?? 0),
+  };
+}
+
+/**
  * The files of a snapshot as a tree: sorted by code unit, each read from its blob and checked against its hash
  * when it is asked for.
  */

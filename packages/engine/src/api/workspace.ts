@@ -27,11 +27,11 @@ import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
-import { readSnapshot } from '../store/snapshots.ts';
 import { analyseStored, isAnalysisFailure } from './analysis.ts';
 import { pause, whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
+import { finishedSnapshot, impactOf, type ImpactQuery, type ImpactReport } from './impact.ts';
 import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
 import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
 import {
@@ -199,6 +199,14 @@ export interface Workspace {
    * A database that an older version of OrgLens wrote is migrated first.
    */
   analyse(source: string, options?: { readonly snapshot?: number | undefined }): Promise<CoverageReport>;
+  /**
+   * What refers to a component in the latest snapshot of a source, directly or through other components, or in
+   * the snapshot with the given id. The component is named by its key, by its type and name
+   * (`CustomField:Account.Industry`) or by its name alone (`Account.Industry`). Reads only.
+   *
+   * The answer says what it does not cover. A snapshot that was never analysed gives no answer.
+   */
+  impact(source: string, component: string, query?: ImpactQuery): Promise<ImpactReport>;
 }
 
 export interface SnapshotOptions {
@@ -592,24 +600,7 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           if (!existsSync(paths.databaseFile)) throw noSnapshot(name, options.snapshot);
           const store = openStore({ path: paths.databaseFile, driver });
           try {
-            const snapshot = readSnapshot(store, name, options.snapshot);
-            if (snapshot === undefined) throw noSnapshot(name, options.snapshot);
-            if (snapshot.status !== 'complete' && snapshot.status !== 'partial') {
-              // Only reached with the number of a snapshot: the latest one is always one that has ended.
-              const running = snapshot.status === 'running';
-              throw new EngineError(
-                'SNAPSHOT_NOT_FOUND',
-                running
-                  ? `Snapshot ${String(snapshot.id)} of the source "${name}" has not ended, so it cannot be analysed.`
-                  : `Snapshot ${String(snapshot.id)} of the source "${name}" was given up. It holds a part of the source at most and is not analysed.`,
-                {
-                  hint: running
-                    ? `It is continued and then analysed by: orglens snapshot ${name}`
-                    : 'The latest snapshot of each source is shown by: orglens status',
-                  details: { source: name, snapshot: snapshot.id, status: snapshot.status },
-                },
-              );
-            }
+            const snapshot = finishedSnapshot(store, name, options.snapshot, 'analysed');
             try {
               await analyseStored(store, name, snapshot);
             } catch (error) {
@@ -626,6 +617,18 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
               complete: report.analysis?.complete ?? null,
             });
             return report;
+          } finally {
+            store.close();
+          }
+        }),
+      impact: (name, component, query = {}) =>
+        boundary(async () => {
+          declared(name);
+          const driver = await resolveDriver(config.store.driver);
+          if (!existsSync(paths.databaseFile)) throw noSnapshot(name, query.snapshot);
+          const store = openStore({ path: paths.databaseFile, driver, readOnly: true });
+          try {
+            return impactOf(store, name, component, query);
           } finally {
             store.close();
           }

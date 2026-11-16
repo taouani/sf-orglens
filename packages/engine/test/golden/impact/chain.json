@@ -1,0 +1,172 @@
+{
+  "snapshot": {
+    "id": 1,
+    "source": "fixture",
+    "kind": "git",
+    "status": "complete",
+    "finishedAt": "TIME",
+    "analysedBy": "0.0.0"
+  },
+  "component": {
+    "key": "CustomField:invoice_line__c.quantity__c",
+    "type": "CustomField",
+    "name": "Invoice_Line__c.Quantity__c",
+    "file": "force-app/main/default/objects/Invoice_Line__c/fields/Quantity__c.field-meta.xml"
+  },
+  "parts": 0,
+  "direction": "incoming",
+  "depth": null,
+  "beyondDepth": false,
+  "minConfidence": "possible",
+  "results": [
+    {
+      "key": "CustomField:invoice_line__c.line_amount__c",
+      "type": "CustomField",
+      "name": "Invoice_Line__c.Line_Amount__c",
+      "file": "force-app/main/default/objects/Invoice_Line__c/fields/Line_Amount__c.field-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomField:invoice_line__c.line_amount__c",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice_Line__c/fields/Line_Amount__c.field-meta.xml",
+        "line": 4,
+        "column": 14
+      }
+    },
+    {
+      "key": "ValidationRule:invoice_line__c.quantity_positive",
+      "type": "ValidationRule",
+      "name": "Invoice_Line__c.Quantity_Positive",
+      "file": "force-app/main/default/objects/Invoice_Line__c/validationRules/Quantity_Positive.validationRule-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ValidationRule:invoice_line__c.quantity_positive",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice_Line__c/validationRules/Quantity_Positive.validationRule-meta.xml",
+        "line": 6,
+        "column": 28
+      }
+    },
+    {
+      "key": "CustomField:invoice__c.lines_total__c",
+      "type": "CustomField",
+      "name": "Invoice__c.Lines_Total__c",
+      "file": "force-app/main/default/objects/Invoice__c/fields/Lines_Total__c.field-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomField:invoice__c.lines_total__c",
+        "to": "CustomField:invoice_line__c.line_amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Lines_Total__c.field-meta.xml",
+        "line": 5,
+        "column": 38
+      }
+    },
+    {
+      "key": "CustomField:invoice__c.open_billable_total__c",
+      "type": "CustomField",
+      "name": "Invoice__c.Open_Billable_Total__c",
+      "file": "force-app/main/default/objects/Invoice__c/fields/Open_Billable_Total__c.field-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomField:invoice__c.open_billable_total__c",
+        "to": "CustomField:invoice_line__c.line_amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Open_Billable_Total__c.field-meta.xml",
+        "line": 5,
+        "column": 38
+      }
+    },
+    {
+      "key": "CustomField:invoice__c.grand_total__c",
+      "type": "CustomField",
+      "name": "Invoice__c.Grand_Total__c",
+      "file": "force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomField:invoice__c.grand_total__c",
+        "to": "CustomField:invoice__c.lines_total__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml",
+        "line": 4,
+        "column": 25
+      }
+    }
+  ],
+  "unresolved": [],
+  "complete": false,
+  "notCovered": {
+    "notAnalysed": [
+      {
+        "type": "ApexClass",
+        "listed": 12,
+        "retrieved": 12,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexTrigger",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabel",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabels",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomMetadata",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomPermission",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      }
+    ],
+    "partial": [],
+    "readErrors": 0,
+    "analysisErrors": 0,
+    "analysisWarnings": 0,
+    "notHeld": 0
+  },
+  "mayMiss": false
+}

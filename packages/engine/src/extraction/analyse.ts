@@ -20,6 +20,8 @@ import { readField, readObject, readRule, resolveReferences, type ElementReading
 import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
 
 export interface SourceAnalysis {
+  /** The metadata types that are read, sorted. A component of another type gets a row and nothing else. */
+  readonly types: readonly string[];
   /** Every component of the source, each key once, sorted by key. */
   readonly components: readonly AnalysedComponent[];
   readonly work: readonly OriginWork[];
@@ -454,6 +456,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
 
   const failedFiles = new Set([...refused, ...unreadable]).size;
   return {
+    types: [...ANALYSED].sort(byCodeUnit),
     components,
     work: [
       { origin: 'parser:xml', components: analysed, failedFiles },

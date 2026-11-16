@@ -107,6 +107,7 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
   writeAnalysis(store, snapshot.id, {
     engineVersion: engineVersion(),
     analysedAt: now(),
+    types: analysis.types,
     components: analysis.components,
     work: analysis.work,
     issues,

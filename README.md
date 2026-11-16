@@ -3,15 +3,16 @@
 OrgLens tells you what a change to a Salesforce org will affect before you make it. It reads a live org, a sandbox
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
-> **Pre-release.** The project is being built in the open and is not usable yet. There is no published package and
-> no command that answers an impact question. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to
-> see what comes when.
+> **Pre-release.** The project is being built in the open and is not usable yet. There is no published package.
+> The first impact answers cover objects, fields and validation rules only. Follow the
+> [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
 > and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
-> fields and validation rules, with the formulas in them, and for nothing else yet. The commands are `init`,
-> `source`, `snapshot`, `analyse`, `coverage`, `status` and `doctor`. See [docs/cli.md](docs/cli.md) and
-> [docs/configuration.md](docs/configuration.md).
+> fields and validation rules, with the formulas in them, and for nothing else yet. `orglens impact` shows what
+> refers to a component among those types, and an answer names the types it does not cover. The commands
+> are `init`, `source`, `snapshot`, `analyse`, `coverage`, `impact`, `status` and `doctor`. See
+> [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
 
 ## What it will do
 
@@ -30,7 +31,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | Phase                | Delivers                                                                                                                                | State          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, in test |
-| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Not started    |
+| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Being built    |
 | 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started    |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started    |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started    |
