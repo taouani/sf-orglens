@@ -139,6 +139,9 @@ workspace. A slash at the end of a folder is ignored.
   `sfdx-project.json` at the top of `repo`, which is read from disk or from the commit like everything else. A
   package directory inside another one is read with that one. A project whose package directory is the folder of
   the project file itself (`"path": "."`) needs `paths`.
+- **The layout of the files** is the one the same `sfdx-project.json` asks for with `sourceBehaviorOptions` (or
+  the older `registryPresets`) and `registryCustomizations`, also for a source with `paths`. The snapshot keeps it
+  and is always analysed with it. The project of the folder the command runs in plays no part.
 - **`.forceignore` is honoured.** Each folder follows the nearest `.forceignore`: its own, or the one of the
   nearest folder above it, up to the top of `repo`. A `.forceignore` above `repo` is not read. The rules are those
   of the Salesforce CLI, including the ones it always adds, such as leaving out files whose name starts with a

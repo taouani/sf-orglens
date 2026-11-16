@@ -64,7 +64,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         file: '.orglens/orglens.db',
         state: 'ready',
         driver: driverName,
-        schemaVersion: 3,
+        schemaVersion: 4,
         sizeBytes: expect.any(Number) as number,
         problem: null,
       },
@@ -159,6 +159,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
           status: 'complete',
           startedAt: '2026-01-02T00:00:00.000Z',
           finishedAt: '2026-01-02T00:05:00.000Z',
+          // Nothing wrote an analysis for it.
+          analysis: null,
         },
         unfinishedSnapshot: { id: 3, startedAt: '2026-01-02T00:00:00.000Z', chunksDone: 1, chunks: 2 },
       },
@@ -175,6 +177,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         unfinishedSnapshot: null,
       },
     ]);
+
+    // Once the snapshot has an analysis, the status says when it was made and by which version.
+    const again = openStore({ path: join(dir, '.orglens', 'orglens.db'), driver });
+    again.run(
+      `INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs)
+       VALUES (1, '0.3.0', '2026-01-03T00:00:00.000Z', 0, 0)`,
+    );
+    again.close();
+    expect((await workspace.status()).sources[0]?.latestSnapshot?.analysis).toEqual({
+      engineVersion: '0.3.0',
+      analysedAt: '2026-01-03T00:00:00.000Z',
+    });
   });
 
   it('reports a database that is missing or is not one of OrgLens', async () => {
@@ -213,7 +227,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       ['logins', 'ok'],
     ]);
     expect(report.checks[5]?.details).toEqual({ sources: [], driver: driverName });
-    expect(report.checks[6]?.summary).toBe('The database is at schema version 3.');
+    expect(report.checks[6]?.summary).toBe('The database is at schema version 4.');
     // The report is plain data.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });

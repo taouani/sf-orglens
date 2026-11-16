@@ -1,6 +1,7 @@
 import { Command, CommanderError, Option } from 'commander';
 import { engineVersion } from '@sf-orglens/engine';
 import {
+  analyse,
   coverage,
   doctorCommand,
   init,
@@ -65,7 +66,7 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .helpOption('-h, --help', 'show help and exit')
     .option('--json', 'write the result as one line of JSON')
     .option('--workspace <folder>', 'the workspace folder (default: found from the current folder upwards)')
-    .addHelpText('after', '\nPre-release: the analysis commands are not available yet.')
+    .addHelpText('after', '\nPre-release: the commands that answer impact questions are not available yet.')
     .helpCommand(false)
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
@@ -211,12 +212,14 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .command('snapshot')
     .summary('read a source and store what it holds')
     .description(
-      'Reads a source now and stores its metadata files as a new snapshot in the workspace database. ' +
+      'Reads a source now, stores its metadata files as a new snapshot in the workspace database, and analyses ' +
+        'them: which components they make up, and which component refers to which. ' +
         'Earlier snapshots are kept. The source is not changed. ' +
         'An org or a sandbox is asked what it holds, and its components are retrieved in chunks, which takes ' +
         'minutes. If that is interrupted, the next run continues the same snapshot. ' +
         'OrgLens asks for metadata only, never for records. ' +
-        'The exit code is 5 if the snapshot is partial: something could not be read, and the output says what. ' +
+        'The exit code is 5 if the snapshot is partial or its analysis is incomplete: something could not be ' +
+        'read or analysed, and the output says what. ' +
         'It is 4 if the login is missing or does not work or the org cannot be reached.',
     )
     .argument('<source>', 'the name of the source')
@@ -226,11 +229,28 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     );
 
   program
+    .command('analyse')
+    .summary('analyse a stored snapshot again')
+    .description(
+      'Analyses the latest snapshot of a source again, from the files it holds: which components they make up, ' +
+        'and which component refers to which. The source is not read. ' +
+        'The analysis the snapshot had is replaced, and nothing else of the snapshot changes. ' +
+        'Use it after an update of OrgLens that analyses more, and for a snapshot an older version took. ' +
+        'A database that an older version wrote is migrated first. ' +
+        'The exit code is 5 if the snapshot is partial or its analysis is incomplete.',
+    )
+    .argument('<source>', 'the name of the source')
+    .option('--snapshot <number>', 'the snapshot to analyse (default: the latest)')
+    .action((name: string, options: { snapshot?: string }, command: Command) =>
+      run('analyse', (context) => analyse(context, name, options))(command),
+    );
+
+  program
     .command('coverage')
     .summary('show what a snapshot holds and what it is missing')
     .description(
-      'Shows the latest snapshot of a source: the number of components per metadata type, and everything that ' +
-        'was left out or went wrong while it was taken. Reads only.',
+      'Shows the latest snapshot of a source: the number of components per metadata type, what its analysis ' +
+        'found, and everything that was left out or went wrong while it was taken and analysed. Reads only.',
     )
     .argument('<source>', 'the name of the source')
     .option('--snapshot <number>', 'the snapshot to show (default: the latest)')

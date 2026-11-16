@@ -9,8 +9,10 @@
  */
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
-import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
-import { loadSourceLibrary } from './library.ts';
+import type { MetadataRegistry, SourceComponent } from '@salesforce/source-deploy-retrieve';
+import { EngineError } from '../core/errors.ts';
+import { loadRegistryVariants, loadSourceLibrary } from './library.ts';
+import { PROJECT_FILE, type ProjectLayout } from './project.ts';
 import { byCodeUnit, type SourceTree } from './tree.ts';
 
 /** A metadata component found in a tree. */
@@ -73,18 +75,55 @@ const messageOf = (thrown: unknown): string =>
   (thrown instanceof Error ? thrown.message : String(thrown)).split(`${VIRTUAL_ROOT}${sep}`).join('');
 
 /**
+ * The description of the metadata types with the settings of a project on top of it.
+ *
+ * The library is handed the settings themselves and never a folder: asked for a folder, it reads the project
+ * file that is there now, and without one it reads that of the folder the process runs in.
+ */
+async function registryOf(layout: ProjectLayout): Promise<MetadataRegistry> {
+  const [{ presetMap }, { getEffectiveRegistry }] = await Promise.all([loadSourceLibrary(), loadRegistryVariants()]);
+  const presets = layout.presets.map((name) => {
+    const preset = presetMap.get(name);
+    if (preset === undefined) {
+      throw new EngineError(
+        'SOURCE_READ_FAILED',
+        `The files are laid out with the project setting "${name}", which this version of OrgLens does not know.`,
+        {
+          hint: `It stands under "sourceBehaviorOptions" or "registryPresets" in ${PROJECT_FILE}. Known are: ${[...presetMap.keys()].sort(byCodeUnit).join(', ')}.`,
+          details: { reason: 'LAYOUT_UNKNOWN', setting: name },
+        },
+      );
+    }
+    return preset;
+  });
+  try {
+    // An empty list of presets would send the library to the project of the current folder, so none is passed.
+    return getEffectiveRegistry({
+      ...(presets.length > 0 ? { presets } : {}),
+      registryCustomizations: (layout.customizations ?? {}) as MetadataRegistry,
+    });
+  } catch (error) {
+    throw new EngineError(
+      'SOURCE_READ_FAILED',
+      `The "registryCustomizations" of ${PROJECT_FILE} are refused: ${messageOf(error)}`,
+      { hint: 'Correct them in the project file.', details: { reason: 'LAYOUT_INVALID' }, cause: error },
+    );
+  }
+}
+
+/**
  * Resolves the components below the given folders of a tree. The folder `''` is the tree itself.
  *
- * The library lets a project change how files are laid out, with settings in its `sfdx-project.json`.
- * `projectDir` is the folder whose project file is asked. Without it, the library asks the project of the
- * folder the process runs in.
+ * A project can change how its files are laid out, with settings in its `sfdx-project.json`. `layout` holds
+ * them. With `null` the files are laid out as Salesforce hands them out, which is how the files of an org are
+ * stored. No project file is read here, and the folder the process runs in plays no part.
  */
 export async function resolveComponents(
   tree: SourceTree,
   dirs: readonly string[],
-  projectDir?: string,
+  layout: ProjectLayout | null = null,
 ): Promise<Resolution> {
-  const { MetadataResolver, RegistryAccess, TreeContainer } = await loadSourceLibrary();
+  const { MetadataResolver, RegistryAccess, TreeContainer, registry } = await loadSourceLibrary();
 
   // Every folder of the tree with the names in it, from the list of files.
   const folders = new Map<string, Set<string>>([['', new Set()]]);
@@ -144,7 +183,8 @@ export async function resolveComponents(
     }
   }
 
-  const resolver = new MetadataResolver(new RegistryAccess(undefined, projectDir), new Container(), false);
+  const types = new RegistryAccess(layout === null ? registry : await registryOf(layout));
+  const resolver = new MetadataResolver(types, new Container(), false);
   const problems: { at: string; message: string }[] = [];
   const owner = new Map<string, string>();
   interface Found {

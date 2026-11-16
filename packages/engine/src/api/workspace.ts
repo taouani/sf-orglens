@@ -27,6 +27,8 @@ import { loadBetterSqlite3Driver } from '../store/better-sqlite3.ts';
 import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
+import { readSnapshot } from '../store/snapshots.ts';
+import { analyseStored, isAnalysisFailure } from './analysis.ts';
 import { pause, whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
@@ -109,6 +111,8 @@ export interface SnapshotSummary {
   readonly status: string;
   readonly startedAt: string;
   readonly finishedAt: string | null;
+  /** When the snapshot was analysed, and by which version of the engine. `null`: it was not analysed. */
+  readonly analysis: { readonly engineVersion: string; readonly analysedAt: string } | null;
 }
 
 /** A snapshot of an org that was begun and has not ended. */
@@ -189,6 +193,12 @@ export interface Workspace {
   snapshot(source: string, options?: SnapshotOptions): Promise<CoverageReport>;
   /** What the latest snapshot of a source holds, or the snapshot with the given id. Reads only. */
   coverage(source: string, options?: { readonly snapshot?: number | undefined }): Promise<CoverageReport>;
+  /**
+   * Analyses the latest snapshot of a source again, or the snapshot with the given id, from the files it holds.
+   * The source is not read. The analysis the snapshot had is replaced, and nothing else of the snapshot changes.
+   * A database that an older version of OrgLens wrote is migrated first.
+   */
+  analyse(source: string, options?: { readonly snapshot?: number | undefined }): Promise<CoverageReport>;
 }
 
 export interface SnapshotOptions {
@@ -381,6 +391,7 @@ export async function inspectStore(
       // A snapshot that has not ended, or that was given up, is not the latest one: it holds a part at most.
       const rows = store.all(
         `SELECT s.name AS name, n.id AS id, n.status AS status, n.started_at AS started_at, n.finished_at AS finished_at,
+                a.engine_version AS analysed_by, a.analysed_at AS analysed_at,
                 (SELECT COUNT(*) FROM snapshot c WHERE c.source_id = s.id AND c.status IN ('complete', 'partial')) AS count,
                 r.id AS running, r.started_at AS running_since,
                 (SELECT COUNT(*) FROM retrieve_chunk k WHERE k.snapshot_id = r.id) AS chunks,
@@ -388,6 +399,7 @@ export async function inspectStore(
            FROM source s
            LEFT JOIN snapshot n ON n.id = (SELECT MAX(m.id) FROM snapshot m
                                             WHERE m.source_id = s.id AND m.status IN ('complete', 'partial'))
+           LEFT JOIN snapshot_analysis a ON a.snapshot_id = n.id
            LEFT JOIN snapshot r ON r.source_id = s.id AND r.status = 'running'`,
       );
       for (const row of rows) {
@@ -401,6 +413,10 @@ export async function inspectStore(
                   status: String(row['status']),
                   startedAt: String(row['started_at']),
                   finishedAt: row['finished_at'] === null ? null : String(row['finished_at']),
+                  analysis:
+                    row['analysed_at'] === null
+                      ? null
+                      : { engineVersion: String(row['analysed_by']), analysedAt: String(row['analysed_at']) },
                 },
           unfinished:
             row['running'] === null
@@ -502,6 +518,16 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       });
     };
 
+    /** Writes into the log that a snapshot is stored and that its analysis failed as a whole. */
+    const notAnalysed = (name: string, error: EngineError): void => {
+      const { snapshot } = error.details ?? {};
+      workspaceLogger(paths).warn('snapshot.not_analysed', {
+        source: name,
+        code: error.code,
+        snapshot: typeof snapshot === 'number' ? snapshot : null,
+      });
+    };
+
     return {
       root: paths.root,
       name: config.name,
@@ -532,7 +558,9 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           } catch (error) {
             // Only what OrgLens itself says about the failure goes into the log: its code and its reason. A run
             // that stopped before it created the data folder, for want of a login, does not create it for the log.
-            if (source.kind !== 'git' && isEngineError(error) && existsSync(paths.dataDir)) {
+            if (isAnalysisFailure(error)) {
+              notAnalysed(name, error);
+            } else if (source.kind !== 'git' && isEngineError(error) && existsSync(paths.dataDir)) {
               const { reason, snapshot } = error.details ?? {};
               workspaceLogger(paths).warn('snapshot.stopped', {
                 source: name,
@@ -553,6 +581,51 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           const store = openStore({ path: paths.databaseFile, driver, readOnly: true });
           try {
             return coverageOf(store, name, options.snapshot);
+          } finally {
+            store.close();
+          }
+        }),
+      analyse: (name, options = {}) =>
+        boundary(async () => {
+          declared(name);
+          const driver = await resolveDriver(config.store.driver);
+          if (!existsSync(paths.databaseFile)) throw noSnapshot(name, options.snapshot);
+          const store = openStore({ path: paths.databaseFile, driver });
+          try {
+            const snapshot = readSnapshot(store, name, options.snapshot);
+            if (snapshot === undefined) throw noSnapshot(name, options.snapshot);
+            if (snapshot.status !== 'complete' && snapshot.status !== 'partial') {
+              // Only reached with the number of a snapshot: the latest one is always one that has ended.
+              const running = snapshot.status === 'running';
+              throw new EngineError(
+                'SNAPSHOT_NOT_FOUND',
+                running
+                  ? `Snapshot ${String(snapshot.id)} of the source "${name}" has not ended, so it cannot be analysed.`
+                  : `Snapshot ${String(snapshot.id)} of the source "${name}" was given up. It holds a part of the source at most and is not analysed.`,
+                {
+                  hint: running
+                    ? `It is continued and then analysed by: orglens snapshot ${name}`
+                    : 'The latest snapshot of each source is shown by: orglens status',
+                  details: { source: name, snapshot: snapshot.id, status: snapshot.status },
+                },
+              );
+            }
+            try {
+              await analyseStored(store, name, snapshot);
+            } catch (error) {
+              if (isAnalysisFailure(error)) notAnalysed(name, error);
+              throw error;
+            }
+            store.checkpoint();
+            const report = coverageOf(store, name, snapshot.id);
+            workspaceLogger(paths).info('snapshot.analysed', {
+              source: name,
+              snapshot: snapshot.id,
+              components: report.analysis?.components ?? null,
+              references: report.analysis?.references ?? null,
+              complete: report.analysis?.complete ?? null,
+            });
+            return report;
           } finally {
             store.close();
           }

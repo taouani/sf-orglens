@@ -1,8 +1,8 @@
 Usage: orglens coverage [options] <source>
 
 Shows the latest snapshot of a source: the number of components per metadata
-type, and everything that was left out or went wrong while it was taken. Reads
-only.
+type, what its analysis found, and everything that was left out or went wrong
+while it was taken and analysed. Reads only.
 
 Arguments:
   source                the name of the source

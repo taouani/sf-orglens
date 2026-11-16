@@ -6,7 +6,9 @@
  * shared with every other snapshot that holds the same content.
  */
 import { EngineError, type JsonValue } from '../core/errors.ts';
-import { putBlob } from './blobs.ts';
+import type { ProjectLayout } from '../sources/project.ts';
+import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
+import { getBlob, putBlob } from './blobs.ts';
 import type { Store } from './open.ts';
 
 type SourceKind = 'org' | 'sandbox' | 'git';
@@ -86,12 +88,14 @@ export interface NewSnapshot {
   /** The Salesforce API version an org is read with. */
   readonly apiVersion?: string | undefined;
   readonly gitCommit: string | null;
+  /** How the project of a repository lays out its files. Not set, or `null`: as Salesforce hands them out. */
+  readonly layout?: ProjectLayout | null | undefined;
 }
 
 export function insertSnapshot(store: Store, snapshot: NewSnapshot): number {
   return store.run(
-    `INSERT INTO snapshot (source_id, status, started_at, finished_at, engine_version, api_version, git_commit)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO snapshot (source_id, status, started_at, finished_at, engine_version, api_version, git_commit, layout)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     snapshot.sourceId,
     snapshot.status,
     snapshot.startedAt,
@@ -99,6 +103,7 @@ export function insertSnapshot(store: Store, snapshot: NewSnapshot): number {
     snapshot.engineVersion,
     snapshot.apiVersion ?? null,
     snapshot.gitCommit,
+    snapshot.layout == null ? null : JSON.stringify(snapshot.layout),
   ).lastInsertRowid;
 }
 
@@ -207,6 +212,8 @@ export interface SnapshotRecord {
   readonly engineVersion: string;
   readonly apiVersion: string | null;
   readonly gitCommit: string | null;
+  /** The layout the files were read with, which an analysis reads them with again. `null`: the standard one. */
+  readonly layout: ProjectLayout | null;
   /** The number of files, and the sum of their sizes in bytes. */
   readonly files: number;
   readonly bytes: number;
@@ -217,7 +224,7 @@ const text = (value: unknown): string | null => (typeof value === 'string' ? val
 
 const SELECT_SNAPSHOT = `SELECT n.id AS id, s.name AS source, s.kind AS kind, n.status AS status,
             n.started_at AS started_at, n.finished_at AS finished_at, n.engine_version AS engine_version,
-            n.api_version AS api_version, n.git_commit AS git_commit,
+            n.api_version AS api_version, n.git_commit AS git_commit, n.layout AS layout,
             (SELECT COUNT(*) FROM snapshot_file f WHERE f.snapshot_id = n.id) AS files,
             (SELECT COALESCE(SUM(b.raw_size), 0) FROM snapshot_file f JOIN blob b ON b.id = f.blob_id
               WHERE f.snapshot_id = n.id) AS bytes
@@ -235,6 +242,7 @@ function record(row: Readonly<Record<string, unknown>>): SnapshotRecord {
     engineVersion: String(row['engine_version']),
     apiVersion: text(row['api_version']),
     gitCommit: text(row['git_commit']),
+    layout: typeof row['layout'] === 'string' ? (JSON.parse(row['layout']) as ProjectLayout) : null,
     files: Number(row['files']),
     bytes: Number(row['bytes']),
   };
@@ -277,11 +285,17 @@ export function readCoverage(store: Store, snapshotId: number): TypeCoverage[] {
     }));
 }
 
+/** An issue as the database holds it: with the step of the snapshot it belongs to. */
+export interface StoredIssue extends SnapshotIssue {
+  /** `read`: found while the source was read. `analysis`: found by the analysis, and replaced with it. */
+  readonly stage: 'read' | 'analysis';
+}
+
 /** The issues of a snapshot, in the order they were recorded. */
-export function readIssues(store: Store, snapshotId: number): SnapshotIssue[] {
+export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
   return store
     .all(
-      'SELECT severity, code, component_key, message, details FROM snapshot_issue WHERE snapshot_id = ? ORDER BY id',
+      'SELECT severity, code, component_key, message, details, stage FROM snapshot_issue WHERE snapshot_id = ? ORDER BY id',
       snapshotId,
     )
     .map((row) => ({
@@ -290,5 +304,25 @@ export function readIssues(store: Store, snapshotId: number): SnapshotIssue[] {
       message: String(row['message']),
       componentKey: text(row['component_key']),
       details: typeof row['details'] === 'string' ? (JSON.parse(row['details']) as Record<string, JsonValue>) : null,
+      stage: row['stage'] === 'analysis' ? 'analysis' : 'read',
     }));
+}
+
+/**
+ * The files of a snapshot as a tree: sorted by code unit, each read from its blob and checked against its hash
+ * when it is asked for.
+ */
+export function snapshotTree(store: Store, snapshotId: number): SourceTree {
+  const blobs = new Map<string, number>();
+  for (const row of store.all('SELECT path, blob_id FROM snapshot_file WHERE snapshot_id = ?', snapshotId)) {
+    blobs.set(String(row['path']), Number(row['blob_id']));
+  }
+  return {
+    files: [...blobs.keys()].sort(byCodeUnit),
+    read: (path) => {
+      const blob = blobs.get(path);
+      if (blob === undefined) throw new Error(`"${path}" is not a file of this snapshot.`);
+      return getBlob(store, blob);
+    },
+  };
 }

@@ -16,6 +16,7 @@ import {
   type Reference,
 } from '../src/core/references.ts';
 import {
+  PARTS_NOTE,
   readAnalysis,
   readOriginCoverage,
   REFERENCE_CODES,
@@ -29,6 +30,7 @@ import { MIGRATIONS } from '../src/store/migrate.ts';
 import type { SqlValue } from '../src/store/driver.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import {
+  addCoverage,
   addIssue,
   addSnapshotFile,
   ensureSource,
@@ -36,6 +38,7 @@ import {
   readIssues,
   readSnapshot,
 } from '../src/store/snapshots.ts';
+import { insertSnapshotBeforeLayout } from './helpers/old-store.ts';
 import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 
 const T0 = '2026-01-31T09:30:00.000Z';
@@ -179,6 +182,49 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         (table) => [table, count(store, table)],
       ),
     );
+
+  it('counts per type the components it read something of, in the coverage of the snapshot', () => {
+    const store = open();
+    const id = snapshot(store);
+    const coverage = (): unknown[] =>
+      store.all('SELECT type, listed, retrieved, analysed, note FROM snapshot_type_coverage ORDER BY type');
+    store.write(() => {
+      addCoverage(store, id, { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null });
+      addCoverage(store, id, { type: 'ApexClass', listed: 3, retrieved: 2, analysed: 0, listing: 'ok', note: 'Kept.' });
+    });
+    writeAnalysis(store, id, analysisOf(project()));
+    // The object and two fields have attributes. The rule and the object without a file have none: they have a
+    // row and were not read. The source listed no field, so the analysis adds the row of that type.
+    expect(coverage()).toEqual([
+      { type: 'ApexClass', listed: 3, retrieved: 2, analysed: 0, note: 'Kept.' },
+      { type: 'CustomField', listed: 0, retrieved: 0, analysed: 2, note: PARTS_NOTE },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, note: null },
+    ]);
+
+    // An analysis that replaces it replaces the numbers too, and takes back the row that only it had added.
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([component(RULE, 'Invoice__c.Amount_Positive', RULE_FILE, [], { active: true })], { work: [] }),
+    );
+    expect(coverage()).toEqual([
+      { type: 'ApexClass', listed: 3, retrieved: 2, analysed: 0, note: 'Kept.' },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, note: null },
+      { type: 'ValidationRule', listed: 0, retrieved: 0, analysed: 1, note: PARTS_NOTE },
+    ]);
+
+    // The coverage of another snapshot is not touched.
+    const other = snapshot(store, 'other');
+    writeAnalysis(store, other, analysisOf(project()));
+    expect(
+      store.all('SELECT type, analysed FROM snapshot_type_coverage WHERE snapshot_id = ? ORDER BY type', id),
+    ).toEqual([
+      { type: 'ApexClass', analysed: 0 },
+      { type: 'CustomObject', analysed: 0 },
+      { type: 'ValidationRule', analysed: 1 },
+    ]);
+    store.close();
+  });
 
   it('writes the components of a snapshot and says what it wrote', () => {
     const store = open();
@@ -903,7 +949,13 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       }),
     );
     expect(readIssues(store, id).map((one) => one.code)).toEqual(['READ', 'FIRST', 'SECOND']);
-    expect(readIssues(store, id)[2]).toEqual({ ...issue('SECOND'), componentKey: TOTAL, details: { line: 3 } });
+    expect(readIssues(store, id)[0]).toEqual({ ...issue('READ'), stage: 'read' });
+    expect(readIssues(store, id)[2]).toEqual({
+      ...issue('SECOND'),
+      componentKey: TOTAL,
+      details: { line: 3 },
+      stage: 'analysis',
+    });
     writeAnalysis(store, id, analysisOf(project(), { issues: [issue('THIRD')] }));
     expect(readIssues(store, id).map((one) => one.code)).toEqual(['READ', 'THIRD']);
     expect(store.all('SELECT code, stage FROM snapshot_issue ORDER BY id')).toEqual([
@@ -1111,7 +1163,16 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     const path = join(temp.next(), 'orglens.sqlite');
     const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 2) });
     expect(old.schemaVersion).toBe(2);
-    const id = snapshot(old);
+    const id = old.write(() =>
+      insertSnapshotBeforeLayout(old, {
+        sourceId: ensureSource(old, { name: 'repo', kind: 'git', createdAt: T0 }),
+        status: 'complete',
+        startedAt: T0,
+        finishedAt: T0,
+        engineVersion: '0.1.0',
+        gitCommit: null,
+      }),
+    );
     old.write(() => {
       addSnapshotFile(old, id, OBJECT_FILE, new TextEncoder().encode('<CustomObject/>'));
       addIssue(old, id, { severity: 'warning', code: 'OLD', message: 'Old.', componentKey: null, details: null });
@@ -1120,7 +1181,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
 
     const store = openStore({ path, driver });
     expect(store.migrated).toEqual({ from: 2, to: MIGRATIONS.length });
-    expect(readSnapshot(store, 'repo')).toMatchObject({ id, status: 'complete', files: 1 });
+    // A snapshot from before the layout was kept is one in the standard layout.
+    expect(readSnapshot(store, 'repo')).toMatchObject({ id, status: 'complete', files: 1, layout: null });
     expect(readAnalysis(store, id)).toBeUndefined();
     expect(sqlGraph(store, id).find(INVOICE)).toBeUndefined();
     expect(store.all('SELECT code, stage FROM snapshot_issue')).toEqual([{ code: 'OLD', stage: 'read' }]);

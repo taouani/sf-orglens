@@ -120,13 +120,34 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
         files: 4,
         bytes: FILES.reduce((sum, path) => sum + readFileSync(join(repo.dir, ...path.split('/'))).byteLength, 0),
       },
+      // The object and its field are analysed. The class has its row and no analyser yet.
       types: [
         { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
       ],
+      analysis: {
+        engineVersion: report.snapshot.engineVersion,
+        analysedAt: expect.stringMatching(UTC) as string,
+        components: 3,
+        references: 0,
+        complete: true,
+        origins: [
+          { origin: 'parser:xml', components: 2, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          {
+            origin: 'parser:formula',
+            components: 0,
+            failedFiles: 0,
+            references: 0,
+            unresolved: 0,
+            pathsNotFollowed: 0,
+          },
+        ],
+      },
       issues: [],
     });
+    // The snapshot had ended before it was analysed.
+    expect(report.analysis !== null && report.analysis.analysedAt >= (report.snapshot.finishedAt ?? '')).toBe(true);
     // Plain data: nothing is lost on the way through JSON.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
     expect(stored(database, 1)).toEqual(onDisk(repo));
@@ -138,7 +159,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     const status = await workspace.status();
     expect(status.sources.find((source) => source.name === 'work')).toMatchObject({
       snapshots: 1,
-      latestSnapshot: { id: 1, status: 'complete' },
+      latestSnapshot: {
+        id: 1,
+        status: 'complete',
+        analysis: { engineVersion: report.snapshot.engineVersion, analysedAt: report.analysis?.analysedAt },
+      },
     });
   });
 
@@ -188,9 +213,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     expect(report.snapshot).toMatchObject({ status: 'partial', files: 2, commit: null });
     // What is missing is the class, and only the class: the object and its field are in the snapshot.
     expect(report.types).toEqual([
-      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
     ]);
+    // What was not read makes the snapshot partial. The analysis of what was read is complete.
+    expect(report.analysis).toMatchObject({ components: 2, complete: true });
+    expect(report.issues.map((issue) => issue.stage)).toEqual(['read', 'read']);
     expect(Object.keys(stored(database, 1))).toEqual(FILES.filter((path) => !path.includes('/classes/')));
     const errors = report.issues.filter((issue) => issue.severity === 'error');
     expect(errors).toMatchObject([{ code: 'RESOLVE_FAILED', details: { at: `${CLASS}-meta.xml` } }]);
@@ -243,6 +271,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
         severity: 'info',
         code: 'CHANGED_WHILE_READ',
         message: 'The snapshot names no commit: 1 file was changed or removed while the snapshot was taken.',
+        stage: 'read',
+        component: null,
         details: { count: 1, paths: [CLASS] },
       },
     ]);
@@ -258,7 +288,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
       }),
     );
     expect(removed.snapshot).toMatchObject({ status: 'partial', commit: null, files: 3 });
-    expect(removed.issues.map((issue) => issue.code)).toEqual(['FILE_UNREADABLE', 'CHANGED_WHILE_READ']);
+    // The snapshot holds the description of the class without its body. The analysis cannot place that file,
+    // says so, and is not complete. The class has no row.
+    expect(removed.issues.map((issue) => `${issue.stage} ${issue.severity} ${issue.code}`)).toEqual([
+      'read error FILE_UNREADABLE',
+      'read info CHANGED_WHILE_READ',
+      'analysis error RESOLVE_FAILED',
+    ]);
+    expect(removed.issues[2]).toMatchObject({ component: null, details: { at: `${CLASS}-meta.xml` } });
+    expect(removed.analysis).toMatchObject({ components: 2, complete: false });
   });
 
   it('takes a snapshot of the folders without a git program, and names no commit', async () => {

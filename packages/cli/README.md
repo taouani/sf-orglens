@@ -4,8 +4,9 @@ The command line of [OrgLens](https://github.com/taouani/sf-orglens), a local-fi
 Salesforce. It tells you what a change to an org will affect before you make it, from a dependency graph built on
 your own machine.
 
-> **Pre-release.** The commands below manage a workspace and its configuration, and take snapshots of repository
-> folders. No command connects to an org or analyses anything yet. See the
+> **Pre-release.** The commands below manage a workspace and its configuration, take snapshots of repository
+> folders and of orgs, and analyse the objects, fields, validation rules and formulas in them. No command answers
+> an impact question yet. See the
 > [roadmap](https://github.com/taouani/sf-orglens/blob/main/docs/plans/re-architecture-plan.md#roadmap).
 
 ```sh
@@ -15,7 +16,8 @@ orglens source add repo --kind git --path force-app --tracks prod
 orglens source list
 orglens status                            # the workspace, its database and its sources
 orglens snapshot repo                     # read the folders now and store their metadata files
-orglens coverage repo                     # what the latest snapshot holds, and what it is missing
+orglens coverage repo                     # what the latest snapshot holds, what it is missing, what was analysed
+orglens analyse repo                      # analyse the latest snapshot again, from the files it holds
 orglens doctor                            # check that OrgLens can run here
 ```
 
@@ -23,8 +25,9 @@ Every command takes `--json` and then writes one line of JSON in a fixed envelop
 alike. The JSON Schema of that output is shipped as `sf-orglens/schemas/output.schema.json`.
 
 Exit codes: `0` success, `1` failure, `2` a wrong command line or configuration, `3` a gate was breached, `4` a
-login or connection problem, `5` an incomplete result. `snapshot` ends with `5` for a partial snapshot. The codes
-`3` and `4` are reserved and not used yet.
+login or connection problem, `5` an incomplete result. `snapshot` and `analyse` end with `5` for a partial
+snapshot or an incomplete analysis. `snapshot` of an org and the commands that check a login end with `4` for
+a problem with a login. No command ends with `3` yet.
 
 The [command line reference](https://github.com/taouani/sf-orglens/blob/main/docs/cli.md) documents the output
 contract, and the [configuration reference](https://github.com/taouani/sf-orglens/blob/main/docs/configuration.md)

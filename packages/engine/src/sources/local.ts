@@ -9,11 +9,11 @@
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GitSource } from '../core/config/config.ts';
-import { EngineError } from '../core/errors.ts';
+import { EngineError, isEngineError } from '../core/errors.ts';
 import { readFolders } from './folder.ts';
 import { FORCEIGNORE_FILE, ignoreFileCandidates, ignoreRules } from './forceignore.ts';
 import { checkedOut, commitOf, differencesFromCommit, readCommit, readCommitFile } from './git.ts';
-import { packageDirectories, PROJECT_FILE } from './project.ts';
+import { packageDirectories, PROJECT_FILE, projectLayout, type ProjectLayout } from './project.ts';
 import { resolveComponents, type ResolvedComponent } from './resolve.ts';
 import { byCodeUnit, filterTree, pathDetails, systemCode, type SourceIssue, type SourceTree } from './tree.ts';
 
@@ -33,6 +33,11 @@ export interface LocalReading {
    * `null` in every other case.
    */
   readonly holds: ((path: string, content: Uint8Array) => boolean) | null;
+  /**
+   * How the project file of the repository lays out its files, or `null` if it asks for nothing or if there is
+   * no such file. The components were found with it, and the snapshot keeps it for every later analysis.
+   */
+  readonly layout: ProjectLayout | null;
   readonly components: readonly ResolvedComponent[];
   /** The files of the components, by their path in the repository. */
   readonly tree: SourceTree;
@@ -98,9 +103,10 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
     return content;
   };
 
+  // The project file is read for every source: for one that names its folders too, it says how they are laid out.
+  const project = readOne(PROJECT_FILE);
   let dirs = source.paths;
   if (dirs === null) {
-    const project = readOne(PROJECT_FILE);
     if (project === null || project === 'link') {
       throw new EngineError(
         'SOURCE_READ_FAILED',
@@ -116,6 +122,26 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
     dirs = packageDirectories(project);
   }
   const declared = new Set(dirs);
+  // The project file of the repository of the source, as the source has it: on disk, or in the commit. Never
+  // that of the folder the command runs in.
+  let layout: ProjectLayout | null = null;
+  if (project !== null && project !== 'link') {
+    try {
+      layout = projectLayout(project);
+    } catch (error) {
+      // A source that names its folders does not need the project file for them. One that cannot be read is
+      // said, and the files are laid out as Salesforce hands them out.
+      if (source.paths === null || !isEngineError(error) || error.details?.['reason'] !== 'PROJECT_FILE_INVALID') {
+        throw error;
+      }
+      issues.push({
+        severity: 'warning',
+        code: 'PROJECT_FILE_INVALID',
+        message: `${error.message} Its settings for the layout of files are not applied.`,
+        details: { path: PROJECT_FILE },
+      });
+    }
+  }
 
   const reading = fromCommit === null ? readFolders(repoDir, dirs) : readCommit(repoDir, fromCommit, dirs);
   const below = (dir: string, path: string): boolean => path.startsWith(`${dir}/`);
@@ -199,7 +225,7 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
   }
   const considered = filterTree(reading.tree, (path) => !excluded(path));
 
-  const resolution = await resolveComponents(considered, dirs);
+  const resolution = await resolveComponents(considered, dirs, layout);
   for (const problem of resolution.problems) {
     issues.push({
       severity: 'error',
@@ -257,10 +283,7 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
       });
     } else {
       // The project file and every place a `.forceignore` can be at decide what is read, so they count as well.
-      const candidates = new Set([
-        ...(source.paths === null ? [PROJECT_FILE] : []),
-        ...dirs.flatMap(ignoreFileCandidates),
-      ]);
+      const candidates = new Set([PROJECT_FILE, ...dirs.flatMap(ignoreFileCandidates)]);
       const applied = new Map<string, Uint8Array>();
       for (const path of candidates) {
         const content = readOne(path);
@@ -298,6 +321,7 @@ export async function readLocalSource(workspaceRoot: string, source: GitSource):
     dirs,
     commit,
     holds,
+    layout,
     components: resolution.components,
     tree: filterTree(considered, (path) => owned.has(path)),
     issues,

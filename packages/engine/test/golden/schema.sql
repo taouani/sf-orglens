@@ -17,7 +17,7 @@ CREATE TABLE snapshot (
   -- The Salesforce API version used for an org, and the commit that was read for a Git source.
   api_version    TEXT,
   git_commit     TEXT
-) STRICT;
+, layout TEXT CHECK (layout IS NULL OR (json_valid(layout) AND json_type(layout) = 'object'))) STRICT;
 
 CREATE INDEX snapshot_by_source ON snapshot (source_id, id);
 

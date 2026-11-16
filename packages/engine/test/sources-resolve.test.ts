@@ -246,6 +246,74 @@ describe('resolving components', () => {
     ]);
   });
 
+  it('lays the files out as it is told, and never as the project of the folder the process runs in', async () => {
+    // One file with every label, as Salesforce hands them out, and the same labels with a file each, as a
+    // project lays them out that asks for it.
+    const label = (name: string, value: string): string =>
+      `<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabel xmlns="http://soap.sforce.com/2006/04/metadata">\n    <fullName>${name}</fullName>\n    <language>en_US</language>\n    <protected>false</protected>\n    <shortDescription>${name}</shortDescription>\n    <value>${value}</value>\n</CustomLabel>\n`;
+    const treeOf = (files: Record<string, string>): { files: string[]; read: (path: string) => Uint8Array } => ({
+      files: Object.keys(files).sort(),
+      read: (path: string): Uint8Array => Buffer.from(files[path] ?? ''),
+    });
+    const together = treeOf({ 'labels/CustomLabels.labels-meta.xml': LABELS });
+    const apart = treeOf({
+      'labels/Farewell.label-meta.xml': label('Farewell', 'Goodbye'),
+      'labels/Greeting.label-meta.xml': label('Greeting', 'Hello'),
+    });
+    const decomposed = { presets: ['decomposeCustomLabelsBeta2'], customizations: null };
+    const names = (resolution: Awaited<ReturnType<typeof resolveComponents>>): string[] =>
+      resolution.components.map((component) => `${component.type}:${component.fullName}`);
+
+    // The command runs in the repository of a user, whose project asks for the other layout of labels. It
+    // changes neither answer.
+    const repository = project({
+      'sfdx-project.json': JSON.stringify({
+        packageDirectories: [{ path: 'force-app', default: true }],
+        sourceBehaviorOptions: ['decomposeCustomLabelsBeta2'],
+      }),
+    });
+    const startedIn = process.cwd();
+    process.chdir(repository);
+    try {
+      const standard = await resolveComponents(together, ['']);
+      expect(standard).toMatchObject({ unresolved: [], problems: [] });
+      expect(names(standard)).toEqual(['CustomLabel:Farewell', 'CustomLabel:Greeting', 'CustomLabels:CustomLabels']);
+      expect(names(await resolveComponents(together, [''], null))).toEqual(names(standard));
+
+      const asked = await resolveComponents(apart, [''], decomposed);
+      expect(asked).toMatchObject({ unresolved: [], problems: [] });
+      expect(names(asked)).toEqual(['CustomLabel:Farewell', 'CustomLabel:Greeting']);
+      expect(asked.components.map((component) => component.files)).toEqual([
+        ['labels/Farewell.label-meta.xml'],
+        ['labels/Greeting.label-meta.xml'],
+      ]);
+      // Without the layout, a file of one label is no metadata the library knows.
+      expect((await resolveComponents(apart, [''])).components).toEqual([]);
+    } finally {
+      process.chdir(startedIn);
+    }
+  });
+
+  it('refuses a layout it does not know, and types a project describes wrongly', async () => {
+    const tree = { files: [] as string[], read: (): Uint8Array => new Uint8Array(0) };
+    await expect(
+      resolveComponents(tree, [''], { presets: ['decomposeEverythingBeta9'], customizations: null }),
+    ).rejects.toMatchObject({
+      code: 'SOURCE_READ_FAILED',
+      message:
+        'The files are laid out with the project setting "decomposeEverythingBeta9", which this version of OrgLens does not know.',
+      details: { reason: 'LAYOUT_UNKNOWN', setting: 'decomposeEverythingBeta9' },
+    });
+    await expect(
+      resolveComponents(tree, [''], {
+        presets: [],
+        customizations: {
+          types: { thing: { id: 'thing', name: 'Thing', suffix: 'thing', directoryName: '../outside' } },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'SOURCE_READ_FAILED', details: { reason: 'LAYOUT_INVALID' } });
+  });
+
   it('loses one file, not the folder, when the library cannot place a -meta.xml file', async () => {
     const orphan = 'force-app/main/default/classes/Orphan.cls-meta.xml';
     const root = project({

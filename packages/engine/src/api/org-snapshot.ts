@@ -62,6 +62,7 @@ import {
   readIssues,
   readRunningSnapshot,
 } from '../store/snapshots.ts';
+import { analyseStored } from './analysis.ts';
 import type { WorkspacePaths } from './layout.ts';
 import { snapshotReport, type CoverageReport } from './snapshot.ts';
 
@@ -76,13 +77,15 @@ type Environment = Readonly<Record<string, string | undefined>>;
  * - `planned`: the inventory is stored. The snapshot has a number and a number of chunks to retrieve.
  * - `resumed`: a snapshot that was interrupted is continued. `done` of its `chunks` are stored already.
  * - `retrieved`: a chunk is stored. `chunks` grows when a chunk has to be split.
+ * - `analysing`: every chunk is done and the snapshot has ended. Its files are analysed now.
  */
 export type SnapshotProgress =
   | { readonly step: 'connected'; readonly apiVersion: string }
   | { readonly step: 'listing'; readonly done: number; readonly total: number }
   | { readonly step: 'planned'; readonly snapshot: number; readonly components: number; readonly chunks: number }
   | { readonly step: 'resumed'; readonly snapshot: number; readonly done: number; readonly chunks: number }
-  | { readonly step: 'retrieved'; readonly snapshot: number; readonly done: number; readonly chunks: number };
+  | { readonly step: 'retrieved'; readonly snapshot: number; readonly done: number; readonly chunks: number }
+  | { readonly step: 'analysing'; readonly snapshot: number };
 
 /** The numbers a snapshot of an org works with. A test sets them to make things happen that are rare. */
 export interface OrgSnapshotTuning {
@@ -327,6 +330,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
   const workDir = paths.temporaryDir(source.name);
   let release: (() => void) | undefined;
   let snapshotId: number | undefined;
+  let finished = false;
   let api: MetadataApi | undefined;
   try {
     release = holdLock(store, paths.snapshotLockFile(source.name), source.name);
@@ -452,13 +456,18 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
 
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
     finish(store, snapshotId);
+    finished = true;
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
+    store.checkpoint();
+    progress({ step: 'analysing', snapshot: snapshotId });
+    await analyseStored(store, source.name, { id: snapshotId, layout: null });
     store.checkpoint();
     const taken = snapshotReport(store, source.name, snapshotId);
     if (taken === undefined) throw new EngineError('INTERNAL', 'The snapshot was stored and cannot be found.');
     return taken;
   } catch (error) {
-    throw stopped(error, source.name, snapshotId);
+    // A snapshot that has ended is not picked up again, whatever happened to its analysis.
+    throw finished ? error : stopped(error, source.name, snapshotId);
   } finally {
     try {
       // Requests that are still under way, such as listings beside the one that failed, end here.
@@ -753,7 +762,8 @@ function finish(store: Store, snapshotId: number): void {
         note: note === '' ? null : note,
       });
     }
-    const complete = !readIssues(store, snapshotId).some((one) => one.severity === 'error');
+    // What was read decides. An issue of an analysis says nothing about the reading.
+    const complete = !readIssues(store, snapshotId).some((one) => one.stage === 'read' && one.severity === 'error');
     finishSnapshot(store, snapshotId, {
       status: complete ? 'complete' : 'partial',
       finishedAt: now(),

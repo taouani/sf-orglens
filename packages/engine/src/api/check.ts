@@ -82,10 +82,13 @@ export async function checkSource(
       components: reading.components.length,
       files: reading.tree.files.length,
       bytes,
+      // A check reads and analyses nothing, so every issue is one of the reading.
       issues: read.issues.map(({ severity, code, message, details }) => ({
         severity,
         code,
         message,
+        stage: 'read',
+        component: null,
         details: details ?? {},
       })),
     };

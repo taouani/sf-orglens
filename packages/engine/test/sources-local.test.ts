@@ -143,10 +143,10 @@ describe('reading a Git source', () => {
       expect(reading.commit, path).toBeNull();
       expect(reading.issues.at(-1), path).toMatchObject({ code: 'WORKING_TREE_MODIFIED', details: { paths: [path] } });
     }
-    // With "paths" the project file is not read, so it does not count.
-    const { repo, commit } = projectRepo();
+    // With "paths" the project file still says how the files are laid out, so it counts as well.
+    const { repo } = projectRepo();
     repo.write('sfdx-project.json', `${PROJECT_JSON}\n`);
-    expect((await readLocalSource(repo.dir, source({ paths: ['force-app'] }))).commit).toBe(commit);
+    expect((await readLocalSource(repo.dir, source({ paths: ['force-app'] }))).commit).toBeNull();
   });
 
   it('names the commit when the only files that differ are left out by .forceignore', async () => {
@@ -295,7 +295,59 @@ describe('reading a Git source', () => {
       );
       expect(reading.dirs).toEqual(['extra', 'core']);
       expect(names(reading)).toEqual(['ApexClass:Greeter', 'ApexClass:Other', ...COMPONENTS.slice(1)]);
+      // The project file is not needed for the folders. That it cannot be read is said, and the files are laid
+      // out as Salesforce hands them out.
+      expect(reading.layout).toBeNull();
+      expect(reading.issues.filter((issue) => issue.code === 'PROJECT_FILE_INVALID')).toEqual([
+        {
+          severity: 'warning',
+          code: 'PROJECT_FILE_INVALID',
+          message:
+            'sfdx-project.json: The file is not JSON in UTF-8. Its settings for the layout of files are not applied.',
+          details: { path: 'sfdx-project.json' },
+        },
+      ]);
     }
+  });
+
+  it('lays out the files as the project file of the source says, from disk or from the commit it reads', async () => {
+    const label = `<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabel xmlns="http://soap.sforce.com/2006/04/metadata">\n    <fullName>Greeting</fullName>\n    <language>en_US</language>\n    <protected>false</protected>\n    <shortDescription>Greeting</shortDescription>\n    <value>Hello</value>\n</CustomLabel>\n`;
+    const decomposed = `${JSON.stringify({ packageDirectories: [{ path: 'force-app' }], sourceBehaviorOptions: ['decomposeCustomLabelsBeta2'] })}\n`;
+    const { repo } = projectRepo({
+      'sfdx-project.json': decomposed,
+      'force-app/main/default/labels/Greeting.label-meta.xml': label,
+    });
+    const layout = { presets: ['decomposeCustomLabelsBeta2'], customizations: null };
+    for (const ref of [null, 'main']) {
+      const reading = await readLocalSource(repo.dir, source({ ref }));
+      expect(reading.layout).toEqual(layout);
+      expect(names(reading)).toEqual([
+        'ApexClass:Greeter',
+        'CustomField:Parcel__c.Weight__c',
+        'CustomLabel:Greeting',
+        'CustomObject:Parcel__c',
+      ]);
+      // With "paths" as well: the project file still says how the files are laid out.
+      expect((await readLocalSource(repo.dir, source({ ref, paths: ['force-app'] }))).layout).toEqual(layout);
+    }
+
+    // A source with "ref" reads the project file of the commit, not the one on disk.
+    repo.write('sfdx-project.json', PROJECT_JSON);
+    expect((await readLocalSource(repo.dir, source({ ref: 'main' }))).layout).toEqual(layout);
+    const fromDisk = await readLocalSource(repo.dir, source());
+    expect(fromDisk.layout).toBeNull();
+    // Read as Salesforce hands labels out, the file of one label is not understood.
+    expect(codes(fromDisk)).toContain('error RESOLVE_FAILED');
+
+    // A setting the library does not know stops the reading: the files would be placed wrongly.
+    repo.write(
+      'sfdx-project.json',
+      `${JSON.stringify({ packageDirectories: [{ path: 'force-app' }], sourceBehaviorOptions: ['decomposeEverythingBeta9'] })}\n`,
+    );
+    expect(await failure(() => readLocalSource(repo.dir, source()))).toEqual({
+      code: 'SOURCE_READ_FAILED',
+      reason: 'LAYOUT_UNKNOWN',
+    });
   });
 
   it('leaves out what .forceignore excludes, and says how many files that were', async () => {

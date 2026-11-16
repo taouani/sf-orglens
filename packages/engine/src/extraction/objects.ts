@@ -420,6 +420,7 @@ export function resolveReferences(
             column: last.column,
             relationship: last.name,
             notFollowed: rest,
+            origin,
           },
         });
       }

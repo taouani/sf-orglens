@@ -76,6 +76,7 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
       engineVersion: '1.2.3',
       apiVersion: null,
       gitCommit: 'a'.repeat(40),
+      layout: null,
       files: 3,
       bytes: 21,
     });
@@ -89,6 +90,28 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
     expect(readRunningSnapshot(store, 'repo')).toBeUndefined();
     finishSnapshot(store, id, { status: 'partial', finishedAt: T1, gitCommit: null });
     expect(readSnapshot(store, 'repo')).toMatchObject({ status: 'partial', gitCommit: null });
+    store.close();
+  });
+
+  it('keeps the layout the files of a snapshot were read with', () => {
+    const store = open();
+    const layout = {
+      presets: ['decomposeCustomLabelsBeta2'],
+      customizations: { types: { thing: { id: 'thing', name: 'Thing', suffix: 'thing', directoryName: 'things' } } },
+    };
+    const id = insertSnapshot(store, {
+      sourceId: ensureSource(store, { name: 'repo', kind: 'git', createdAt: T0 }),
+      status: 'complete',
+      startedAt: T0,
+      finishedAt: T1,
+      engineVersion: '1.2.3',
+      gitCommit: null,
+      layout,
+    });
+    expect(readSnapshot(store, 'repo', id)?.layout).toEqual(layout);
+    // Only an object is a layout.
+    expect(() => store.run("UPDATE snapshot SET layout = '[]' WHERE id = ?", id)).toThrow(/CHECK/);
+    expect(() => store.run("UPDATE snapshot SET layout = 'x' WHERE id = ?", id)).toThrow(/CHECK/);
     store.close();
   });
 
@@ -242,7 +265,8 @@ describe.each(DRIVERS)('snapshots with $name', (driver) => {
       },
     ];
     for (const issue of issues) addIssue(store, id, issue);
-    expect(readIssues(store, id)).toEqual(issues);
+    // An issue belongs to the reading unless an analysis wrote it.
+    expect(readIssues(store, id)).toEqual(issues.map((issue) => ({ ...issue, stage: 'read' })));
     store.close();
   });
 

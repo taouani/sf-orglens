@@ -8,6 +8,7 @@ import { rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { engineVersion } from '@sf-orglens/engine';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { orglens, orglensJson, tempDirs } from './helpers/run.ts';
 
@@ -61,6 +62,16 @@ function setUp(): { dir: string; env: Record<string, string> } {
 
 const TIME = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g;
 
+/** What the analysis says about Apex classes, which no analyser of this phase reads. */
+const classesAnalysed = (components: string): string[] => [
+  `Analysed by engine ${engineVersion()}: ${components}, 0 references.`,
+  '',
+  'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+  'parser:xml      0           0           0             0                   0',
+  'parser:formula  0           0           0             0                   0',
+  '',
+];
+
 describe('orglens snapshot of an org', () => {
   it('reads the org, says on the standard error stream how far it is, and reports what it stored', async () => {
     const { dir, env } = setUp();
@@ -72,6 +83,7 @@ describe('orglens snapshot of an org', () => {
         'Asking the org what it holds: 1 of 1 request answered.',
         'Snapshot #1: the org lists 2 components. They are retrieved in 1 chunk.',
         'Snapshot #1: 1 of 1 chunk is stored.',
+        'Snapshot #1: every chunk is done. Analysing its files.',
         '',
       ].join('\n'),
       stdout: [
@@ -80,6 +92,7 @@ describe('orglens snapshot of an org', () => {
         'TYPE       LISTED  RETRIEVED  ANALYSED',
         'ApexClass  2       2          0',
         '',
+        ...classesAnalysed('2 components'),
       ].join('\n'),
     });
     expect(mock.operations).toEqual([
@@ -95,10 +108,9 @@ describe('orglens snapshot of an org', () => {
       'Snapshot #1 of "prod", taken TIME, is complete: 2 components in 4 files (456 bytes).',
     );
     const status = await orglens(dir, ['status']);
+    expect(status.stdout).toMatch(/^SOURCE {2}KIND {2}SNAPSHOTS {2}LATEST SNAPSHOT +ANALYSED$/m);
     expect(status.stdout.replace(TIME, 'TIME')).toContain(
-      ['SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT', 'prod    org   1          #1 complete, finished TIME', ''].join(
-        '\n',
-      ),
+      `prod    org   1          #1 complete, finished TIME  by engine ${engineVersion()}\n`,
     );
   });
 
@@ -120,12 +132,22 @@ describe('orglens snapshot of an org', () => {
           files: 4,
         },
         types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null }],
+        analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
         issues: [],
       },
     });
     expect((await orglensJson(dir, ['coverage', 'prod'])).data).toEqual(json.data);
     expect(await orglensJson(dir, ['status'])).toMatchObject({
-      data: { sources: [{ name: 'prod', snapshots: 1, latestSnapshot: { id: 1 }, unfinishedSnapshot: null }] },
+      data: {
+        sources: [
+          {
+            name: 'prod',
+            snapshots: 1,
+            latestSnapshot: { id: 1, analysis: { engineVersion: engineVersion() } },
+            unfinishedSnapshot: null,
+          },
+        ],
+      },
     });
     // The output of a job is read by others: it names neither the user nor the address of the org.
     for (const secret of ['ci@example.com', '127.0.0.1', 'the-session', 'client-id']) {
@@ -149,6 +171,7 @@ describe('orglens snapshot of an org', () => {
         "warning   RETRIEVE_MESSAGES  Salesforce made 1 remark about a retrieve. The first: Entity of type 'ApexClass' named 'GreeterTest' cannot be found",
         'error     NOT_RETRIEVED      1 component of the type ApexClass that the org listed did not come back. The first: GreeterTest',
         '',
+        ...classesAnalysed('1 component'),
       ].join('\n'),
     );
   });
@@ -168,6 +191,7 @@ describe('orglens snapshot of an org', () => {
         'SEVERITY  CODE                 WHAT',
         'info      UNLISTED_COMPONENTS  1 component of the type ApexClass came back that the org had not listed. It is in the snapshot. The first: GreeterTest',
         '',
+        ...classesAnalysed('2 components'),
       ].join('\n'),
     );
   });
@@ -195,7 +219,7 @@ describe('orglens snapshot of an org', () => {
 
     const status = await orglens(dir, ['status']);
     expect(status.stdout.replace(TIME, 'TIME').split('\n').slice(-4)).toEqual([
-      'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT',
+      'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT  ANALYSED',
       'prod    org   0          none',
       'Snapshot #1 of "prod" was begun TIME and has not ended: 0 of 1 chunk is stored. "orglens snapshot prod" continues it.',
       '',
@@ -216,6 +240,7 @@ describe('orglens snapshot of an org', () => {
       'Logged in to the org of "prod". It is read with API version 66.0.',
       'Snapshot #1 was interrupted and is continued: 0 of 1 chunk is stored.',
       'Snapshot #1: 1 of 1 chunk is stored.',
+      'Snapshot #1: every chunk is done. Analysing its files.',
       '',
     ]);
     expect(continued.stdout.replace(TIME, 'TIME').split('\n')).toEqual([
@@ -232,6 +257,7 @@ describe('orglens snapshot of an org', () => {
           'info      SNAPSHOT_RESUMED  The snapshot was interrupted and continued at TIME. What it holds was read from the org at more than one time.',
       ),
       '',
+      ...classesAnalysed('2 components'),
     ]);
 
     // With --restart an interrupted snapshot is given up. Here there is none, and a new one is taken.

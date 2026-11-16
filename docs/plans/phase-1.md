@@ -641,6 +641,59 @@ Accepted when:
 - A snapshot taken by the Phase 0 engine is analysed by `analyse` and then equals a new one.
 - Analysis of the fixture adds no more than a second to `snapshot`.
 
+Status on 16 November 2026, with the pull request that analyses a snapshot. Built: `api/analysis.ts`
+(`analyseStored`, `analysisReport`), the analysis in `api/snapshot.ts` and `api/org-snapshot.ts`,
+`Workspace.analyse`, `snapshotTree` in `store/snapshots.ts`, the number of analysed components per type in
+`store/analysis.ts`, the command `orglens analyse`, the new parts of `coverage` and `status`, the JSON Schema,
+`docs/cli.md`, their tests and decision record [0043](../adr/0043-a-snapshot-is-analysed-from-its-files.md).
+
+- **The three pass marks are met.**
+  - A snapshot of the fixture folder and one of the mock org give the same 89 keys and the same 106
+    references, compared by the component they start from, kind, target, the name as written, origin,
+    confidence and attributes. Lines are compared within each snapshot. The resolution is not compared, and
+    differs in one place: the org hands out a file for `Account` and `User`, so a lookup to one of them is
+    `resolved` there and `external` in the folder.
+  - A snapshot in a database of schema version 2 is analysed by `analyse` to what a new snapshot gives. The
+    test writes the snapshot into that database with the statements of Phase 0. Once, by
+    hand, the last commit of Phase 0 took a snapshot of the fixture project and of nebula-logger, and `analyse`
+    gave the same rows as a new snapshot for both. That run is not a test.
+  - The analysis of the fixture takes 20 to 29 ms on one Linux machine, over five runs, in a process that has
+    loaded its libraries. A snapshot of the fixture with its analysis takes 46 to 68 ms.
+- **The times on the three public codebases**, the same way: the analysis takes 51 to 74 ms for apex-recipes
+  (506 files), 174 to 196 ms for nebula-logger (1,579 files) and 1.4 to 1.5 seconds for NPSP (12,056 files).
+  The snapshot with it takes 0.15 to 0.19, 0.47 to 0.59 and 3.4 to 3.9 seconds. No issue of the analysis is
+  an error in any of them. An org of the size of your targets was not measured: that is WP10.
+- **What "incomplete" means is a choice of mine**, and record 0043 lists it with thirteen others for you to
+  strike. The ones with the most weight:
+  - `complete` and `partial` of a snapshot say what was read. The analysis has `complete` of its own, which is
+    false when a file of the snapshot could not be read as XML, a component could not be analysed, or a file
+    belongs to no component. `snapshot` and `analyse` end with `5` for either.
+  - A warning does not make an analysis incomplete: a name that was not read, a path that was not followed,
+    a formula that was not read as a whole. They are counted and shown.
+  - If the analysis fails as a whole, the snapshot stays and the command fails with an error that says so and
+    names `orglens analyse`. So `snapshot` can end with an error although a snapshot is stored.
+  - `ANALYSED` counts the components the analysis read something of. It can be larger than `RETRIEVED`,
+    because the fields and rules inside the file of an object are counted.
+  - The place of a part stays its place in the file, which answers the question WP4 left.
+  - A snapshot of a Git source keeps the layout of files that its own project file asks for, and is analysed
+    with it from whatever folder. This closes the open point of Phase 0 about the project a Git source is read
+    with. The code review found why it matters: `analyse` run from a folder whose project laid out custom labels
+    otherwise lost a label and called the analysis complete. The database is at schema version 4 for it.
+- **Part G of the Phase 0 test plan had not been run when this was built.** This plan asks for it before WP6.
+  The maintainer was told on 16 November 2026 that WP6 starts without it, and that a defect it shows is
+  corrected in a pull request of its own. `orglens snapshot` has still not run against Salesforce.
+- **For WP7.** `analysisReport` and `CoverageReport.analysis` say whether a snapshot is analysed, by which
+  version, and whether the analysis is complete. `impact` on a snapshot with `analysis: null` is to end with an
+  error that names `orglens analyse`. The exit code `5` of `impact` for "a file of an analysed type could not
+  be read" is `analysis.complete === false`.
+- **For WP8.** `analyse` reads no source, so the rows of the Dependency API cannot come from it. They belong to
+  `snapshot`, or to a step of their own.
+- **For WP9.** The coverage per type has `analysed`, and a type that only the analysis found has a line with
+  a note. The rule that judges completeness over the logic tier has what it needs there.
+- **Not done or not verified.** No option analyses every snapshot at once. Nothing says that a snapshot was
+  analysed by an older version than the one that runs: `status` names the version, and the user compares.
+  No snapshot of a real org was analysed.
+
 ### WP7 Impact
 
 Build:

@@ -12,9 +12,10 @@ May import from: `core`, `sources`, `extraction`.
 | `open.ts`                  | `openStore`: the open sequence, write transactions, the "another writer" error       |
 | `migrate.ts`, `migrations` | The migration runner and the numbered migrations                                     |
 | `blobs.ts`                 | File contents, stored once per distinct content                                      |
-| `snapshots.ts`             | Sources, snapshots, their files, coverage per type and issues                        |
+| `snapshots.ts`             | Sources, snapshots, their files as a `SourceTree`, coverage per type and issues      |
 | `journal.ts`               | The journal of a snapshot of an org: what it listed, and the chunks it reads         |
 | `analysis.ts`              | `writeAnalysis`: the components and references of a snapshot, coverage per origin    |
+|                            | and the number of analysed components per type                                       |
 | `graph.ts`                 | `SnapshotGraph`: the one interface an engine reads components and references through |
 | `probe.ts`                 | What the SQLite build at hand can do                                                 |
 
