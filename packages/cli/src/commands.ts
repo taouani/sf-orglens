@@ -8,7 +8,10 @@ import {
   doctor,
   initWorkspace,
   openWorkspace,
+  type ConfidenceTier,
   type CoverageReport,
+  type ImpactGaps,
+  type ImpactReport,
   type SnapshotProgress,
   type SourceDeclaration,
   type SourceInput,
@@ -575,5 +578,204 @@ export async function doctorCommand(context: Context): Promise<Outcome> {
       verdict,
     ],
     exitCode: report.ok ? EXIT.ok : EXIT.failure,
+  };
+}
+
+/** The options of `impact`, as the argument parser delivers them. */
+export interface ImpactCommandOptions {
+  readonly source?: string | undefined;
+  readonly snapshot?: string | undefined;
+  readonly depth?: string | undefined;
+  readonly minConfidence?: ConfidenceTier | undefined;
+  readonly outgoing?: boolean | undefined;
+}
+
+/** The value of `--depth`: how many references away the answer goes. */
+function depthNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^[1-9][0-9]{0,8}$/.test(value)) {
+    throw new UsageError(`--depth takes a whole number from 1, and "${value}" is not one.`);
+  }
+  return Number(value);
+}
+
+/** The source a question is about: the one that was named, or the only one the workspace declares. */
+function onlySource(named: string | undefined, declared: readonly SourceDeclaration[]): string {
+  if (named !== undefined) return named;
+  const [first, second] = declared;
+  if (first === undefined) {
+    throw new UsageError('The workspace declares no source.', 'Declare one with: orglens source add');
+  }
+  if (second !== undefined) {
+    throw new UsageError(
+      `The workspace declares ${String(declared.length)} sources. Say which one is meant with --source <name>.`,
+      `The sources: ${declared.map((source) => source.name).join(', ')}`,
+    );
+  }
+  return first.name;
+}
+
+/** Where a reference stands, as editors take it: the file and the line. */
+const place = (step: { readonly file: string | null; readonly line: number | null }): string =>
+  step.file === null ? 'no place' : `${step.file}${step.line === null ? '' : `:${String(step.line)}`}`;
+
+/** The sentences that say why an answer is not complete, each without its full stop. */
+function gapReasons(gaps: ImpactGaps): string[] {
+  const reasons: string[] = [];
+  if (gaps.notAnalysed.length > 0) {
+    reasons.push(`${count(gaps.notAnalysed.length, 'type is', 'types are')} not analysed yet`);
+  }
+  if (gaps.partial.length > 0) {
+    reasons.push(`the snapshot holds ${count(gaps.partial.length, 'analysed type', 'analysed types')} only in part`);
+  }
+  if (gaps.readErrors > 0) {
+    reasons.push(
+      `${count(gaps.readErrors, 'error of the reading names', 'errors of the reading name')} no type, so what is missing may be of an analysed type`,
+    );
+  }
+  if (gaps.analysisErrors > 0) {
+    reasons.push(`the analysis had ${count(gaps.analysisErrors, 'error', 'errors')}`);
+  }
+  return reasons;
+}
+
+function impactLines(report: ImpactReport): string[] {
+  const { component, snapshot, results, notCovered } = report;
+  const incoming = report.direction === 'incoming';
+  const named = `${component.key}${component.name === null ? '' : ` (${component.name})`}`;
+  const scope = [
+    `in snapshot #${String(snapshot.id)} of "${snapshot.source}"`,
+    report.depth === null ? null : `to a depth of ${String(report.depth)}`,
+    report.minConfidence === 'possible' ? null : `over references that are at least ${report.minConfidence}`,
+  ]
+    .filter((part) => part !== null)
+    .join(', ');
+  const lines = [incoming ? `What refers to ${named}, ${scope}.` : `What ${named} refers to, ${scope}.`];
+  if (report.parts > 0) {
+    lines.push(
+      `It contains ${count(report.parts, 'component', 'components')} of the snapshot. The answer is about ${report.parts === 1 ? 'it' : 'them'} too.`,
+    );
+  }
+
+  // What the answer does not cover comes before the answer: a short list must not be read as a complete one.
+  const reasons = gapReasons(notCovered);
+  if (reasons.length === 0) {
+    lines.push(
+      incoming
+        ? 'The answer is complete: every type of the snapshot was analysed, and nothing is missing.'
+        : 'The answer is complete: every component in it was analysed.',
+    );
+  } else {
+    lines.push(`The answer is not complete: ${reasons.join(', and ')}. The details are below the answer.`);
+  }
+  if (!incoming && notCovered.notAnalysed.some((gap) => gap.type === component.type)) {
+    lines.push(`${component.type} is not analysed yet: what the component itself refers to is not known.`);
+  }
+
+  const direct = results.filter((result) => result.depth === 1).length;
+  lines.push('');
+  if (results.length === 0) {
+    lines.push(
+      incoming ? 'Nothing that was analysed refers to it.' : 'It refers to no component, as far as it was analysed.',
+    );
+  } else if (incoming) {
+    lines.push(
+      `${count(results.length, 'component refers', 'components refer')} to it, ${direct === results.length ? (direct === 1 ? 'directly' : 'all of them directly') : `${String(direct)} of them directly`}.`,
+    );
+  } else {
+    lines.push(
+      `It refers to ${count(results.length, 'component', 'components')}, ${direct === results.length ? 'directly' : `to ${String(direct)} of them directly`}.`,
+    );
+  }
+  if (results.length > 0) {
+    lines.push(
+      '',
+      ...table(
+        ['DEPTH', 'COMPONENT', 'CONFIDENCE', 'KIND', incoming ? 'REFERS TO' : 'REFERRED TO BY', 'WHERE'],
+        results.map((result) => {
+          // The reference of the path that stands in the result itself, or that names it.
+          const step = incoming ? result.path[0] : result.path.at(-1);
+          return [
+            String(result.depth),
+            result.key,
+            result.confidence,
+            step?.kind ?? '',
+            (incoming ? step?.to : step?.from) ?? '',
+            step === undefined ? '' : place(step),
+          ];
+        }),
+      ),
+    );
+  }
+  if (report.beyondDepth) {
+    lines.push(
+      '',
+      `The answer stops at depth ${String(report.depth)}, and references lead further. Ask again with a larger --depth, or without it.`,
+    );
+  }
+  if (report.unresolved.length > 0) {
+    lines.push(
+      '',
+      `${count(report.unresolved.length, 'reference names', 'references name')} something that has no component in the snapshot:`,
+      ...table(
+        ['DEPTH', 'FROM', 'KIND', 'TYPE', 'NAME', 'WHERE'],
+        report.unresolved.map((one) => [String(one.depth), one.from, one.kind, one.type, one.name, place(one)]),
+      ),
+    );
+  }
+
+  const gapTable = (gaps: ImpactReport['notCovered']['partial']): string[] =>
+    table(
+      ['TYPE', 'LISTED', 'RETRIEVED'],
+      gaps.map((gap) => [gap.type, LISTED[gap.listing](gap.listed), String(gap.retrieved)]),
+    );
+  const about = `orglens coverage ${snapshot.source} --snapshot ${String(snapshot.id)}`;
+  if (notCovered.notAnalysed.length > 0) {
+    lines.push(
+      '',
+      incoming
+        ? 'Not analysed yet. A component of these types may refer to it, and is not in the answer:'
+        : 'Not analysed yet. What the components of these types in the answer refer to is not known:',
+      ...gapTable(notCovered.notAnalysed),
+    );
+  }
+  if (notCovered.partial.length > 0) {
+    lines.push(
+      '',
+      'Analysed, and the snapshot holds less than the source has. The answer may miss a component of these types:',
+      ...gapTable(notCovered.partial),
+    );
+  }
+  if (notCovered.readErrors > 0) {
+    lines.push(
+      '',
+      `${count(notCovered.readErrors, 'error of the reading names', 'errors of the reading name')} no type: a file or a folder could not be read. See: ${about}`,
+    );
+  }
+  if (notCovered.analysisErrors > 0) {
+    lines.push(
+      '',
+      `The analysis had ${count(notCovered.analysisErrors, 'error', 'errors')}: something of an analysed type was not read. See: ${about}`,
+    );
+  }
+  return lines;
+}
+
+export async function impact(context: Context, component: string, options: ImpactCommandOptions): Promise<Outcome> {
+  const snapshotId = snapshotNumber(options.snapshot);
+  const depth = depthNumber(options.depth);
+  const workspace = await openWorkspace(locator(context));
+  const source = onlySource(options.source, await workspace.sources.list());
+  const report = await workspace.impact(source, component, {
+    snapshot: snapshotId,
+    depth,
+    minConfidence: options.minConfidence,
+    outgoing: options.outgoing,
+  });
+  return {
+    data: report,
+    lines: impactLines(report),
+    // The answer is there. It may miss something of a type it covers, which a script must be able to tell.
+    exitCode: report.mayMiss ? EXIT.partial : EXIT.ok,
   };
 }

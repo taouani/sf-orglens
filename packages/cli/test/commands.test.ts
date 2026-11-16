@@ -888,6 +888,8 @@ describe('the --json contract', () => {
       'SOURCE_INVALID',
       'SOURCE_IN_USE',
       'SNAPSHOT_NOT_FOUND',
+      'COMPONENT_NOT_FOUND',
+      'COMPONENT_AMBIGUOUS',
     ];
     const connection: readonly ErrorCode[] = ['LOGIN_FAILED', 'ORG_MISMATCH'];
     const silent = createWriter({ stdout: () => undefined, stderr: () => undefined, cwd: '', env: {} }, true);

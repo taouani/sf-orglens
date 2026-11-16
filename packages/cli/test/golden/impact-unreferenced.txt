@@ -1,0 +1,14 @@
+What refers to CustomField:invoice__c.unused_field__c (Invoice__c.Unused_Field__c), in snapshot #1 of "fixture".
+The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+
+Nothing that was analysed refers to it.
+
+Not analysed yet. A component of these types may refer to it, and is not in the answer:
+TYPE              LISTED  RETRIEVED
+ApexClass         12      12
+ApexTrigger       1       1
+CustomLabel       1       1
+CustomLabels      1       1
+CustomMetadata    1       1
+CustomPermission  1       1
+GlobalValueSet    1       1

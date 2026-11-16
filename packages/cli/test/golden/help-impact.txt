@@ -1,0 +1,34 @@
+Usage: orglens impact [options] <component>
+
+Shows what refers to a component in the latest snapshot of a source, directly or
+through other components: each with the shortest chain of references that leads
+to it, the weakest confidence on that chain, and the file and line of its
+reference. For an object, the answer is about everything it contains too. The
+component is named by its name (Account.Industry), by its type and name
+(CustomField:Account.Industry) or by its key. The first lines say what the
+answer does not cover: the types of the snapshot that are not analysed yet.
+Reads only. The exit code is 5 if the answer may miss something of a type it
+covers, because something of the source was not read or not analysed. It is 2 if
+no component has the name, or several have.
+
+Arguments:
+  component                the name or the key of the component
+
+Options:
+  --source <name>          the source to ask (default: the only source of the
+                           workspace)
+  --snapshot <number>      the snapshot to ask (default: the latest)
+  --depth <number>         how many references away the answer goes at most
+                           (default: no limit)
+  --min-confidence <tier>  follow only references that are at least this certain
+                           (choices: "confirmed", "probable", "possible",
+                           default: "possible")
+  --outgoing               show what the component refers to, in place of what
+                           refers to it
+  -h, --help               show help and exit
+
+Global Options:
+  -V, --version            print the version and exit
+  --json                   write the result as one line of JSON
+  --workspace <folder>     the workspace folder (default: found from the current
+                           folder upwards)

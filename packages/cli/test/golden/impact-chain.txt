@@ -1,0 +1,21 @@
+What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture".
+The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+
+5 components refer to it, 2 of them directly.
+
+DEPTH  COMPONENT                                         CONFIDENCE  KIND   REFERS TO                                   WHERE
+1      CustomField:invoice_line__c.line_amount__c        confirmed   reads  CustomField:invoice_line__c.quantity__c     force-app/main/default/objects/Invoice_Line__c/fields/Line_Amount__c.field-meta.xml:4
+1      ValidationRule:invoice_line__c.quantity_positive  confirmed   reads  CustomField:invoice_line__c.quantity__c     force-app/main/default/objects/Invoice_Line__c/validationRules/Quantity_Positive.validationRule-meta.xml:6
+2      CustomField:invoice__c.lines_total__c             confirmed   reads  CustomField:invoice_line__c.line_amount__c  force-app/main/default/objects/Invoice__c/fields/Lines_Total__c.field-meta.xml:5
+2      CustomField:invoice__c.open_billable_total__c     confirmed   reads  CustomField:invoice_line__c.line_amount__c  force-app/main/default/objects/Invoice__c/fields/Open_Billable_Total__c.field-meta.xml:5
+3      CustomField:invoice__c.grand_total__c             confirmed   reads  CustomField:invoice__c.lines_total__c       force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
+
+Not analysed yet. A component of these types may refer to it, and is not in the answer:
+TYPE              LISTED  RETRIEVED
+ApexClass         12      12
+ApexTrigger       1       1
+CustomLabel       1       1
+CustomLabels      1       1
+CustomMetadata    1       1
+CustomPermission  1       1
+GlobalValueSet    1       1

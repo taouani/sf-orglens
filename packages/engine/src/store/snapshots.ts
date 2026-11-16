@@ -309,6 +309,20 @@ export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
 }
 
 /**
+ * How many errors a snapshot has, without reading them: those of the analysis, and those of the reading that
+ * name no metadata type. An error of the reading that names its type is told by the coverage of that type.
+ */
+export function countErrors(store: Store, snapshotId: number): { readonly read: number; readonly analysis: number } {
+  const row = store.get(
+    `SELECT COALESCE(SUM(stage = 'analysis'), 0) AS analysis,
+            COALESCE(SUM(stage <> 'analysis' AND json_type(COALESCE(details, '{}'), '$.type') IS NOT 'text'), 0) AS read
+       FROM snapshot_issue WHERE snapshot_id = ? AND severity = 'error'`,
+    snapshotId,
+  );
+  return { read: Number(row?.['read'] ?? 0), analysis: Number(row?.['analysis'] ?? 0) };
+}
+
+/**
  * The files of a snapshot as a tree: sorted by code unit, each read from its blob and checked against its hash
  * when it is asked for.
  */

@@ -23,6 +23,7 @@
         "snapshot",
         "analyse",
         "coverage",
+        "impact",
         "doctor",
         null
       ]
@@ -150,6 +151,15 @@
       }
     },
     {
+      "title": "impact",
+      "properties": {
+        "ok": { "const": true },
+        "command": { "const": "impact" },
+        "data": { "$ref": "#/$defs/impact" },
+        "error": { "type": "null" }
+      }
+    },
+    {
       "title": "doctor",
       "properties": {
         "ok": { "const": true },
@@ -196,6 +206,9 @@
             "SOURCE_READ_FAILED",
             "SNAPSHOT_NOT_FOUND",
             "SNAPSHOT_RUNNING",
+            "SNAPSHOT_NOT_ANALYSED",
+            "COMPONENT_NOT_FOUND",
+            "COMPONENT_AMBIGUOUS",
             "LOGIN_FAILED",
             "ORG_MISMATCH",
             "INTERNAL"
@@ -450,6 +463,352 @@
           "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
           "type": "array",
           "items": { "$ref": "#/$defs/issue" }
+        }
+      }
+    },
+    "impact": {
+      "description": "What refers to a component in one snapshot, directly or through other components, or what the component refers to. The answer says what it does not cover.",
+      "type": "object",
+      "required": [
+        "snapshot",
+        "component",
+        "parts",
+        "direction",
+        "depth",
+        "beyondDepth",
+        "minConfidence",
+        "results",
+        "unresolved",
+        "complete",
+        "notCovered",
+        "mayMiss"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "required": ["id", "source", "kind", "status", "finishedAt", "analysedBy"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The number of the snapshot that was asked.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "source": {
+              "description": "The name of the source.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["org", "sandbox", "git"]
+            },
+            "status": {
+              "description": "`partial`: something of the source is missing in the snapshot. `notCovered` says whether that matters for this answer.",
+              "enum": ["complete", "partial"]
+            },
+            "finishedAt": {
+              "description": "When the snapshot was finished. UTC, as in 2026-01-31T09:30:00.000Z.",
+              "type": ["string", "null"]
+            },
+            "analysedBy": {
+              "description": "The version of the engine that analysed the snapshot.",
+              "type": "string"
+            }
+          }
+        },
+        "component": {
+          "description": "The component that was asked about.",
+          "$ref": "#/$defs/impactComponent"
+        },
+        "parts": {
+          "description": "How many components of the snapshot the component contains, at any depth: the fields and rules of an object. The answer is about them too, and none of them is a result.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "direction": {
+          "description": "`incoming`: the results are what refers to the component. `outgoing`, with --outgoing: they are what the component refers to.",
+          "enum": ["incoming", "outgoing"]
+        },
+        "depth": {
+          "description": "The value of --depth. Null: no limit.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "beyondDepth": {
+          "description": "True if the answer stops at `depth` and references lead further.",
+          "type": "boolean"
+        },
+        "minConfidence": {
+          "description": "The value of --min-confidence. References less certain than this were not followed.",
+          "enum": ["confirmed", "probable", "possible"]
+        },
+        "results": {
+          "description": "The components that were found, sorted by depth and then by key.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "type", "name", "file", "depth", "confidence", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "description": "The component key. It is the same in every source and every snapshot, and `impact` takes it as its argument.",
+                "type": "string"
+              },
+              "type": {
+                "description": "The metadata type, as Salesforce names it.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The name as the source spells it. Null for a component the snapshot refers to and does not hold, such as a standard field.",
+                "type": ["string", "null"]
+              },
+              "file": {
+                "description": "The file that defines the component, inside the source. Null if no file of the snapshot defines it.",
+                "type": ["string", "null"]
+              },
+              "depth": {
+                "description": "How many references lie between this component and the one that was asked about. 1: it refers to it directly.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "confidence": {
+                "description": "The weakest confidence among the references of `path`.",
+                "enum": ["confirmed", "probable", "possible"]
+              },
+              "path": {
+                "description": "A shortest chain of references between this component and the one that was asked about, or something that one contains, in the order the references follow each other: the `to` of a step is the `from` of the next. For `incoming` the chain starts at this component, for `outgoing` it ends at it. Among the shortest chains it is the most certain one. A longer chain can be more certain, and is found with --min-confidence.",
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/impactStep"
+                }
+              }
+            }
+          }
+        },
+        "unresolved": {
+          "description": "For `outgoing`: the references to a name that has no key, so that no component stands for it. Always empty for `incoming`.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "type",
+              "name",
+              "kind",
+              "origin",
+              "confidence",
+              "resolution",
+              "file",
+              "line",
+              "column",
+              "depth"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "description": "The key of the component the reference stands in.",
+                "type": "string"
+              },
+              "type": {
+                "description": "The metadata type of the target.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The target as the source writes it.",
+                "type": "string"
+              },
+              "kind": {
+                "description": "What the reference says about its two ends.",
+                "enum": [
+                  "reads",
+                  "writes",
+                  "calls",
+                  "extends",
+                  "implements",
+                  "uses-type",
+                  "triggers-on",
+                  "grants",
+                  "references"
+                ]
+              },
+              "origin": {
+                "description": "Where the reference was learned from.",
+                "enum": ["parser:xml", "parser:formula", "parser:flow", "parser:apex", "symboltable", "dependency-api"]
+              },
+              "confidence": {
+                "description": "How certain the reference is, strongest first: confirmed, probable, possible.",
+                "enum": ["confirmed", "probable", "possible"]
+              },
+              "resolution": {
+                "description": "`resolved`: the target is a component of the snapshot. `external`: it lies outside the snapshot, such as a standard field. `dynamic`: it is decided at run time and known in part. `unresolved`: it was named and not found.",
+                "enum": ["resolved", "unresolved", "external", "dynamic"]
+              },
+              "file": {
+                "description": "The file of the reference, inside the source. Null for a reference that Salesforce reported without a place.",
+                "type": ["string", "null"]
+              },
+              "line": {
+                "description": "Lines start at 1.",
+                "type": ["integer", "null"],
+                "minimum": 1
+              },
+              "column": {
+                "description": "Columns start at 1 and count UTF-16 code units.",
+                "type": ["integer", "null"],
+                "minimum": 1
+              },
+              "depth": {
+                "description": "The depth a component with this name would have.",
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "complete": {
+          "description": "True if nothing of the source is missing from the answer: `notCovered` is empty. False says that the answer is what was found, and that `notCovered` names what could not be looked at.",
+          "type": "boolean"
+        },
+        "notCovered": {
+          "description": "What the answer does not cover.",
+          "type": "object",
+          "required": ["notAnalysed", "partial", "readErrors", "analysisErrors"],
+          "additionalProperties": false,
+          "properties": {
+            "notAnalysed": {
+              "description": "The types of the snapshot that no analyser read, sorted by type. A component of such a type may refer to the component that was asked about, and is not in the answer. For `outgoing`: only the types that the component or a result is of, because what a component refers to does not depend on other types.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/impactGap"
+              }
+            },
+            "partial": {
+              "description": "The analysed types of which the snapshot holds less than the source has, sorted by type.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/impactGap"
+              }
+            },
+            "readErrors": {
+              "description": "How many errors of the reading name no metadata type: a file or a folder that could not be read. What is missing may be of an analysed type.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "analysisErrors": {
+              "description": "How many errors the analysis had: a file that could not be read or placed, or a component that could not be analysed.",
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "mayMiss": {
+          "description": "True if the answer may miss something of a type it covers: `notCovered.partial` is not empty, or `readErrors` or `analysisErrors` is not 0. The exit code is then 5. A type that is not analysed yet does not make it true.",
+          "type": "boolean"
+        }
+      }
+    },
+    "impactComponent": {
+      "type": "object",
+      "required": ["key", "type", "name", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "The component key. It is the same in every source and every snapshot, and `impact` takes it as its argument.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The metadata type, as Salesforce names it.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name as the source spells it. Null for a component the snapshot refers to and does not hold, such as a standard field.",
+          "type": ["string", "null"]
+        },
+        "file": {
+          "description": "The file that defines the component, inside the source. Null if no file of the snapshot defines it.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "impactStep": {
+      "description": "One reference: the component it stands in, the component it names, and where it stands.",
+      "type": "object",
+      "required": ["from", "to", "kind", "origin", "confidence", "resolution", "file", "line", "column"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "The key of the component the reference stands in.",
+          "type": "string"
+        },
+        "to": {
+          "description": "The key of the component it names.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What the reference says about its two ends.",
+          "enum": [
+            "reads",
+            "writes",
+            "calls",
+            "extends",
+            "implements",
+            "uses-type",
+            "triggers-on",
+            "grants",
+            "references"
+          ]
+        },
+        "origin": {
+          "description": "Where the reference was learned from.",
+          "enum": ["parser:xml", "parser:formula", "parser:flow", "parser:apex", "symboltable", "dependency-api"]
+        },
+        "confidence": {
+          "description": "How certain the reference is, strongest first: confirmed, probable, possible.",
+          "enum": ["confirmed", "probable", "possible"]
+        },
+        "resolution": {
+          "description": "`resolved`: the target is a component of the snapshot. `external`: it lies outside the snapshot, such as a standard field. `dynamic`: it is decided at run time and known in part. `unresolved`: it was named and not found.",
+          "enum": ["resolved", "unresolved", "external", "dynamic"]
+        },
+        "file": {
+          "description": "The file of the reference, inside the source. Null for a reference that Salesforce reported without a place.",
+          "type": ["string", "null"]
+        },
+        "line": {
+          "description": "Lines start at 1.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "column": {
+          "description": "Columns start at 1 and count UTF-16 code units.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    },
+    "impactGap": {
+      "type": "object",
+      "required": ["type", "listed", "retrieved", "listing"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "The metadata type, as Salesforce names it.",
+          "type": "string"
+        },
+        "listed": {
+          "description": "How many components of the type the source says it has.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "retrieved": {
+          "description": "How many of them are in the snapshot with all their files.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "listing": {
+          "description": "As in the coverage: `failed` if an org refused to list the type, `unlistable` if Salesforce never lists it.",
+          "enum": ["ok", "failed", "unlistable"]
         }
       }
     },

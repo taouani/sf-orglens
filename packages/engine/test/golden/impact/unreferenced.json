@@ -1,0 +1,74 @@
+{
+  "snapshot": {
+    "id": 1,
+    "source": "fixture",
+    "kind": "git",
+    "status": "complete",
+    "finishedAt": "TIME",
+    "analysedBy": "0.0.0"
+  },
+  "component": {
+    "key": "CustomField:invoice__c.unused_field__c",
+    "type": "CustomField",
+    "name": "Invoice__c.Unused_Field__c",
+    "file": "force-app/main/default/objects/Invoice__c/fields/Unused_Field__c.field-meta.xml"
+  },
+  "parts": 0,
+  "direction": "incoming",
+  "depth": null,
+  "beyondDepth": false,
+  "minConfidence": "possible",
+  "results": [],
+  "unresolved": [],
+  "complete": false,
+  "notCovered": {
+    "notAnalysed": [
+      {
+        "type": "ApexClass",
+        "listed": 12,
+        "retrieved": 12,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexTrigger",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabel",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabels",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomMetadata",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomPermission",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      }
+    ],
+    "partial": [],
+    "readErrors": 0,
+    "analysisErrors": 0
+  },
+  "mayMiss": false
+}
