@@ -313,6 +313,71 @@ Accepted when:
   store is more than twice as large or as slow, I report it before going on. The same three numbers are recorded
   for the org of twice the size. Phase 0 has no numbers to hold them against.
 
+Status on 16 November 2026, with the pull request that holds the tables. Built: migration 3,
+`store/analysis.ts` (`writeAnalysis`), `store/graph.ts` (`SnapshotGraph`, `sqlGraph`), their tests, the benchmark
+`bench/store.mjs` and decision record [0040](../adr/0040-components-and-references-in-the-database.md).
+
+- **The first three points above are met.** The tests run with both drivers on the three systems of CI. A
+  second snapshot of an unchanged source adds a list and no version, also when the references and the keys of
+  the attributes come in another order. A database of schema version 2 is migrated, its snapshots are there and
+  none counts as analysed.
+- **The benchmark**, through the real store, on one Linux machine, with ten snapshots of one source
+  ([store-benchmark.md](../research/phase-1/store-benchmark.md)):
+
+  | Measurement                    | Phase 0, own tables                | Real store   | Real store, twice the size |
+  | ------------------------------ | ---------------------------------- | ------------ | -------------------------- |
+  | Size after the first snapshot  | 106 MB                             | 94 MB        | 190 MB                     |
+  | Size after ten snapshots       | 159 MB                             | 146 MB       | 293 MB                     |
+  | Time to write the first        | 4.0 s recorded, 3.5 to 3.6 s today | 7.0 to 8.0 s | 15.4 s                     |
+  | Time to write a later snapshot | 0.37 s                             | 3.1 s        | 6.6 s                      |
+
+- **The first write takes about twice as long as in Phase 0, which is the limit this plan set, so I report it.**
+  By the runs of the same day it is 1.9 to 2.3 times, and 1.8 times the recorded 4 seconds. The two times do
+  not hold the same work: the store checks every key and takes a digest of every version, and the benchmark of
+  Phase 0 wrote an index for names. I made it faster where I could (a larger page cache, about 15 percent) and
+  found nothing more that the measurements support. Against your target of 60 minutes for a first snapshot,
+  7 seconds are little. I go on with WP4 unless you want this looked at first.
+- **The size is about the same as in Phase 0, not smaller in a way that counts.** Of the 12 MB the store saves,
+  9 MB are the index for names that the tables of Phase 0 held and the store does not have yet.
+- **The later snapshots cannot be compared.** The benchmark of Phase 0 knew which components had changed. The
+  store is handed all of them and finds out by itself.
+- **An org and a repository of one project will share few versions.** A version is the same only if the
+  content and the place of every reference are the same, as this plan asked, and an org rewrites almost every
+  file (finding 3). So the sharing that the numbers above show holds between snapshots of one source. A second
+  source costs about as much as a first snapshot (an estimate of 70 MB at the size of Phase 0, not measured),
+  and the comparison of an org with a repository has to compare what the versions hold. Record 0040 says how
+  the comparison engine can get a digest of its own later. This was found by the review of the pull request.
+- **The benchmark found a fault that no test had found, and it is corrected.** SQLite answered "which references
+  point at this component" by walking the whole list of the snapshot, and the first run did not end. The
+  statements now fix the order of their tables, and a test reads their query plans.
+- **The review of the pull request found no fault in the code and four larger points**, all taken up: the point
+  about the two sources above; nine shapes of a reference that the vocabulary forbids and the tables accepted, of which the tables now refuse four, one can no longer make a second version, and the record names the other four; 21 planted faults that the tests did not
+  catch, for which 20 tests were added; and claims about the benchmark that one run each did not carry, which
+  are now stated with the runs behind them.
+- **Thirteen choices in the tables are mine**, and record 0040 lists them for you to strike. The ones with the
+  most weight: a component whose references move by a line gets a new version, the kind and the three other
+  fixed values of a reference are stored as numbers with a table that explains them, and an analysis of a
+  snapshot is replaced as a whole when it is written again.
+- **For WP4.** `validateReference` accepts two things the store cannot hold as they are: a line larger than
+  SQLite can store, which the table refuses, and a name with half of a surrogate pair, which is stored as
+  another character than it was. WP4 changes `core/references.ts` for the unit of a column and takes these two
+  with it.
+- **For WP6.** `readIssues` gives the issues of the reading and of the analysis together, and the code that
+  decides whether a snapshot is complete counts every error among them. When WP6 writes the first analysis into
+  a snapshot, that count has to look at the stage. WP6 also keeps the column `analysed` of the coverage per
+  type in step with the analysis: `writeAnalysis` does not touch it. The time WP6 adds to a snapshot is that
+  of the analysers plus 7 to 8 seconds for the store at the size of Phase 0.
+- **For WP7.** Walking five steps from the most used field one question at a time takes 3.5 to 4.2 seconds at
+  the size of Phase 0 and 8 to 10 seconds at twice that size, which is above your target of 5 seconds. From an
+  ordinary field it takes less than a millisecond. WP7 needs a faster way for the worst field, an index in
+  memory or one recursive statement, and measures it. Phase 0 measured 3 milliseconds and 0.8 seconds for the
+  two. A snapshot knows the parent of every component it knows, so the walk can go up from a field to its
+  object also where the source holds no file for the object.
+- **Not done.** The size of ten times the org of Phase 0 was not run. It is the size of your targets if you
+  count top-level components only, which is still open with you. No command deletes a snapshot yet, and the one
+  that will has to remove the versions it leaves. Nothing was measured on Windows or macOS, with a cold file
+  cache, or with two sources in one database.
+
 ### WP4 Objects, fields and validation rules
 
 Build, in `extraction`:

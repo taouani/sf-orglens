@@ -20,6 +20,7 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "knip": "knip",
     "bench": "node bench/bench.mjs",
+    "bench:store": "node bench/store.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:adr": "node scripts/check-adr.mjs",
     "check:startup": "node scripts/check-startup.mjs",

@@ -105,6 +105,7 @@ pnpm run check:boundaries   # needs a build first
 pnpm run publint && pnpm run smoke:pack   # need a build first
 pnpm run check:startup      # start-up time of the built binary, needs a build first, not part of check
 pnpm run bench              # storage benchmark on a synthetic org, not part of check
+pnpm run bench:store        # the same org written and read through the store of the engine, not part of check
 pnpm run corpora:fetch      # downloads the public test codebases of fixtures/corpora.toml into .corpora
 ```
 

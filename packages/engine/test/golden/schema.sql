@@ -84,8 +84,111 @@ CREATE TABLE snapshot_issue (
   message       TEXT NOT NULL,
   -- A JSON object.
   details       TEXT CHECK (details IS NULL OR (json_valid(details) AND json_type(details) = 'object'))
-) STRICT;
+, stage TEXT NOT NULL DEFAULT 'read' CHECK (stage IN ('read', 'analysis'))) STRICT;
 
 CREATE INDEX snapshot_issue_by_snapshot ON snapshot_issue (snapshot_id, severity);
 
 CREATE UNIQUE INDEX snapshot_one_running ON snapshot (source_id) WHERE status = 'running';
+
+CREATE TABLE component (
+  id        INTEGER PRIMARY KEY,
+  key       TEXT NOT NULL UNIQUE CHECK (key <> ''),
+  -- The component that contains this one, as the key says it: the object of a field, the class of a method.
+  parent_id INTEGER REFERENCES component (id)
+) STRICT;
+
+CREATE INDEX component_by_parent ON component (parent_id) WHERE parent_id IS NOT NULL;
+
+CREATE TABLE file_path (
+  id   INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE CHECK (path <> '')
+) STRICT;
+
+CREATE TABLE component_version (
+  id           INTEGER PRIMARY KEY,
+  component_id INTEGER NOT NULL REFERENCES component (id),
+  -- SHA-256 over everything the version holds: the columns of this row, the content of what defines the
+  -- component in the source, and its references with their places.
+  digest       BLOB NOT NULL CHECK (length(digest) = 32),
+  -- The name as the source spells it.
+  name         TEXT NOT NULL CHECK (name <> ''),
+  -- The file that defines the component. NULL: the source names the component and does not define it, as a
+  -- repository does with a standard object of which it holds only fields.
+  path_id      INTEGER REFERENCES file_path (id),
+  -- A JSON object, with its keys in order.
+  attrs        TEXT CHECK (attrs IS NULL OR (json_valid(attrs) AND json_type(attrs) = 'object')),
+  UNIQUE (component_id, digest)
+) STRICT;
+
+CREATE TABLE reference_vocabulary (
+  family TEXT NOT NULL CHECK (family IN ('kind', 'origin', 'confidence', 'resolution')),
+  code   INTEGER NOT NULL CHECK (code >= 1),
+  name   TEXT NOT NULL CHECK (name <> ''),
+  PRIMARY KEY (family, code),
+  UNIQUE (family, name)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE reference (
+  version_id  INTEGER NOT NULL REFERENCES component_version (id) ON DELETE CASCADE,
+  seq         INTEGER NOT NULL CHECK (seq >= 0),
+  -- The component the reference points at. It need not be a component of any snapshot. NULL: the target was
+  -- named and could not be given a key. Its type is then in target_type.
+  target_id   INTEGER REFERENCES component (id),
+  target_type TEXT CHECK (target_type <> ''),
+  -- The target as the source wrote it.
+  raw_name    TEXT NOT NULL CHECK (raw_name <> ''),
+  -- Four numbers of reference_vocabulary. A list can get a new value with one row there, so no upper bound
+  -- stands here: the code that writes checks the number against the list.
+  kind        INTEGER NOT NULL CHECK (kind >= 1),
+  origin      INTEGER NOT NULL CHECK (origin >= 1),
+  confidence  INTEGER NOT NULL CHECK (confidence >= 1),
+  resolution  INTEGER NOT NULL CHECK (resolution >= 1),
+  -- Where the reference was found. What Salesforce reports can have no place.
+  path_id     INTEGER REFERENCES file_path (id),
+  line        INTEGER CHECK (line >= 1),
+  col         INTEGER CHECK (col >= 1),
+  -- A JSON object, with its keys in order.
+  attrs       TEXT CHECK (attrs IS NULL OR (json_valid(attrs) AND json_type(attrs) = 'object')),
+  PRIMARY KEY (version_id, seq),
+  CHECK ((target_id IS NULL) <> (target_type IS NULL)),
+  -- The rules of the vocabulary that tie two columns together. A resolved reference (1) has a target and an
+  -- unresolved one (2) has none. A possible one (confidence 3) has a target. A dynamic one (resolution 4) is
+  -- never confirmed (confidence 1).
+  CHECK (resolution <> 1 OR target_id IS NOT NULL),
+  CHECK (resolution <> 2 OR target_id IS NULL),
+  CHECK (confidence <> 3 OR target_id IS NOT NULL),
+  CHECK (resolution <> 4 OR confidence <> 1),
+  CHECK ((path_id IS NULL) = (line IS NULL)),
+  CHECK (col IS NULL OR line IS NOT NULL)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX reference_by_target ON reference (target_id, version_id) WHERE target_id IS NOT NULL;
+
+CREATE TABLE snapshot_component (
+  snapshot_id  INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
+  component_id INTEGER NOT NULL REFERENCES component (id),
+  version_id   INTEGER NOT NULL REFERENCES component_version (id),
+  PRIMARY KEY (snapshot_id, component_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX snapshot_component_by_version ON snapshot_component (version_id, snapshot_id);
+
+CREATE TABLE snapshot_analysis (
+  snapshot_id    INTEGER PRIMARY KEY REFERENCES snapshot (id) ON DELETE CASCADE,
+  engine_version TEXT NOT NULL CHECK (engine_version <> ''),
+  analysed_at    TEXT NOT NULL CHECK (analysed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+  components     INTEGER NOT NULL CHECK (components >= 0),
+  refs           INTEGER NOT NULL CHECK (refs >= 0)
+) STRICT;
+
+CREATE TABLE snapshot_origin_coverage (
+  snapshot_id  INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
+  origin       INTEGER NOT NULL CHECK (origin >= 1),
+  -- Components the analyser of this origin looked at, and files it could not read.
+  components   INTEGER NOT NULL CHECK (components >= 0),
+  failed_files INTEGER NOT NULL CHECK (failed_files >= 0),
+  -- References it found, and how many of them name a target that was not found.
+  refs         INTEGER NOT NULL CHECK (refs >= 0),
+  unresolved   INTEGER NOT NULL CHECK (unresolved >= 0 AND unresolved <= refs),
+  PRIMARY KEY (snapshot_id, origin)
+) STRICT, WITHOUT ROWID;
