@@ -93,7 +93,12 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
     expect(store.get('PRAGMA journal_mode')).toEqual({ journal_mode: 'wal' });
     expect(store.get('PRAGMA foreign_keys')).toEqual({ foreign_keys: 1 });
     expect(store.get('PRAGMA synchronous')).toEqual({ synchronous: 1 });
+    // In KiB. The 2 MiB of SQLite are too few for the references of a large org (decision record 0040).
+    expect(store.get('PRAGMA cache_size')).toEqual({ cache_size: -64_000 });
     store.close();
+    const reader = openStore({ path, driver, readOnly: true });
+    expect(reader.get('PRAGMA cache_size')).toEqual({ cache_size: -64_000 });
+    reader.close();
   });
 
   it('writes nothing when the database is already current', () => {
@@ -688,11 +693,19 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       const store = openStore({ path: newFile(), driver });
       expect(tables(store)).toEqual([
         'blob',
+        'component',
+        'component_version',
+        'file_path',
         'inventory_item',
+        'reference',
+        'reference_vocabulary',
         'retrieve_chunk',
         'snapshot',
+        'snapshot_analysis',
+        'snapshot_component',
         'snapshot_file',
         'snapshot_issue',
+        'snapshot_origin_coverage',
         'snapshot_type_coverage',
         'source',
         // Kept by SQLite for the tables whose ids are never used twice.
@@ -702,7 +715,10 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
         .all("SELECT name FROM sqlite_schema WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .map((row) => row['name']);
       expect(indexes).toEqual([
+        'component_by_parent',
+        'reference_by_target',
         'snapshot_by_source',
+        'snapshot_component_by_version',
         'snapshot_file_by_blob',
         'snapshot_issue_by_snapshot',
         'snapshot_one_running',
@@ -726,7 +742,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       await expect(schema).toMatchFileSnapshot('./golden/schema.sql');
     });
 
-    it('brings a database of the first version to the second, with what it holds', () => {
+    it('brings a database of the first version to the latest, with what it holds', () => {
       const path = newFile();
       const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 1) });
       old.run(source);
@@ -739,7 +755,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       old.close();
 
       const store = openStore({ path, driver });
-      expect(store.migrated).toEqual({ from: 1, to: 2 });
+      expect(store.migrated).toEqual({ from: 1, to: 3 });
       // What an older version stored reads as what it was: listed, not known to be retrieved, listing in order.
       expect(store.get('SELECT listed, retrieved FROM inventory_item')).toEqual({ listed: 1, retrieved: 0 });
       expect(store.get('SELECT job_id, status FROM retrieve_chunk')).toEqual({ job_id: null, status: 'done' });

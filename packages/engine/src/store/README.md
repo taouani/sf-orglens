@@ -4,21 +4,24 @@ The SQLite workspace database: driver, migrations, snapshots, components and ref
 
 May import from: `core`, `sources`, `extraction`.
 
-| File                       | What it holds                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `driver.ts`                | The driver port: the small part of a SQLite binding the store uses             |
-| `node-sqlite.ts`           | The default driver, on the SQLite built into Node.js                           |
-| `better-sqlite3.ts`        | The fallback driver, loaded only when asked for                                |
-| `open.ts`                  | `openStore`: the open sequence, write transactions, the "another writer" error |
-| `migrate.ts`, `migrations` | The migration runner and the numbered migrations                               |
-| `blobs.ts`                 | File contents, stored once per distinct content                                |
-| `snapshots.ts`             | Sources, snapshots, their files, coverage per type and issues                  |
-| `journal.ts`               | The journal of a snapshot of an org: what it listed, and the chunks it reads   |
-| `probe.ts`                 | What the SQLite build at hand can do                                           |
+| File                       | What it holds                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| `driver.ts`                | The driver port: the small part of a SQLite binding the store uses                   |
+| `node-sqlite.ts`           | The default driver, on the SQLite built into Node.js                                 |
+| `better-sqlite3.ts`        | The fallback driver, loaded only when asked for                                      |
+| `open.ts`                  | `openStore`: the open sequence, write transactions, the "another writer" error       |
+| `migrate.ts`, `migrations` | The migration runner and the numbered migrations                                     |
+| `blobs.ts`                 | File contents, stored once per distinct content                                      |
+| `snapshots.ts`             | Sources, snapshots, their files, coverage per type and issues                        |
+| `journal.ts`               | The journal of a snapshot of an org: what it listed, and the chunks it reads         |
+| `analysis.ts`              | `writeAnalysis`: the components and references of a snapshot, coverage per origin    |
+| `graph.ts`                 | `SnapshotGraph`: the one interface an engine reads components and references through |
+| `probe.ts`                 | What the SQLite build at hand can do                                                 |
 
 Decision records: [0025](../../../../docs/adr/0025-sqlite-driver.md) for the drivers,
-[0026](../../../../docs/adr/0026-workspace-database.md) for the database and
-[0032](../../../../docs/adr/0032-reading-an-org.md) for the journal.
+[0026](../../../../docs/adr/0026-workspace-database.md) for the database,
+[0032](../../../../docs/adr/0032-reading-an-org.md) for the journal and
+[0040](../../../../docs/adr/0040-components-and-references-in-the-database.md) for components and references.
 
 The order of the layers is `core`, `sources`, `extraction`, `store`, `engines`, `api`. A layer may import from
 layers earlier in that list and never from later ones, nor from the engine entry point `src/index.ts`. The rule is

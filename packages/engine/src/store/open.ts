@@ -36,6 +36,11 @@ import { nodeSqliteDriver } from './node-sqlite.ts';
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 /** The smallest SQLite database: one page of the smallest page size. */
 const SMALLEST_DATABASE_BYTES = 512;
+/**
+ * The most that a connection keeps of the database in memory, in KiB. SQLite takes the memory only as it reads
+ * pages. Its own default is 2 MiB, with which writing the references of a large org is a quarter slower.
+ */
+const PAGE_CACHE_KIB = 64_000;
 /** How many prepared statements a store keeps. The statements of a bulk write are few and run very often. */
 const STATEMENT_CACHE_SIZE = 64;
 
@@ -231,6 +236,7 @@ function openOnce(options: OpenStoreOptions, busyTimeoutMs: number): Store {
       migrated = migrate(database, driver, path, migrations);
     }
     database.exec('PRAGMA foreign_keys = ON');
+    database.exec(`PRAGMA cache_size = -${String(PAGE_CACHE_KIB)}`);
   } catch (cause) {
     database.close();
     throw storeError(driver, path, cannotOpen, cause);

@@ -313,6 +313,49 @@ Accepted when:
   store is more than twice as large or as slow, I report it before going on. The same three numbers are recorded
   for the org of twice the size. Phase 0 has no numbers to hold them against.
 
+Status on 16 November 2026, with the pull request that holds the tables. Built: migration 3,
+`store/analysis.ts` (`writeAnalysis`), `store/graph.ts` (`SnapshotGraph`, `sqlGraph`), their tests, the benchmark
+`bench/store.mjs` and decision record [0040](../adr/0040-components-and-references-in-the-database.md).
+
+- **The second, third and fourth point above are met on Linux**, and the first is met when CI is green on the
+  three systems. The tests run with both drivers. A second snapshot of an unchanged source adds a list and no
+  version, also when the references and the keys of the attributes come in another order. A database of schema
+  version 2 is migrated, its snapshots are there and none counts as analysed.
+- **The benchmark**, through the real store, on one Linux machine
+  ([store-benchmark.md](../research/phase-1/store-benchmark.md)):
+
+  | Measurement                    | Phase 0, own tables | Real store | Real store, twice the size |
+  | ------------------------------ | ------------------- | ---------- | -------------------------- |
+  | Size after the first snapshot  | 106 MB              | 94 MB      | 190 MB                     |
+  | Size after ten snapshots       | 159 MB              | 146 MB     | 293 MB                     |
+  | Time to write the first        | 4.0 s               | 6.8 s      | 15.1 s                     |
+  | Time to write a later snapshot | 0.37 s              | 3.0 s      | 6.7 s                      |
+
+  The store is smaller and 1.7 times as slow to write, which is within the limit of twice that this plan set.
+  The benchmark of Phase 0 ran again on the same day in 3.4 seconds, and by that number the store is 2.0 times
+  as slow. The later snapshots cannot be compared: the benchmark of Phase 0 knew which components had changed,
+  and the store is handed all of them and finds out by itself.
+
+- **The benchmark found a fault that no test had found, and it is corrected.** SQLite answered "which references
+  point at this component" by walking the whole list of the snapshot, and the first run did not end. The
+  statements now fix the order of their tables, and a test reads their query plans. The benchmark also showed
+  that the page cache of SQLite was too small for a write of this size. The store now sets it to 64 MiB.
+- **Eleven choices in the tables are mine**, and record 0040 lists them for you to strike. The ones with the
+  most weight: a component whose references move by a line gets a new version, the kind and the three other
+  fixed values of a reference are stored as numbers with a table that explains them, and an analysis of a
+  snapshot is replaced as a whole when it is written again.
+- **For WP6.** `readIssues` gives the issues of the reading and of the analysis together, and the code that
+  decides whether a snapshot is complete counts every error among them. When WP6 writes the first analysis into
+  a snapshot, that count has to look at the stage. The time WP6 adds to a snapshot is that of the analysers plus
+  about 7 seconds for the store at the size of Phase 0.
+- **For WP7.** Walking five steps from the most used field one question at a time takes 3.5 seconds at the size
+  of Phase 0 and 7.6 seconds at twice that size, which is above your target of 5 seconds. From an ordinary
+  field it takes a quarter of a millisecond. WP7 needs a faster way for the worst field, an index in memory or
+  one recursive statement, and measures it. Phase 0 measured 3 milliseconds and 0.8 seconds for the two.
+- **Not done.** The size of ten times the org of Phase 0 was not run. It is the size of your targets if you
+  count top-level components only, which is still open with you. No command deletes a snapshot yet, and the one
+  that will has to remove the versions it leaves. Nothing was measured on Windows or macOS.
+
 ### WP4 Objects, fields and validation rules
 
 Build, in `extraction`:

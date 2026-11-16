@@ -120,7 +120,11 @@ const FLOW_EL = [
   'Subflow',
 ];
 
-export function buildUniverse(seed = 42) {
+/**
+ * The synthetic org. `factor` scales the number of top-level components and of references: 1 is the org of
+ * Phase 0, 2 is an org twice as large. The org of factor 1 is the same for every run.
+ */
+export function buildUniverse(seed = 42, factor = 1) {
   const rng = mulberry32(seed);
   const pick = (a) => a[Math.floor(rng() * a.length)];
   const expInt = (min, mean) => min + Math.floor(-Math.log(1 - rng()) * (mean - min));
@@ -150,7 +154,7 @@ export function buildUniverse(seed = 42) {
     if (p < 0) tops.push(i);
     return i;
   };
-  const F = 1.03; // universe is 3% larger than a snapshot (reserve for "added" components)
+  const F = 1.03 * factor; // universe is 3% larger than a snapshot (reserve for "added" components)
   for (let i = 0; i < Math.round(800 * F); i++) {
     const n = i < DOMAIN.length ? DOMAIN[i] : `${pick(DOMAIN)}_${pick(NOUN)}_${i}__c`;
     const o = add(
