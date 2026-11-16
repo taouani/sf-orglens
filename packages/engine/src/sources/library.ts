@@ -12,10 +12,12 @@ import type * as MetadataSchema from '@jsforce/jsforce-node/lib/api/metadata/sch
 import type * as Soap from '@jsforce/jsforce-node/lib/soap.js';
 import type * as Core from '@salesforce/core';
 import type * as SourceLibrary from '@salesforce/source-deploy-retrieve';
+import type * as RegistryVariants from '@salesforce/source-deploy-retrieve/lib/src/registry/variants.js';
 import type * as Undici from 'undici';
 
 let core: Promise<typeof Core> | undefined;
 let sourceLibrary: Promise<typeof SourceLibrary> | undefined;
+let registryVariants: Promise<typeof RegistryVariants> | undefined;
 let jsforce: Promise<typeof Jsforce> | undefined;
 let soap: Promise<SoapLibrary> | undefined;
 let undici: Promise<typeof Undici> | undefined;
@@ -36,6 +38,20 @@ export function loadSourceLibrary(): Promise<typeof SourceLibrary> {
   quiet();
   sourceLibrary ??= import('@salesforce/source-deploy-retrieve');
   return sourceLibrary;
+}
+
+/**
+ * The part of `@salesforce/source-deploy-retrieve` that puts the settings of a project on top of the standard
+ * description of the metadata types.
+ *
+ * It is a file inside the package, not a name it exports. What the package exports for this reads the project
+ * file of a folder on disk, and a snapshot is read with the settings it was taken with, which no folder holds.
+ * The version of the package is pinned, and the tests of `resolve.ts` fail if the file moves.
+ */
+export function loadRegistryVariants(): Promise<typeof RegistryVariants> {
+  quiet();
+  registryVariants ??= import('@salesforce/source-deploy-retrieve/lib/src/registry/variants.js');
+  return registryVariants;
 }
 
 /** `@jsforce/jsforce-node`: the HTTP client the two libraries above talk to Salesforce with. */

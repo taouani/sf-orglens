@@ -64,7 +64,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         file: '.orglens/orglens.db',
         state: 'ready',
         driver: driverName,
-        schemaVersion: 3,
+        schemaVersion: 4,
         sizeBytes: expect.any(Number) as number,
         problem: null,
       },
@@ -227,7 +227,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       ['logins', 'ok'],
     ]);
     expect(report.checks[5]?.details).toEqual({ sources: [], driver: driverName });
-    expect(report.checks[6]?.summary).toBe('The database is at schema version 3.');
+    expect(report.checks[6]?.summary).toBe('The database is at schema version 4.');
     // The report is plain data.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });

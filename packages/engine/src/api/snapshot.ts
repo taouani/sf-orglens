@@ -254,6 +254,7 @@ export async function takeSnapshot(
         finishedAt: null,
         engineVersion: engineVersion(),
         gitCommit: null,
+        layout: reading.layout,
       });
 
       const read = readEveryFile(reading, (path, content) => {
@@ -281,7 +282,7 @@ export async function takeSnapshot(
       });
       return snapshotId;
     });
-    await analyseStored(store, source.name, { id, kind: source.kind });
+    await analyseStored(store, source.name, { id, layout: reading.layout });
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
     store.checkpoint();
     const taken = snapshotReport(store, source.name, id);

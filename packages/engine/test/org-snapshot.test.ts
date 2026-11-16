@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { workspacePaths } from '../src/api/layout.ts';
@@ -144,6 +145,11 @@ const ofReading = (report: CoverageReport): Omit<CoverageReport['issues'][number
   report.issues
     .filter((issue) => issue.stage === 'read')
     .map(({ severity, code, message, details }) => ({ severity, code, message, details }));
+/** A report without the moment of its analysis, which is the one thing a second analysis changes. */
+const timeless = (report: CoverageReport): unknown => ({
+  ...report,
+  analysis: report.analysis === null ? null : { ...report.analysis, analysedAt: 'TIME' },
+});
 const codes = (report: CoverageReport): string[] => ofReading(report).map((issue) => `${issue.severity} ${issue.code}`);
 const typeOf = (report: CoverageReport, type: string): CoverageReport['types'][number] | undefined =>
   report.types.find((one) => one.type === type);
@@ -316,6 +322,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         }),
       ]);
       expect(await workspace.coverage('prod')).toEqual(report);
+      // Analysed again, it gives the same, and keeps the lines of the types the org listed with nothing in them.
+      expect(timeless(await workspace.analyse('prod'))).toEqual(timeless(report));
     });
 
     it('is analysed to the components and the references that the folder of the project gives', async () => {
@@ -532,6 +540,53 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         },
       ]);
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => !path.startsWith('classes/')));
+      // A second analysis keeps the line of the type and what the org said about it.
+      const again = await (await openWorkspace({ root: dir, env })).analyse('prod');
+      expect(typeOf(again, 'ApexClass')).toEqual(typeOf(report, 'ApexClass'));
+      expect(timeless(again)).toEqual(timeless(report));
+    });
+
+    it('keeps a snapshot that has ended when its analysis fails, and does not continue it', async () => {
+      const dir = workspaceDir();
+      const workspace = await openWorkspace({ root: dir, env });
+      await workspace.snapshot('prod');
+      // From here on the database refuses to store an analysis.
+      const direct = new DatabaseSync(databaseOf(dir));
+      direct.exec(
+        `CREATE TRIGGER refuse_analysis BEFORE INSERT ON snapshot_analysis
+         BEGIN SELECT RAISE(ABORT, 'refused for the test'); END`,
+      );
+      direct.close();
+
+      const failed = await workspace.snapshot('prod').then(
+        () => undefined,
+        (error: unknown) =>
+          (error as { toJSON: () => { code: string; message: string; hint?: string; details?: unknown } }).toJSON(),
+      );
+      expect(failed).toMatchObject({ code: 'STORE_FAILED', details: { source: 'prod', snapshot: 2 } });
+      expect(failed?.message).toMatch(/^Snapshot #2 of the source "prod" is stored, and its analysis failed\. /);
+      expect(failed?.hint).toMatch(/Analyse it with: orglens analyse prod --snapshot 2$/);
+      // The snapshot has ended, so there is nothing to continue, and no work folder or lock is left.
+      expect((await workspace.status()).sources[0]).toMatchObject({
+        latestSnapshot: { id: 2, status: 'complete', analysis: null },
+        unfinishedSnapshot: null,
+      });
+      expect(existsSync(lockOf(dir))).toBe(false);
+      expect(existsSync(workFolderOf(dir))).toBe(false);
+      // The log says that it is stored and not analysed, not that it stopped.
+      const logs = join(dir, '.orglens', 'logs');
+      const events = readdirSync(logs)
+        .flatMap((file) => readFileSync(join(logs, file), 'utf8').trim().split('\n'))
+        .map((line) => (JSON.parse(line) as { event: string }).event)
+        .filter((event) => event.startsWith('snapshot.'));
+      expect(events).toEqual(['snapshot.taken', 'snapshot.not_analysed']);
+
+      // The next snapshot is a new one, and `analyse` analyses this one once the database lets it.
+      const db = new DatabaseSync(databaseOf(dir));
+      db.exec('DROP TRIGGER refuse_analysis');
+      db.close();
+      expect((await workspace.analyse('prod', { snapshot: 2 })).analysis).toMatchObject({ complete: true });
+      expect((await workspace.snapshot('prod')).snapshot.id).toBe(3);
     });
 
     it('names a component the org lists and does not hand out, with what Salesforce said about it', async () => {

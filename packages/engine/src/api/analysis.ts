@@ -9,15 +9,17 @@
  * The analysis belongs to the snapshot and is not part of its reading. Whether a snapshot is `complete` or
  * `partial` says what was read. Whether its analysis is complete is said by the analysis.
  */
-import { EngineError, isEngineError } from '../core/errors.ts';
+import { EngineError } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { analyseSource } from '../extraction/analyse.ts';
 import type { AnalysisIssue } from '../extraction/analysed.ts';
+import type { ProjectLayout } from '../sources/project.ts';
 import { resolveComponents } from '../sources/resolve.ts';
 import { pathDetails } from '../sources/tree.ts';
 import { readAnalysis, readOriginCoverage, writeAnalysis } from '../store/analysis.ts';
 import type { Store } from '../store/open.ts';
 import { snapshotTree, type StoredIssue } from '../store/snapshots.ts';
+import { asEngineError } from './boundary.ts';
 
 /** What the analyser of one origin of references looked at and found in a snapshot. */
 export interface OriginReport {
@@ -57,20 +59,24 @@ export interface AnalysisReport {
 
 const now = (): string => new Date().toISOString();
 
+/** A snapshot as the analysis needs it: its number, and the layout its files were read with. */
+interface Analysable {
+  readonly id: number;
+  /** `null` for a snapshot of an org, whose files are stored as Salesforce lays them out. */
+  readonly layout: ProjectLayout | null;
+}
+
 /**
  * Analyses a finished snapshot and stores the result. An analysis the snapshot had before is replaced.
  *
  * A file that cannot be read or understood costs that file, and an issue says so. What this throws is a failure
  * of the analysis as a whole: the database, or a fault of the engine. The snapshot is not changed by either.
  */
-async function analyseSnapshot(
-  store: Store,
-  snapshot: { readonly id: number; readonly kind: 'org' | 'sandbox' | 'git' },
-): Promise<void> {
+async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void> {
   const tree = snapshotTree(store, snapshot.id);
-  // The files of an org are stored as Salesforce lays them out, wherever the command ran. Those of a repository
-  // are laid out as its project says, and are resolved as they were when the snapshot was taken.
-  const resolution = await resolveComponents(tree, [''], snapshot.kind === 'git' ? undefined : null);
+  // The files are placed with the layout the snapshot keeps: the one its source had when it was read. Neither
+  // the folder the command runs in nor the source as it is today plays a part.
+  const resolution = await resolveComponents(tree, [''], snapshot.layout);
   const analysis = analyseSource(tree, resolution.components);
 
   const issues: AnalysisIssue[] = [];
@@ -83,14 +89,15 @@ async function analyseSnapshot(
       details: { at: problem.at },
     });
   }
-  // Every file of a snapshot belonged to a component when it was stored. One that belongs to none now would be
-  // left out without a word.
+  // Every file of a snapshot was stored as a file of a component. One that belongs to none now would be left
+  // out without a word. It is a file whose component lost another file while the source was read, such as a
+  // class whose -meta.xml file went away, or a file that another version of the library places differently.
   if (resolution.unresolved.length > 0) {
     const count = resolution.unresolved.length;
     issues.push({
       severity: 'error',
       code: 'FILES_NOT_PLACED',
-      message: `${String(count)} ${count === 1 ? 'file of the snapshot belongs' : 'files of the snapshot belong'} to no metadata component as this version of OrgLens reads them, and ${count === 1 ? 'was' : 'were'} not analysed. The first: ${resolution.unresolved[0] ?? ''}`,
+      message: `${String(count)} ${count === 1 ? 'file of the snapshot belongs' : 'files of the snapshot belong'} to no metadata component, and ${count === 1 ? 'was' : 'were'} not analysed. A file of ${count === 1 ? 'its' : 'their'} component is missing from the snapshot, or this version of OrgLens places ${count === 1 ? 'it' : 'them'} differently. The first: ${resolution.unresolved[0] ?? ''}`,
       componentKey: null,
       details: pathDetails(resolution.unresolved),
     });
@@ -106,30 +113,36 @@ async function analyseSnapshot(
   });
 }
 
+/** The errors that say that the analysis of a stored snapshot failed as a whole. */
+const analysisFailures = new WeakSet<EngineError>();
+
+/** Whether an error says that a snapshot is stored and that its analysis failed as a whole. */
+export const isAnalysisFailure = (error: unknown): error is EngineError =>
+  error instanceof EngineError && analysisFailures.has(error);
+
 /**
  * Analyses a snapshot that is stored. If the analysis fails as a whole, the error says that the snapshot is
  * there and how the analysis is tried again.
  */
-export async function analyseStored(
-  store: Store,
-  source: string,
-  snapshot: { readonly id: number; readonly kind: 'org' | 'sandbox' | 'git' },
-): Promise<void> {
+export async function analyseStored(store: Store, source: string, snapshot: Analysable): Promise<void> {
   try {
     await analyseSnapshot(store, snapshot);
   } catch (error) {
-    const known = isEngineError(error) ? error : undefined;
-    const said = known?.message ?? (error instanceof Error ? error.message : String(error));
+    // The same error as the one that would leave the engine for it: with its code, and with a message of
+    // another program redacted.
+    const known = asEngineError(error);
     const again = `Analyse it with: orglens analyse ${source} --snapshot ${String(snapshot.id)}`;
-    throw new EngineError(
-      known?.code ?? 'INTERNAL',
-      `Snapshot #${String(snapshot.id)} of the source "${source}" is stored, and its analysis failed. ${said}`,
+    const failure = new EngineError(
+      known.code,
+      `Snapshot #${String(snapshot.id)} of the source "${source}" is stored, and its analysis failed. ${known.message}`,
       {
-        hint: known?.hint === undefined ? again : `${known.hint} ${again}`,
-        details: { ...known?.details, source, snapshot: snapshot.id },
+        hint: known.hint === undefined ? again : `${known.hint} ${again}`,
+        details: { ...known.details, source, snapshot: snapshot.id },
         cause: error,
       },
     );
+    analysisFailures.add(failure);
+    throw failure;
   }
 }
 

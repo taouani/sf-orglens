@@ -96,6 +96,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   first and analyses what it stored, and `analyse` does the same for a snapshot that is already there. Whether
   a snapshot is `complete` or `partial` says what was read. Whether its analysis is complete is said by the
   analysis: an issue of the stage `analysis` with the severity `error` makes it incomplete, a warning does not.
+  A Git source is read, and its snapshot analysed, with the layout of files its own project file asks for, which
+  the snapshot keeps. The project of the folder a command runs in plays no part.
   An analysis that fails as a whole never loses the snapshot.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.

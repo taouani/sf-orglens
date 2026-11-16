@@ -494,7 +494,7 @@
               },
               "references": { "description": "The references it found.", "type": "integer", "minimum": 0 },
               "unresolved": {
-                "description": "How many of them name a target that no file of the snapshot defines.",
+                "description": "How many of them are `unresolved`: a custom name that no file of the snapshot defines and that is not of a package. A standard name and a name of a package that the snapshot has no file of are `external` and are not counted here.",
                 "type": "integer",
                 "minimum": 0
               },

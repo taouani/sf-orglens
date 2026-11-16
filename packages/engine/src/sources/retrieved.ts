@@ -200,7 +200,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     problems.push({ at: path, message: 'The file was converted to a place where no metadata is expected.' });
   }
 
-  const resolution = await resolveComponents(tree, [''], workDir);
+  const resolution = await resolveComponents(tree, ['']);
   return {
     tree,
     components: resolution.components,

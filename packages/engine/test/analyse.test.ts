@@ -4,18 +4,27 @@
  * The tests of `snapshot.test.ts` and `org-snapshot.test.ts` cover the analysis that a new snapshot gets. These
  * cover a snapshot that has none, one whose analysis is replaced, and an analysis that fails or is incomplete.
  */
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CoverageReport } from '../src/api/snapshot.ts';
-import { takeSnapshot } from '../src/api/snapshot.ts';
 import { openWorkspace, type Workspace } from '../src/api/workspace.ts';
 import { PARTS_NOTE } from '../src/store/analysis.ts';
 import { MIGRATIONS } from '../src/store/migrate.ts';
 import { openStore, type Store } from '../src/store/open.ts';
-import { addSnapshotFile, ensureSource, insertSnapshot } from '../src/store/snapshots.ts';
+import { readLocalSource } from '../src/sources/local.ts';
+import {
+  addCoverage,
+  addIssue,
+  addSnapshotFile,
+  ensureSource,
+  finishSnapshot,
+  insertSnapshot,
+  readSnapshot,
+} from '../src/store/snapshots.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
+import { insertSnapshotBeforeLayout } from './helpers/old-store.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 import { storedComponents, storedReferences } from './helpers/stored-analysis.ts';
 
@@ -39,6 +48,16 @@ async function failure(run: () => Promise<unknown>): Promise<Failure> {
     return (error as { toJSON: () => Failure }).toJSON();
   }
   throw new Error('did not throw');
+}
+
+/** The events in the log of a workspace, in the order they were written. */
+function loggedEvents(root: string): { event: string; fields: Record<string, unknown> }[] {
+  const folder = join(root, '.orglens', 'logs');
+  return readdirSync(folder)
+    .sort()
+    .flatMap((file) => readFileSync(join(folder, file), 'utf8').trim().split('\n'))
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .map((fields) => ({ event: String(fields['event']), fields }));
 }
 
 /** A report without the moment of its analysis, which is the one thing a second analysis changes. */
@@ -129,9 +148,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('analyses a snapshot that a database of Phase 0 holds to what a new snapshot gives', async () => {
       const { root, database, workspace } = await setUp();
       mkdirSync(join(root, '.orglens'), { recursive: true });
-      // A database as the engine of Phase 0 left it: schema version 2, a snapshot in it, and no table for an
-      // analysis. The snapshot is written by the code that wrote it then. The analysis of this engine fails on
-      // such a database as a whole, and the snapshot stays.
+      // A database as the engine of Phase 0 left it: schema version 2, no table for an analysis, and a snapshot
+      // of the fixture project, written with the statements of that engine.
       const declared = {
         kind: 'git',
         name: 'fixture',
@@ -141,12 +159,31 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         paths: null,
         tracks: null,
       } as const;
-      const failed = await failure(() =>
-        takeSnapshot(root, declared, () => openStore({ path: database, driver, migrations: MIGRATIONS.slice(0, 2) })),
-      );
-      expect(failed.message).toMatch(/^Snapshot #1 of the source "fixture" is stored, and its analysis failed\. /);
-      expect(failed.hint).toMatch(/Analyse it with: orglens analyse fixture --snapshot 1$/);
-      expect(failed).toMatchObject({ code: 'STORE_FAILED', details: { source: 'fixture', snapshot: 1 } });
+      const reading = await readLocalSource(root, declared);
+      const at = '2026-11-13T09:30:00.000Z';
+      const old = openStore({ path: database, driver, migrations: MIGRATIONS.slice(0, 2) });
+      old.write(() => {
+        const sourceId = ensureSource(old, { name: 'fixture', kind: 'git', createdAt: at });
+        const id = insertSnapshotBeforeLayout(old, {
+          sourceId,
+          status: 'running',
+          startedAt: at,
+          finishedAt: null,
+          engineVersion: '0.1.0',
+          gitCommit: null,
+        });
+        for (const path of reading.tree.files) addSnapshotFile(old, id, path, reading.tree.read(path));
+        const types = new Map<string, number>();
+        for (const component of reading.components) types.set(component.type, (types.get(component.type) ?? 0) + 1);
+        for (const [type, count] of types) {
+          addCoverage(old, id, { type, listed: count, retrieved: count, analysed: 0, listing: 'ok', note: null });
+        }
+        for (const issue of reading.issues)
+          addIssue(old, id, { ...issue, componentKey: null, details: issue.details ?? null });
+        finishSnapshot(old, id, { status: 'complete', finishedAt: at, gitCommit: null });
+      });
+      expect(old.schemaVersion).toBe(2);
+      old.close();
 
       expect((await workspace.status()).store.state).toBe('outdated');
       expect(await failure(() => workspace.coverage('fixture'))).toMatchObject({
@@ -169,7 +206,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
 
     it('keeps a snapshot whose analysis fails as a whole, says how it is analysed, and keeps an analysis it had', async () => {
-      const { database, workspace } = await setUp();
+      const { root, database, workspace } = await setUp();
       const first = await workspace.snapshot('fixture');
       // From here on the database refuses to store an analysis.
       const direct = new DatabaseSync(database);
@@ -183,6 +220,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(failed.message).toMatch(/^Snapshot #2 of the source "fixture" is stored, and its analysis failed\. /);
       expect(failed.hint).toMatch(/Analyse it with: orglens analyse fixture --snapshot 2$/);
       expect(failed).toMatchObject({ code: 'STORE_FAILED', details: { source: 'fixture', snapshot: 2 } });
+      // The message of SQLite is the one that would leave the engine without the snapshot, with its code.
+      expect(failed.message).toMatch(
+        /A statement on the workspace database failed\. SQLite says: refused for the test$/,
+      );
 
       // The snapshot is there, complete in what was read, and nothing of an analysis is.
       const unanalysed = await workspace.coverage('fixture');
@@ -200,6 +241,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const again = await failure(() => workspace.analyse('fixture', { snapshot: 1 }));
       expect(again.message).toMatch(/^Snapshot #1 of the source "fixture" is stored, and its analysis failed\. /);
       expect(await workspace.coverage('fixture', { snapshot: 1 })).toEqual(first);
+      // The log says of both that the snapshot is stored and not analysed.
+      expect(
+        loggedEvents(root)
+          .filter((one) => one.event.startsWith('snapshot.'))
+          .map(
+            (one) =>
+              `${one.event} ${String(one.fields['snapshot'])} ${typeof one.fields['code'] === 'string' ? one.fields['code'] : ''}`,
+          ),
+      ).toEqual(['snapshot.taken 1 ', 'snapshot.not_analysed 2 STORE_FAILED', 'snapshot.not_analysed 1 STORE_FAILED']);
 
       inStore(database, (store) => store.run('DROP TRIGGER refuse_analysis'), false);
       const analysed = await workspace.analyse('fixture');
@@ -207,6 +257,61 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(analysed.analysis).toEqual({ ...first.analysis, analysedAt: expect.stringMatching(UTC) as string });
       expect(analysed.types).toEqual(first.types);
       expect(analysisOf(database, 2)).toEqual(analysisOf(database, 1));
+    });
+
+    it('places the files of a repository as they were read, whatever folder it is analysed from', async () => {
+      const { database, workspace } = await setUp();
+      const taken = await workspace.snapshot('fixture');
+      expect(inStore(database, (store) => readSnapshot(store, 'fixture')?.layout)).toBeNull();
+
+      // The command runs in a folder whose project gives every custom label a file of its own. The fixture
+      // project holds its labels in one file, and is analysed so all the same.
+      const elsewhere = temp.next();
+      writeFileSync(
+        join(elsewhere, 'sfdx-project.json'),
+        JSON.stringify({
+          packageDirectories: [{ path: 'force-app' }],
+          sourceBehaviorOptions: ['decomposeCustomLabelsBeta2'],
+        }),
+      );
+      const startedIn = process.cwd();
+      process.chdir(elsewhere);
+      try {
+        expect(timeless(await workspace.analyse('fixture'))).toEqual(timeless(taken));
+        const second = await workspace.snapshot('fixture');
+        expect(second.analysis).toEqual({ ...taken.analysis, analysedAt: expect.stringMatching(UTC) as string });
+        expect(second.types).toEqual(taken.types);
+      } finally {
+        process.chdir(startedIn);
+      }
+    });
+
+    it('keeps the layout a project asks for with its snapshot, and analyses with it after the project changed', async () => {
+      const root = temp.next();
+      const label = (name: string): string =>
+        `<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabel xmlns="http://soap.sforce.com/2006/04/metadata">\n    <fullName>${name}</fullName>\n    <language>en_US</language>\n    <protected>false</protected>\n    <shortDescription>${name}</shortDescription>\n    <value>${name}</value>\n</CustomLabel>\n`;
+      mkdirSync(join(root, 'force-app', 'labels'), { recursive: true });
+      writeFileSync(join(root, 'force-app', 'labels', 'Greeting.label-meta.xml'), label('Greeting'));
+      writeFileSync(join(root, 'force-app', 'labels', 'Farewell.label-meta.xml'), label('Farewell'));
+      const projectFile = (options: readonly string[]): string =>
+        `${JSON.stringify({ packageDirectories: [{ path: 'force-app' }], sourceBehaviorOptions: options })}\n`;
+      writeFileSync(join(root, 'sfdx-project.json'), projectFile(['decomposeCustomLabelsBeta2']));
+      writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\n');
+      const workspace = await openWorkspace({ root, env });
+
+      const taken = await workspace.snapshot('work');
+      expect(taken.snapshot).toMatchObject({ status: 'complete', files: 2 });
+      expect(taken.analysis).toMatchObject({ components: 2, complete: true });
+      expect(taken.types.map(({ type, listed }) => `${type} ${String(listed)}`)).toEqual(['CustomLabel 2']);
+      const database = join(root, '.orglens', 'orglens.db');
+      expect(inStore(database, (store) => readSnapshot(store, 'work')?.layout)).toEqual({
+        presets: ['decomposeCustomLabelsBeta2'],
+        customizations: null,
+      });
+
+      // The project no longer asks for it. The snapshot is analysed as it was read.
+      writeFileSync(join(root, 'sfdx-project.json'), projectFile([]));
+      expect(timeless(await workspace.analyse('work'))).toEqual(timeless(taken));
     });
 
     it('says what stands in the way: no such source, no database, no snapshot, a snapshot that did not end', async () => {
@@ -308,7 +413,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           stage: 'analysis',
           severity: 'error',
           code: 'FILES_NOT_PLACED',
-          message: `1 file of the snapshot belongs to no metadata component as this version of OrgLens reads them, and was not analysed. The first: ${stray}`,
+          message: `1 file of the snapshot belongs to no metadata component, and was not analysed. A file of its component is missing from the snapshot, or this version of OrgLens places it differently. The first: ${stray}`,
           component: null,
           details: { count: 1, paths: [stray] },
         },

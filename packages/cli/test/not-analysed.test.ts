@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as Engine from '@sf-orglens/engine';
 import { orglens, orglensJson, tempDirs } from './helpers/run.ts';
 
-const engineState = vi.hoisted(() => ({ analysed: true }));
+const engineState = vi.hoisted(() => ({ analysed: true, status: null as 'running' | 'failed' | null }));
 
 vi.mock('@sf-orglens/engine', async (original) => {
   const engine = await original<typeof Engine>();
@@ -28,6 +28,7 @@ vi.mock('@sf-orglens/engine', async (original) => {
           const report = await workspace.coverage(source, options);
           return {
             ...report,
+            snapshot: { ...report.snapshot, status: engineState.status ?? report.snapshot.status },
             types: report.types.map((type) => ({ ...type, analysed: 0 })),
             analysis: null,
             issues: report.issues.filter((issue) => issue.stage === 'read'),
@@ -51,6 +52,7 @@ vi.mock('@sf-orglens/engine', async (original) => {
 const dirs = tempDirs();
 afterEach(() => {
   engineState.analysed = true;
+  engineState.status = null;
   dirs.cleanUp();
 });
 
@@ -121,5 +123,22 @@ describe('a snapshot that is not analysed', () => {
       ok: true,
       data: { snapshot: { id: 1, status: 'complete' }, analysis: null },
     });
+  });
+
+  it('is not sent to `analyse` when it has not ended or was given up, which `analyse` refuses', async () => {
+    const dir = projectWorkspace();
+    await orglens(dir, ['snapshot', 'work']);
+    engineState.analysed = false;
+    const lastLine = async (): Promise<string | undefined> =>
+      (await orglens(dir, ['coverage', 'work', '--snapshot', '1'])).stdout.split('\n').at(-2);
+
+    engineState.status = 'running';
+    expect(await lastLine()).toBe(
+      'The snapshot is not analysed. It has not ended. It is continued and then analysed by: orglens snapshot work',
+    );
+    engineState.status = 'failed';
+    expect(await lastLine()).toBe(
+      'The snapshot is not analysed. It was given up, and a snapshot that was given up is never analysed.',
+    );
   });
 });

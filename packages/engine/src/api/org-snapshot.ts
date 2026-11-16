@@ -330,7 +330,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
   const workDir = paths.temporaryDir(source.name);
   let release: (() => void) | undefined;
   let snapshotId: number | undefined;
-  let ended = false;
+  let finished = false;
   let api: MetadataApi | undefined;
   try {
     release = holdLock(store, paths.snapshotLockFile(source.name), source.name);
@@ -456,18 +456,18 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
 
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
     finish(store, snapshotId);
+    finished = true;
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
     store.checkpoint();
-    ended = true;
     progress({ step: 'analysing', snapshot: snapshotId });
-    await analyseStored(store, source.name, { id: snapshotId, kind: source.kind });
+    await analyseStored(store, source.name, { id: snapshotId, layout: null });
     store.checkpoint();
     const taken = snapshotReport(store, source.name, snapshotId);
     if (taken === undefined) throw new EngineError('INTERNAL', 'The snapshot was stored and cannot be found.');
     return taken;
   } catch (error) {
     // A snapshot that has ended is not picked up again, whatever happened to its analysis.
-    throw ended ? error : stopped(error, source.name, snapshotId);
+    throw finished ? error : stopped(error, source.name, snapshotId);
   } finally {
     try {
       // Requests that are still under way, such as listings beside the one that failed, end here.

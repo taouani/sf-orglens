@@ -755,7 +755,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       old.close();
 
       const store = openStore({ path, driver });
-      expect(store.migrated).toEqual({ from: 1, to: 3 });
+      expect(store.migrated).toEqual({ from: 1, to: MIGRATIONS.length });
       // What an older version stored reads as what it was: listed, not known to be retrieved, listing in order.
       expect(store.get('SELECT listed, retrieved FROM inventory_item')).toEqual({ listed: 1, retrieved: 0 });
       expect(store.get('SELECT job_id, status FROM retrieve_chunk')).toEqual({ job_id: null, status: 'done' });

@@ -38,6 +38,7 @@ import {
   readIssues,
   readSnapshot,
 } from '../src/store/snapshots.ts';
+import { insertSnapshotBeforeLayout } from './helpers/old-store.ts';
 import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 
 const T0 = '2026-01-31T09:30:00.000Z';
@@ -1162,7 +1163,16 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     const path = join(temp.next(), 'orglens.sqlite');
     const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 2) });
     expect(old.schemaVersion).toBe(2);
-    const id = snapshot(old);
+    const id = old.write(() =>
+      insertSnapshotBeforeLayout(old, {
+        sourceId: ensureSource(old, { name: 'repo', kind: 'git', createdAt: T0 }),
+        status: 'complete',
+        startedAt: T0,
+        finishedAt: T0,
+        engineVersion: '0.1.0',
+        gitCommit: null,
+      }),
+    );
     old.write(() => {
       addSnapshotFile(old, id, OBJECT_FILE, new TextEncoder().encode('<CustomObject/>'));
       addIssue(old, id, { severity: 'warning', code: 'OLD', message: 'Old.', componentKey: null, details: null });
@@ -1171,7 +1181,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
 
     const store = openStore({ path, driver });
     expect(store.migrated).toEqual({ from: 2, to: MIGRATIONS.length });
-    expect(readSnapshot(store, 'repo')).toMatchObject({ id, status: 'complete', files: 1 });
+    // A snapshot from before the layout was kept is one in the standard layout.
+    expect(readSnapshot(store, 'repo')).toMatchObject({ id, status: 'complete', files: 1, layout: null });
     expect(readAnalysis(store, id)).toBeUndefined();
     expect(sqlGraph(store, id).find(INVOICE)).toBeUndefined();
     expect(store.all('SELECT code, stage FROM snapshot_issue')).toEqual([{ code: 'OLD', stage: 'read' }]);

@@ -106,7 +106,11 @@ is stored in one step: it is there with all its files, or not at all.
     `GIT_NOT_INSTALLED` or `GIT_FAILED`.
 - A source that cannot be read at all ends with `SOURCE_READ_FAILED` and stores nothing: no repository, no
   `sfdx-project.json`, an unknown branch, no folder that can be read, a project file or a `.forceignore` that may
-  not be opened. `details.reason` says which it was.
+  not be opened, a project file that asks for a layout of files this version does not know (`LAYOUT_UNKNOWN`) or
+  describes types the Salesforce library refuses (`LAYOUT_INVALID`). `details.reason` says which it was.
+- The project file is read for a source with `paths` as well, because it says how the files are laid out. If it
+  is not JSON, or its settings for the layout are not built as the library expects, the warning
+  `PROJECT_FILE_INVALID` says so and the files are read as Salesforce lays them out.
 
 #### A source of the kind `org` or `sandbox`
 
@@ -224,9 +228,13 @@ is read and what is not.
   message says that the snapshot is stored, its hint how to analyse it, and `details.snapshot` its number.
 - `analyse` refuses a snapshot of an org that has not ended or was given up, with `SNAPSHOT_NOT_FOUND` and the
   state of the snapshot in `details.status`.
-- The files of an org are read as Salesforce lays them out, whatever the project of the folder the command runs
-  in says. The files of a repository are read as the project of the folder the command runs in lays them out,
-  as they were when the snapshot was taken.
+- A project file can change which files make up which component, with `sourceBehaviorOptions` (or the older
+  `registryPresets`) and `registryCustomizations`. A snapshot of a repository keeps what its own project file
+  said when it was read: the one on disk, or the one of the commit for a source with `ref`. Its files are
+  analysed with that, whenever and from whatever folder `analyse` runs. A later change of the project file is
+  not applied to a snapshot that is stored. The files of an org are read as Salesforce lays them out.
+- A snapshot in a database of schema version 3 or older keeps nothing of the kind, and its files are analysed
+  as Salesforce lays them out. For a repository whose project changes the layout, take a new snapshot.
 
 Not verified: no snapshot of a real org was analysed by the command. The test org is read by a tool of the
 tests, and what the analysis finds there is measured in a later work package.
@@ -256,7 +264,8 @@ parser:formula  34          80          0             0                   0
 
 There is one line for each origin of references that this version analyses. `COMPONENTS` are the components
 the analyser looked at: for `parser:formula`, those with a formula or a default value. `NOT RESOLVED` are the
-references that name something no file of the snapshot defines. `PATHS NOT FOLLOWED` are the paths of names
+references that are `unresolved`: a custom name that no file of the snapshot defines and that is not of a
+package. A standard name, such as a field of `Account`, and a name of a package are `external` and not counted. `PATHS NOT FOLLOWED` are the paths of names
 that could not be walked to their end. `FILES NOT READ` are the files the analyser tried to read and could not:
 for `parser:formula`, the files with a formula that was not read as a whole, whose names are recorded as
 `probable`. The number of components includes the parts found inside files, and the objects that are only
@@ -272,7 +281,7 @@ The issue codes of the reading (`stage` is `read`):
 | Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                     |
 | --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                  |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`                                                     | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE` |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE` |
 | `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                           |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
@@ -289,19 +298,19 @@ a class or a field in two package directories is reported, an object whose file 
 
 The issue codes of the analysis (`stage` is `analysis`), for every kind of source:
 
-| Severity  | Code                                               | Situation                                                                                                             |
-| --------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                           |
-| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read.          |
-| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                        |
-| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                            |
-| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug. |
-| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                       |
-| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component as this version reads them (`details.count`, `details.paths`).           |
-| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one. No reference is made for it.                                     |
-| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads, so the names after it have no reference (`details.origin` says whose).    |
-| `warning` | `ELEMENT_NOT_FOUND`                                | A file does not hold an element that its type always has.                                                             |
-| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                             |
+| Severity  | Code                                               | Situation                                                                                                                                                                                                                                               |
+| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                                                                                                                                                             |
+| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read.                                                                                                                                            |
+| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                                                                                                                                                          |
+| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                              |
+| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                   |
+| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                         |
+| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
+| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one. No reference is made for it.                                                                                                                                                                       |
+| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads, so the names after it have no reference (`details.origin` says whose).                                                                                                                                      |
+| `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
+| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one
 component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
@@ -529,7 +538,7 @@ For `CONFIG_INVALID`, `details.diagnostics` lists every problem: objects with `f
 `message` and `text`.
 
 For `SOURCE_READ_FAILED`, `details.reason` is one of `REPO_NOT_FOUND`, `PROJECT_FILE_MISSING`,
-`PROJECT_FILE_INVALID`, `FILE_UNREADABLE`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`,
+`PROJECT_FILE_INVALID`, `LAYOUT_UNKNOWN`, `LAYOUT_INVALID`, `FILE_UNREADABLE`, `FOLDERS_MISSING`, `REF_NOT_FOUND`, `OBJECT_MISSING`,
 `GIT_NOT_INSTALLED`, `GIT_TOO_OLD` and `GIT_FAILED` for a source of the kind `git`, and `REQUEST_REFUSED`,
 `RETRIEVE_TOO_SLOW` and `RETRIEVES_FAILING` for an org or a sandbox. With `GIT_FAILED`, the message carries what
 Git said, which can include paths of this machine. With `REQUEST_REFUSED` and `RETRIEVES_FAILING`, it carries what

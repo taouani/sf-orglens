@@ -319,10 +319,14 @@ const LONGEST_ISSUE_SHOWN = 200;
 function analysisLines(report: CoverageReport): string[] {
   const { snapshot, analysis } = report;
   if (analysis === null) {
-    return [
-      '',
-      `The snapshot is not analysed. Analyse it with: orglens analyse ${snapshot.source} --snapshot ${String(snapshot.id)}`,
-    ];
+    // Only a snapshot that has ended is analysed. `analyse` refuses the two others.
+    const how =
+      snapshot.status === 'running'
+        ? `It has not ended. It is continued and then analysed by: orglens snapshot ${snapshot.source}`
+        : snapshot.status === 'failed'
+          ? 'It was given up, and a snapshot that was given up is never analysed.'
+          : `Analyse it with: orglens analyse ${snapshot.source} --snapshot ${String(snapshot.id)}`;
+    return ['', `The snapshot is not analysed. ${how}`];
   }
   const lines = [
     '',

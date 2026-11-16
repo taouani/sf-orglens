@@ -28,7 +28,7 @@ import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
 import { readSnapshot } from '../store/snapshots.ts';
-import { analyseStored } from './analysis.ts';
+import { analyseStored, isAnalysisFailure } from './analysis.ts';
 import { pause, whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
@@ -518,6 +518,16 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       });
     };
 
+    /** Writes into the log that a snapshot is stored and that its analysis failed as a whole. */
+    const notAnalysed = (name: string, error: EngineError): void => {
+      const { snapshot } = error.details ?? {};
+      workspaceLogger(paths).warn('snapshot.not_analysed', {
+        source: name,
+        code: error.code,
+        snapshot: typeof snapshot === 'number' ? snapshot : null,
+      });
+    };
+
     return {
       root: paths.root,
       name: config.name,
@@ -548,7 +558,9 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
           } catch (error) {
             // Only what OrgLens itself says about the failure goes into the log: its code and its reason. A run
             // that stopped before it created the data folder, for want of a login, does not create it for the log.
-            if (source.kind !== 'git' && isEngineError(error) && existsSync(paths.dataDir)) {
+            if (isAnalysisFailure(error)) {
+              notAnalysed(name, error);
+            } else if (source.kind !== 'git' && isEngineError(error) && existsSync(paths.dataDir)) {
               const { reason, snapshot } = error.details ?? {};
               workspaceLogger(paths).warn('snapshot.stopped', {
                 source: name,
@@ -598,7 +610,12 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
                 },
               );
             }
-            await analyseStored(store, name, snapshot);
+            try {
+              await analyseStored(store, name, snapshot);
+            } catch (error) {
+              if (isAnalysisFailure(error)) notAnalysed(name, error);
+              throw error;
+            }
             store.checkpoint();
             const report = coverageOf(store, name, snapshot.id);
             workspaceLogger(paths).info('snapshot.analysed', {

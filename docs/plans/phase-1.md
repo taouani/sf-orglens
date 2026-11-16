@@ -654,7 +654,7 @@ Status on 16 November 2026, with the pull request that analyses a snapshot. Buil
     differs in one place: the org hands out a file for `Account` and `User`, so a lookup to one of them is
     `resolved` there and `external` in the folder.
   - A snapshot in a database of schema version 2 is analysed by `analyse` to what a new snapshot gives. The
-    test writes that database with the storing code of today, which is the code of Phase 0 unchanged. Once, by
+    test writes the snapshot into that database with the statements of Phase 0. Once, by
     hand, the last commit of Phase 0 took a snapshot of the fixture project and of nebula-logger, and `analyse`
     gave the same rows as a new snapshot for both. That run is not a test.
   - The analysis of the fixture takes 20 to 29 ms on one Linux machine, over five runs, in a process that has
@@ -675,13 +675,15 @@ Status on 16 November 2026, with the pull request that analyses a snapshot. Buil
   - `ANALYSED` counts the components the analysis read something of. It can be larger than `RETRIEVED`,
     because the fields and rules inside the file of an object are counted.
   - The place of a part stays its place in the file, which answers the question WP4 left.
-  - The files of an org are placed without a project. Those of a Git source are placed with the project of the
-    folder the command runs in, as they were read. That open point of Phase 0 is not closed here.
+  - A snapshot of a Git source keeps the layout of files that its own project file asks for, and is analysed
+    with it from whatever folder. This closes the open point of Phase 0 about the project a Git source is read
+    with. The code review found why it matters: `analyse` run from a folder whose project laid out custom labels
+    otherwise lost a label and called the analysis complete. The database is at schema version 4 for it.
 - **Part G of the Phase 0 test plan had not been run when this was built.** This plan asks for it before WP6.
   The maintainer was told on 16 November 2026 that WP6 starts without it, and that a defect it shows is
   corrected in a pull request of its own. `orglens snapshot` has still not run against Salesforce.
 - **For WP7.** `analysisReport` and `CoverageReport.analysis` say whether a snapshot is analysed, by which
-  version, and whether the analysis is complete. `impact` on a snapshot with `analysis: null` ends with an
+  version, and whether the analysis is complete. `impact` on a snapshot with `analysis: null` is to end with an
   error that names `orglens analyse`. The exit code `5` of `impact` for "a file of an analysed type could not
   be read" is `analysis.complete === false`.
 - **For WP8.** `analyse` reads no source, so the rows of the Dependency API cannot come from it. They belong to
