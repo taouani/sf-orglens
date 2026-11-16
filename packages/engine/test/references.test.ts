@@ -197,6 +197,20 @@ describe('validateReference', () => {
     expectRejected({ location: { file: '', line: 3 } }, /forward slashes/);
   });
 
+  // The database holds a whole number of 64 bits and text in UTF-8. A reference that passes can be stored as it is.
+  it('rejects a place no number holds exactly, and text that is not well-formed Unicode', () => {
+    expectRejected({ location: { file: 'a.cls', line: 2 ** 53, column: 1 } }, /line of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: 1e300, column: 1 } }, /line of a source location/);
+    expectRejected({ location: { file: 'a.cls', line: 3, column: 2 ** 53 } }, /column of a source location/);
+    expectRejected({ location: { file: 'a\uD83D.cls', line: 3, column: 1 } }, /well-formed Unicode/);
+    expectRejected({ toNameRaw: 'Account.\uD83D' }, /well-formed Unicode/);
+    expectRejected({ toNameRaw: '\uDE00' }, /well-formed Unicode/);
+
+    const largest = { file: 'a.cls', line: Number.MAX_SAFE_INTEGER, column: Number.MAX_SAFE_INTEGER };
+    expect(validateReference({ ...valid, location: largest }).location).toEqual(largest);
+    expect(validateReference({ ...valid, toNameRaw: 'Account.\u{1F600}' }).toNameRaw).toBe('Account.\u{1F600}');
+  });
+
   it('names both ends in the error details', () => {
     try {
       validateReference({ ...valid, kind: 'contains' as 'reads' });

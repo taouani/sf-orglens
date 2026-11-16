@@ -26,6 +26,12 @@ export interface ResolvedComponent {
    * owns none.
    */
   readonly files: readonly string[];
+  /**
+   * For a component that is an element inside the file of its parent, such as a custom label: that file, the
+   * name of the elements that hold the components of this type, and the name of the element inside one of
+   * them that holds its name. Not set for a component with files of its own.
+   */
+  readonly within?: { readonly file: string; readonly element: string; readonly nameElement: string };
 }
 
 export interface Resolution {
@@ -141,12 +147,18 @@ export async function resolveComponents(
   const resolver = new MetadataResolver(new RegistryAccess(undefined, projectDir), new Container(), false);
   const problems: { at: string; message: string }[] = [];
   const owner = new Map<string, string>();
-  const found = new Map<string, { type: string; fullName: string; files: string[] }>();
+  interface Found {
+    type: string;
+    fullName: string;
+    files: string[];
+    within?: NonNullable<ResolvedComponent['within']>;
+  }
+  const found = new Map<string, Found>();
   /** Where each component that is not made of parts is defined: the paths of its own file. */
   const definedAt = new Map<string, Set<string>>();
 
   const idOf = (component: SourceComponent): string => `${component.type.name}\n${component.fullName}`;
-  const entryOf = (component: SourceComponent): { type: string; fullName: string; files: string[] } => {
+  const entryOf = (component: SourceComponent): Found => {
     const id = idOf(component);
     let entry = found.get(id);
     if (entry === undefined) {
@@ -185,9 +197,17 @@ export async function resolveComponents(
       if (paths === undefined) definedAt.set(id, (paths = new Set()));
       paths.add(definition);
     }
+    // A component that is an element of the file of its parent names that file as its own. It stays the parent's.
+    const parentFile = (parent ?? component.parent)?.xml;
+    const { xmlElementName, uniqueIdElement } = component.type;
+    if (component.xml !== undefined && component.xml === parentFile && xmlElementName !== undefined) {
+      const file = inTree(component.xml);
+      if (file !== null && files.has(file)) {
+        entry.within = { file, element: xmlElementName, nameElement: uniqueIdElement ?? 'fullName' };
+      }
+    }
     for (const fsPath of [component.xml, ...content]) {
-      // A component that is an element of the file of its parent names that file as its own. It stays the parent's.
-      const path = fsPath === undefined || fsPath === (parent ?? component.parent)?.xml ? null : inTree(fsPath);
+      const path = fsPath === undefined || fsPath === parentFile ? null : inTree(fsPath);
       if (path === null || !files.has(path) || owner.has(path)) continue;
       owner.set(path, id);
       entry.files.push(path);

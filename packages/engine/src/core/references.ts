@@ -64,7 +64,14 @@ export type ConfidenceTier = (typeof CONFIDENCE_TIERS)[number];
 export const RESOLUTIONS = ['resolved', 'unresolved', 'external', 'dynamic'] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 
-/** A position in a source file. Lines and columns start at 1. */
+/**
+ * A position in a source file. Lines and columns start at 1.
+ *
+ * A line ends with LF, with CRLF or with a CR alone. A column counts UTF-16 code units from the start of its
+ * line: a character outside the basic plane, such as an emoji, counts as two, and a byte order mark at the
+ * start of the file counts as none. Every parser gives its places in this unit, so that a place means the same
+ * whichever parser found it.
+ */
 interface SourceLocation {
   /** Path of the file inside the source, with forward slashes. */
   readonly file: string;
@@ -107,7 +114,8 @@ export function compareConfidence(a: ConfidenceTier, b: ConfidenceTier): number 
   return CONFIDENCE_TIERS.indexOf(a) - CONFIDENCE_TIERS.indexOf(b);
 }
 
-const isPositiveInteger = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 1;
+/** A whole number from 1 that every part of the engine can hold exactly, the database included. */
+const isPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 1;
 
 /** The type of a key, or `undefined` if the text is no key. */
 function typeOfKey(key: unknown): string | undefined {
@@ -139,8 +147,10 @@ function isTypeName(type: unknown): boolean {
  * - a `possible` reference has a target key: the object is known, or it would not be a reference;
  * - a `dynamic` reference is never `confirmed`. A `confirmed` one may be `unresolved`: the source names the target
  *   with certainty and the snapshot does not hold it;
- * - a reference a parser found has a location with a line and a column, both starting at 1, and file paths use
- *   forward slashes.
+ * - a reference a parser found has a location with a line and a column, both starting at 1 and no larger than a
+ *   number can hold exactly, and file paths use forward slashes;
+ * - the target as written and the path of the file are well-formed Unicode. Half of a surrogate pair has no
+ *   UTF-8 form, and stored it would come back as another character.
  */
 export function validateReference(reference: Reference): Reference {
   const fail = (message: string): never => {
@@ -166,6 +176,7 @@ export function validateReference(reference: Reference): Reference {
   if (typeof reference.toNameRaw !== 'string' || reference.toNameRaw === '') {
     fail('A reference must keep the target as it was written.');
   }
+  if (!reference.toNameRaw.isWellFormed()) fail('The target as it was written must be well-formed Unicode.');
 
   if (reference.resolution === 'resolved' && reference.to === null) {
     fail('A resolved reference must have a target key.');
@@ -188,12 +199,12 @@ export function validateReference(reference: Reference): Reference {
   }
   if (typeof location !== 'object' || location === null) fail('A source location is an object.');
   const { file, line, column } = location as { file?: unknown; line?: unknown; column?: unknown };
-  if (typeof file !== 'string' || file === '' || file.includes('\\')) {
-    fail('The file of a source location is a non-empty path with forward slashes.');
+  if (typeof file !== 'string' || file === '' || file.includes('\\') || !file.isWellFormed()) {
+    fail('The file of a source location is a non-empty path with forward slashes, in well-formed Unicode.');
   }
-  if (!isPositiveInteger(line)) fail('The line of a source location starts at 1.');
+  if (!isPositiveInteger(line)) fail('The line of a source location is a whole number from 1.');
   if (column === undefined ? fromParser : !isPositiveInteger(column)) {
-    fail('The column of a source location starts at 1, and a parser always gives one.');
+    fail('The column of a source location is a whole number from 1, and a parser always gives one.');
   }
   return reference;
 }

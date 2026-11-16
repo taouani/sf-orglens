@@ -203,6 +203,27 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
+  // `validateReference` lets nothing through that the database holds as something else.
+  it('holds the largest place and a name outside the basic plane as they are', () => {
+    const store = open();
+    const id = snapshot(store);
+    const location = { file: TOTAL_FILE, line: Number.MAX_SAFE_INTEGER, column: Number.MAX_SAFE_INTEGER };
+    const written = reference(TOTAL, AMOUNT, TOTAL_FILE, 1, { location, toNameRaw: 'Amount__c \u{1F600}' });
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([
+        component(AMOUNT, 'Invoice__c.Amount__c', null),
+        component(TOTAL, 'Invoice__c.Total__c', TOTAL_FILE, [written]),
+      ]),
+    );
+    const graph = sqlGraph(store, id);
+    const [read] = graph.referencesFrom(graph.find(TOTAL)?.id ?? 0);
+    expect(read?.location).toEqual(location);
+    expect(read?.toNameRaw).toBe('Amount__c \u{1F600}');
+    store.close();
+  });
+
   it('gives back a component with its name, its file and its attributes', () => {
     const store = open();
     const id = snapshot(store);

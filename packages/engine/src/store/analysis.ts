@@ -19,6 +19,7 @@ import {
   type Reference,
   type ReferenceOrigin,
 } from '../core/references.ts';
+import type { AnalysedComponent, OriginWork } from '../extraction/analysed.ts';
 import type { Store } from './open.ts';
 import type { SnapshotIssue } from './snapshots.ts';
 
@@ -77,30 +78,7 @@ export const REFERENCE_NAMES = {
   resolution: named(REFERENCE_CODES.resolution, RESOLUTIONS),
 } as const;
 
-/** What an analysis found for one component. */
-export interface AnalysedComponent {
-  readonly key: ComponentKey;
-  /** The name as the source spells it. */
-  readonly name: string;
-  /**
-   * What defines the component in the source: the path of its file, and the SHA-256 of its content. For a
-   * component that is a part of a file, the content is that part. `null`: the source names the component and
-   * does not define it.
-   */
-  readonly definition: { readonly path: string; readonly contentHash: Uint8Array } | null;
-  readonly attrs: Readonly<Record<string, JsonValue>> | null;
-  /** The references that start from this component. Each has passed `validateReference`. */
-  readonly references: readonly Reference[];
-}
-
-/** What the analyser of one origin looked at. The store counts the references itself. */
-export interface OriginWork {
-  readonly origin: ReferenceOrigin;
-  /** Components the analyser looked at. */
-  readonly components: number;
-  /** Files it could not read. */
-  readonly failedFiles: number;
-}
+export type { AnalysedComponent, OriginWork };
 
 export interface Analysis {
   readonly engineVersion: string;
