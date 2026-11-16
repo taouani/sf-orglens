@@ -418,6 +418,69 @@ Accepted when:
 - The public codebases are analysed without an exception. For each, the plan of WP10 gets the count of
   relationship paths that could not be followed.
 
+Status on 16 November 2026, with the pull request that holds the analysis. Built: `extraction/analyse.ts`
+(`analyseSource`), `extraction/objects.ts`, `extraction/model.ts`, `extraction/names.ts`,
+`extraction/analysed.ts`, their tests and decision record
+[0041](../adr/0041-components-and-names-written-in-xml.md). No command runs the analysis yet: WP6 writes it into a
+snapshot.
+
+- **The three points above are met.**
+  - The analysis finds the 26 references of the key that are written in XML, each at the line and the column
+    the key says, and no other: 5 through lookups, 8 through filters, 5 through summaries, 5 through display
+    fields, 2 through global value sets and 1 through a controlling field.
+  - The key lists 87 components today, not 52. The analysis gives those and two more: the standard objects
+    `Account` and `User`, of which the project holds fields and no file, as components that are not defined. A
+    snapshot of the mock org built from the project gives the same 89 keys and the same 26 references. One
+    thing differs and should: the org hands out the file of `Account`, so the lookup to it is `resolved` there
+    and `external` in the folder.
+  - The three public codebases are analysed without an exception and without an issue. A test pins the numbers
+    and is skipped where the codebases are not downloaded, which CI does not do.
+
+    | Codebase      | Components | Objects, fields and rules read | References written in XML | Paths not followed |
+    | ------------- | ---------- | ------------------------------ | ------------------------- | ------------------ |
+    | apex-recipes  | 255        | 44                             | 8                         | 0                  |
+    | nebula-logger | 894        | 622                            | 46                        | 0                  |
+    | npsp          | 11,722     | 819                            | 92                        | 0                  |
+
+    A text search for the same elements in the files gives the same counts of references. The largest takes
+    0.3 to 0.9 seconds on one Linux machine.
+
+- **The count for WP10 is 0, 0 and 0, and it says little.** No file of the three writes a path through a
+  standard relationship in XML. The table of relationships and the rule for names were exercised by tests
+  only. Formulas use such paths far more, so the count that matters comes with WP5.
+- **Eighteen choices are mine**, and record 0041 lists them for you to strike. The ones with the most weight:
+  - A custom name that is not found has no key. The reference keeps the name as written, and "what refers to a
+    field that does not exist" cannot be asked by key.
+  - A standard field without a file is always `external`. A typing error in such a name is not found.
+  - `Owner` is taken as a user and `Parent` as the object itself, which is wrong for the few objects where the
+    owner can be a queue or the parent is of another kind.
+  - The fields and rules inside the file of an object, as an org hands them out, become components. The source
+    library does not list them, so the analysis counts more components than the list: 15 more in NPSP, which
+    are objects of which it holds fields and no file.
+  - A reference says in an attribute `via` how the source names its target.
+- **One thing differs from this plan.** It says that coverage counts the paths that were not followed. Each one
+  is an issue `PATH_NOT_FOLLOWED`, and the count is the number of those issues. The coverage table of WP3 has
+  no column for it.
+- **The two points WP3 left for this package are done.** `core/references.ts` says which unit a column has, and
+  refuses a line the database cannot hold and a name with half of a surrogate pair.
+- **The sentence of the reader about a malformed file**, which WP2 left to this package, is part of the issue in
+  the workspace database. That database is on the machine of the user and holds the file itself. The public
+  log of the live-org workflow keeps its own rule.
+- **For WP5.** The resolver of formulas uses `walkPath`, the model and `GLOBAL_OBJECTS` as they are, and the
+  same two steps: read the names with their places, resolve them when every file was read. `readField` already
+  marks a field that has a formula. The namespace of a package project is not known to the model, and
+  `Owner:User` needs a way to say which object a relationship leads to.
+- **For WP6.** The components come from `resolveComponents` on the stored files of a snapshot, then
+  `analyseSource`, then `writeAnalysis`. The coverage per type has to count the parts and the objects the
+  analysis adds to the list. The eleven issue codes of record 0041 go into `docs/cli.md` with the command that
+  shows them, and WP6 decides which of them make a snapshot incomplete.
+- **Not done or not verified.** Formulas. The name field, compact layouts, search layouts and record types of
+  an object. The field an indirect lookup matches on. Fields of person accounts, which are called `unresolved`.
+  Whether the files an org hands out for standard fields name the object a lookup points at: if not, a
+  standard relationship of an org snapshot is resolved by its name and the table, as in a repository. Nothing
+  was run against a real org. The reference vocabulary still names the origin `symboltable`, which this plan
+  wanted removed with WP3 (record 0040 notes it).
+
 ### WP5 Formulas
 
 Build, in `extraction`:

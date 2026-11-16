@@ -14,6 +14,10 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
+import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
+import { readFolders } from '../src/sources/folder.ts';
+import { resolveComponents } from '../src/sources/resolve.ts';
+import type { SourceTree } from '../src/sources/tree.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
@@ -297,6 +301,54 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         }),
       ]);
       expect(await workspace.coverage('prod')).toEqual(report);
+    });
+
+    it('is analysed to the components and the references that the folder of the project gives', async () => {
+      metadata = await metadataFromSource(WHOLE);
+      mock.metadata = metadata;
+      const dir = workspaceDir();
+      const workspace = await openWorkspace({ root: dir, env });
+      expect((await workspace.snapshot('prod')).snapshot.status).toBe('complete');
+
+      // The files the snapshot holds, as a tree. An org has no package directory, so the tree is the folder.
+      const held = new Map(stored(dir, 1).map((path) => [path, content(dir, 1, path)]));
+      const tree: SourceTree = {
+        files: [...held.keys()],
+        read: (path) => held.get(path) ?? Buffer.from(''),
+      };
+      const fromOrg = analyseSource(tree, (await resolveComponents(tree, [''])).components);
+      const folder = readFolders(join(FIXTURES_DIR, 'billing-sfdx'), ['force-app']).tree;
+      const fromFolder = analyseSource(folder, (await resolveComponents(folder, ['force-app'])).components);
+
+      // The same keys. A line of a reference is compared within one snapshot only: an org rewrites the files.
+      const references = (analysis: SourceAnalysis): string[] =>
+        analysis.components
+          .flatMap((one) => one.references)
+          .map((one) => `${one.from} ${one.kind} ${String(one.to)} ${JSON.stringify(one.attrs)}`)
+          .sort();
+      expect(fromOrg.issues).toEqual([]);
+      expect(fromOrg.components.map((one) => one.key)).toEqual(fromFolder.components.map((one) => one.key));
+      expect(fromOrg.components).toHaveLength(89);
+      expect(references(fromOrg)).toEqual(references(fromFolder));
+      expect(references(fromOrg)).toHaveLength(26);
+      expect(fromOrg.components.map((one) => one.attrs)).toEqual(
+        fromFolder.components.map((one) => (one.definition === null ? {} : one.attrs)),
+      );
+
+      // The org hands out a file for the two standard objects, which the folder does not have. So the objects
+      // are defined in the snapshot of the org, and a lookup to one of them is resolved there.
+      const undefinedIn = (analysis: SourceAnalysis): string[] =>
+        analysis.components.filter((one) => one.definition === null).map((one) => one.key);
+      const lookupToAccount = (analysis: SourceAnalysis): string[] =>
+        analysis.components
+          .flatMap((one) => one.references)
+          .filter((one) => one.to === 'CustomObject:account')
+          .map((one) => one.resolution);
+      expect(undefinedIn(fromOrg)).toEqual([]);
+      expect(undefinedIn(fromFolder)).toEqual(['CustomObject:account', 'CustomObject:user']);
+      expect(lookupToAccount(fromOrg)).toEqual(['resolved']);
+      expect(lookupToAccount(fromFolder)).toEqual(['external']);
+      expect(fromOrg.work).toEqual([{ origin: 'parser:xml', components: 71, failedFiles: 0 }]);
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {

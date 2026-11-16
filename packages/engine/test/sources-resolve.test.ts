@@ -151,13 +151,15 @@ describe('resolving components', () => {
     ]);
   });
 
-  it('finds the components that are elements of one file, and gives the file to the parent', async () => {
-    const root = project({ 'force-app/main/default/labels/CustomLabels.labels-meta.xml': LABELS });
+  it('finds the components that are elements of one file, gives the file to the parent, and says where they stand', async () => {
+    const file = 'force-app/main/default/labels/CustomLabels.labels-meta.xml';
+    const root = project({ [file]: LABELS });
     const { components, problems } = await resolveComponents(readFolders(root, ['force-app']).tree, ['force-app']);
+    const within = { file, element: 'labels', nameElement: 'fullName' };
     expect(problems).toEqual([]);
     expect(components).toEqual([
-      { type: 'CustomLabel', fullName: 'Farewell', files: [] },
-      { type: 'CustomLabel', fullName: 'Greeting', files: [] },
+      { type: 'CustomLabel', fullName: 'Farewell', files: [], within },
+      { type: 'CustomLabel', fullName: 'Greeting', files: [], within },
       {
         type: 'CustomLabels',
         fullName: 'CustomLabels',
