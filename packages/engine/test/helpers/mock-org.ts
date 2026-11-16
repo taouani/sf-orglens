@@ -8,11 +8,13 @@
  * recorded, so a test can say what was asked.
  *
  * It knows no metadata until a test gives it some (`mock-metadata.ts`).
- * Then it answers the Metadata API as well.
+ * Then it answers the Metadata API as well. With rows of the Dependency
+ * API (`mock-dependencies.ts`) it answers the queries for them.
  */
 import { createVerify } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { MockDependencies } from './mock-dependencies.ts';
 import { soapFault, type MockMetadata } from './mock-metadata.ts';
 
 interface MockRequest {
@@ -61,6 +63,8 @@ export interface MockOrg {
   } | null;
   /** The metadata the org holds. `null`: it does not answer the Metadata API. */
   metadata: MockMetadata | null;
+  /** The rows of the Dependency API the org holds. `null`: it does not have the API, and says so. */
+  dependencies: MockDependencies | null;
   /** While this is true, the org takes every request and answers none. */
   stall: boolean;
   /** Set by a test to answer a request in another way. Returning `undefined` leaves the request to the org. */
@@ -146,6 +150,16 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
     if (/^\/services\/data\/v\d+\.\d\/?$/.test(request.path)) {
       return json({ identity: `${url}/id/${orgId}/${userId}`, metadata: `${request.path}/metadata` });
     }
+    if (/^\/services\/data\/v\d+\.\d\/tooling\/query\/?$/.test(request.path)) {
+      if (org.dependencies === null) {
+        return json(
+          [{ message: "sObject type 'MetadataComponentDependency' is not supported.", errorCode: 'INVALID_TYPE' }],
+          400,
+        );
+      }
+      const { status, body } = org.dependencies.answer(request.query.get('q') ?? '');
+      return { status, body };
+    }
     // After it has renewed a session, the Salesforce library itself asks the org about the org.
     if (/\/query\/?$/.test(request.path)) {
       return json({
@@ -213,6 +227,7 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
     refreshTokens: new Set(),
     key: null,
     metadata: null,
+    dependencies: null,
     stall: false,
     intercept: null,
     asked: () =>

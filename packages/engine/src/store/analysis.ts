@@ -95,6 +95,11 @@ export interface Analysis {
   readonly work: readonly OriginWork[];
   /** What went wrong or is uncertain in the analysis. */
   readonly issues: readonly SnapshotIssue[];
+  /**
+   * What the comparison of the analysis with the rows of the Dependency API found, if the snapshot holds such
+   * rows (`dependencies.ts`). The store keeps it as it is and does not read it.
+   */
+  readonly crossCheck?: Readonly<Record<string, JsonValue>> | null | undefined;
 }
 
 export interface AnalysisWritten {
@@ -399,14 +404,15 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
       );
     }
     store.run(
-      `INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs, types)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs, types, cross_check)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       snapshotId,
       analysis.engineVersion,
       analysis.analysedAt,
       seen.size,
       references,
       JSON.stringify([...new Set(analysis.types)].sort()),
+      analysis.crossCheck === undefined || analysis.crossCheck === null ? null : JSON.stringify(analysis.crossCheck),
     );
 
     // Only an analysis that replaced another can leave a version that no snapshot holds.
@@ -427,12 +433,14 @@ export interface AnalysisRecord {
   readonly references: number;
   /** The types the analysers read, sorted. `null` for an analysis that was written before this was kept. */
   readonly types: readonly string[] | null;
+  /** What the comparison with the rows of the Dependency API found, as it was stored. `null`: nothing was compared. */
+  readonly crossCheck: Readonly<Record<string, JsonValue>> | null;
 }
 
 /** The analysis of a snapshot, or `undefined` for a snapshot that was not analysed. */
 export function readAnalysis(store: Store, snapshotId: number): AnalysisRecord | undefined {
   const row = store.get(
-    'SELECT engine_version, analysed_at, components, refs, types FROM snapshot_analysis WHERE snapshot_id = ?',
+    'SELECT engine_version, analysed_at, components, refs, types, cross_check FROM snapshot_analysis WHERE snapshot_id = ?',
     snapshotId,
   );
   if (row === undefined) return undefined;
@@ -442,6 +450,10 @@ export function readAnalysis(store: Store, snapshotId: number): AnalysisRecord |
     components: Number(row['components']),
     references: Number(row['refs']),
     types: typeof row['types'] === 'string' ? (JSON.parse(row['types']) as string[]) : null,
+    crossCheck:
+      typeof row['cross_check'] === 'string'
+        ? (JSON.parse(row['cross_check']) as Readonly<Record<string, JsonValue>>)
+        : null,
   };
 }
 

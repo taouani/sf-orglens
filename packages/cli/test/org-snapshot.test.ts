@@ -1,7 +1,9 @@
 /**
  * `orglens snapshot` of an org, against a mock org on this machine that
- * holds two Apex classes. The tests of the engine cover what can go wrong
- * in a retrieve. These cover what a person and a script see of it.
+ * holds two Apex classes, and whose Dependency API reports one reference
+ * between them. The tests of the engine cover what can go wrong in a
+ * retrieve and what the cross-check finds. These cover what a person and a
+ * script see of it.
  */
 import { generateKeyPairSync } from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
@@ -36,6 +38,7 @@ afterEach(() => {
   mock.withheld = [];
   mock.unlisted = [];
   mock.retrieveFault = null;
+  mock.queries.length = 0;
   // The home folder of the test process is an empty folder of its own (tools/vitest-setup.js).
   rmSync(join(homedir(), '.sfdx'), { recursive: true, force: true });
   dirs.cleanUp();
@@ -47,6 +50,19 @@ function setUp(): { dir: string; env: Record<string, string> } {
     Greeter: "public class Greeter {\n    public String greet() { return 'Hello'; }\n}\n",
     GreeterTest: '@IsTest\nprivate class GreeterTest {}\n',
   };
+  // The test class refers to the class it tests. The ids are the ones the org lists the two classes with.
+  mock.dependencies = [
+    {
+      MetadataComponentId: '01pxx0000000001AAA',
+      MetadataComponentName: 'GreeterTest',
+      MetadataComponentNamespace: null,
+      MetadataComponentType: 'ApexClass',
+      RefMetadataComponentId: '01pxx0000000000AAA',
+      RefMetadataComponentName: 'Greeter',
+      RefMetadataComponentNamespace: null,
+      RefMetadataComponentType: 'ApexClass',
+    },
+  ];
   const dir = dirs.next();
   writeFileSync(join(dir, 'orglens.toml'), `schema_version = 1\n[sources.prod]\nkind = "org"\norg_id = "${ORG_ID}"\n`);
   return {
@@ -72,6 +88,17 @@ const classesAnalysed = (components: string): string[] => [
   '',
 ];
 
+/**
+ * What the cross-check says: the one row is from a class, and no analyser of this phase reads classes, so it
+ * is counted and not compared.
+ */
+const CROSS_CHECKED = [
+  'Cross-check: the Dependency API of Salesforce reports 1 row. No query left a row out.',
+  '1 row is from a component of a type this version does not analyse, and is not compared: ApexClass 1.',
+  'No row was compared.',
+  '',
+];
+
 describe('orglens snapshot of an org', () => {
   it('reads the org, says on the standard error stream how far it is, and reports what it stored', async () => {
     const { dir, env } = setUp();
@@ -83,7 +110,8 @@ describe('orglens snapshot of an org', () => {
         'Asking the org what it holds: 1 of 1 request answered.',
         'Snapshot #1: the org lists 2 components. They are retrieved in 1 chunk.',
         'Snapshot #1: 1 of 1 chunk is stored.',
-        'Snapshot #1: every chunk is done. Analysing its files.',
+        'Snapshot #1: every chunk is done. Asking the Dependency API of Salesforce which references it knows.',
+        'Snapshot #1: its files are stored. Analysing them.',
         '',
       ].join('\n'),
       stdout: [
@@ -93,8 +121,13 @@ describe('orglens snapshot of an org', () => {
         'ApexClass  2       2          0',
         '',
         ...classesAnalysed('2 components'),
+        ...CROSS_CHECKED,
       ].join('\n'),
     });
+    // The Dependency API is asked once, for the one object that holds its rows, and for nothing else.
+    expect(mock.queries).toHaveLength(1);
+    expect(mock.queries[0]).toMatch(/^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency$/);
+    expect(mock.paths.filter((path) => path.includes('/query'))).toEqual(['/services/data/v66.0/tooling/query']);
     expect(mock.operations).toEqual([
       'describeMetadata',
       'listMetadata',
@@ -133,6 +166,28 @@ describe('orglens snapshot of an org', () => {
         },
         types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null }],
         analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
+        crossCheck: {
+          state: 'whole',
+          requests: 1,
+          rows: 1,
+          queriesCutOff: 0,
+          queriesFailed: 0,
+          code: null,
+          comparison: {
+            rows: 1,
+            rowsNotAnalysed: 1,
+            notAnalysed: [{ type: 'ApexClass', rows: 1 }],
+            rowsNotMatched: 0,
+            rowsNotHeld: 0,
+            rowsCompared: 0,
+            pairs: 0,
+            agreed: 0,
+            coveredByPart: 0,
+            missed: [],
+            onlyOrgLens: [],
+            notReported: [],
+          },
+        },
         issues: [],
       },
     });
@@ -172,6 +227,7 @@ describe('orglens snapshot of an org', () => {
         'error     NOT_RETRIEVED      1 component of the type ApexClass that the org listed did not come back. The first: GreeterTest',
         '',
         ...classesAnalysed('1 component'),
+        ...CROSS_CHECKED,
       ].join('\n'),
     );
   });
@@ -192,8 +248,52 @@ describe('orglens snapshot of an org', () => {
         'info      UNLISTED_COMPONENTS  1 component of the type ApexClass came back that the org had not listed. It is in the snapshot. The first: GreeterTest',
         '',
         ...classesAnalysed('2 components'),
+        ...CROSS_CHECKED,
       ].join('\n'),
     );
+  });
+
+  it('leaves the Dependency API unasked with --no-cross-check, and says so', async () => {
+    const { dir, env } = setUp();
+    const run = await orglens(dir, ['snapshot', 'prod', '--no-cross-check'], env);
+    expect(run.code).toBe(0);
+    expect(run.stderr.split('\n').slice(-3)).toEqual([
+      'Snapshot #1: 1 of 1 chunk is stored.',
+      'Snapshot #1: its files are stored. Analysing them.',
+      '',
+    ]);
+    expect(run.stdout.split('\n').slice(-3)).toEqual([
+      '',
+      'The Dependency API of Salesforce was not asked for this snapshot. Its analysis is not cross-checked.',
+      '',
+    ]);
+    expect(mock.queries).toEqual([]);
+    expect(await orglensJson(dir, ['coverage', 'prod'])).toMatchObject({ data: { crossCheck: null, issues: [] } });
+  });
+
+  it('takes the snapshot of an org without the Dependency API all the same, and says that nothing was compared', async () => {
+    const { dir, env } = setUp();
+    mock.dependencies = null;
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    // A snapshot is not partial for it: every file was read. The analysis is not held against anything.
+    expect(run.code).toBe(0);
+    expect(run.stdout.split('\n').slice(5)).toEqual([
+      'SEVERITY  CODE                  WHAT',
+      'warning   CROSS_CHECK_NOT_READ  The Dependency API of the org gave no answer (INVALID_TYPE). What the analysis of this snapshot finds is not held against what Salesforce knows.',
+      '',
+      ...classesAnalysed('2 components'),
+      'Cross-check: the Dependency API of Salesforce gave no answer (INVALID_TYPE). Nothing was compared.',
+      '',
+    ]);
+    expect(await orglensJson(dir, ['coverage', 'prod'])).toMatchObject({
+      code: 0,
+      data: {
+        snapshot: { status: 'complete' },
+        analysis: { complete: true },
+        crossCheck: { state: 'none', rows: 0, code: 'INVALID_TYPE', comparison: null },
+        issues: [{ stage: 'read', severity: 'warning', code: 'CROSS_CHECK_NOT_READ' }],
+      },
+    });
   });
 
   it('keeps a snapshot that was interrupted, shows it in the status, and continues it or gives it up', async () => {
@@ -240,7 +340,8 @@ describe('orglens snapshot of an org', () => {
       'Logged in to the org of "prod". It is read with API version 66.0.',
       'Snapshot #1 was interrupted and is continued: 0 of 1 chunk is stored.',
       'Snapshot #1: 1 of 1 chunk is stored.',
-      'Snapshot #1: every chunk is done. Analysing its files.',
+      'Snapshot #1: every chunk is done. Asking the Dependency API of Salesforce which references it knows.',
+      'Snapshot #1: its files are stored. Analysing them.',
       '',
     ]);
     expect(continued.stdout.replace(TIME, 'TIME').split('\n')).toEqual([
@@ -258,6 +359,7 @@ describe('orglens snapshot of an org', () => {
       ),
       '',
       ...classesAnalysed('2 components'),
+      ...CROSS_CHECKED,
     ]);
 
     // With --restart an interrupted snapshot is given up. Here there is none, and a new one is taken.

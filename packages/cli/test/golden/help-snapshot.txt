@@ -5,10 +5,14 @@ database, and analyses them: which components they make up, and which component
 refers to which. Earlier snapshots are kept. The source is not changed. An org
 or a sandbox is asked what it holds, and its components are retrieved in chunks,
 which takes minutes. If that is interrupted, the next run continues the same
-snapshot. OrgLens asks for metadata only, never for records. The exit code is 5
-if the snapshot is partial or its analysis is incomplete: something could not be
-read or analysed, and the output says what. It is 4 if the login is missing or
-does not work or the org cannot be reached.
+snapshot. An org or a sandbox is also asked, through its Dependency API, which
+references Salesforce knows. The analysis is held against the answer: a
+reference that Salesforce reports and the analysis lacks is an error of the
+analysis. --no-cross-check leaves that out. OrgLens asks for metadata only,
+never for records. The exit code is 5 if the snapshot is partial or its analysis
+is incomplete: something could not be read or analysed, and the output says
+what. It is 4 if the login is missing or does not work or the org cannot be
+reached.
 
 Arguments:
   source                the name of the source
@@ -16,6 +20,8 @@ Arguments:
 Options:
   --restart             org, sandbox: give up a snapshot that was interrupted,
                         and take a new one
+  --no-cross-check      org, sandbox: do not ask the Dependency API what
+                        Salesforce knows about references
   -h, --help            show help and exit
 
 Global Options:

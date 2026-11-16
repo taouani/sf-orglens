@@ -436,7 +436,111 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
       ),
     );
   }
-  lines.push(...analysisLines(report));
+  lines.push(...analysisLines(report), ...crossCheckLines(report));
+  return lines;
+}
+
+/** At most this many pairs of a list of the cross-check are shown as text. `--json` has all of them. */
+const MOST_PAIRS_SHOWN = 20;
+
+/** A list of pairs of the cross-check as lines: a sentence, and a table of the first of them. */
+function pairLines(pairs: readonly { readonly from: string; readonly to: string }[], sentence: string): string[] {
+  if (pairs.length === 0) return [];
+  const shown = pairs.slice(0, MOST_PAIRS_SHOWN);
+  const lines = [
+    '',
+    sentence,
+    ...table(
+      ['FROM', 'TO'],
+      shown.map(({ from, to }) => [from, to]),
+    ),
+  ];
+  if (shown.length < pairs.length) {
+    lines.push(`${count(pairs.length - shown.length, 'more pair', 'more pairs')}: --json has all of them.`);
+  }
+  return lines;
+}
+
+/** Numbers with what they count, such as `CustomField 4, Flow 2`. */
+const tally = (parts: readonly (readonly [string, number])[]): string =>
+  parts.map(([name, number]) => `${name} ${String(number)}`).join(', ');
+
+/**
+ * The lines about the cross-check of a snapshot of an org: how the Dependency API of Salesforce was read, and
+ * what holding its rows against the analysis found. Nothing for a snapshot of a repository.
+ */
+function crossCheckLines(report: CoverageReport): string[] {
+  const { snapshot, crossCheck } = report;
+  if (crossCheck === null) {
+    if (snapshot.kind === 'git' || snapshot.status === 'running' || snapshot.status === 'failed') return [];
+    return ['', 'The Dependency API of Salesforce was not asked for this snapshot. Its analysis is not cross-checked.'];
+  }
+  if (crossCheck.state === 'none') {
+    return [
+      '',
+      `Cross-check: the Dependency API of Salesforce gave no answer (${crossCheck.code ?? 'no code'}). Nothing was compared.`,
+    ];
+  }
+  const left = crossCheck.queriesCutOff + crossCheck.queriesFailed;
+  const read =
+    crossCheck.state === 'whole'
+      ? 'No query left a row out.'
+      : `Rows are missing: ${count(left, 'query was', 'queries were')} cut off at the limit of the API or failed${
+          crossCheck.code === null ? '' : ` (${crossCheck.code})`
+        }.`;
+  const lines = [
+    '',
+    `Cross-check: the Dependency API of Salesforce reports ${count(crossCheck.rows, 'row', 'rows')}. ${read}`,
+  ];
+  const { comparison } = crossCheck;
+  if (comparison === null) {
+    lines.push(
+      report.analysis === null
+        ? 'They were not compared: the snapshot is not analysed.'
+        : `They were not compared by this version of OrgLens. Compare them with: orglens analyse ${snapshot.source} --snapshot ${String(snapshot.id)}`,
+    );
+    return lines;
+  }
+  if (comparison.rowsNotAnalysed > 0) {
+    lines.push(
+      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type this version does not analyse, and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
+    );
+  }
+  if (comparison.rowsNotMatched > 0) {
+    lines.push(
+      `${count(comparison.rowsNotMatched, 'row names', 'rows name')} a component the org did not list, and ${comparison.rowsNotMatched === 1 ? 'is' : 'are'} not compared.`,
+    );
+  }
+  if (comparison.rowsNotHeld > 0) {
+    lines.push(
+      `${count(comparison.rowsNotHeld, 'row is', 'rows are')} from a component the snapshot does not hold or that was not analysed, and ${comparison.rowsNotHeld === 1 ? 'is' : 'are'} not compared.`,
+    );
+  }
+  const missed = comparison.missed.length;
+  lines.push(
+    comparison.rowsCompared === 0
+      ? 'No row was compared.'
+      : `${count(comparison.rowsCompared, 'row was', 'rows were')} compared. ${comparison.rowsCompared === 1 ? 'It is' : 'They are'} ${count(comparison.pairs, 'pair', 'pairs')} of components: the analysis has ${String(comparison.agreed)} of them, has ${String(comparison.coveredByPart)} as a reference to a part of the object Salesforce names, and missed ${String(missed)}.`,
+  );
+  lines.push(
+    ...pairLines(
+      comparison.missed,
+      missed === 1
+        ? 'Salesforce reports this reference, and the analysis has none. It is an error of the analysis:'
+        : 'Salesforce reports these references, and the analysis has none. Each is an error of the analysis:',
+    ),
+    ...pairLines(
+      comparison.onlyOrgLens,
+      `The analysis has ${count(comparison.onlyOrgLens.length, 'reference', 'references')} of a kind Salesforce reports, without a row. Either the analysis is wrong there, or the API left ${comparison.onlyOrgLens.length === 1 ? 'it' : 'them'} out:`,
+    ),
+  );
+  const notReported = comparison.notReported.reduce((sum, { pairs }) => sum + pairs, 0);
+  if (notReported > 0) {
+    lines.push(
+      '',
+      `The analysis has ${count(notReported, 'more reference', 'more references')} of kinds the API does not report: ${tally(comparison.notReported.map(({ reason, pairs }) => [reason, pairs]))}.`,
+    );
+  }
   return lines;
 }
 
@@ -478,8 +582,12 @@ function progressLines(source: string, write: (line: string) => void): (event: S
       write(
         `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
       );
+    } else if (event.step === 'cross-checking') {
+      write(
+        `Snapshot #${String(event.snapshot)}: every chunk is done. Asking the Dependency API of Salesforce which references it knows.`,
+      );
     } else {
-      write(`Snapshot #${String(event.snapshot)}: every chunk is done. Analysing its files.`);
+      write(`Snapshot #${String(event.snapshot)}: its files are stored. Analysing them.`);
     }
   };
 }
@@ -494,11 +602,12 @@ const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], st
 export async function snapshot(
   context: Context,
   source: string,
-  options: { restart?: boolean | undefined } = {},
+  options: { restart?: boolean | undefined; crossCheck?: boolean | undefined } = {},
 ): Promise<Outcome> {
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.snapshot(source, {
     restart: options.restart,
+    crossCheck: options.crossCheck,
     onProgress: progressLines(source, context.progress),
   });
   const { id, status } = report.snapshot;

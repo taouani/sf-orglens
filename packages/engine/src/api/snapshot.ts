@@ -28,7 +28,13 @@ import {
   readSnapshot,
   type SnapshotIssue as StoredIssue,
 } from '../store/snapshots.ts';
-import { analyseStored, analysisReport, type AnalysisReport } from './analysis.ts';
+import {
+  analyseStored,
+  analysisReport,
+  crossCheckReport,
+  type AnalysisReport,
+  type CrossCheckReport,
+} from './analysis.ts';
 
 export interface SnapshotInfo {
   readonly id: number;
@@ -103,6 +109,11 @@ export interface CoverageReport {
   readonly types: readonly TypeCoverage[];
   /** `null`: the snapshot was not analysed. A snapshot taken by a version before the analysis existed is not. */
   readonly analysis: AnalysisReport | null;
+  /**
+   * What the Dependency API of Salesforce said about the org, held against the analysis. `null`: the API was
+   * not asked for this snapshot. It is never asked for a snapshot of a repository.
+   */
+  readonly crossCheck: CrossCheckReport | null;
   /** Those of the reading first, then those of the analysis. */
   readonly issues: readonly SnapshotIssue[];
 }
@@ -129,6 +140,7 @@ export function snapshotReport(store: Store, source: string, id?: number): Cover
     },
     types: readCoverage(store, snapshot.id),
     analysis: analysisReport(store, snapshot.id, issues),
+    crossCheck: crossCheckReport(store, snapshot.id),
     issues: [...issues.filter(ofReading), ...issues.filter((issue) => !ofReading(issue))].map(
       ({ severity, code, message, stage, componentKey, details }) => ({
         severity,

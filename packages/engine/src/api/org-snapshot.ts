@@ -19,6 +19,7 @@ import type { OrgSource, SandboxSource } from '../core/config/config.ts';
 import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { DEFAULT_CHUNK_WEIGHT, planChunks, splitMembers } from '../sources/chunks.ts';
+import { readDependencies, type DependencyLimits } from '../sources/dependency-api.ts';
 import { takeInventory } from '../sources/inventory.ts';
 import {
   DEFAULT_LIMITS,
@@ -30,9 +31,10 @@ import {
   type RetrieveState,
 } from '../sources/metadata-api.ts';
 import { loginFailed, saidBy, unreachable } from '../sources/org-errors.ts';
-import { connectToOrg } from '../sources/org.ts';
+import { connectToOrg, type OrgSession } from '../sources/org.ts';
 import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
 import { systemCode } from '../sources/tree.ts';
+import { readListedIds, writeDependencies } from '../store/dependencies.ts';
 import {
   addChunks,
   addInventory,
@@ -77,7 +79,8 @@ type Environment = Readonly<Record<string, string | undefined>>;
  * - `planned`: the inventory is stored. The snapshot has a number and a number of chunks to retrieve.
  * - `resumed`: a snapshot that was interrupted is continued. `done` of its `chunks` are stored already.
  * - `retrieved`: a chunk is stored. `chunks` grows when a chunk has to be split.
- * - `analysing`: every chunk is done and the snapshot has ended. Its files are analysed now.
+ * - `cross-checking`: every chunk is done. The org is asked what its Dependency API knows about references.
+ * - `analysing`: the snapshot has ended. Its files are analysed now.
  */
 export type SnapshotProgress =
   | { readonly step: 'connected'; readonly apiVersion: string }
@@ -85,6 +88,7 @@ export type SnapshotProgress =
   | { readonly step: 'planned'; readonly snapshot: number; readonly components: number; readonly chunks: number }
   | { readonly step: 'resumed'; readonly snapshot: number; readonly done: number; readonly chunks: number }
   | { readonly step: 'retrieved'; readonly snapshot: number; readonly done: number; readonly chunks: number }
+  | { readonly step: 'cross-checking'; readonly snapshot: number }
   | { readonly step: 'analysing'; readonly snapshot: number };
 
 /** The numbers a snapshot of an org works with. A test sets them to make things happen that are rare. */
@@ -105,6 +109,8 @@ export interface OrgSnapshotTuning {
    */
   readonly startsPerChunk: number;
   readonly requests: MetadataApiLimits;
+  /** The numbers the Dependency API is read with (`sources/dependency-api.ts`). */
+  readonly dependencies: Partial<DependencyLimits>;
 }
 
 const DEFAULT_TUNING: OrgSnapshotTuning = {
@@ -116,6 +122,7 @@ const DEFAULT_TUNING: OrgSnapshotTuning = {
   failuresInARow: 20,
   startsPerChunk: 3,
   requests: DEFAULT_LIMITS,
+  dependencies: {},
 };
 
 export interface OrgSnapshotJob {
@@ -128,6 +135,8 @@ export interface OrgSnapshotJob {
   readonly openStore: () => Store;
   /** True to give up a snapshot that was interrupted and start a new one. */
   readonly restart?: boolean | undefined;
+  /** False to leave the Dependency API of the org unasked. Default: it is asked. */
+  readonly crossCheck?: boolean | undefined;
   readonly onProgress?: ((event: SnapshotProgress) => void) | undefined;
   readonly tuning?: Partial<OrgSnapshotTuning> | undefined;
 }
@@ -455,6 +464,11 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
     }
 
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
+    if (job.crossCheck !== false) {
+      // Before the snapshot ends, so that a snapshot that is interrupted here is continued here.
+      progress({ step: 'cross-checking', snapshot: snapshotId });
+      await readCrossCheck(store, snapshotId, session, api.apiVersion, tuning);
+    }
     finish(store, snapshotId);
     finished = true;
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
@@ -716,6 +730,57 @@ async function retrieveChunks(
     const counts = countChunks(store, snapshotId);
     progress({ step: 'retrieved', snapshot: snapshotId, done: counts.done + counts.failed, chunks: counts.total });
   }
+}
+
+/**
+ * Asks the org what its Dependency API knows about references, and stores the rows with the snapshot (decision
+ * record 0045). They are a second opinion on what the analysis finds, and the snapshot does not depend on
+ * them: an org that does not answer leaves a warning, and the snapshot goes on.
+ */
+async function readCrossCheck(
+  store: Store,
+  snapshotId: number,
+  session: OrgSession,
+  apiVersion: string,
+  tuning: OrgSnapshotTuning,
+): Promise<void> {
+  // With the ids the org listed its components with, a query that reaches the limit of rows can be asked again
+  // for a part of the components.
+  const ids = new Map<string, string[]>();
+  for (const item of readListedIds(store, snapshotId)) {
+    if (item.id === null) continue;
+    const ofType = ids.get(item.type);
+    if (ofType === undefined) ids.set(item.type, [item.id]);
+    else ofType.push(item.id);
+  }
+  const reading = await readDependencies(session, {
+    apiVersion,
+    limits: tuning.dependencies,
+    idsOfType: (type) => ids.get(type) ?? [],
+  });
+  store.write(() => {
+    writeDependencies(store, snapshotId, reading, now());
+    if (reading.state === 'none') {
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'CROSS_CHECK_NOT_READ',
+        `The Dependency API of the org gave no answer (${reading.code ?? 'NO_CODE'}). What the analysis of this snapshot finds is not held against what Salesforce knows.`,
+        { code: reading.code, requests: reading.requests },
+      );
+    } else if (reading.state === 'partial') {
+      const left = reading.cutOff + reading.failed;
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'CROSS_CHECK_PARTIAL',
+        `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing: a reference that Salesforce knows and the analysis missed may go unseen.`,
+        { cutOff: reading.cutOff, failed: reading.failed, code: reading.code, rows: reading.rows.length },
+      );
+    }
+  });
 }
 
 /**

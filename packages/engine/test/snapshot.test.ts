@@ -144,6 +144,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
           },
         ],
       },
+      // The Dependency API is of an org. A repository has none.
+      crossCheck: null,
       issues: [],
     });
     // The snapshot had ended before it was analysed.
