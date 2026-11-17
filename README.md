@@ -4,10 +4,10 @@ OrgLens tells you what a change to a Salesforce org will affect before you make 
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
 > **Pre-release.** The project is being built in the open. The first slice is built: the first impact answers
-> cover objects, fields and validation rules only. There is no published package yet. The first pre-release,
-> version `0.1.0-next.0`, is prepared ([release notes](docs/releases/v0.1.0-next.0.md)) and is published once the
-> project holds its names on npm. Until then OrgLens runs from a clone of this repository. Follow the
-> [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
+> cover objects, fields and validation rules only. No version of OrgLens is published yet. The first pre-release,
+> version `0.1.0-next.0`, is prepared ([release notes](docs/releases/v0.1.0-next.0.md)). It is published when a
+> question about its install is settled and the maintainer says so. Until then OrgLens runs from a clone of this
+> repository. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
 > and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,

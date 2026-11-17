@@ -849,7 +849,7 @@ Within one `schemaVersion`:
   A program that reads the output ignores fields it does not know and handles values it does not know.
 
 A change that breaks the first two rules raises `schemaVersion` and is announced in the changelog. Until the first
-release, the contract can still change with a pull request that says so.
+release on npm, the contract can still change with a pull request that says so (decision record 0051).
 
 ## Exit codes
 

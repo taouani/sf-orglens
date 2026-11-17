@@ -87,7 +87,9 @@ Two smaller ones:
 ## 4. Questions for you
 
 Six questions. Each has my recommendation. The plan below is written for the recommended answers, and says
-where another answer changes it.
+where another answer changes it. Your answers get decision records, as those of the Phase 1 plan did. An answer
+to Q1 or Q2 that moves a type into a phase, or changes what a snapshot reads, also changes the roadmap of the
+overall plan, in the pull request that records it.
 
 | #   | Question                                                                                                                                                                                                                                                                                                                                                                                                                       | Options                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Recommendation                                                                                                                                                     |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -324,7 +326,8 @@ Accepted when:
 - The key has entries for one of each, and the analysis finds them and no other.
 - The 31 email templates, 4 report types and 51 quick actions of the public codebases I counted are read
   without an error. The counts are of the pinned codebases, of Volunteers for Salesforce and of Outbound
-  Funds, and the last two are not pinned yet.
+  Funds. The last two are not pinned yet: this work package pins them by commit in `fixtures/corpora.toml`
+  after a look at their licences, and the counts are taken again at those commits.
 
 ### WP9 Proof on public codebases, and measurements
 
@@ -350,6 +353,12 @@ Accepted when:
 - The overall plan updated, `docs/test-plans/phase-2.md`, a phase report, and the draft of the Phase 3 plan for
   your approval.
 - The second pre-release, `0.1.0-next.1`, made by the workflow of record 0050.
+
+Accepted when:
+
+- The four documents are merged, and the report says for every acceptance criterion of this plan whether it is
+  met.
+- The pre-release is published on your word, or the report says what it waits for.
 
 ## 6. How the results are proven
 

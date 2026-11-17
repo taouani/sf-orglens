@@ -4,6 +4,7 @@
 - Date: 2026-11-17
 - Decisions: none (work package 11 of the Phase 1 plan. It builds the pre-release the maintainer chose on
   2026-11-15 with the sixth question of that plan, and holds the choices its author made while building it)
+- Changed by: [0051](0051-the-first-release-is-the-first-on-npm.md), in the first point this record leaves undecided: "the first release" is the first one on npm, and a pre-release on GitHub is not it. The second point, the names on npm, is the subject of [0052](0052-the-project-holds-its-names-on-npm.md), which is not accepted
 
 ## Context
 
@@ -86,9 +87,7 @@ fixed. That is a question to the maintainer, and the index lists it among the pl
 decided: whether the project holds the two names on npm before the first pre-release is published, which the
 second consequence below is about. Both were put to the maintainer on 2026-11-17, and no pre-release is
 published before both are answered: the release notes of the first one hold the mark `[open]` at each of the
-two, and the workflow does not publish notes with the mark. The maintainer answered both on the same day: records
-[0051](0051-the-first-release-is-the-first-on-npm.md) and [0052](0052-the-project-holds-its-names-on-npm.md)
-hold the answers.
+two, and the workflow does not publish notes with the mark.
 
 ## Consequences
 

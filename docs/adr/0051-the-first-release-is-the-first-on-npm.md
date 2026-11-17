@@ -36,8 +36,9 @@ Until that release:
   so, as record 0027 reads. `schemaVersion` stays `1`.
 - A pre-release that changes a name, a shape of the JSON output or an exit code says so in its release notes.
 
-The empty packages with which the project holds its names on npm
-([0052](0052-the-project-holds-its-names-on-npm.md)) are not a release of OrgLens and fix nothing.
+Record [0052](0052-the-project-holds-its-names-on-npm.md), which is not accepted, is about empty packages with
+which the project would hold its names on npm. Such a package would be no release of OrgLens and would fix
+nothing.
 
 ## Consequences
 
@@ -49,5 +50,5 @@ The empty packages with which the project holds its names on npm
   validates output uses the schema of the version it runs.
 - What makes the first release on npm is not decided here: when it happens, under which names, and whether a
   version with a pre-release part counts. The roadmap announces nothing before the correctness gate (record
-  [0021](0021-correctness-proof.md)), and the question comes back to the maintainer before anything but an empty
-  package goes to npm.
+  [0021](0021-correctness-proof.md)), and the question comes back to the maintainer before a package of OrgLens
+  goes to npm.

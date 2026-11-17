@@ -4,7 +4,7 @@
  * `names` writes. The steps `pack` and `try` are run by the workflow only.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -178,6 +178,19 @@ describe('the empty packages that hold the names on npm', () => {
     expect(held('sf-orglens-engine')).not.toHaveProperty('bin');
   });
 
+  it('writes these eight files and no other', async () => {
+    const folder = join(scratch, 'names-golden');
+    expect(run('names', folder).status).toBe(0);
+    const files = readdirSync(folder, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name))
+      .sort();
+    const all = files
+      .map((file) => `=== ${file.slice(folder.length + 1).replaceAll('\\', '/')} ===\n${readFileSync(file, 'utf8')}`)
+      .join('\n');
+    await expect(all).toMatchFileSnapshot('./golden/held-names.txt');
+  });
+
   it('gives the command of such a package one thing to say: that it is not OrgLens', () => {
     const folder = join(scratch, 'names-run');
     expect(run('names', folder).status).toBe(0);
@@ -197,7 +210,11 @@ describe('the empty packages that hold the names on npm', () => {
   });
 
   it('refuses a folder that is not empty', () => {
-    const { status, failures } = run('names', scratch);
+    const folder = join(scratch, 'names-not-empty');
+    mkdirSync(folder);
+    writeFileSync(join(folder, 'a-file-of-somebody.txt'), 'kept\n');
+    const { status, failures } = run('names', folder);
+    expect(readdirSync(folder)).toEqual(['a-file-of-somebody.txt']);
     expect(status).toBe(1);
     expect(failures.some((line) => line.endsWith('is not empty.'))).toBe(true);
   });

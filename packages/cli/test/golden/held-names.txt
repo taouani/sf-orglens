@@ -1,0 +1,107 @@
+=== orglens/README.md ===
+# orglens
+
+This name is held for [OrgLens](https://github.com/taouani/sf-orglens). The package is empty.
+
+OrgLens is not released on npm yet. Its pre-releases are on GitHub, each with the line that installs it:
+https://github.com/taouani/sf-orglens/releases
+
+=== orglens/not-orglens.js ===
+#!/usr/bin/env node
+console.error(
+  'This is not OrgLens. It is the empty package that holds the name "orglens" on npm.\n' +
+    'OrgLens is not released on npm yet. If this took the place of a pre-release you had installed,\n' +
+    'install that again with the line of its release notes:\n' +
+    'https://github.com/taouani/sf-orglens/releases',
+);
+process.exitCode = 1;
+
+=== orglens/package.json ===
+{
+  "name": "orglens",
+  "version": "0.0.0",
+  "description": "This name is held for OrgLens. OrgLens is not released on npm yet.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taouani/sf-orglens.git"
+  },
+  "homepage": "https://github.com/taouani/sf-orglens",
+  "bin": {
+    "orglens": "not-orglens.js"
+  },
+  "files": [
+    "not-orglens.js"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
+
+=== sf-orglens-engine/README.md ===
+# @sf-orglens/engine
+
+This name is held for [OrgLens](https://github.com/taouani/sf-orglens). The package is empty.
+
+OrgLens is not released on npm yet. Its pre-releases are on GitHub, each with the line that installs it:
+https://github.com/taouani/sf-orglens/releases
+
+=== sf-orglens-engine/package.json ===
+{
+  "name": "@sf-orglens/engine",
+  "version": "0.0.0",
+  "description": "This name is held for OrgLens. OrgLens is not released on npm yet.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taouani/sf-orglens.git"
+  },
+  "homepage": "https://github.com/taouani/sf-orglens",
+  "files": [],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
+
+=== sf-orglens/README.md ===
+# sf-orglens
+
+This name is held for [OrgLens](https://github.com/taouani/sf-orglens). The package is empty.
+
+OrgLens is not released on npm yet. Its pre-releases are on GitHub, each with the line that installs it:
+https://github.com/taouani/sf-orglens/releases
+
+=== sf-orglens/not-orglens.js ===
+#!/usr/bin/env node
+console.error(
+  'This is not OrgLens. It is the empty package that holds the name "sf-orglens" on npm.\n' +
+    'OrgLens is not released on npm yet. If this took the place of a pre-release you had installed,\n' +
+    'install that again with the line of its release notes:\n' +
+    'https://github.com/taouani/sf-orglens/releases',
+);
+process.exitCode = 1;
+
+=== sf-orglens/package.json ===
+{
+  "name": "sf-orglens",
+  "version": "0.0.0",
+  "description": "This name is held for OrgLens. OrgLens is not released on npm yet.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taouani/sf-orglens.git"
+  },
+  "homepage": "https://github.com/taouani/sf-orglens",
+  "bin": {
+    "orglens": "not-orglens.js"
+  },
+  "files": [
+    "not-orglens.js"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

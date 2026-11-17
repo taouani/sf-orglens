@@ -7,8 +7,8 @@ A pull request that changes what users see adds one file here with `pnpm changes
 touch documentation, tests or tooling do not need one.
 
 No version of OrgLens is published to npm during the pre-release phases. The workflow "Release (dry run)" only
-rehearses such a release. The maintainer holds the names of the project on npm with empty packages at version
-`0.0.0`, which no workflow publishes ([decision record 0052](../docs/adr/0052-the-project-holds-its-names-on-npm.md)).
+rehearses such a release. Whether the project holds its names on npm with empty packages is not decided
+([decision record 0052](../docs/adr/0052-the-project-holds-its-names-on-npm.md)). No workflow would publish them.
 
 ## Pre-releases
 

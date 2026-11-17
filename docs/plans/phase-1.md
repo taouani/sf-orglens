@@ -111,8 +111,8 @@ were asked, unchanged.
 
 One thing your answer to Q6 leaves open, which I put to you before the release of WP11: records 0022 and 0027
 say that the package names and the JSON contract can still change "until the first release". Whether this
-pre-release is that release is not decided. You decided it on 17 November 2026: it is not. The first release is
-the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
+pre-release is that release was not decided with your answer. You decided it on 17 November 2026: it is not.
+The first release is the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
 
 The questions as they were asked on 13 November 2026:
 
@@ -1309,23 +1309,28 @@ way to the pre-release is built. **The pre-release itself is not published.**
     `--allow-remote=root`, and the workflow tries the line on Linux, Windows and macOS, with the npm of Node.js
     and with the newest npm, before it publishes.
   - After the install, `npm update --global` asks the public registry for the two package names and installs
-    whatever it finds there in the place of OrgLens. Nobody holds the names for this project, and whether they
-    are free was never looked up, because the look-up sends the names to npm. This is not closed. The release
-    notes warn, which is no protection. It is a risk of the way of installing you chose with Q6, so how it is
-    closed is yours to decide.
+    whatever it finds there in the place of OrgLens. Nobody holds the names for this project. This is not
+    closed. The release notes warn, which is no protection. It is a risk of the way of installing you chose
+    with Q6, so how it is closed is yours to decide.
 - **Two questions held the release**, both put to you on 17 November 2026 and answered on the same day.
   - The pre-release is not "the first release" of records 0022 and 0027. The names, the JSON output and the
     exit codes are fixed with the first release on npm (record
     [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
-  - The project holds its names on npm, with an empty package at version `0.0.0` under each (record
-    [0052](../adr/0052-the-project-holds-its-names-on-npm.md)). With your answer I looked the names up:
-    `sf-orglens`, `@sf-orglens/engine` and `orglens` were free on that day, and no organization had the name
-    `sf-orglens`. `node scripts/pre-release.mjs names <folder>` writes the three packages, and a test holds what
-    it writes. Publishing them is yours: [`docs/releases/npm-names.md`](../releases/npm-names.md) has the steps.
-    This changes your answer to Q6 in one point: something goes to npm, and it is not OrgLens.
-- **What the release still waits for.** The empty packages on npm. The release notes keep the mark `[open]` at
-  that point until the names answer on the registry, and the workflow refuses to publish notes with the mark.
-  After that I start the run that publishes only on your word for that version: it cannot be undone.
+  - The project holds its names on npm, with an empty package at version `0.0.0` under each. I had recommended
+    it. With your answer I looked the names up: `sf-orglens`, `@sf-orglens/engine` and `orglens` were free on
+    that day, and no organization had the name `sf-orglens`. `node scripts/pre-release.mjs names <folder>`
+    writes the three packages, and a golden file holds what it writes.
+- **The second answer did not stand the review of its own pull request.** The
+  [policy of npm on names](https://docs.npmjs.com/policies/disputes) forbids publishing a package only to
+  reserve its name, and says that an account that does so "may be removed or renamed without notice". I had not
+  read it before I recommended that way. So record
+  [0052](../adr/0052-the-project-holds-its-names-on-npm.md) is not accepted, the steps of
+  [`docs/releases/npm-names.md`](../releases/npm-names.md) are not to be followed, and the choice is back with
+  you, asked on the same day with four ways: an install into a folder of its own, the pre-release itself on
+  npm, the names held against the policy, or a warning only. I recommend the first.
+- **What the release still waits for.** That choice, and what it asks me to build. The release notes keep the
+  mark `[open]` at that point, and the workflow refuses to publish notes with the mark. After that I start the
+  run that publishes only on your word for that version: it cannot be undone.
 - **The rehearsal.** [Run 1 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882)
   on `main` on 17 November 2026, with "publish" off. The check and the packing passed, and so did all six tries
   of the install line: on Linux, Windows and macOS, each with the npm that Node.js brings and with the newest
@@ -1333,7 +1338,8 @@ way to the pre-release is built. **The pre-release itself is not published.**
   in a rehearsal.
 - **Not done, and not verified.** The install from GitHub, which the workflow tries after it has published.
   The steps for the names on npm were not run: I have no account there. The workflow "Release (dry run)" has
-  never run. `README.md` and `SECURITY.md` say that nothing is published, which stays true until the release.
+  never run. `README.md` and `SECURITY.md` say that no version is published, which stays true until the
+  release.
 
 ## 6. How the results are proven
 

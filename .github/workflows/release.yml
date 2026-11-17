@@ -6,9 +6,10 @@ name: Release (dry run)
 # A pre-release on GitHub is made by pre-release.yml.
 #
 # This workflow has never run. Its last step asks the public registry of npm
-# for the names of both packages, also with --dry-run. The project has not
-# looked whether the names are free (decision record 0050), so do not start
-# it before the maintainer has decided about the names.
+# for the names of both packages, also with --dry-run. Both names were free
+# on 17 November 2026 (decision record 0052). Not verified: whether that step
+# accepts a version with a pre-release part, such as 0.1.0-next.0, without a
+# tag. npm itself refuses to publish one without --tag.
 
 on:
   workflow_dispatch:

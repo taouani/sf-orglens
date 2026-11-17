@@ -40,9 +40,9 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 prints `$ tsc -b` and nothing else.
 
 The third line takes the repository to the commit this plan was written against: the last one of Phase 1 that
-changed the engine or the command line. What came after it are documents, two decision records with your
+changed the engine or the command line. What came after it are documents, two decision records from your
 answers of 17 November 2026 (0051 and 0052), and one step of the script that makes a pre-release. They are on
-`main`, and this plan says where it needs them. Git says that the clone is in "detached HEAD" state, which is
+`main`. Git says that the clone is in "detached HEAD" state, which is
 expected. In a clone you made earlier, run `git fetch origin` first.
 
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your
@@ -75,7 +75,7 @@ by me. The folder `orglens-phase1` in your home folder must not exist yet.
 | A1  | `pnpm run check`                                           | It ends with a table of coverage and the exit code `0`. Of 2,099 tests, 2,064 pass and 35 are skipped where I ran it, as the root user, without the public codebases. With them (part F): 2,088 and 11. As another user or on another system the split differs. No test fails. About ten minutes. |
 | A2  | `pnpm run check:adr`                                       | `50 decision records checked: 27 plan decisions covered once each.`                                                                                                                                                                                                                               |
 | A3  | Open the page **Actions** of the repository, workflow `CI` | The latest run on `main` is green, with jobs for Linux, macOS and Windows on Node.js 24 and 26.                                                                                                                                                                                                   |
-| A4  | Open `docs/adr/README.md`                                  | Records 0035 to 0050 are of this phase. 0036 is superseded by 0038. Records 0039 to 0050 each list choices of mine that are yours to strike. On `main` the file has two more, 0051 and 0052, with your answers of 17 November 2026. 0052 lists choices of mine as well.                           |
+| A4  | Open `docs/adr/README.md`                                  | Records 0035 to 0050 are of this phase. 0036 is superseded by 0038. Records 0039 to 0050 each list choices of mine that are yours to strike. On `main` the file has two more, 0051 and 0052, from your answers of 17 November 2026. 0052 is not accepted.                                         |
 
 ## B. A snapshot is analysed
 
@@ -300,15 +300,17 @@ enough for me to build a case of it in the fixture project.
 
 ## I. The pre-release
 
-The pre-release `0.1.0-next.0` is not published. You decided on 17 November 2026 that the project holds its
-names on npm before it is (record 0052), and the workflow refuses to publish until the release notes say that
-it is done. So this part has a step of yours before it:
+The pre-release `0.1.0-next.0` is not published, and this part waits for it. Two things come first:
 
-1. On `main`, not on the commit of this plan, follow [`docs/releases/npm-names.md`](../releases/npm-names.md):
-   an account on npm, the organization `sf-orglens`, and three publishes of an empty package. Tell me.
-2. I read the names from the registry, take the mark `[open]` out of the release notes in a pull request, and
-   ask for your word. The run that publishes cannot be undone, and I start it only on your word.
-3. The page of the release then holds the install line, and the steps below can be run.
+1. Your choice of how the hole of the install is closed, which the paragraph below the table is about. You
+   chose on 17 November 2026 to hold the names of the packages on npm. The review of that choice found that
+   the policy of npm forbids it, so it is back with you (record 0052, which is not accepted). **Publish nothing
+   on npm until then.**
+2. Your word for the run that publishes. I ask for it when the choice is built and the release notes hold no
+   mark `[open]`. The run cannot be undone.
+
+The page of the release then holds the install line. If your choice changes the way of installing, I write
+the steps below again with it.
 
 | #   | Do                                                                                      | Expect                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -321,9 +323,8 @@ The run of the workflow that publishes also installs from the release on Linux, 
 first install by a person.
 
 **Do not run `npm update --global` or `npm outdated --global` between I2 and I4.** A global install keeps no
-address, so both ask the public registry for the two package names, and the first installs what it finds
-there in the place of OrgLens. With the names held, that is the empty package of the project: `orglens` then
-prints that it is not OrgLens, and the install line of I2 brings it back (records 0050 and 0052).
+address, so both ask the public registry for the two package names, and the first installs whatever it finds
+there in the place of OrgLens. This is the hole the first point above is about (records 0050 and 0052).
 
 ## What this plan cannot show
 
@@ -340,10 +341,11 @@ prints that it is not OrgLens, and the install line of I2 brings it back (record
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. Your word for the run that publishes the pre-release, once the names are held on npm (part I).
-3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
-4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
+2. How the hole of the install is closed (part I). Asked again on 17 November 2026.
+3. Your word for the run that publishes the pre-release, once that is settled (part I).
+4. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
+5. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 
-Three questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does
-not hand out stays an error of a snapshot, the pre-release is not "the first release" of records 0022 and 0027
-(record 0051), and the project holds its names on npm (record 0052).
+Two questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does not
+hand out stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027
+(record 0051).

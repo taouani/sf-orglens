@@ -25,7 +25,8 @@
  *   node scripts/pre-release.mjs names <folder>
  *       Writes into <folder> the three empty packages with which the project holds its names on the registry
  *       of npm (decision record 0052): `sf-orglens`, `@sf-orglens/engine` and `orglens`, each at version 0.0.0.
- *       The maintainer publishes them by hand. docs/releases/npm-names.md has the steps.
+ *       Record 0052 is not accepted: nothing is published under the names before the maintainer has chosen
+ *       again. docs/releases/npm-names.md says so, and has the steps for the maintainer.
  *
  * No step publishes anything. `check`, `pack`, `page` and `names` need no network.
  */
@@ -308,7 +309,11 @@ async function tryInstall(version, from) {
   }
 }
 
-/** The files of one empty package that holds a name. It has no dependency and no script. */
+/**
+ * The files of one empty package that holds a name. It has no dependency and no script. `publishConfig` names
+ * the public registry, so that a registry set in the settings of the person who publishes, or in a folder above,
+ * is not the one the package goes to.
+ */
 function heldName({ name, bin }) {
   const releases = `${REPOSITORY}/releases`;
   const manifest = {
@@ -320,6 +325,7 @@ function heldName({ name, bin }) {
     homepage: REPOSITORY,
     ...(bin ? { bin: { orglens: 'not-orglens.js' } } : {}),
     files: bin ? ['not-orglens.js'] : [],
+    publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
   };
   const files = {
     'package.json': `${JSON.stringify(manifest, null, 2)}\n`,
@@ -355,7 +361,7 @@ function names(folder) {
   }
   console.log(
     `Wrote ${HELD_NAMES.map((held) => held.folder).join(', ')} into ${out}.\n` +
-      'Nothing is published. docs/releases/npm-names.md has the steps.',
+      'Nothing is published. Read docs/releases/npm-names.md first: it says whether the steps are to be followed.',
   );
 }
 
