@@ -8,6 +8,7 @@ Notes written while Phase 1 is built. Claims are marked with the run or the chec
 | [xml-readers.md](xml-readers.md) | The search for a library that gives the place of every decoded character of an XML text, which found none, and what the reader of our own does on the public codebases. |
 | [store-benchmark.md](store-benchmark.md) | The benchmark of Phase 0 run through the real store, at the size of Phase 0 and at twice that size: the size of the database, the time to write a snapshot, the time to read references, and what was changed because of it. |
 | [real-org.md](real-org.md) | What the runs against the test org showed with the larger fixture project of Phase 1: a deploy that Salesforce refused and one it accepted, the snapshot, what Salesforce rewrites, and which of the new pairs of the answer key the Dependency API reports. |
+| [public-codebases.md](public-codebases.md) | Every formula, default value, validation rule, lookup filter and roll-up summary of four public codebases held by hand against what the analysis reports: no wrong reference, four missed ones with their cause. The references by kind and by codebase, and the time of the commands on the codebases and on a made-up source of 100,000 components. |
 
 The notes are kept as written and are not updated when later work supersedes them. The phase plan and the decision
 records are the current truth.

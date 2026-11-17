@@ -26,12 +26,14 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * codebase is pinned by its commit, so a number moves only when the pin or the analysis moves.
  *
  * - `components`: the rows. NPSP has 15 more than the source library lists: objects of which it holds fields
- *   and no file, most of them objects of the packages it builds on.
+ *   and no file, most of them objects of the packages it builds on. PMM has one more than a snapshot of it:
+ *   this test reads the folders as they are, without `.forceignore`, and the source library takes the folder
+ *   `lwc/__tests__`, which holds data of tests and which that file leaves out, for a component.
  * - `analysed`: the objects, fields and validation rules that were read.
  * - `withFormula`: those of them that hold a formula, a default value or a condition. Most are the default
  *   value of a checkbox.
  * - `references`: the references by how the source names the target. The controlling fields are those of
- *   relationships to a field definition: no file of the three names one for a picklist.
+ *   relationships to a field definition: no file of the four names one for a picklist.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
  *   through a lookup of another package four times: no file says where that lookup leads.
  */
@@ -79,6 +81,14 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'value-set': 2,
     },
     issues: { PATH_NOT_FOLLOWED: 4 },
+  },
+  // Added on 17 November 2026, with the codebase.
+  pmm: {
+    components: 1667,
+    analysed: 129,
+    withFormula: 38,
+    references: { 'controlling-field': 1, filter: 4, formula: 133, lookup: 26 },
+    issues: {},
   },
 };
 

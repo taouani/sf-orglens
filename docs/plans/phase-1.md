@@ -1234,6 +1234,46 @@ Accepted when:
 - The fourth pass mark of Q5 holds after the corrections: no wrong reference at the tier `confirmed`, and every
   missed one corrected or named with its cause.
 
+Status on 17 November 2026, with the pull request of the work package. Built: PMM in `fixtures/corpora.toml`,
+the listing a check by hand reads (`pnpm run corpora:listing`), a test that holds what was checked
+(`extraction-corpora-checked.test.ts`), the timing of the commands on the codebases (`pnpm run bench:corpora`),
+and the note [public-codebases.md](../research/phase-1/public-codebases.md). No code of the engine was changed.
+
+- **The check.** I read 368 entries: 89 formula fields, 20 validation rules, 240 default values, 4 lookup
+  filters and 15 roll-up summaries, in PMM, NPSP, Nebula Logger and Apex Recipes. OrgLens reports 616
+  references for them, all at the tier `confirmed`.
+  - **Wrong: 0.**
+  - **Missed: 4**, all in the formula of `Opportunity.Recurring_Donation_Installment_Name__c` of NPSP: the
+    fields `npe03__Open_Ended_Status__c` and `npe03__Installments__c`, each twice, behind the lookup
+    `npe03__Recurring_Donation__r`. The lookup is a field of another package, no file of NPSP says where it
+    leads, and the analysis does not guess. It names each of the four with the warning `PATH_NOT_FOLLOWED`.
+    Nothing was corrected. An org snapshot would hold the file of the lookup, which is not verified.
+  - **Left out by a rule: six names.** `Id` at the end of a path four times, and the custom setting in
+    `$Setup` twice, of which the field is reported. They are rules of record 0042 and yours to strike. The
+    note lists each.
+- **The two acceptance criteria.** The note states the counts, names each missed reference and says what was
+  done: met. The fourth pass mark of Q5 holds: met, with nothing corrected and each of the four named with its
+  cause.
+- **Paths not followed per codebase**: 0 in PMM, 4 in NPSP, 0 in Nebula Logger, 0 in Apex Recipes. Names not
+  resolved: 0 in each.
+- **The times**, as whole commands with the start of Node.js and the printing, least and most of five runs on
+  one Linux machine. A first snapshot with its analysis takes 0.7 to 0.8 seconds for Apex Recipes, 0.8 to 0.9
+  for Nebula Logger, 0.9 to 1.2 for PMM and 3.4 to 4.2 for NPSP. `coverage` and `impact` take 0.1 to 0.2
+  seconds on each. The analysis alone takes 21 to 289 ms.
+- **The size of your targets**, as far as a folder can stand for it. A made-up source of 100,216 components,
+  NPSP with every object copied 98 times, is read, stored and analysed in 17.2 to 17.8 seconds, its database
+  has 84.4 MB, and an impact question takes 0.1 to 0.2 seconds. It is not real and not an org. It has few
+  references, so the impact times of the synthetic org of WP7 stay the ones that count. The 60 minutes of a
+  first snapshot of an org have no measurement behind them still: the time Salesforce takes is not in a
+  folder.
+- **The weakness the plan named stays.** I wrote the analyser and I made the check, once, by reading. Two
+  scripts held the targets and the lookups against the files apart from the engine and found no
+  disagreement. They are not in the repository. No second person read an entry.
+- **Not done, and not verified.** Memory was not measured. Windows and macOS were not measured. The cross-check
+  of a large org needs an org of yours, as WP8 says. The 148 references that are not of an entry (lookups,
+  controlling fields, display fields, value sets) were not read one by one. The status of WP6 gave 1,579
+  files for Nebula Logger. A snapshot holds 1,021, and I did not find where the other number came from.
+
 ### WP11 Phase close
 
 - The overall plan updated, `docs/test-plans/phase-1.md`, a phase report, and the draft of the Phase 2 plan for

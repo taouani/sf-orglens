@@ -25,7 +25,7 @@ url = "https://github.com/jongpie/NebulaLogger.git"
 commit = "b792ac8d8b4eb31b14a164a24951c3cb4125a616"
 licence = "MIT"
 paths = ["nebula-logger/core"]
-use = "Apex together with flows, custom metadata and components. Used from Phase 2."
+use = "Apex together with flows, custom metadata and components. Its formulas and roll-up summaries are checked by hand in Phase 1."
 
 [[corpus]]
 name = "npsp"
@@ -34,3 +34,11 @@ commit = "f5072b44781e7f31cb396c6919cfa7d0ead0ec6a"
 licence = "BSD-3-Clause"
 paths = ["force-app"]
 use = "Scale: more than 10,000 components. Parsed for robustness, speed and memory. Never deployed."
+
+[[corpus]]
+name = "pmm"
+url = "https://github.com/SalesforceFoundation/PMM.git"
+commit = "4c5f3c79b930485f1fafb65b5acd6e1becf8a071"
+licence = "BSD-3-Clause"
+paths = ["force-app"]
+use = "Validation rules and lookup filters. Every formula, rule, filter and roll-up summary is checked by hand in Phase 1."

@@ -33,6 +33,20 @@ pnpm run bench:store node 1 2 --out result.json
 A run with 2 snapshots takes about 35 seconds, and one with 10 snapshots of the org of twice the size about two
 and a half minutes.
 
+`pnpm run bench:corpora` is the third. It times the commands of OrgLens on the public codebases of
+`fixtures/corpora.toml`, as a person runs them: the built command line, a new process for every command.
+
+```sh
+pnpm run build && pnpm run corpora:fetch       # it needs both
+pnpm run bench:corpora                         # every codebase that was downloaded, 5 runs each
+pnpm run bench:corpora pmm --runs 3            # the named ones
+pnpm run bench:corpora npsp --copies 98        # also a made-up source: NPSP with every object copied 98 times
+pnpm run bench:corpora npsp --copies 98 --out result.json
+```
+
+Without `--copies` it takes a few minutes, most of them to find the field of NPSP that most components refer
+to. With `--copies 98` it takes a few minutes more, and half a gigabyte in the temporary folder while it runs.
+
 ## What it measures
 
 `generate.mjs` builds a synthetic org from a fixed seed: about 10,000 top-level components (objects, classes,
@@ -67,6 +81,20 @@ snapshot), `int` (a full copy of every row per snapshot, with integer ids) and `
 
 The time to make the components in memory is given apart, because an analyser makes them and not the store.
 
+`corpora.mjs` gives every run of a codebase a new workspace with one source, the package folders of the
+codebase read from the disk, and measures the whole time of each command, with the start of Node.js and the
+printing:
+
+- `snapshot`, which reads the files, stores them and analyses them, and `analyse`, which analyses them again;
+- `coverage`;
+- `impact` from the field most components refer to, as text and as JSON, and from the first field that exactly
+  one component refers to. It finds the two by asking `impact` for every field, up to 1,000.
+
+It prints the least and the most of the runs, the count of files, components and references, and the size of
+the database. With `--copies n` it also builds a source that is not real: the first named codebase with every
+folder of an object copied `n` times under another name. It stands for a repository with very many objects and
+fields, and it is asked the same two questions as the codebase it is made of.
+
 ## Limits
 
 The org is synthetic. A real org can have many more references, above all if permission grants are stored as
@@ -75,6 +103,8 @@ references did not exist when it was written. It also uses the two SQLite bindin
 reads rows as arrays and keeps its statements prepared. The store prepares a statement once and keeps it, but it
 returns rows as objects and checks every value, so reading many rows through it is slower than the figures here.
 `store.mjs` measures that. Numbers from one machine say little about another: the recorded ones are from Linux.
+`corpora.mjs` measures folders on a disk and no org, and it does not measure memory.
 The numbers of `bench.mjs` are in
-[docs/research/phase-0/store-benchmark.md](../docs/research/phase-0/store-benchmark.md), and those of `store.mjs` in
-[docs/research/phase-1/store-benchmark.md](../docs/research/phase-1/store-benchmark.md).
+[docs/research/phase-0/store-benchmark.md](../docs/research/phase-0/store-benchmark.md), those of `store.mjs` in
+[docs/research/phase-1/store-benchmark.md](../docs/research/phase-1/store-benchmark.md), and those of
+`corpora.mjs` in [docs/research/phase-1/public-codebases.md](../docs/research/phase-1/public-codebases.md).

@@ -247,7 +247,7 @@ describe('the manifest of public codebases', () => {
     expect(listed.stderr).toBe('');
     expect(listed.status).toBe(0);
     const rows = listed.stdout.trim().split('\n');
-    expect(rows.map((row) => row.split('  ')[0])).toEqual(['apex-recipes', 'nebula-logger', 'npsp']);
+    expect(rows.map((row) => row.split('  ')[0])).toEqual(['apex-recipes', 'nebula-logger', 'npsp', 'pmm']);
     for (const row of rows)
       expect(row).toMatch(/^[a-z0-9-]+ {2}[0-9a-f]{40} {2}\S+ {2}https:\/\/github\.com\/\S+\.git$/);
   });
