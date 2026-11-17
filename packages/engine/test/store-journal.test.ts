@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  addChunk,
   addChunks,
   addInventory,
   chunkEnded,
@@ -10,6 +11,7 @@ import {
   countInventory,
   markRetrieved,
   missingComponents,
+  missingPartsOf,
   nextChunk,
   refreshCoverage,
   splitChunk,
@@ -206,6 +208,66 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       ['CustomObject', 0, 0],
       ['Flow', 0, 0],
     ]);
+    store.close();
+  });
+
+  it('names the parts of a parent the org does not list that did not come back, and none of a parent it lists', () => {
+    const store = open();
+    const id = begin(store);
+    addInventory(store, id, [
+      listed('CustomField', 'Per_son.A__c'),
+      listed('CustomField', 'Per_son.B__c'),
+      listed('CustomField', 'Per_son.Back__c'),
+      // An underscore in the name of the parent stands for itself, and a longer name is another parent.
+      listed('CustomField', 'Per-son.C__c'),
+      listed('CustomField', 'Per_sonAccount.D__c'),
+      listed('CustomField', 'Per_son'),
+      listed('RecordType', 'Per_son.Main'),
+      listed('QuickAction', 'Per_son.Call'),
+      listed('CustomObject', 'Invoice__c'),
+      listed('CustomField', 'Invoice__c.Amount__c'),
+    ]);
+    // One part came back, and one came back that the org had not listed.
+    markRetrieved(store, id, [member('CustomField', 'Per_son.Back__c'), member('CustomField', 'Per_son.Extra__c')]);
+    const parts = ['RecordType', 'CustomField'];
+
+    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), parts)).toEqual([
+      member('CustomField', 'Per_son.A__c'),
+      member('CustomField', 'Per_son.B__c'),
+      member('RecordType', 'Per_son.Main'),
+    ]);
+    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), ['RecordType'])).toEqual([
+      member('RecordType', 'Per_son.Main'),
+    ]);
+    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), [])).toEqual([]);
+    expect(missingPartsOf(store, id, member('CustomObject', 'Nobody'), parts)).toEqual([]);
+    // The org lists this parent. It is what is missing, and its part is not asked for alone.
+    expect(missingPartsOf(store, id, member('CustomObject', 'Invoice__c'), parts)).toEqual([]);
+    // A parent that came back unlisted in an earlier retrieve is still one the org does not list.
+    markRetrieved(store, id, [member('CustomObject', 'Per_son')]);
+    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), parts)).toHaveLength(3);
+    expect(missingPartsOf(store, begin(store, 'uat'), member('CustomObject', 'Per_son'), parts)).toEqual([]);
+    store.close();
+  });
+
+  it('adds a chunk at the end of the plan, also to a plan without a chunk', () => {
+    const store = open();
+    const id = begin(store);
+    addChunk(store, id, [member('CustomField', 'Person.A__c')]);
+    addChunks(store, begin(store, 'uat'), [[member('ApexClass', 'A')]]);
+    addChunk(store, id, [member('RecordType', 'Person.Main'), member('CustomField', 'Person.B__c')]);
+    expect(
+      store.all('SELECT seq, status, members, attempts FROM retrieve_chunk WHERE snapshot_id = ? ORDER BY seq', id),
+    ).toEqual([
+      { seq: 0, status: 'pending', members: '[{"type":"CustomField","members":["Person.A__c"]}]', attempts: 0 },
+      {
+        seq: 1,
+        status: 'pending',
+        members: '[{"type":"RecordType","members":["Person.Main"]},{"type":"CustomField","members":["Person.B__c"]}]',
+        attempts: 0,
+      },
+    ]);
+    expect(nextChunk(store, id)).toMatchObject({ seq: 0, status: 'pending', attempts: 0, jobId: null });
     store.close();
   });
 

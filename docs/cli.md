@@ -207,6 +207,13 @@ they have below a package directory, such as `classes/Foo.cls`.
   is seen, so a part of a component and a component in a folder are never taken this way. The files of the
   snapshot keep the short name. The note `RETRIEVED_WITHOUT_PREFIX` says how many components of a type came
   back that way in one retrieve, so a snapshot of many retrieves can hold several for a type.
+- **A part is asked for by its own name when Salesforce cannot find its parent.** A field comes with its object,
+  so a retrieve names the object, also when the org lists the field and not the object. When Salesforce remarks
+  that it cannot find such an object, the fields, record types and other parts of it that the org lists are
+  asked for by their own names in one more retrieve. The note `PARTS_ASKED_BY_NAME` says so. The file that
+  comes back holds those parts and nothing else of the object, and the object counts among the components that
+  came back although the org had not listed them. A part that Salesforce cannot find by its own name either
+  stays missing. Nothing of this is done for an object the org lists: then the object is what is missing.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
@@ -462,12 +469,14 @@ The issue codes of the reading (`stage` is `read`):
 | --------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                |
 | `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`                                                                                                                                                              |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`                                                                                                                                       |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS` and
 `RETRIEVED_WITHOUT_PREFIX` name the type in `details.type`. The names of `RETRIEVED_WITHOUT_PREFIX` are the ones
-the org lists, with the prefix. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
+the org lists, with the prefix. `PARTS_ASKED_BY_NAME` counts and names the components Salesforce cannot find, each
+as type and name, and carries the number of parts that are asked for in `details.parts`. `RETRIEVE_FAILED` and
+`CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and

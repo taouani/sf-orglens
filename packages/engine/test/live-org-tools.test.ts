@@ -676,6 +676,35 @@ describe('what is said about components that are missing', () => {
     ]);
   });
 
+  it('says how many missing components a remark of another form names, and shows the remark without the name', () => {
+    const lines = missingLines(
+      log,
+      [
+        item('CustomObject', 'SecretPlan', true, false),
+        item('CustomObject', 'Takeover', true, false),
+        item('CustomObject', 'Plan', true, false),
+        item('CustomField', 'Hidden.Secret__c', true, false),
+      ],
+      [
+        'You do not have the proper permissions to access SecretPlan.',
+        'You do not have the proper permissions to access Takeover.',
+        'Not a CustomObject type: Takeover',
+        // The name of a field is not the name of its object, and a name inside a longer one is not that name.
+        'You do not have the proper permissions to access Hidden.',
+        'You do not have the proper permissions to access Hidden.Secret__c_2.',
+        'You do not have the proper permissions to access MasterPlan and Plans.',
+        "Entity of type 'CustomObject' named 'Plan' cannot be found",
+      ],
+    );
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomField: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Salesforce remarked of 0 of them that it cannot be found.',
+      '- CustomObject: 3 of 3 did not come back. Forms of the names: a (3). By how the name ends: no ending of a custom object (3). Salesforce remarked of 1 that it cannot be found. A remark of Salesforce of another form holds the name of 2. In everyday words: You do not have the proper permissions to access … (2), Not a … type: … (1).',
+    ]);
+    for (const name of ['Secret', 'Takeover', 'Hidden', 'Plan']) expect(lines.join('\n')).not.toContain(name);
+  });
+
   it('takes what stands before a dot for an object only in the name of a part of an object', () => {
     // A record of custom metadata is named by its type, which is no object of the list and ends as a name does.
     const lines = missingLines(log, [item('CustomMetadata', 'sp__Tag.Secret', true, false)]);

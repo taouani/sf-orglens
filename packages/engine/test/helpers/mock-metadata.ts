@@ -165,6 +165,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const listed: Listed[] = [];
   /** What a retrieve of a member hands out: the component, or the parts of one that has no file of its own. */
   const owners = new Map<string, SourceComponent[]>();
+  /** The parts by their own names. A retrieve of a part hands out the file of its parent with that part alone. */
+  const parts = new Map<string, SourceComponent>();
   const list = (component: SourceComponent, file: SourceComponent): void => {
     if (listed.some((item) => item.type === component.type.name && item.fullName === component.fullName)) return;
     listed.push({
@@ -181,7 +183,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const id = key(owner.type.name, owner.fullName);
     owners.set(id, [...(owners.get(id) ?? []), component]);
     list(owner, owner);
-    for (const part of owner === component ? component.getChildren() : [component]) list(part, owner);
+    for (const part of owner === component ? component.getChildren() : [component]) {
+      list(part, owner);
+      parts.set(key(part.type.name, part.fullName), part);
+    }
   }
 
   let issued = 0;
@@ -223,7 +228,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       // A folder is asked for under the type of what it holds.
       const folderType = folderTypeOf(member.type);
       const asFolder = folderType === null ? id : key(folderType, member.fullName);
-      const owned = owners.get(id) ?? owners.get(asFolder);
+      const part = parts.get(id);
+      const owned = owners.get(id) ?? owners.get(asFolder) ?? (part === undefined ? undefined : [part]);
       // The org knows a component of a package by its name with the prefix only.
       const shortName = inProject === undefined && metadata.packaged.has(id);
       if (owned === undefined || metadata.withheld.has(id) || shortName) {

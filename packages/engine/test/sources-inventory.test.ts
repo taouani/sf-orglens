@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { membersOf, planChunks, splitMembers } from '../src/sources/chunks.ts';
+import { membersOf, parentTypes, planChunks, splitMembers } from '../src/sources/chunks.ts';
 import { takeInventory, type Inventory } from '../src/sources/inventory.ts';
 import {
   metadataApi,
@@ -435,6 +435,53 @@ describe('the plan of a retrieve', () => {
   it('splits the members of a chunk in two halves', () => {
     const members = ['A', 'B', 'C'].map((fullName) => ({ type: 'ApexClass', fullName }));
     expect(splitMembers(members).map((half) => half.map((member) => member.fullName))).toEqual([['A', 'B'], ['C']]);
+    expect(splitMembers(members.slice(0, 1))).toEqual([members.slice(0, 1), []]);
+    expect(splitMembers([])).toEqual([[], []]);
+  });
+
+  it('keeps the parts of one parent in one half, and does not split the parts of a single parent', async () => {
+    const parentOf = await parentTypes();
+    expect(parentOf.get('CustomField')).toBe('CustomObject');
+    expect(parentOf.get('RecordType')).toBe('CustomObject');
+    expect(parentOf.get('WorkflowRule')).toBe('Workflow');
+    expect(parentOf.has('CustomObject')).toBe(false);
+    expect(parentOf.has('ApexClass')).toBe(false);
+
+    const names = (members: readonly { type: string; fullName: string }[]): string[][] =>
+      splitMembers(members, parentOf).map((half) => half.map((member) => `${member.type}:${member.fullName}`));
+    const part = (text: string): { type: string; fullName: string } => {
+      const [type = '', fullName = ''] = text.split(':');
+      return { type, fullName };
+    };
+    // The record type of Person stands after the fields of Other, and goes with the fields of Person.
+    expect(
+      names(
+        ['CustomField:Person.A__c', 'CustomField:Person.B__c', 'CustomField:Other.C__c', 'RecordType:Person.Main'].map(
+          part,
+        ),
+      ),
+    ).toEqual([
+      ['CustomField:Person.A__c', 'CustomField:Person.B__c', 'RecordType:Person.Main'],
+      ['CustomField:Other.C__c'],
+    ]);
+    // A small parent before a large one: each half holds one of them.
+    expect(
+      names(['CustomField:One.A__c', 'CustomField:Two.A__c', 'CustomField:Two.B__c', 'CustomField:Two.C__c'].map(part)),
+    ).toEqual([['CustomField:One.A__c'], ['CustomField:Two.A__c', 'CustomField:Two.B__c', 'CustomField:Two.C__c']]);
+    expect(names(['CustomField:Person.A__c', 'RecordType:Person.Main', 'CustomField:Person.B__c'].map(part))).toEqual([
+      ['CustomField:Person.A__c', 'RecordType:Person.Main', 'CustomField:Person.B__c'],
+      [],
+    ]);
+    // Other members are split as before: a name with a dot of a type that is no part is a member of its own.
+    expect(names(['QuickAction:Person.Call', 'QuickAction:Person.Mail', 'ApexClass:A'].map(part))).toEqual([
+      ['QuickAction:Person.Call', 'QuickAction:Person.Mail'],
+      ['ApexClass:A'],
+    ]);
+    // A part without a dot in its name, such as a custom label, is a member of its own too.
+    expect(names(['CustomLabel:Greeting', 'CustomLabel:Farewell'].map(part))).toEqual([
+      ['CustomLabel:Greeting'],
+      ['CustomLabel:Farewell'],
+    ]);
   });
 });
 

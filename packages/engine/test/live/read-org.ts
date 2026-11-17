@@ -329,6 +329,15 @@ function notFoundNames(remarks: readonly string[]): Map<string, Set<string>> {
   return found;
 }
 
+/** Whether a remark holds a name as a word of its own: with no letter, digit or underscore before or after it. */
+function holdsName(remark: string, name: string): boolean {
+  for (let at = remark.indexOf(name); at !== -1; at = remark.indexOf(name, at + 1)) {
+    const around = `${remark[at - 1] ?? ' '}${remark[at + name.length] ?? ' '}`;
+    if (!/\w/.test(around)) return true;
+  }
+  return false;
+}
+
 const tallied = (counts: ReadonlyMap<string, number>, most = Infinity): string =>
   [...counts]
     .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
@@ -350,7 +359,7 @@ export interface InventoryRow {
  * What can be said about the components the org listed and did not hand out, and about the ones it handed out
  * and had not listed, without a name: how many, of which package state, how their names are built, whether the
  * object or the folder they belong to came back, whether they came back under a name that is nearly the same,
- * and of how many Salesforce remarked that it cannot find them.
+ * of how many Salesforce remarked that it cannot find them, and how many a remark of another form names.
  *
  * `remarks`: what Salesforce remarked about the retrieves, as the engine kept it. `remarksMade`: how many
  * remarks Salesforce made. The engine keeps the first of each retrieve, so the lines say when a count of what
@@ -369,6 +378,8 @@ export function missingLines(
     readonly state: string;
   }
   const notFound = notFoundNames(remarks);
+  /** The remarks that do not say "cannot be found". */
+  const otherRemarks = remarks.filter((remark) => notFoundIn([remark]).length === 0);
   /** The names of the remarks "cannot be found" that a line has spoken of, as type and name. */
   const spokenOf = new Set<string>();
   const remarked = (type: string, names: readonly string[]): number => {
@@ -464,6 +475,22 @@ export function missingLines(
           group.missing.map((item) => item.name),
         );
         if (cannot > 0) parts.push(`Salesforce remarked of ${String(cannot)} that it cannot be found`);
+      }
+      // A remark of another form that holds the name of a missing component. It can be about the component, or
+      // hold a word that is the same as its name.
+      const forms = new Map<string, number>();
+      let held = 0;
+      for (const item of group.missing) {
+        const about = new Set(
+          otherRemarks.filter((remark) => holdsName(remark, item.name)).map((remark) => everydayWords(remark)),
+        );
+        if (about.size > 0) held += 1;
+        for (const form of about) forms.set(form, (forms.get(form) ?? 0) + 1);
+      }
+      if (held > 0) {
+        parts.push(
+          `A remark of Salesforce of another form holds the name of ${String(held)}. In everyday words: ${tallied(forms)}`,
+        );
       }
       // A component that came back under a name that is nearly the one the org listed.
       const twins = new Map<string, number>();

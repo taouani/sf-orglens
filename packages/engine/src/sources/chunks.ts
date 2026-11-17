@@ -11,6 +11,7 @@
  * components of installed packages, and nothing would say so.
  */
 import type { Inventory } from './inventory.ts';
+import { loadSourceLibrary } from './library.ts';
 import type { Member } from './metadata-api.ts';
 import { byCodeUnit } from './tree.ts';
 
@@ -101,8 +102,49 @@ export function planChunks(inventory: Inventory, chunkWeight = DEFAULT_CHUNK_WEI
   return chunks;
 }
 
-/** The two halves of the members of a chunk that failed. A chunk of one member cannot be split. */
-export function splitMembers(members: readonly Member[]): [Member[], Member[]] {
+let parents: Promise<ReadonlyMap<string, string>> | undefined;
+
+/**
+ * The types whose components are parts of a component of another type, each with the type of its parent, as the
+ * Salesforce library describes them: `CustomField` with `CustomObject`.
+ */
+export function parentTypes(): Promise<ReadonlyMap<string, string>> {
+  parents ??= loadSourceLibrary().then(({ registry }) => {
+    const found = new Map<string, string>();
+    for (const type of Object.values(registry.types)) {
+      for (const child of Object.values(type.children?.types ?? {})) found.set(child.name, type.name);
+    }
+    return found;
+  });
+  return parents;
+}
+
+/**
+ * The two halves of the members of a chunk that failed. A chunk of one member cannot be split.
+ *
+ * Parts that are asked for by their own names come back in the file of their parent. So the parts of one parent
+ * stay in one half: in two retrieves the file would come back twice, each time with other parts. `parentOf`
+ * names the types of parts, with the type of their parent. Members that are all parts of one parent cannot be
+ * split.
+ */
+export function splitMembers(
+  members: readonly Member[],
+  parentOf: ReadonlyMap<string, string> = new Map(),
+): [Member[], Member[]] {
+  const groups = new Map<string, number[]>();
+  members.forEach((member, index) => {
+    const parent = parentOf.get(member.type);
+    const dot = member.fullName.indexOf('.');
+    const group = parent !== undefined && dot > 0 ? `${parent}\n${member.fullName.slice(0, dot)}` : String(index);
+    groups.set(group, [...(groups.get(group) ?? []), index]);
+  });
   const middle = Math.ceil(members.length / 2);
-  return [members.slice(0, middle), members.slice(middle)];
+  const first = new Set<number>();
+  const all = [...groups.values()];
+  all.forEach((group, at) => {
+    // The last of several groups goes to the second half if that would be empty otherwise.
+    const last = at === all.length - 1 && at > 0 && first.size === members.length - group.length;
+    if (first.size < middle && !last) for (const index of group) first.add(index);
+  });
+  return [members.filter((_, index) => first.has(index)), members.filter((_, index) => !first.has(index))];
 }

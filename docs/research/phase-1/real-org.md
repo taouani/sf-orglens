@@ -38,6 +38,9 @@ In short:
   components that do not come back, 209 are now warnings. Thirteen components of four types of the tier and
   three files without a known type keep it partial
   ([section 8](#8-the-snapshot-judged-over-the-logic-tier)).
+- Added from run 14: the two corrections that followed hold on the org. The seven bundles of a package count as
+  retrieved, and the three files are warnings. Six components keep the snapshot partial: two objects, and two
+  fields and two record types of objects Salesforce cannot find.
 
 ## Conditions
 
@@ -618,6 +621,58 @@ asked for the listed name and not for the short one. The tool of the run
 now says, without a name, how the name of an object ends, how many objects the fields and record types belong
 to, and of which missing components Salesforce remarked that it cannot find them. None of this was run against
 the org when this section was written.
+
+### Run 14: the two corrections on the org
+
+One read, in run 14 on 17 November 2026, from the commit that holds the corrections of record 0047. Nothing was
+deployed.
+
+| Measurement | Run 13 | Run 14 |
+| --- | --- | --- |
+| Time in all | 118.7 s | 228.2 s: 0.4 s to log in, 6.6 s to ask what the org holds, 221.2 s to retrieve it |
+| Requests to the Metadata API | 372 | 394 |
+| Components the org listed | 1,710, of them 1,488 retrieved | 1,710, of them 1,495 retrieved |
+| Retrieved without being listed | 3,526 | 3,519 |
+| Files | 5,072, together 14.8 MB | 5,072, together 14.8 MB |
+| Status of the snapshot | partial | partial |
+| Observations of the reading | 26 | 25 |
+
+`[run 13]` `[run 14]`
+
+- **The seven bundles count as retrieved.** One note `RETRIEVED_WITHOUT_PREFIX` names seven components of the type
+  `LightningComponentBundle`, and the type shows 7 of 7. The components that came back without being listed are
+  seven fewer. `[run 14]`
+- **The three files are warnings.** `RESOLVE_FAILED` is a warning three times, counted with the type
+  `ContentWorkspacePermission` by the word of the org. So the reading of run 13 holds: the folder of the three
+  files is the one the org describes that type with. `[run 14]`
+- **What keeps the snapshot partial: six components.** `NOT_RETRIEVED` is an error for three types. `[run 14]`
+
+  | What | Count | What the run says about it |
+  | --- | --- | --- |
+  | `CustomField` | 2 of 79 | Unmanaged. They belong to two objects the org does not list. The names of these objects have no ending of a custom object. Salesforce remarked of both objects that it cannot find them. |
+  | `RecordType` | 2 of 2 | Unmanaged. They belong to one object the org does not list, with a name without such an ending. Salesforce remarked of it that it cannot find it. |
+  | `CustomObject` | 2 of 398 | The names have no ending of a custom object. Salesforce did not remark that it cannot find them. |
+
+- **The object of the record types is one of the two objects of the fields.** Salesforce made two remarks that
+  it cannot find an object, and the lines above speak of three objects that it cannot find. The run does not
+  say which of the two it is. `[run 14]`
+- **The nine remarks are the same in number.** Two say that an object cannot be found, and one that the
+  installed package cannot be found. Of the six of a form the tool does not know, two speak of permissions, two
+  say "Not a … type", and two say that a file of the type `StandardValueSetTranslation` cannot be retrieved.
+  Whether the remarks about permissions or about a type are about the two objects that did not come back, the
+  run does not say. `[run 14]`
+- **The retrieve took 221 s, against 114 s in run 13.** The org was retrieved in two chunks in run 14, and the
+  first took 200.0 s. The engine waits for Salesforce in that time. One run each is no measurement of the org.
+  `[run 14]`
+- **Outside the tier nothing changed**: 209 components of 10 types are warnings, and the org refuses to list
+  `ContentWorkspace`. `[run 14]`
+- **The cross-check and the fixture project are as in run 13**: 257 rows with one request, 56 pairs compared,
+  none missed, the same rows in 60 requests in parts, and 87 components in 99 files. `[run 14]`
+
+What followed, in decision record [0049](../../adr/0049-a-part-by-its-own-name.md): when Salesforce remarks that
+it cannot find a component the org does not list, the parts of it that the org lists are asked for by their own
+names in one more retrieve. The tool of the run now says how many of the missing components a remark of
+another form names. Neither was run against the org when this was written. The two objects are not explained.
 
 ## The 23 new pairs the Dependency API does not report
 
