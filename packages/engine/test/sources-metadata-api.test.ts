@@ -80,6 +80,7 @@ describe('the requests to the Metadata API', () => {
       name: 'ApexClass',
       inFolder: false,
       children: [],
+      directory: 'classes',
     });
     expect(mock.requests.at(-1)?.path).toBe('/services/Soap/m/66.0');
   });

@@ -26,6 +26,7 @@ import {
   fileDifference,
   missingLines,
   nameForm,
+  objectKind,
   placeForm,
   readOrg,
   remarkForm,
@@ -591,8 +592,8 @@ describe('what is said about components that are missing', () => {
     expect(lines).toEqual([
       '',
       'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
-      '- CustomObject: 1 of 2 did not come back. Forms of the names: a (1).',
-      '- ListView: 3 of 4 did not come back. Forms of the names: a.a (3). What stands before the dot, as CustomObject: came back (1), did not come back (1), is not in the list (1).',
+      '- CustomObject: 1 of 2 did not come back. Forms of the names: a (1). By how the name ends: ends in __c (1).',
+      '- ListView: 3 of 4 did not come back. Forms of the names: a.a (3). What stands before the dot, as CustomObject: came back (1), did not come back (1), is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1).',
       '- Report: 3 of 3 did not come back. Of a package: 1. State: none (2), installed (1). Forms of the names: a/a (2), unfiled$public/a (1). The folder before the slash, as ReportFolder: came back (1), is not in the list (1), is the folder of unfiled items (1).',
     ]);
     for (const name of ['Secret', 'SECRET', 'Takeover', 'hidden', 'Kept']) expect(lines.join('\n')).not.toContain(name);
@@ -613,17 +614,90 @@ describe('what is said about components that are missing', () => {
     expect(lines).toEqual([
       '',
       'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
-      '- CustomField: 2 of 2 did not come back. Forms of the names: a.a (2). What stands before the dot, as CustomObject: is not in the list (2). Came back, not listed, under a name that differs in what stands before its last dot or slash (1).',
+      '- CustomField: 2 of 2 did not come back. Forms of the names: a.a (2). What stands before the dot, as CustomObject: is not in the list (2). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Came back, not listed, under a name that differs in what stands before its last dot or slash (1).',
       '- LightningComponentBundle: 1 of 1 did not come back. Forms of the names: a (1). Came back, not listed, under a name that differs only in the prefix of a package (1).',
-      '- RecordType: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Came back, not listed, under a name that differs only in upper and lower case (1).',
+      '- RecordType: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Came back, not listed, under a name that differs only in upper and lower case (1).',
       '- Report: 1 of 1 did not come back. Forms of the names: a/a%a (1). The folder before the slash, as ReportFolder: is not in the list (1). Came back, not listed, under a name that differs only in how a character is encoded (1).',
       '',
       'Components the org handed out and had not listed, by type:',
-      '- CustomField: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+      '- CustomField: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1).',
       '- LightningComponentBundle: 1. Forms of the names: a (1).',
-      '- RecordType: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+      '- RecordType: 1. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1).',
       '- Report: 1. Forms of the names: a/a.a (1). The folder before the slash, as ReportFolder: is not in the list (1).',
     ]);
+  });
+
+  it('says of how many Salesforce remarked that it cannot find them, and what kind of object a name is of', () => {
+    const cannot = (type: string, name: string): string => `Entity of type '${type}' named '${name}' cannot be found`;
+    const lines = missingLines(
+      log,
+      [
+        item('CustomObject', 'Account', true, true),
+        item('CustomObject', 'SecretPlan', true, false),
+        item('CustomObject', 'Secret_Plan__x', true, false),
+        item('CustomObject', 'Secret_Plan__zz', true, false),
+        item('CustomField', 'Takeover.Secret__c', true, false),
+        item('CustomField', 'Takeover.Other__c', true, false),
+        item('RecordType', 'Hidden__c.Secret', true, false),
+        // A short name after a prefix looks like the ending of a custom object. The prefix the org states decides.
+        item('LightningComponentBundle', 'sp__plan', true, false, { namespacePrefix: 'sp' }),
+        item('LightningComponentBundle', 'plan', false, true),
+      ],
+      [
+        cannot('CustomObject', 'SecretPlan'),
+        cannot('CustomObject', 'Takeover'),
+        cannot('CustomObject', 'Account'),
+        cannot('InstalledPackage', 'sp'),
+        'Something else Salesforce said about Takeover',
+      ],
+    );
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomField: 2 of 2 did not come back. Forms of the names: a.a (2). What stands before the dot, as CustomObject: is not in the list (2). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Salesforce remarked of 1 of them that it cannot be found.',
+      '- CustomObject: 3 of 4 did not come back. Forms of the names: a (3). By how the name ends: an ending that is not shown (1), ends in __x (1), no ending of a custom object (1). Salesforce remarked of 1 that it cannot be found.',
+      '- LightningComponentBundle: 1 of 1 did not come back. Of a package: 1. Forms of the names: a (1). Came back, not listed, under a name that differs only in the prefix of its package (1).',
+      '- RecordType: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: ends in __c (1). Salesforce remarked of 0 of them that it cannot be found.',
+      '',
+      'Components the org handed out and had not listed, by type:',
+      '- LightningComponentBundle: 1. Forms of the names: a (1).',
+      '',
+      'Other names Salesforce remarked it cannot find, by type: CustomObject, a component that came back all the same (1), InstalledPackage, a name the org did not list (1).',
+    ]);
+    for (const name of ['Secret', 'Takeover', 'Hidden', 'plan', 'zz']) expect(lines.join('\n')).not.toContain(name);
+    expect(['Account', 'Invoice__c', 'A__mdt', 'A_b__Share', 'ns__Thing', 'ns__Thing__c'].map(objectKind)).toEqual([
+      'no ending of a custom object',
+      'ends in __c',
+      'ends in __mdt',
+      // An ending no kind of custom object has is part of a name the org chose.
+      'an ending that is not shown',
+      'an ending that is not shown',
+      'ends in __c',
+    ]);
+  });
+
+  it('takes what stands before a dot for an object only in the name of a part of an object', () => {
+    // A record of custom metadata is named by its type, which is no object of the list and ends as a name does.
+    const lines = missingLines(log, [item('CustomMetadata', 'sp__Tag.Secret', true, false)]);
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomMetadata: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+    ]);
+  });
+
+  it('says when the snapshot kept fewer remarks than Salesforce made', () => {
+    const remark = "Entity of type 'CustomObject' named 'SecretPlan' cannot be found";
+    const items = [item('CustomObject', 'SecretPlan', true, false)];
+    expect(missingLines(log, items, [remark], 1).at(-1)).toBe(
+      '- CustomObject: 1 of 1 did not come back. Forms of the names: a (1). By how the name ends: no ending of a custom object (1). Salesforce remarked of 1 that it cannot be found.',
+    );
+    expect(missingLines(log, items, [remark], 70).slice(-2)).toEqual([
+      '',
+      'Salesforce made 70 remarks about the retrieves, and the snapshot keeps 1 of them. The counts above of what Salesforce cannot find can be too low.',
+    ]);
+    // Nothing is missing: there is no count that could be too low.
+    expect(missingLines(log, [item('CustomObject', 'SecretPlan', true, true)], [], 70)).toEqual([]);
   });
 });
 

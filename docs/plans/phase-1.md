@@ -1075,16 +1075,50 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
   not judged by tier, and `FILES_NOT_METADATA` stays a warning in every tier. Record 0046 lists both, and three
   places of the code that no test reaches.
 
-Status on 17 November 2026, with the second pull request of the work package. It holds the key.
+Status on 17 November 2026, with the pull request that looks at the test org. The key in `orglens.toml` is built
+in a pull request of its own, whose status follows this one.
+
+- **Run 13 of the test org**, the first with the judgement over the logic tier
+  ([real-org.md](../research/phase-1/real-org.md#8-the-snapshot-judged-over-the-logic-tier)): **the snapshot is
+  partial, so the first acceptance criterion is not met yet.** What keeps it partial, per type:
+  - 7 of 7 `LightningComponentBundle`. They are bundles of an installed package, listed with its prefix. Seven
+    bundles came back that the org had not listed.
+  - 2 of 398 `CustomObject`. Not explained.
+  - 2 of 79 `CustomField` and 2 of 2 `RecordType`. The object before the dot is not among the objects the org
+    lists. Not explained further.
+  - 3 files that cannot be read as metadata, in a folder the Salesforce library knows no type for. Most likely
+    they are the three `ContentWorkspacePermission` the org lists, a type this version of the library does not
+    know. That is a reading of the counts.
+  - Custom labels, the fifth open point of Phase 0, come back since the org has a label.
+- **What no longer makes it partial:** 209 components of 10 types outside the tier, and one listing the org
+  refuses. They are warnings, per type and with a count, as the second acceptance criterion asks.
+- **Built for it**, with record [0047](../adr/0047-what-the-org-says-where-the-library-falls-short.md):
+  - A file in a folder the library knows no type for is counted by the type the org describes with that folder.
+    If the reading above holds, the three files become warnings.
+  - A component of a package that comes back under its name without the prefix of the package counts as the
+    one the org listed, when the retrieve asked for the listed name and not for the short one, and Salesforce
+    did not remark that it cannot find it. If the seven bundles are what they look like, they count as
+    retrieved.
+  - The step that reads the test org says more about the objects, fields and record types, without a name.
+- **Choices of mine, for you to strike.** Record 0047 has the reasons: that the word of the org decides the tier
+  of a file the library cannot place, that the rule for the prefix holds for every type that is retrieved by
+  its own name although it was seen for one, that the rule leaves a component missing rather than count one for
+  another, and that the name a component came back with is not kept in the database.
+- **Not done, and not verified:** neither correction was run against the org when this was written. The two
+  objects, two fields and two record types are not explained, so the snapshot of the test org is expected to
+  stay partial for six components after the next run. That run is recorded here when it is made.
+
+Status on 17 November 2026, with the pull request that holds the key. It was the second to be opened and the
+last of the three to be merged.
 
 - **What it rests on.** You were asked on 17 November 2026 whether to keep the key, with my recommendation to
   keep it, and chose "Keep the key" on the same day. I had built it as proposed while the question was open, and
-  merged the pull request after your answer. Record [0047](../adr/0047-types-a-snapshot-leaves-out.md) is
+  merged the pull request after your answer. Record [0048](../adr/0048-types-a-snapshot-leaves-out.md) is
   `Accepted`.
 - **Built:** the key `exclude_types` of a source of the kind `org` or `sandbox` in `orglens.toml`, the listing
   `excluded` in the coverage of a snapshot with migration 7 of the database, the note `TYPES_EXCLUDED` and the
   warning `TYPE_NOT_EXCLUDED`, `left out` in the text of `coverage`, `excludeTypes` in the JSON output of
-  `status` and the `source` commands, `docs/configuration.md`, `docs/cli.md`, the JSON Schema and record 0047.
+  `status` and the `source` commands, `docs/configuration.md`, `docs/cli.md`, the JSON Schema and record 0048.
 - **Against the acceptance criterion** "a type it leaves out is not retrieved and is named in `coverage` as not
   read. A type of the logic tier in the key is an error": met against the mock org, which is asked neither for
   the components of such a type nor for its folders, and whose snapshot and `coverage` name the type as left
@@ -1092,7 +1126,7 @@ Status on 17 November 2026, with the second pull request of the work package. It
   the tier before anything is read. Not run against a real org, and how much time the key saves on an org with
   many reports is not measured. No test runs `impact` of the command line on such a snapshot, and no snapshot
   of a source of the kind `sandbox` is taken with the key.
-- **Choices of mine, for you to strike.** Record 0047 has the reasons.
+- **Choices of mine, for you to strike.** Record 0048 has the reasons.
   - The name `exclude_types`, and that it is a key of the source and not of the workspace.
   - A type that is left out is not listed at all, so `coverage` shows no count for it.
   - The parts and the folders of a type go with it, and a part or a folder type cannot be named alone.
@@ -1102,7 +1136,7 @@ Status on 17 November 2026, with the second pull request of the work package. It
   - No option of the command line for the key. It is written by hand.
 - **Not done:** leaving out the components of managed packages, single components, folders or name patterns. The
   cross-check with the Dependency API is not narrowed by the key, and can come out `partial` for a type that was
-  left out and has more rows than one answer holds. Record 0047 says how.
+  left out and has more rows than one answer holds. Record 0048 says how.
 
 ### WP10 Proof on public codebases, and measurements
 

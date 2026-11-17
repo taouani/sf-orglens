@@ -49,6 +49,7 @@ import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { notFoundIn } from '../../src/sources/metadata-api.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
@@ -284,6 +285,50 @@ const ALIKE: readonly { readonly how: string; readonly of: (name: string) => str
 /** The most forms of names that are shown for one type. */
 const FORMS_SHOWN = 4;
 
+/** The endings Salesforce gives the name of an object by its kind. No org chooses them. */
+const OBJECT_ENDINGS: ReadonlySet<string> = new Set([
+  '__c',
+  '__mdt',
+  '__e',
+  '__b',
+  '__x',
+  '__kav',
+  '__ka',
+  '__dlm',
+  '__dll',
+  '__chn',
+]);
+
+/** The types whose components are parts of an object, so that an object stands before the dot of their name. */
+let partsOfObject: ReadonlySet<string> | undefined;
+function isPartOfObject(type: string): boolean {
+  partsOfObject ??= new Set(
+    Object.values(registry.types['customobject']?.children?.types ?? {}).map((part) => part.name),
+  );
+  return partsOfObject.has(type);
+}
+
+/**
+ * How the name of an object ends: with an ending Salesforce gives a kind of custom object, or with none, as the
+ * name of a standard object does. It says what kind of object it is and nothing of its name. It is asked only
+ * of the name of an object: of a component of the type `CustomObject`, and of what stands before the dot in the
+ * name of a part of one.
+ */
+export function objectKind(name: string): string {
+  const ending = /__[A-Za-z]{1,8}$/.exec(name)?.[0];
+  if (ending === undefined) return 'no ending of a custom object';
+  return OBJECT_ENDINGS.has(ending) ? `ends in ${ending}` : 'an ending that is not shown';
+}
+
+/** The names Salesforce said it cannot find in a retrieve, by type. The names are compared and never shown. */
+function notFoundNames(remarks: readonly string[]): Map<string, Set<string>> {
+  const found = new Map<string, Set<string>>();
+  for (const { type, fullName } of notFoundIn(remarks)) {
+    found.set(type, (found.get(type) ?? new Set<string>()).add(fullName));
+  }
+  return found;
+}
+
 const tallied = (counts: ReadonlyMap<string, number>, most = Infinity): string =>
   [...counts]
     .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
@@ -304,15 +349,34 @@ export interface InventoryRow {
 /**
  * What can be said about the components the org listed and did not hand out, and about the ones it handed out
  * and had not listed, without a name: how many, of which package state, how their names are built, whether the
- * object or the folder they belong to came back, and whether they came back under a name that is nearly the
- * same.
+ * object or the folder they belong to came back, whether they came back under a name that is nearly the same,
+ * and of how many Salesforce remarked that it cannot find them.
+ *
+ * `remarks`: what Salesforce remarked about the retrieves, as the engine kept it. `remarksMade`: how many
+ * remarks Salesforce made. The engine keeps the first of each retrieve, so the lines say when a count of what
+ * Salesforce cannot find can be too low.
  */
-export function missingLines(log: PublicLog, items: readonly InventoryRow[]): string[] {
+export function missingLines(
+  log: PublicLog,
+  items: readonly InventoryRow[],
+  remarks: readonly string[] = [],
+  remarksMade = remarks.length,
+): string[] {
   interface Item {
     readonly name: string;
     readonly packaged: boolean;
+    readonly prefix: string;
     readonly state: string;
   }
+  const notFound = notFoundNames(remarks);
+  /** The names of the remarks "cannot be found" that a line has spoken of, as type and name. */
+  const spokenOf = new Set<string>();
+  const remarked = (type: string, names: readonly string[]): number => {
+    const said = notFound.get(type);
+    const hit = names.filter((name) => said?.has(name) === true);
+    for (const name of hit) spokenOf.add(`${type}\u0000${name}`);
+    return hit.length;
+  };
   const types = new Map<string, { listed: number; missing: Item[]; unlisted: Item[] }>();
   const states = new Map<string, 'retrieved' | 'not retrieved'>();
   for (const row of items) {
@@ -322,6 +386,7 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
     const item: Item = {
       name: row.fullName,
       packaged: (row.namespacePrefix ?? '') !== '',
+      prefix: row.namespacePrefix ?? '',
       state: log.name(row.manageableState) ?? 'none',
     };
     if (row.listed) group.listed += 1;
@@ -335,7 +400,7 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
     return counts;
   };
   /** Whether what a name belongs to, an object or a folder, is in the snapshot. */
-  const owners = (names: readonly Item[], mark: string, ownerType: string): string | null => {
+  const owners = (type: string, names: readonly Item[], mark: string, ownerType: string): string | null => {
     // A name in a folder can hold a dot of its own. It belongs to the folder, not to an object.
     const owned = names.filter((item) => item.name.includes(mark) && (mark === '/' || !item.name.includes('/')));
     if (owned.length === 0) return null;
@@ -347,7 +412,22 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
         return state === undefined ? 'is not in the list' : state === 'retrieved' ? 'came back' : 'did not come back';
       }),
     );
-    return `${mark === '.' ? 'What stands before the dot, as' : 'The folder before the slash, as'} ${shown(ownerType)}: ${tallied(found)}`;
+    const said = `${mark === '.' ? 'What stands before the dot, as' : 'The folder before the slash, as'} ${shown(ownerType)}: ${tallied(found)}`;
+    // The objects the org does not list: how many they are, of what kind, and whether Salesforce cannot find them.
+    const strangers = [
+      ...new Set(
+        owned
+          .map((item) => item.name.slice(0, item.name.indexOf(mark)))
+          .filter((owner) => owner !== 'unfiled$public' && !states.has(`${ownerType}\u0000${owner}`)),
+      ),
+    ];
+    // What stands before the dot is the name of an object only for a part of an object.
+    if (mark !== '.' || strangers.length === 0 || !isPartOfObject(type)) return said;
+    const cannot = remarked(ownerType, strangers);
+    return (
+      `${said}. Not in the list: ${plural(strangers.length, 'object', 'different objects')}, by how the name ends: ${tallied(tally(strangers.map(objectKind)))}` +
+      (notFound.size > 0 ? `. Salesforce remarked of ${String(cannot)} of them that it cannot be found` : '')
+    );
   };
   const about = (type: string, names: readonly Item[]): string[] => {
     const parts: string[] = [];
@@ -356,9 +436,11 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
     const stated = tally(names.map((item) => item.state));
     if (stated.size > 1 || !stated.has('none')) parts.push(`State: ${tallied(stated)}`);
     parts.push(`Forms of the names: ${tallied(tally(names.map((item) => nameForm(item.name))), FORMS_SHOWN)}`);
-    const object = owners(names, '.', 'CustomObject');
+    if (type === 'CustomObject')
+      parts.push(`By how the name ends: ${tallied(tally(names.map((item) => objectKind(item.name))))}`);
+    const object = owners(type, names, '.', 'CustomObject');
     if (object !== null) parts.push(object);
-    const folder = owners(names, '/', type === 'EmailTemplate' ? 'EmailFolder' : `${type}Folder`);
+    const folder = owners(type, names, '/', type === 'EmailTemplate' ? 'EmailFolder' : `${type}Folder`);
     if (folder !== null) parts.push(folder);
     return parts;
   };
@@ -376,9 +458,27 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
         `${String(group.missing.length)} of ${String(group.listed)} did not come back`,
         ...about(type, group.missing),
       ];
+      if (notFound.size > 0) {
+        const cannot = remarked(
+          type,
+          group.missing.map((item) => item.name),
+        );
+        if (cannot > 0) parts.push(`Salesforce remarked of ${String(cannot)} that it cannot be found`);
+      }
       // A component that came back under a name that is nearly the one the org listed.
       const twins = new Map<string, number>();
       for (const item of group.missing) {
+        // The prefix the org states for the component says more than the form of the name: a short name after a
+        // prefix looks like the ending of a custom object.
+        const short =
+          item.prefix !== '' && item.name.startsWith(`${item.prefix}__`)
+            ? item.name.slice(item.prefix.length + 2)
+            : null;
+        if (short !== null && group.unlisted.some((other) => other.name.toLowerCase() === short.toLowerCase())) {
+          const how = 'only in the prefix of its package';
+          twins.set(how, (twins.get(how) ?? 0) + 1);
+          continue;
+        }
         const rule = ALIKE.find(({ of }) => group.unlisted.some((other) => of(other.name) === of(item.name)));
         if (rule !== undefined) twins.set(rule.how, (twins.get(rule.how) ?? 0) + 1);
       }
@@ -392,6 +492,25 @@ export function missingLines(log: PublicLog, items: readonly InventoryRow[]): st
     for (const [type, group] of withUnlisted) {
       lines.push(`- ${shown(type)}: ${[String(group.unlisted.length), ...about(type, group.unlisted)].join('. ')}.`);
     }
+  }
+  // What Salesforce cannot find and no line above has spoken of.
+  const rest = new Map<string, number>();
+  for (const [type, names] of notFound) {
+    for (const name of names) {
+      if (spokenOf.has(`${type}\u0000${name}`)) continue;
+      const state = states.get(`${type}\u0000${name}`);
+      const what = `${shown(type)}, ${state === undefined ? 'a name the org did not list' : state === 'retrieved' ? 'a component that came back all the same' : 'a component that did not come back'}`;
+      rest.set(what, (rest.get(what) ?? 0) + 1);
+    }
+  }
+  if (rest.size > 0) {
+    lines.push('', `Other names Salesforce remarked it cannot find, by type: ${tallied(rest)}.`);
+  }
+  if (lines.length > 0 && remarksMade > remarks.length) {
+    lines.push(
+      '',
+      `Salesforce made ${String(remarksMade)} remarks about the retrieves, and the snapshot keeps ${String(remarks.length)} of them. The counts above of what Salesforce cannot find can be too low.`,
+    );
   }
   return lines;
 }
@@ -503,6 +622,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
     { issues: number; components: number; types: Set<string>; codes: Map<string, number> }
   >();
   const remarks = new Map<string, number>();
+  const allRemarks: string[] = [];
   const unread = new Map<string, number>();
   const typeNames = new Set(types.map((type) => log.name(type['type'])).filter((name) => name !== null));
   let remarksInAll = 0;
@@ -536,6 +656,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
       for (const remark of Array.isArray(details['messages']) ? (details['messages'] as unknown[]) : []) {
         const form = remarkForm(log, remark, typeNames);
         remarks.set(form, (remarks.get(form) ?? 0) + 1);
+        allRemarks.push(text(remark));
       }
     }
     if (code === 'RESOLVE_FAILED') {
@@ -582,6 +703,8 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
       namespacePrefix: text(row['namespace_prefix']) || null,
       manageableState: text(row['manageable_state']) || null,
     })),
+    allRemarks,
+    remarksInAll,
   )) {
     log.say(line);
   }

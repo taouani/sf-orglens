@@ -1,4 +1,4 @@
-# 0047. A key in `orglens.toml` leaves metadata types out of a snapshot of an org
+# 0048. A key in `orglens.toml` leaves metadata types out of a snapshot of an org
 
 - Status: Accepted
 - Date: 2026-11-17

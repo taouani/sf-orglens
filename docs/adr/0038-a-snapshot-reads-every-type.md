@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-15
 - Decisions: none (a change the maintainer made when approving the Phase 1 plan)
-- Changed by: [0047](0047-types-a-snapshot-leaves-out.md), in the one point this record leaves undecided: `orglens.toml` gets a key that leaves types outside the logic tier out of a snapshot. A type that is left out is not listed
+- Changed by: [0048](0048-types-a-snapshot-leaves-out.md), in the one point this record leaves undecided: `orglens.toml` gets a key that leaves types outside the logic tier out of a snapshot. A type that is left out is not listed
 
 ## Context
 

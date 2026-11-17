@@ -1,7 +1,7 @@
 import type { Migration } from './migration.ts';
 
 /**
- * A type that a snapshot of an org leaves out (decision record 0047).
+ * A type that a snapshot of an org leaves out (decision record 0048).
  *
  * The configuration of a source can name types that a snapshot does not read. Such a type is kept in the
  * coverage of the snapshot with the listing `excluded`, so that a report and an answer can say that it was not

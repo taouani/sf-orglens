@@ -41,6 +41,9 @@ export interface Unpacked {
    * every type that is a part of one of those, such as `CustomField` for `objects`. It is
    * empty where nothing tells the type: a folder no type is known for, a file outside every folder, something
    * beside what was asked for.
+   *
+   * `folder`: the folder of the retrieve the file lies in, as the org names it, such as `objects`. It is null
+   * for a component, for a file in no folder, and for what is not a path of the retrieve.
    */
   readonly problems: readonly Problem[];
   /** Files that were converted and belong to no component, sorted. */
@@ -51,6 +54,13 @@ interface Problem {
   readonly at: string;
   readonly message: string;
   readonly types: readonly string[];
+  readonly folder: string | null;
+}
+
+/** The folder a path of a retrieve starts with, or null for a file in no folder. */
+function folderOf(path: string): string | null {
+  const slash = path.indexOf('/');
+  return slash > 0 ? path.slice(0, slash) : null;
 }
 
 /** The folder of a zip file that holds what was asked for by name. */
@@ -132,7 +142,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
       }
       if (problems.length === before) {
         const at = path.slice(ZIP_ROOT.length + 1);
-        problems.push({ at, message: said(error), types: typesAt(at) });
+        problems.push({ at, message: said(error), types: typesAt(at), folder: folderOf(at) });
       }
     }
   };
@@ -160,6 +170,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
       at: name,
       message: `It is outside the folder "${ZIP_ROOT}" of the zip file, so it was not read.`,
       types: [],
+      folder: null,
     });
   }
 
@@ -176,6 +187,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         at: `${component.type.name} ${component.fullName}`,
         message: said(error),
         types: [component.type.name],
+        folder: null,
       });
     }
   }
@@ -187,7 +199,12 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
       if (container.isDirectory(path)) walk(path);
       else if (!claimed.has(path)) {
         const at = path.slice(ZIP_ROOT.length + 1);
-        problems.push({ at, message: 'The file belongs to no metadata type that is known.', types: typesAt(at) });
+        problems.push({
+          at,
+          message: 'The file belongs to no metadata type that is known.',
+          types: typesAt(at),
+          folder: folderOf(at),
+        });
       }
     }
   };
@@ -214,6 +231,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
             at: `${component.type.name} ${component.fullName}`,
             message: said(error),
             types: [component.type.name],
+            folder: null,
           });
         }
       }
@@ -233,7 +251,13 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     },
   };
   for (const path of reading.tree.files.filter((one) => !one.startsWith(CONVERTED))) {
-    problems.push({ at: path, message: 'The file was converted to a place where no metadata is expected.', types: [] });
+    // The path is one of the work folder, not of the retrieve: no folder of the org is in it.
+    problems.push({
+      at: path,
+      message: 'The file was converted to a place where no metadata is expected.',
+      types: [],
+      folder: null,
+    });
   }
 
   const resolution = await resolveComponents(tree, ['']);
@@ -247,6 +271,7 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         at,
         message,
         types: type === undefined ? typesAt(at) : [type],
+        folder: type === undefined ? folderOf(at) : null,
       })),
     ],
     unresolved: resolution.unresolved,
