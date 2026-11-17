@@ -304,7 +304,9 @@ and the layout of every other line stay exactly as they were.
 - A command that waited for the lock for a second or longer, or held it that long, writes the two times to the
   log of the workspace (`config.lock.slow`).
 - On Windows a file cannot be replaced while a program has it open. OrgLens then tries the move again for up to
-  a third of a second, and does the same when it reads a file at the moment another command replaces it.
+  a third of a second, and does the same when it reads a file at the moment another command replaces it, and
+  when Windows refuses to create, read or remove the lock file. A command that was refused at the lock and tried
+  again writes how often, and with which error codes, to the log of the workspace (`config.lock.refused`).
 - The file has to be UTF-8. A file in another encoding is refused, not converted.
 - Some ways of writing TOML cannot be changed safely as text: sources written as inline tables or with dotted keys
   such as `sources.prod.kind = "org"`, for example. That holds for both files. The commands then stop with the error

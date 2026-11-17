@@ -27,6 +27,8 @@ export function pause(milliseconds: number): void {
 export interface BusySystem {
   readonly platform: string;
   readonly pause: (milliseconds: number) => void;
+  /** Called with the code of each refusal after which the step is tried again. */
+  readonly refused?: ((code: string) => void) | undefined;
 }
 
 /** What the write takes from the system. A test puts its own in. */
@@ -42,21 +44,24 @@ const SYSTEM: AtomicWriteSystem = { platform: process.platform, rename: renameSy
  * A write happens while the lock of the configuration is held, and another command waits for that lock
  * (`config-lock.ts`). A refusal that passes costs a few milliseconds. One that does not pass, such as a file
  * that is read-only, costs each command the whole third of a second while it holds the lock. Each command of a
- * queue then ends with the real cause, a little later.
+ * queue then ends with the real cause, a little later. The creation of the lock itself uses the same pauses
+ * before the lock is held, where a refusal that stays delays no other command.
  */
 export const BUSY_PAUSES_MS: readonly number[] = [5, 10, 20, 40, 80, 160];
 
-/** What Windows answers through Node.js when a file is open elsewhere or is being replaced. */
+/** What Windows answers through Node.js when a file is open elsewhere, is being replaced or is being removed. */
 const BUSY_ON_WINDOWS: ReadonlySet<unknown> = new Set(['EPERM', 'EBUSY']);
 
 /**
- * Does one step on a file, and on Windows does it again for a short while if the file is busy.
+ * Does one step on a file, and on Windows does it again for a short while if Windows refuses it.
  *
  * Windows refuses to replace a file for as long as any process has it open, and it can refuse to open a file at
  * the moment another process replaces it. One CI run failed in that way: eight commands changed the
  * configuration at the same moment, and one move was refused with `EPERM`. Most likely another of the commands
- * was reading the file. Which process had it open is not known. A virus scanner does the same. Both steps are
- * safe to repeat. On other systems these codes do not pass by waiting, and the error is passed on at once.
+ * was reading the file. Which process had it open is not known. A virus scanner does the same. A second run
+ * failed when a command created the lock of the configuration (`config-lock.ts`). The steps that are done
+ * through this function are a move, a read, a removal and the creation of a file that must not exist, and each
+ * is safe to repeat. On other systems these codes do not pass by waiting, and the error is passed on at once.
  * Windows gives the same codes for a file that is read-only, so there a failure that stays is reported a third
  * of a second later.
  */
@@ -66,7 +71,9 @@ export function whileBusyOnWindows<T>(step: () => T, system: BusySystem = SYSTEM
       return step();
     } catch (error) {
       const wait = system.platform === 'win32' ? BUSY_PAUSES_MS[attempt] : undefined;
-      if (wait === undefined || !BUSY_ON_WINDOWS.has((error as { code?: unknown }).code)) throw error;
+      const code = (error as { code?: unknown }).code;
+      if (wait === undefined || !BUSY_ON_WINDOWS.has(code)) throw error;
+      system.refused?.(String(code));
       system.pause(wait);
     }
   }

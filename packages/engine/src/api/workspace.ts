@@ -465,10 +465,14 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       // The folder may be a fresh clone that has the configuration and nothing else. The file that keeps the data
       // folder out of Git comes first, before the lock, the log and the personal file are written into it.
       ensureDataDir(paths);
-      // A lock that was slow is the only trace of what made a command wait, so it goes to the log.
+      // A lock that was slow is the only trace of what made a command wait, so it goes to the log. So does a
+      // step on the lock that Windows refused and that was tried again.
       const slowLock: LockOptions = {
         slow: (times) => {
           workspaceLogger(paths).warn('config.lock.slow', { ...times });
+        },
+        refused: (refusals) => {
+          workspaceLogger(paths).warn('config.lock.refused', { ...refusals });
         },
       };
       withConfigLock(
