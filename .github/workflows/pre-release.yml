@@ -21,12 +21,14 @@ name: Pre-release
 # GitHub Actions: this repository, workflow pre-release.yml, environment
 # npm-next, with "npm publish" and "npm dist-tag" allowed). A package has
 # settings only once it exists, so the first publish used a secret NPM_TOKEN
-# of the environment instead (version 0.1.0-next.0, 17 November 2026). npm
-# tries trusted publishing first, so a run that works with the secret present
-# proves nothing: the secret is deleted after the first publish. A new trusted
-# publisher expires when it has not published within two days, so it is set up
-# shortly before the second pre-release. docs/releases/publishing.md has the
-# steps of the maintainer, and what the first publish showed.
+# of the environment instead (version 0.1.0-next.0, 17 November 2026). Since
+# then the job gives npm no token and does not read that secret: npm tries
+# trusted publishing first and falls back to a token, so a run with a token
+# would say nothing about trusted publishing. A package that is not on npm yet
+# cannot be published by this workflow as it is. A new trusted publisher
+# expires when no version is published through it within two days.
+# docs/releases/publishing.md has the steps of the maintainer, and what the
+# first publish showed.
 #
 # Each publish also moves the tag "latest" to the new version, while "latest"
 # is a pre-release: npm install and npm update without a tag follow "latest",
@@ -221,13 +223,28 @@ jobs:
       # errors of npm itself, are tried again, three attempts in all. Any other error stops at once.
       - name: Publish the two packages with the tag next
         env:
-          # Empty once the secret is deleted: npm then relies on trusted publishing alone.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Empty on purpose. npm tries trusted publishing first and falls back to a token, so with a token a
+          # run would say nothing about trusted publishing. The secret NPM_TOKEN of the first publish is no
+          # longer read.
+          NODE_AUTH_TOKEN: ''
           VERSION: ${{ inputs.version }}
         run: |
           set -o pipefail
           log=$(mktemp)
           shown() { npm view "$1@$VERSION" dist.integrity 2>/dev/null; }
+          # Why npm did not accept the identity of the workflow is written only to the log file of npm, which
+          # is lost with the machine. npm names the file in its error, and keeps it in the folder of its cache.
+          # The lines of the file on the identity are shown, without anything that has the form of a token.
+          why() {
+            file=$(sed -n 's/.*A complete log of this run can be found in: .*[/]//p' "$log" | tail -n 1)
+            file="${npm_config_cache:-$HOME/.npm}/_logs/$file"
+            echo "What the log file of npm says about the identity of the workflow:"
+            if [ -f "$file" ]; then
+              grep ' oidc ' "$file" | sed -E 's/eyJ[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]+)*/[token]/g' | tail -n 20 || true
+            else
+              echo "The file was not found."
+            fi
+          }
           publish() {
             name=$1
             tarball=$2
@@ -275,9 +292,10 @@ jobs:
                   # npm knew the workflow, and its trusted publisher does not allow a direct publish.
                   echo "::error::npm accepted the identity of the workflow but not the publish. On npmjs.com, edit the trusted publisher of $name and tick npm publish and npm dist-tag under Allowed actions. Then run the failed jobs of this run again."
                 elif grep -q 'E_STAGE_REQUIRED' "$log"; then
-                  echo "::error::The token may only stage a version, not publish it. For the first publish the secret NPM_TOKEN needs the permission Read and write (publish and stage). Then run the failed jobs of this run again."
+                  echo "::error::npm takes only a staged version of $name from this workflow, not a publish. Most likely its trusted publisher allows npm stage publish alone: on npmjs.com, edit it and tick npm publish and npm dist-tag under Allowed actions. Then run the failed jobs of this run again."
                 elif grep -Eq 'code E401|code E403|code E404|code ENEEDAUTH|code EOTP' "$log"; then
-                  echo "::error::npm refused the publish of $name. Check its trusted publisher on npmjs.com (this repository, workflow pre-release.yml, environment npm-next), or, for a package that is not on npm yet, the secret NPM_TOKEN of the environment npm-next (Read and write for all packages, allowed to bypass the second factor) and that the organization of the scope exists. npm can also refuse a new name as too near to one that exists: the error above says so. Then run the failed jobs of this run again."
+                  why
+                  echo "::error::npm refused the publish of $name. Check its trusted publisher on npmjs.com: this repository, workflow pre-release.yml, environment npm-next, npm publish allowed, and not expired. The job gives npm no token, so a package that is not on npm yet cannot be published by it. Then run the failed jobs of this run again."
                 elif grep -q 'code E422' "$log"; then
                   echo "::error::npm did not accept the provenance of $name: see the error of npm above. The repository that its package.json names must be the one of this workflow."
                 else
@@ -303,7 +321,8 @@ jobs:
       # of this one. The failed jobs can be run again once the tag can be moved, or was moved by hand.
       - name: Move the tag latest, while it is a pre-release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Empty on purpose, as in the step before.
+          NODE_AUTH_TOKEN: ''
           VERSION: ${{ inputs.version }}
         run: |
           not_moved=""
@@ -327,7 +346,7 @@ jobs:
                 if npm dist-tag add "$name@$VERSION" latest; then
                   echo "latest of $name moved from ${current:-nothing} to $VERSION."
                 else
-                  echo "::error::$name@$VERSION is published, but the tag latest could not be moved to it: npm needs a trusted publisher that allows npm dist-tag, or a token."
+                  echo "::error::$name@$VERSION is published, but the tag latest could not be moved to it: npm needs a trusted publisher that allows npm dist-tag, or a move by hand."
                   not_moved="$not_moved $name"
                 fi
                 ;;
@@ -378,7 +397,8 @@ jobs:
     needs: [npm, install]
     if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The looks at the tags can take seven minutes of this when npm does not answer.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -390,36 +410,49 @@ jobs:
         run: cd release && sha256sum --check SHA256SUMS
       # The tags were moved seconds after the publish, when npm did not show the version yet. By now an install
       # has found it, so they are read once more before a page says that there is a release. A read needs no
-      # login. "next" must be on the version, and "latest" too unless a release holds it.
+      # login. "next" must be on the version, and "latest" too unless a release holds it. npm says of a moved
+      # tag that it can take a few minutes to show, so a read that is not right yet is repeated: five looks, a
+      # minute apart.
       - name: The tags on npm are on the version
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          wrong=""
-          for name in @sf-orglens/engine sf-orglens; do
-            if ! tags=$(npm dist-tag ls "$name" 2>/dev/null) || [ -z "$tags" ]; then
-              echo "::error::npm did not say where the tags of $name are."
-              wrong="$wrong $name"
-              continue
-            fi
-            next=$(printf '%s\n' "$tags" | sed -n 's/^next: //p')
-            latest=$(printf '%s\n' "$tags" | sed -n 's/^latest: //p')
-            echo "$name: next is on ${next:-no version}, latest is on ${latest:-no version}."
-            if [ "$next" != "$VERSION" ]; then
-              echo "::error::The tag next of $name is not on $VERSION."
-              wrong="$wrong $name"
-            fi
-            case "$latest" in
-              "$VERSION") ;;
-              "" | *-*)
-                echo "::error::The tag latest of $name is not on $VERSION: an install without a tag would not get this version."
+          look_at_tags() {
+            wrong=""
+            for name in @sf-orglens/engine sf-orglens; do
+              # One try of twenty seconds for each read: the looks are the tries.
+              if ! tags=$(npm dist-tag ls "$name" --fetch-retries=0 --fetch-timeout=20000 2>/dev/null) || [ -z "$tags" ]; then
+                echo "npm did not say where the tags of $name are."
                 wrong="$wrong $name"
-                ;;
-              *) echo "latest of $name is a release, which a pre-release leaves alone." ;;
-            esac
+                continue
+              fi
+              next=$(printf '%s\n' "$tags" | sed -n 's/^next: //p')
+              latest=$(printf '%s\n' "$tags" | sed -n 's/^latest: //p')
+              echo "$name: next is on ${next:-no version}, latest is on ${latest:-no version}."
+              if [ "$next" != "$VERSION" ]; then
+                echo "The tag next of $name is not on $VERSION."
+                wrong="$wrong $name"
+              fi
+              case "$latest" in
+                "$VERSION") ;;
+                "" | *-*)
+                  echo "The tag latest of $name is not on $VERSION: an install without a tag would not get this version."
+                  wrong="$wrong $name"
+                  ;;
+                *) echo "latest of $name is a release, which a pre-release leaves alone." ;;
+              esac
+            done
+          }
+          for look in 1 2 3 4 5; do
+            look_at_tags
+            if [ -z "$wrong" ]; then break; fi
+            if [ "$look" -lt 5 ]; then
+              echo "Look $look of 5 was not right. Looking again in a minute."
+              sleep 60
+            fi
           done
           if [ -n "$wrong" ]; then
-            echo "::error::The tags on npm could not be read, or are not where they belong. docs/releases/publishing.md says how to move a tag by hand. Then run the failed jobs of this run again."
+            echo "::error::After five looks in four minutes the tags on npm could not be read, or are not where they belong, for:$wrong. npm can take longer to show a moved tag: run the failed jobs of this run again first. If a tag is still wrong then, docs/releases/publishing.md says how to move it by hand."
             exit 1
           fi
       - name: Create the pre-release

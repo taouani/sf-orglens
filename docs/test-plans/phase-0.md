@@ -77,9 +77,10 @@ Delete them if they are left from an earlier attempt: a copy into a folder that 
 orglens --version
 ```
 
-Expected: one line of the form `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0 node-v24.22.3 linux-x64`, with the
-version of the two packages, your Node.js version and your system. The version was `0.0.0` until the close of
-Phase 1. On Windows on x64 the line ends with `win32-x64`. An error `Cannot find module` means that the two lines
+Expected: one line of the form `sf-orglens/0.0.0 engine/0.0.0 node-v24.22.3 linux-x64`, with the version of
+the two packages, your Node.js version and your system. The version is `0.0.0` at the commit of this plan and
+was until the close of Phase 1. A build of `main` prints the version of the newest pre-release.
+On Windows on x64 the line ends with `win32-x64`. An error `Cannot find module` means that the two lines
 above were not run in the root of the clone, or that the build has not run.
 
 ## A. The repository and its checks

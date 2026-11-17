@@ -1,6 +1,6 @@
 {
   "name": "sf-orglens",
-  "version": "0.1.0-next.0",
+  "version": "0.1.0-next.1",
   "description": "OrgLens command line: local-first impact analysis for Salesforce orgs and repositories.",
   "license": "Apache-2.0",
   "type": "module",

@@ -1368,6 +1368,12 @@ Status on 17 November 2026, after the first publish. The documents are written. 
 - **Not done, and not verified.** Trusted publishing, which every later pre-release is published with, is not
   tried, and neither is moving a tag with it. Staged publishing is not tried. I have no account on npm and did
   not look there: what I know of the publish is the log of the run and what you saw on npm and sent me.
+- **A second pre-release, to try trusted publishing.** You set up the trusted publishers on the day of the
+  first publish, and npm keeps a new one only when a version is published through it within two days. You chose
+  on 17 November 2026 to publish `0.1.0-next.1` within that time (record
+  [0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). It changes nothing in what OrgLens does.
+  The version is set and its release notes are written. It is not published: that needs a rehearsal, your word
+  for the version and your approval of the job.
 
 ## 6. How the results are proven
 
