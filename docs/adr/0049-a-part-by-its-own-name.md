@@ -107,7 +107,8 @@ These are choices of the author of this record. The maintainer can strike any of
   (twenty in a row by default), and the next run continues it.
 - Not tested: a retrieve of parts that Salesforce fails for a reason of its size, a type other than
   `CustomObject` as the parent, and the parts of two parents in one retrieve. The tests take an object with
-  fields and a validation rule.
+  fields and a validation rule. Run 15 of the test org made a retrieve with the parts of two parents, and
+  nothing came back, so it shows no more than that the request is made.
 
 ## Consequences
 

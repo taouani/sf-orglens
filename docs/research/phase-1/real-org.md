@@ -42,9 +42,9 @@ In short:
   retrieved, and the three files are warnings. Six components keep the snapshot partial: two objects, and two
   fields and two record types of objects Salesforce cannot find.
 - Added from run 15: asked for by their own names, the two fields and the two record types do not come back
-  either. Salesforce remarks of each of the four that it cannot find it. The two objects are named by two
-  remarks that say "Not a … type". The same six components keep the snapshot partial, and the engine has no
-  other way to ask for them.
+  either. Salesforce remarks of each of the four that it cannot find it. A remark that says "Not a … type"
+  holds the name of each of the two objects. Six components of the same types keep the snapshot partial, in
+  the same counts, and the engine has no other way to ask for them.
 
 ## Conditions
 
@@ -65,9 +65,13 @@ In short:
 | [10](https://github.com/taouani/sf-orglens/actions/runs/43996393289) | read and probe | `9aadacb` | green, with a warning for the partial snapshot and one for a query the org refused |
 | [11](https://github.com/taouani/sf-orglens/actions/runs/44003600959) | read | `faae654` | green, with the same two warnings |
 | [12](https://github.com/taouani/sf-orglens/actions/runs/44011261203) | read | `678f7df` | green, with one warning: the snapshot is not complete |
+| [13](https://github.com/taouani/sf-orglens/actions/runs/44032634506) | read | `64714df` | green, with the same warning |
+| [14](https://github.com/taouani/sf-orglens/actions/runs/44042863599) | read | `801bf9c` | green, with the same warning |
+| [15](https://github.com/taouani/sf-orglens/actions/runs/44051349448) | read | `79cf9d0` | green, with the same warning |
 
 Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Runs 10 to 12
-are of 17 November 2026, after work package 8 was merged, and section 7 is about them.
+are of 17 November 2026, after work package 8 was merged, and section 7 is about them. Runs 13 to 15 are of
+the same day, each from the commit of a pull request of work package 9, and section 8 is about them.
 
 ## 1. The deploy of the larger fixture project
 
@@ -704,10 +708,12 @@ One read, in run 15 on 17 November 2026, from the commit that holds record 0049.
   came back in the third retrieve: the counts of components and of files are those of run 14, to the byte. So
   the question record 0049 left open has its answer for this org: no. What the file of a parent holds that
   comes back for its parts is still not known, because none came back. `[run 15]`
-- **The two objects are named by the two remarks that say "Not a … type".** The tool found the name of each of
-  the two objects in a remark of that form, and in no other. The words of the remark that are not everyday
-  words are not shown, so what kind of type Salesforce says they are not is not known. The two remarks about
-  permissions do not hold their names. `[run 15]`
+- **A remark that says "Not a … type" holds the name of each of the two objects.** The tool found the name of
+  each of the two in a remark of that form, and in no other. There are two such remarks. That each holds one
+  of the names, and that the remark is about the object, is a reading: the tool looks for the name as a word,
+  and a name without the ending of a custom object can be an everyday word. The words of the remark that are
+  not everyday words are not shown, so what kind of type Salesforce speaks of is not known. The two remarks
+  about permissions do not hold their names. `[run 15]`
 - **The two missing translations of a standard value set are named by the two remarks of their own form**, which
   say that a file cannot be retrieved and speak of a language. They are outside the tier. `[run 15]`
 - **What keeps the snapshot partial is unchanged: six components.** `NOT_RETRIEVED` is an error for 2 of 79
@@ -717,19 +723,22 @@ One read, in run 15 on 17 November 2026, from the commit that holds record 0049.
   | --- | --- | --- |
   | `CustomField` | 2 of 79 | Asked for with its object: the object cannot be found. Asked for by its own name: the field cannot be found. |
   | `RecordType` | 2 of 2 | Asked for with its object: the object cannot be found. Asked for by its own name: the record type cannot be found. |
-  | `CustomObject` | 2 of 398 | "Not a … type", with the name of the object. |
+  | `CustomObject` | 2 of 398 | A remark that says "Not a … type" holds its name. |
 
-- **A reading of it, not verified.** The org lists these six components and Salesforce does not hand them out
-  in any way the Metadata API offers a retrieve: by the name of the parent, by the name of the part, or by the
-  name of the object. That fits components the listing knows and the retrieve does not support. Which objects
+- **A reading of it, not verified.** The org lists these six components and Salesforce hands them out in none
+  of the three ways the engine asks: by the name of the parent, by the name of the part, or by the name of the
+  object. That fits components the listing knows and the retrieve does not support. A retrieve that names all
+  components of a type with `*` and a read of single components (`readMetadata`) were not tried. Which objects
   they are, and whether another org has the like, the run does not say. No other edition, no sandbox and no
   second org was read.
 - **The line of the tool about the fields and record types holds two sentences that read alike.** "Salesforce
   remarked of 2 of them that it cannot be found" is about the objects before the dot. "Salesforce remarked of 2
   that it cannot be found" is about the parts themselves. The tool was not changed for it. `[run 15]`
-- **The third retrieve cost nothing that can be measured.** The whole run was 27 s shorter than run 14, because
-  the first retrieve took 170.6 s where it took 200.0 s. The engine waits for Salesforce in that time. One run
-  each is no measurement of the org. `[run 15]`
+- **The third retrieve took 0.6 s, and 3.8 s passed between the end of the second and the end of the third.**
+  The time of the retrieve outside the three chunks was 6.7 s, against 1.6 s in run 14. Whether the rule is
+  the cause is not shown. The whole run was 27 s shorter than run 14 for another reason: the first retrieve
+  took 170.6 s where it took 200.0 s. The engine waits for Salesforce in that time. One run each is no
+  measurement of the org. `[run 15]`
 - **Everything else is as in run 14**: the seven bundles count as retrieved, the three files are warnings, 209
   components of 10 types outside the tier are warnings, the org refuses to list `ContentWorkspace`, the
   cross-check has 257 rows with one request, 56 pairs compared and none missed, the same rows in 60 requests

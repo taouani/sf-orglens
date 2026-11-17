@@ -1164,22 +1164,26 @@ last of the three to be merged.
   cross-check with the Dependency API is not narrowed by the key, and can come out `partial` for a type that was
   left out and has more rows than one answer holds. Record 0048 says how.
 
-Status on 17 November 2026, after run 15 of the test org. It is the last status of the work package.
+Status on 17 November 2026, after run 15 of the test org. It is the last status of the work package, unless
+your decision below asks for more.
 
 - **Run 15**, the first with the rule of record 0049
   ([real-org.md](../research/phase-1/real-org.md#run-15-the-parts-asked-for-by-their-own-names)): **the snapshot
-  of the test org is partial, for the same six components. The first acceptance criterion is missed.**
+  of the test org is partial, for six components of the same types and in the same counts. The first acceptance
+  criterion is missed.**
   - The engine asked for the two fields and the two record types by their own names, in a third retrieve of
     0.6 s. Salesforce remarks of each of the four that it cannot find it. Nothing came back.
-  - The two objects are named by two remarks of Salesforce that say "Not a … type". The other words of the
-    remark are not shown in the public log.
-- **The count the criterion asks for**, per type and with the reason:
+  - A remark of Salesforce that says "Not a … type" holds the name of each of the two objects. The other
+    words of the remark are not shown in the public log.
+- **The count the criterion asks for**, per type and with the reason. The criterion asks for it in the phase
+  report. That report is written when the phase closes, in work package 11, and takes this table. It is not
+  written yet.
 
   | Type           | Missing  | Reason                                                                                                                    |
   | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
   | `CustomField`  | 2 of 79  | The org lists the field and not its object. Salesforce cannot find the object, and cannot find the field by its own name. |
   | `RecordType`   | 2 of 2   | The same: Salesforce cannot find the object, and cannot find the record type by its own name.                             |
-  | `CustomObject` | 2 of 398 | The org lists the object. Salesforce answers "Not a … type" and hands nothing out.                                        |
+  | `CustomObject` | 2 of 398 | The org lists the object. Salesforce hands nothing out, and a remark that says "Not a … type" holds its name.             |
 
   The names of the objects have no ending of a custom object. The two fields belong to two objects, and the two
   record types to one of these. Why the org lists what Salesforce does not hand out is not known.
@@ -1190,16 +1194,23 @@ Status on 17 November 2026, after run 15 of the test org. It is the last status 
     The engine asks for the six in every way it has, and Salesforce hands none of them out. The plan says that
     we then decide together. The question is put to you with this status.
   - What is missing outside the tier is a warning, per type and with a count, and the exit code stays that of a
-    complete snapshot: met against the mock org, and seen on the test org in the counts of runs 13 to 15: 209
-    components of 10 types and one listing are warnings. The exit code was not seen there, because the snapshot
-    of the test org is partial for the six.
+    complete snapshot: met against the mock org. The step that reads the test org calls the engine and starts
+    neither `snapshot` nor `coverage`, so the lines of the commands and the exit code are shown by the mock org
+    only. What runs 13 to 15 show is the judgement of the engine: 209 components of 10 types and one listing
+    are warnings.
   - The key: met against the mock org, as the status above says. Not run against a real org.
-  - A snapshot of a Git source is not changed.
+  - A snapshot of a Git source is not changed: met, as far as the tests show. The later pull requests of the
+    work package touched code a Git source shares with an org. The tests of a Git source pass as they were,
+    and the only golden file that changed since work package 8 is the schema of the database, for migration 7.
 - **What is yours to decide.** Whether a component the org lists and Salesforce does not hand out stays an
   error of the snapshot. If it stays, a snapshot of the test org is never complete, and neither is one of any
-  org that has the like. My recommendation is to keep it: the snapshot does lack these components, and the words
-  of a remark of Salesforce are a weak ground for calling a snapshot complete. The rule of record 0049 changed
-  nothing on the test org. It is cheap and does no harm, and is yours to strike as well.
+  org that has the like. `snapshot` ends with `5` on such an org every time. So does every `impact` answer, as
+  the rules of record 0044 read: fields and objects are analysed types, and something of them was not read.
+  `impact` was not run on a snapshot of the test org. The other way is to make such a component a warning when
+  Salesforce itself remarks that it cannot find it, or to let a key of `orglens.toml` name components that are
+  accepted as not readable. My recommendation is to keep the error: the snapshot does lack these components, and
+  the words of a remark of Salesforce are a weak ground for calling a snapshot complete. The rule of record
+  0049 changed nothing on the test org. It is cheap and does no harm, and is yours to strike as well.
 - **Not done, and not verified:** which objects the six components are, and whether they are of a kind no
   retrieve supports. What Salesforce hands out for a part asked for by its own name is still not seen on a real
   org, because none came back. One org was read, a Developer Edition: no sandbox, no other edition and no org

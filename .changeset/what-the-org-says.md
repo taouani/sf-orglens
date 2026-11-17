@@ -8,4 +8,5 @@ that comes back in a folder the library knows no type for is counted by the type
 folder, so a type the library does not know yet no longer makes every snapshot `partial`. A component of a package
 that comes back under its name without the prefix of the package counts as the component the org listed, when the
 retrieve asked for the listed name and not for the short one and Salesforce did not remark that it cannot find
-it. The note `RETRIEVED_WITHOUT_PREFIX` says so. Not verified on a real org.
+it. The note `RETRIEVED_WITHOUT_PREFIX` says so. Both were seen on one real org: three files of a type the
+library does not know became warnings, and seven bundles of a package count as retrieved.
