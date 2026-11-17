@@ -320,7 +320,8 @@ jobs:
     name: Install from npm (${{ matrix.os }}, npm ${{ matrix.npm }})
     needs: npm
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The install waits up to eleven minutes for npm to show the new version.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

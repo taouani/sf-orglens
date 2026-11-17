@@ -2,13 +2,14 @@
 
 ## Supported versions
 
-OrgLens is in pre-release and no version has been published. Security fixes go to the `main` branch. This section
-will list supported versions once the first release exists.
+OrgLens is in pre-release. The first pre-release, version `0.1.0-next.0`, was published on 17 November 2026. No
+version without a pre-release part exists. Security fixes go to the `main` branch. This section will list
+supported versions once the first release exists.
 
-Pre-releases will be published on npm as `sf-orglens` and `@sf-orglens/engine`, only by the workflow
-"Pre-release" of this repository, each with a provenance attestation. A package under one of the two names
-without one is not from this project. The name `orglens` is the name of the command and is not a package of this
-project.
+Pre-releases are published on npm as `sf-orglens` and `@sf-orglens/engine`, only by the workflow "Pre-release"
+of this repository, each with a provenance attestation that names the run that built it. A package under one of
+the two names without one is not from this project. The name `orglens` is the name of the command and is not a
+package of this project.
 
 ## Reporting a vulnerability
 

@@ -16,7 +16,7 @@ and "you" is the maintainer.
 - **Part H is the main part, and only you can do it:** `orglens snapshot`, `coverage` and `impact` on an org
   you know. None of the three commands has ever run against Salesforce. It takes as long as the org takes to
   hand out its metadata: minutes for a small org, and I do not know how long for a large one.
-- Part I installs the pre-release, once it is published. It is not published yet.
+- Part I installs the pre-release, which was published on 17 November 2026.
 
 Every expected output of parts B to D was produced on Linux x64 with Node.js 24.22.3 on 17 November 2026, as
 the root user, with the code of the engine and the command line of the commit named below. Times and sizes on
@@ -300,13 +300,9 @@ enough for me to build a case of it in the fixture project.
 
 ## I. The pre-release
 
-The pre-release `0.1.0-next.0` is not published, and this part waits for it. It is published on npm and on
-GitHub by the workflow "Pre-release" (records 0050 and 0053). Two things come first:
-
-1. What only you can set up: the organization `sf-orglens` on npm, the environment `npm-next` on GitHub and the
-   token for the first publish. [`docs/releases/publishing.md`](../releases/publishing.md) has the steps.
-2. Your word for the run that publishes, and your approval of its job in the environment. The run cannot be
-   undone.
+The pre-release `0.1.0-next.0` was published on npm and on GitHub on 17 November 2026, by
+[run 5 of the workflow "Pre-release"](https://github.com/taouani/sf-orglens/actions/runs/44164088211) (records 0050 and
+0053), after you approved its job.
 
 | #   | Do                                                                                    | Expect                                                                                                                                                                     |
 | --- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -317,10 +313,12 @@ GitHub by the workflow "Pre-release" (records 0050 and 0053). Two things come fi
 | I5  | `npm update --global`, then `orglens --version`                                       | The version is still `0.1.0-next.0`: it is the newest one under `latest`.                                                                                                  |
 | I6  | `npm uninstall --global sf-orglens`                                                   | It is removed with the engine, and `orglens` is no longer found.                                                                                                           |
 
-The run of the workflow that publishes also installs from npm on Linux, Windows and macOS. I3 is the first
-install by a person. I2 is written from the pages of npm, and what the page of a package shows is npm's to
-decide. I5 was tried against a registry on my machine, not against npm. I5 updates every global package of your
-machine. Leave it out if you do not want that.
+The run that published also installed from npm on Linux, Windows and macOS, and all six installs passed. I3
+is the first install by a person. I2 is written from the pages of npm, and I did not look at npm: what the page
+of a package shows is npm's to decide. Right after the publish, npm named `0.0.0-stage` as the version under
+`latest`, and the run moved the tag. If the tab "Versions" of a package lists a version `0.0.0-stage`, tell me:
+the workflow did not publish it. I5 was tried against a registry on my machine, not against npm. I5 updates
+every global package of your machine. Leave it out if you do not want that.
 
 **Do not run `npx orglens`.** The name `orglens` is the command, not a package of this project, and npx fetches
 whatever package has that name.
