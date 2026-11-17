@@ -47,6 +47,7 @@ packages/cli      The `orglens` command line. Uses only the public API of the en
 docs/plans        The re-architecture plan and one plan per phase.
 docs/test-plans   One test plan per phase, for the maintainer to run by hand.
 docs/reports      One report per phase: what was built, what was measured, what changed.
+docs/releases     The release notes of every pre-release.
 docs/research     Research notes behind the plans.
 docs/adr          Decision records.
 fixtures          The fixture project, its hand-written answer key, and the list of public test codebases.

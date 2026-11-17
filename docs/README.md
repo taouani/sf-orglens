@@ -12,6 +12,7 @@ Everything that explains why OrgLens is built the way it is lives here, in git, 
 | [`live-org-setup.md`](live-org-setup.md) | How the maintainer sets up the Salesforce org that the live-org workflow runs against, and the GitHub secrets it reads.                                                                       |
 | [`test-plans/`](test-plans/)             | One test plan per phase: steps the maintainer can run by hand to verify what was built, with the output to expect.                                                                            |
 | [`reports/`](reports/)                   | One report per phase: what was built, what was measured, what changed against the plan, and what is not done.                                                                                 |
+| [`releases/`](releases/)                 | The release notes of every pre-release: what the version does, what it does not do, what is not verified, and how it is installed.                                                            |
 
 ## Phase plans
 

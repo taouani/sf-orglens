@@ -5,7 +5,7 @@
     "kind": "git",
     "status": "complete",
     "finishedAt": "TIME",
-    "analysedBy": "0.0.0"
+    "analysedBy": "VERSION"
   },
   "component": {
     "key": "CustomField:invoice__c.unused_field__c",

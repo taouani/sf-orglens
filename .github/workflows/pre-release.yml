@@ -1,0 +1,175 @@
+name: Pre-release
+
+# Makes a pre-release on GitHub with the two packed packages attached
+# (decision record 0050). Nothing goes to npm: there is no registry token in
+# this repository, and no step publishes to a registry.
+#
+# Started by hand, on main, with the version typed in. With "publish" off the
+# run checks, packs and tries the install line, and stops there, so the way to
+# a release can be rehearsed. The job that publishes is the only one that may
+# write to the repository, and it runs no code of the repository and of its
+# dependencies: it attaches the files the first job packed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, as it stands in packages/cli/package.json. The run stops when it differs.
+        required: true
+        type: string
+      publish:
+        description: Create the pre-release on GitHub. Off, the run checks, packs and tries the install line.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-release
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    name: Check and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # No cache of earlier runs: what this job builds is what gets published.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Hold the request against the repository
+        env:
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: node scripts/pre-release.mjs check "$VERSION" "$PUBLISH" "$GITHUB_REF"
+      - name: The tag of the version does not exist yet
+        if: ${{ inputs.publish }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # git ls-remote ends with 2 when no tag has the name, with 0 when one has, and otherwise when it could not ask.
+          status=0
+          git ls-remote --exit-code --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "refs/tags/v$VERSION" || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "::error::The tag v$VERSION exists, or could not be looked for. A published pre-release is not changed."
+            exit 1
+          fi
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Full check
+        run: pnpm run check
+      - name: Lint the packages as published
+        run: pnpm run publint
+      - name: Pack, install into an empty folder, run the binary
+        run: pnpm run smoke:pack
+      - name: Pack the two packages, with their checksums and the release notes
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/pre-release.mjs pack "$VERSION" release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pre-release
+          path: release
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  try:
+    name: Try the install line (${{ matrix.os }}, npm ${{ matrix.npm }})
+    needs: pack
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        npm: [bundled, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Take the newest npm
+        if: ${{ matrix.npm == 'latest' }}
+        run: npm install --global npm@latest
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pre-release
+          path: release
+      - name: Install with the line of the release notes from an address on this machine, and run the binary
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/pre-release.mjs try "$VERSION" release
+
+  publish:
+    name: Publish on GitHub
+    needs: [pack, try]
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pre-release
+          path: release
+      - name: Hold the files against their checksums
+        run: cd release && sha256sum --check SHA256SUMS
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # gh uses a tag that exists and leaves it where it is, so look once more that there is none.
+          status=0
+          git ls-remote --exit-code --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "refs/tags/v$VERSION" || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "::error::The tag v$VERSION exists, or could not be looked for. A published pre-release is not changed."
+            exit 1
+          fi
+          gh release create "v$VERSION" \
+            "release/sf-orglens-engine-$VERSION.tgz" \
+            "release/sf-orglens-$VERSION.tgz" \
+            release/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "OrgLens $VERSION (pre-release)" \
+            --notes-file release/notes.md
+
+  install:
+    name: Install from the release (${{ matrix.os }}, npm ${{ matrix.npm }})
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        npm: [bundled, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Take the newest npm
+        if: ${{ matrix.npm == 'latest' }}
+        run: npm install --global npm@latest
+      - name: Install with the line of the release notes from GitHub, and run the binary
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/pre-release.mjs try "$VERSION" github
