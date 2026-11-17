@@ -301,7 +301,7 @@ describe('orglens snapshot of an org', () => {
         '1 more type has no components.',
         '',
         'SEVERITY  CODE               WHAT',
-        'info      TYPES_EXCLUDED     1 type is left out of the snapshot, as exclude_types of the source says: Report. The org was not asked for its components, and none was read.',
+        'info      TYPES_EXCLUDED     1 type is left out of the snapshot, as exclude_types of the source says: Report. The org was not asked for its components.',
         'warning   TYPE_NOT_EXCLUDED  exclude_types of the source names Reprot, and the org describes no metadata type of that name. Nothing was left out for it.',
         '',
         ...classesAnalysed('2 components'),
@@ -312,6 +312,17 @@ describe('orglens snapshot of an org', () => {
     expect([...mock.listed].sort()).toEqual(['ApexClass', 'Dashboard']);
     const { data } = await orglensJson(dir, ['status']);
     expect(data).toMatchObject({ sources: [{ name: 'prod', excludeTypes: ['Report', 'Reprot'] }] });
+    // The coverage says the same later, as text and as JSON that matches the schema.
+    const coverage = await orglensJson(dir, ['coverage', 'prod']);
+    expect((coverage.data as { types: unknown[] }).types).toContainEqual({
+      type: 'Report',
+      listed: 0,
+      retrieved: 0,
+      analysed: 0,
+      listing: 'excluded',
+      note: 'The configuration leaves this type out (exclude_types).',
+    });
+    expect((await orglens(dir, ['coverage', 'prod'])).stdout).toContain('Report     left out  0          0');
   });
 
   it('counts what the snapshot holds, with a component that came back although the org had not listed it', async () => {

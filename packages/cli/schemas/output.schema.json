@@ -458,7 +458,7 @@
                 "minimum": 0
               },
               "listing": {
-                "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet.",
+                "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet. `excluded`: `exclude_types` of the source leaves the type out, so the org was not asked for its components and `listed` is 0.",
                 "enum": ["ok", "failed", "unlistable", "excluded"]
               },
               "note": { "type": ["string", "null"] }

@@ -121,7 +121,8 @@ describe('the inventory of an org', () => {
         StaticResource: ['Logo'],
       },
     );
-    const inventory = await takeInventory(api, { exclude: ['StandardValueSet', 'SharingRules', 'Report', 'Report'] });
+    const exclude = ['StandardValueSet', 'SharingRules', 'Report', 'Report'];
+    const inventory = await takeInventory(api, { exclude });
     const reason = 'The configuration leaves this type out (exclude_types).';
     const withIt = (by: string): string =>
       `The configuration leaves the type ${by} out (exclude_types), and this type with it.`;
@@ -159,6 +160,12 @@ describe('the inventory of an org', () => {
       { type: 'ApexClass', fullName: 'A' },
       { type: 'StaticResource', fullName: 'Logo' },
     ]);
+
+    // A part or a folder type that is named beside its owner goes with it, and is not said to be read. The part
+    // comes before its owner in the order of the names.
+    const beside = await takeInventory(api, { exclude: [...exclude, 'ReportFolder', 'SharingOwnerRule'] });
+    expect(beside.notExcluded).toEqual([]);
+    expect(beside.types).toEqual(inventory.types);
   });
 
   it('reads a type it is asked to leave out and cannot: one the org does not have, a part, a folder type', async () => {
@@ -193,6 +200,17 @@ describe('the inventory of an org', () => {
       'ReportFolder:Sales',
     ]);
     expect((await takeInventory(api)).notExcluded).toEqual([]);
+  });
+
+  it('does not leave a type of the logic tier out, also when the reader of the configuration did not refuse it', async () => {
+    const api = fakeApi([type('ApexClass'), type('StaticResource')], { ApexClass: ['A'], StaticResource: ['Logo'] });
+    const inventory = await takeInventory(api, { exclude: ['ApexClass', 'StaticResource'] });
+    expect(inventory.notExcluded).toEqual([{ type: 'ApexClass', reason: 'logic', of: null }]);
+    expect(inventory.types.map((one) => [one.type, one.listing])).toEqual([
+      ['ApexClass', 'ok'],
+      ['StaticResource', 'excluded'],
+    ]);
+    expect(names(inventory)).toEqual(['ApexClass:A']);
   });
 
   it('lists the folders of a folder type, then each folder, and the folder for what is in none', async () => {

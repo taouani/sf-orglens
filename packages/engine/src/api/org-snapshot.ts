@@ -341,6 +341,8 @@ const NOT_EXCLUDED: Readonly<Record<NotExcluded['reason'], (type: string, of: st
     `exclude_types of the source names ${type}. Its components are the folders of the type ${of}, so it cannot be left out alone. It was read.`,
   'logic-part': (type, of) =>
     `exclude_types of the source names ${type}. Its part ${of} is of the logic tier, which a snapshot is judged by, so it cannot be left out. It was read.`,
+  logic: (type) =>
+    `exclude_types of the source names ${type}, which is of the logic tier. A snapshot is judged by that tier, so the type cannot be left out. It was read.`,
 };
 
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
@@ -483,7 +485,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
             id,
             'info',
             'TYPES_EXCLUDED',
-            `${plural(leftOut.length, 'type is', 'types are')} left out of the snapshot, as exclude_types of the source says: ${leftOut.join(', ')}. The org was not asked for ${leftOut.length === 1 ? 'its' : 'their'} components, and none was read.`,
+            `${plural(leftOut.length, 'type is', 'types are')} left out of the snapshot, as exclude_types of the source says: ${leftOut.join(', ')}. The org was not asked for ${leftOut.length === 1 ? 'its' : 'their'} components.`,
             { count: leftOut.length, types: leftOut },
           );
         }

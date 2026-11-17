@@ -1,6 +1,6 @@
 # 0047. A key in `orglens.toml` leaves metadata types out of a snapshot of an org
 
-- Status: Accepted
+- Status: Proposed
 - Date: 2026-11-17
 - Decisions: none (work package 9 of the Phase 1 plan. It builds the key that the plan proposes and record 0038
   leaves undecided)
@@ -18,8 +18,13 @@ as a proposal the maintainer can strike. The plan sets three conditions if the k
 is not retrieved, it is named in `coverage` as not read, and a type of the logic tier in the key is an error.
 
 **What this record rests on.** The maintainer was asked on 17 November 2026 whether to keep the key, with the
-recommendation to keep it, and had not answered when this was written. The key is built as proposed. If the
-maintainer strikes it, the key, the listing `excluded` and this record are taken out again.
+recommendation to keep it, and had not answered when this was written. The key is built as proposed, and this
+record stays `Proposed` until the answer is there. The pull request that builds it is not merged before.
+
+If the maintainer strikes the key after it was merged, the key, the listing `excluded` and this record are taken
+out again. That is not free: a database that has moved to schema version 7 is refused by an engine that ends at
+version 6, so taking the migration out needs a migration 8 that builds the table again without the value, or a
+word that such a workspace is made anew.
 
 ## Decision
 
@@ -54,10 +59,17 @@ exclude_types = ["Report", "Dashboard"]
   another and comes with it (`part`), it holds the folders of another (`folder`), or one of its parts is of the
   logic tier (`logic-part`). No type of Salesforce is known to be of the last kind. The rule is there so that a
   change of the tier or of the Metadata API cannot take a part of the tier out of a snapshot without a word.
+- **A part or a folder type that is named beside its owner goes with the owner.** With `Report` and
+  `ReportFolder` in the list both are left out, and no warning is written.
+- **The reading of the org refuses a type of the tier a second time.** The file is refused for such a name. The
+  code that asks the org what it holds does not rest on that: it reads the type and gives the reason `logic`.
+  No snapshot shows it, because none is started with such a file. A test of that code does.
 - **The list is read when a snapshot starts.** A snapshot that is continued keeps the inventory it started
   with, whatever the file says by then.
 - **Leaving a type out does not make a snapshot partial**, and is no warning. The note `TYPES_EXCLUDED` names
-  every type that was left out, with the parts and folders that went with it.
+  every type that was left out, with the parts and folders that went with it. It says that the org was not asked
+  for their components. It does not say that the snapshot holds none: if Salesforce handed out a component of
+  such a type with another one, it would be kept and named as not listed. No type is known to do that.
 
 ### What the reports say
 
@@ -67,7 +79,8 @@ exclude_types = ["Report", "Dashboard"]
 - An impact answer names such a type in `notCovered.notAnalysed`, like any other type no analyser has read. If
   the analysis reads a type that was left out, the type is in `notCovered.partial`, and the answer says that it
   may miss something. That cannot happen today: every analysed type is of the logic tier.
-- `status` and the `source` commands show the list of a source as `excludeTypes`.
+- The JSON output of `status`, `source add` and `source list` has the list of a source as `excludeTypes`. The
+  text of these commands does not show it.
 
 ### The database
 
@@ -110,8 +123,13 @@ These are choices of the author of this record. The maintainer can strike any of
 - A reference to a component of a type that was left out keeps the name it was written with and is not
   resolved, as record 0038 asks: the target is named and never dropped. No analysed type refers to a type
   outside the logic tier today, so no test shows it.
-- The cross-check with the Dependency API still asks for every row of the org. A row from a component of a type
-  that was left out is counted with the rows of the types that are not analysed, as before. A row from an
+- The cross-check with the Dependency API still asks for the rows of every type. A row from a component of a
+  type that was left out is counted with the rows of the types that are not analysed, as before. A row from an
   analysed component to a component of such a type would be counted as not matched. No test shows either.
+- **Leaving a type out can turn the reading of the Dependency API from `whole` to `partial`.** A type with more
+  rows than one answer holds is asked for per component, with the ids the org listed. A type that was left out
+  has no ids, so its rows stay cut off, and the snapshot gets the warning `CROSS_CHECK_PARTIAL`. The rows that
+  are missing are from a type that is not compared, so the warning says more than is at stake. Keeping such a
+  type out of the reading, or out of the warning, is not built. No test shows the case.
 - The JSON output changes in three places: `listing` can be `excluded`, a source of the kind `org` or `sandbox`
   has `excludeTypes`, and two issue codes are new.

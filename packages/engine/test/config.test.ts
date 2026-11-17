@@ -75,11 +75,11 @@ describe('readConfig', () => {
       shared: changed(
         'description = "EMEA production"',
         'exclude_types = ["Report", "Dashboard", "EmailTemplate"]',
-      ).replace('sandbox_name = "uat"', 'exclude_types = []'),
+      ).replace('sandbox_name = "uat"', 'exclude_types = ["Report"]'),
     });
     expect(result.ok && result.config.sources.slice(0, 2)).toMatchObject([
       { name: 'prod', excludeTypes: ['Dashboard', 'EmailTemplate', 'Report'] },
-      { name: 'uat', excludeTypes: [] },
+      { name: 'uat', excludeTypes: ['Report'] },
     ]);
   });
 

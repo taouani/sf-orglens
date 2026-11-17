@@ -173,12 +173,20 @@ they have below a package directory, such as `classes/Foo.cls`.
 - **Types can be left out.** `exclude_types` of the source in `orglens.toml` names metadata types that a snapshot
   does not read ([configuration.md](configuration.md#a-source-of-kind-org-or-sandbox)). The org is not asked for
   the components of such a type, nor for those of its parts and its folders, and none is retrieved. The report
-  has a line for each with `left out` in the column `LISTED`, and the note `TYPES_EXCLUDED` names them. A type of
-  the logic tier cannot be left out: the file is refused. A name that cannot be left out for another reason is
-  read, and the warning `TYPE_NOT_EXCLUDED` says why: the org describes no such type, the type is a part of
-  another, or it holds the folders of another. Leaving a type out does not make a snapshot partial. A reference
-  to a component of such a type keeps its name and is not resolved, as for any component the snapshot does not
-  hold.
+  has a line for each with `left out` in the column `LISTED`, and the note `TYPES_EXCLUDED` names them. In JSON
+  such a type has the `listing` `excluded`. A type of the logic tier cannot be left out: the file is refused. A
+  name that cannot be left out for another reason is read, and the warning `TYPE_NOT_EXCLUDED` says why: the org
+  describes no such type, the type is a part of another, or it holds the folders of another. A part or a folder
+  type that is named beside its owner goes with the owner, without a warning. Leaving a type out does not make a
+  snapshot partial. A reference to a component of such a type keeps its name and is not resolved, as for any
+  component the snapshot does not hold.
+
+  The cross-check with the Dependency API is not narrowed by the key: Salesforce is asked for the rows of every
+  type. One thing can change. Where a type has more rows than one answer holds, the rows are asked for per
+  component, with the ids the org listed. A type that was left out has none, so its rows stay cut off and the
+  reading is `partial` (`CROSS_CHECK_PARTIAL`) where it could have been `whole`. The rows that are missing then
+  are from a type that is not compared.
+
 - Warnings: a type Salesforce describes and never lists, which today is `StandardValueSet` (`TYPE_NOT_READ`), what
   Salesforce remarked about a retrieve (`RETRIEVE_MESSAGES`), files of a retrieve that belong to no component
   (`FILES_NOT_METADATA`), and a file that came back in two retrieves (`FILE_RETRIEVED_TWICE`).
@@ -466,7 +474,9 @@ list is empty when nothing tells the type. A snapshot taken before these fields 
 `details.count`: the types `exclude_types` names, with their parts and their folders. `TYPE_NOT_EXCLUDED` carries
 the name in `details.type` and why it was not left out in `details.reason`: `unknown` (the org describes no such
 type), `part` or `folder` (its components are parts or folders of the type in `details.of`), or `logic-part` (the
-type in `details.of`, a part of it, is of the logic tier).
+type in `details.of`, a part of it, is of the logic tier). No type of Salesforce is known that gives
+`logic-part`. A fifth value, `logic`, says that the type is of the logic tier itself. The file is refused for
+such a name, so no snapshot of this pre-release has it.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -796,7 +806,9 @@ with exactly and allows no other fields.
 | `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
+A source is written with all keys of its kind, and `null` for what is not set. `excludeTypes` of a source of the
+kind `org` or `sandbox` is the list of `exclude_types`, sorted, and an empty list when the key is not set. Only
+the JSON output shows it: the text of `status` and of `source list` does not. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace
 use forward slashes on every system. `root` is an absolute path in the form of the system.
 

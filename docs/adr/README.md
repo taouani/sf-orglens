@@ -59,7 +59,7 @@ decisions of the build either: they hold what the maintainer answered to the Pha
 | [0044](0044-an-impact-answer.md)                          | An impact answer: what refers to a component, how it is found, and what the answer does not cover | Accepted                                                        |            |
 | [0045](0045-the-cross-check-of-a-snapshot.md)             | The cross-check of a snapshot: the rows of the Dependency API, held against its analysis          | Accepted                                                        |            |
 | [0046](0046-complete-over-the-logic-tier.md)              | When a snapshot of an org is complete: the logic tier, type by type                               | Accepted                                                        |            |
-| [0047](0047-types-a-snapshot-leaves-out.md)               | A key in `orglens.toml` leaves metadata types out of a snapshot of an org                         | Accepted                                                        |            |
+| [0047](0047-types-a-snapshot-leaves-out.md)               | A key in `orglens.toml` leaves metadata types out of a snapshot of an org                         | Proposed                                                        |            |
 
 ## Writing a record
 

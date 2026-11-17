@@ -50,10 +50,12 @@ interface InventoryType {
  * - `part`: its components are parts of a component of the type `of` and come with it.
  * - `folder`: its components are the folders of the type `of`, which are needed to list that type.
  * - `logic-part`: a part of it, the type `of`, is of the logic tier, which a snapshot is judged by.
+ * - `logic`: it is of the logic tier itself. The configuration refuses such a name, so a snapshot never has
+ *   this reason. It is here so that the rule does not rest on the reader of the file alone.
  */
 export interface NotExcluded {
   readonly type: string;
-  readonly reason: 'unknown' | 'part' | 'folder' | 'logic-part';
+  readonly reason: 'unknown' | 'part' | 'folder' | 'logic-part' | 'logic';
   readonly of: string | null;
 }
 
@@ -164,19 +166,28 @@ export async function takeInventory(
   // the configuration gave.
   const excluded = new Map<string, string>();
   const notExcluded: NotExcluded[] = [];
-  for (const name of [...new Set(options.exclude ?? [])].sort(byCodeUnit)) {
+  const asked = [...new Set(options.exclude ?? [])].sort(byCodeUnit);
+  // The types that are retrieved by their own name come first, whatever the order of the names: a part or a
+  // folder type that is named beside its owner goes with the owner, and is not said to be read.
+  for (const name of asked) {
+    if (types.get(name)?.role !== 'top') continue;
+    if (tierOf(name) === 'logic') {
+      notExcluded.push({ type: name, reason: 'logic', of: null });
+      continue;
+    }
+    const withIt = [...types].filter(([, other]) => other.role !== 'top' && other.of === name).map(([type]) => type);
+    const logic = withIt.sort(byCodeUnit).find((type) => tierOf(type) === 'logic');
+    if (logic === undefined) for (const type of [name, ...withIt]) excluded.set(type, name);
+    else notExcluded.push({ type: name, reason: 'logic-part', of: logic });
+  }
+  for (const name of asked) {
     const entry = types.get(name);
-    if (entry === undefined) {
-      notExcluded.push({ type: name, reason: 'unknown', of: null });
-    } else if (entry.role !== 'top') {
+    if (entry === undefined) notExcluded.push({ type: name, reason: 'unknown', of: null });
+    else if (entry.role !== 'top' && !excluded.has(name)) {
       notExcluded.push({ type: name, reason: entry.role, of: entry.of });
-    } else {
-      const withIt = [...types].filter(([, other]) => other.role !== 'top' && other.of === name).map(([type]) => type);
-      const logic = withIt.sort(byCodeUnit).find((type) => tierOf(type) === 'logic');
-      if (logic === undefined) for (const type of [name, ...withIt]) excluded.set(type, name);
-      else notExcluded.push({ type: name, reason: 'logic-part', of: logic });
     }
   }
+  notExcluded.sort((a, b) => byCodeUnit(a.type, b.type));
 
   const items = new Map<string, ListedComponent>();
   let done = 0;
