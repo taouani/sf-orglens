@@ -179,7 +179,7 @@ CREATE TABLE snapshot_analysis (
   analysed_at    TEXT NOT NULL CHECK (analysed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
   components     INTEGER NOT NULL CHECK (components >= 0),
   refs           INTEGER NOT NULL CHECK (refs >= 0)
-, types TEXT CHECK (types IS NULL OR (json_valid(types) AND json_type(types) = 'array'))) STRICT;
+, types TEXT CHECK (types IS NULL OR (json_valid(types) AND json_type(types) = 'array')), cross_check TEXT CHECK (cross_check IS NULL OR (json_valid(cross_check) AND json_type(cross_check) = 'object'))) STRICT;
 
 CREATE TABLE snapshot_origin_coverage (
   snapshot_id  INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
@@ -191,4 +191,34 @@ CREATE TABLE snapshot_origin_coverage (
   refs         INTEGER NOT NULL CHECK (refs >= 0),
   unresolved   INTEGER NOT NULL CHECK (unresolved >= 0 AND unresolved <= refs),
   PRIMARY KEY (snapshot_id, origin)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE snapshot_dependency_reading (
+  snapshot_id INTEGER PRIMARY KEY REFERENCES snapshot (id) ON DELETE CASCADE,
+  -- whole: no query left a row out. partial: rows are missing, or may be. none: the org answered no query.
+  state       TEXT NOT NULL CHECK (state IN ('whole', 'partial', 'none')),
+  read_at     TEXT NOT NULL CHECK (read_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+  requests    INTEGER NOT NULL CHECK (requests >= 0),
+  -- Queries that reached the limit of rows and could not be asked in smaller parts, and queries that failed.
+  cut_off     INTEGER NOT NULL CHECK (cut_off >= 0),
+  failed      INTEGER NOT NULL CHECK (failed >= 0),
+  -- Queries at the limit that were asked again per component, for more components than one query can name: a
+  -- row of a component the org did not list would be missing.
+  unproven    INTEGER NOT NULL CHECK (unproven >= 0),
+  -- The code of the first failure.
+  code        TEXT
+) STRICT;
+
+CREATE TABLE snapshot_dependency (
+  snapshot_id    INTEGER NOT NULL REFERENCES snapshot_dependency_reading (snapshot_id) ON DELETE CASCADE,
+  seq            INTEGER NOT NULL CHECK (seq >= 0),
+  from_type      TEXT NOT NULL,
+  from_id        TEXT NOT NULL,
+  from_name      TEXT NOT NULL,
+  from_namespace TEXT,
+  to_type        TEXT NOT NULL,
+  to_id          TEXT NOT NULL,
+  to_name        TEXT NOT NULL,
+  to_namespace   TEXT,
+  PRIMARY KEY (snapshot_id, seq)
 ) STRICT, WITHOUT ROWID;

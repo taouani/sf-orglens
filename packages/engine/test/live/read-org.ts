@@ -16,11 +16,21 @@
  *   round: how many, and how their names are built, without a name,
  * - the components and the files of the fixture project: whether they are
  *   in the snapshot, and how a file that came back differs from the file
- *   of the repository.
+ *   of the repository,
+ * - the cross-check: what the Dependency API of Salesforce reports for the
+ *   org, held by the engine against its analysis of the snapshot. A pair of
+ *   components is named only if both are of the fixture project,
+ * - the rows read twice more, with one query and then with every answer
+ *   cut off at a few rows, to see that the parts the engine asks for then
+ *   give every row, and that the org answers each way of asking.
  *
- * The step fails when the snapshot does not end, or when the fixture
- * project is not whole in it. A real org lists components it does not hand
- * out, so a snapshot that is partial for that reason is a warning.
+ * The step fails when the snapshot does not end, when the fixture project
+ * is not whole in it, when the Dependency API gave nothing to compare, when
+ * the analysis missed a reference that Salesforce reports, when the parts
+ * give a row that one query just before did not give, or when a reading
+ * in parts that the engine calls whole lacks a row of that query. A real
+ * org lists components it does not hand out, so a snapshot that is partial
+ * for that reason is a warning.
  *
  *   node --no-warnings packages/engine/test/live/read-org.ts
  */
@@ -30,14 +40,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registry } from '@salesforce/source-deploy-retrieve';
 import { workspacePaths } from '../../src/api/layout.ts';
+import type { CrossCheckReport } from '../../src/api/analysis.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
+import type { CoverageReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
-import { connectToOrg } from '../../src/sources/org.ts';
+import { buildKey } from '../../src/core/keys.ts';
+import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
+import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
+import { readListedIds } from '../../src/store/dependencies.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
 import { asStep } from './own-output.ts';
 import { everydayWords, type PublicLog } from './public-log.ts';
-import { failureLines, fixtureComponents, fixtureFiles, loginEnvironment, SOURCE, SOURCE_NAME } from './test-org.ts';
+import {
+  answerKey,
+  failureLines,
+  fixtureComponents,
+  fixtureFiles,
+  loginEnvironment,
+  SOURCE,
+  SOURCE_NAME,
+} from './test-org.ts';
 
 const CONFIG = `schema_version = 1\n\n[sources.${SOURCE_NAME}]\nkind = "org"\n`;
 
@@ -47,6 +71,14 @@ const DIFFERENCES_SHOWN = 80;
 const MISSING_SHOWN = 20;
 /** At most this many chunks get a line of their own. */
 const CHUNKS_SHOWN = 120;
+/** At most this many pairs of one list of the cross-check are named. */
+const PAIRS_SHOWN = 60;
+/**
+ * The rows of the Dependency API are read a second time with every answer cut off at this many rows. The test
+ * org holds fewer rows than the 2,000 a query really gives, so the parts the engine asks for at that limit are
+ * never asked for there otherwise.
+ */
+const PRETENDED_LIMIT = 30;
 
 const seconds = (ms: number): string => (ms / 1000).toFixed(1);
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
@@ -613,6 +645,178 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   return incomplete.length === 0 && missing.length === 0;
 }
 
+/** The keys of the fixture project: its components, and the targets of Salesforce its answer key names. */
+function fixtureKeys(): Set<string> {
+  const keys = new Set<string>(answerKey().standard ?? []);
+  for (const component of fixtureComponents()) {
+    try {
+      keys.add(buildKey(component));
+    } catch {
+      // A component the engine has no key for is of no pair.
+    }
+  }
+  return keys;
+}
+
+/** A word of the engine for a kind of reference, such as `lookup-filter`, or a marker. */
+const reasonWord = (value: string): string => (/^[a-z][a-z-]{0,39}$/.test(value) ? value : '(not shown)');
+
+/**
+ * Says what the cross-check of the snapshot found. A pair is named if both of its components are of the fixture
+ * project, and counted otherwise. Returns what the step makes of it: `ok`, or why it fails.
+ */
+export function crossCheckLines(log: PublicLog, crossCheck: CrossCheckReport | null): 'ok' | 'not compared' | 'missed' {
+  log.say('');
+  log.say('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)');
+  if (crossCheck === null) {
+    log.say('The snapshot holds nothing of the Dependency API: it was not asked.');
+    return 'not compared';
+  }
+  if (crossCheck.state === 'none') {
+    log.say(
+      `The Dependency API gave no answer (${log.code(crossCheck.code) ?? 'a code that is not shown'}), after ${plural(crossCheck.requests, 'request', 'requests')}. Nothing was compared.`,
+    );
+    return 'not compared';
+  }
+  const left = crossCheck.queriesCutOff + crossCheck.queriesFailed;
+  log.say(
+    `Rows: ${String(crossCheck.rows)}, read with ${plural(crossCheck.requests, 'request', 'requests')}. ` +
+      (crossCheck.state === 'whole'
+        ? 'No query left a row out.'
+        : `Rows are missing: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off at the limit, ${String(crossCheck.queriesFailed)} failed (${log.code(crossCheck.code) ?? 'a code that is not shown'}).`),
+  );
+  const { comparison } = crossCheck;
+  if (comparison === null) {
+    log.say('The rows were not compared: the snapshot has no analysis with a comparison.');
+    return 'not compared';
+  }
+
+  // The type of a row is the name of a metadata type, or what the API writes in its place. Only a name of a
+  // metadata type is shown.
+  const byType = new Map<string, number>();
+  for (const { type, rows } of comparison.notAnalysed) {
+    const shown = log.name(type) ?? '(a type that is not shown)';
+    byType.set(shown, (byType.get(shown) ?? 0) + rows);
+  }
+  log.say(
+    `Rows from a component of a type that this phase does not analyse, which are not compared: ${String(comparison.rowsNotAnalysed)}` +
+      (byType.size > 0 ? ` (${tallied(byType)}).` : '.'),
+  );
+  log.say(
+    `Rows with an end that is no component the org listed: ${String(comparison.rowsNotMatched)}. ` +
+      `Rows from a component the snapshot does not hold or that was not analysed: ${String(comparison.rowsNotHeld)}.`,
+  );
+  log.say(
+    `Rows compared: ${String(comparison.rowsCompared)}, which are ${plural(comparison.pairs, 'pair', 'pairs')} of components. ` +
+      `The analysis has ${String(comparison.agreed)} of them, has ${String(comparison.coveredByPart)} as a reference to a part of the object Salesforce names, and missed ${String(comparison.missed.length)}.`,
+  );
+
+  const fixture = fixtureKeys();
+  const list = (pairs: readonly CrossCheckPair[], what: string): void => {
+    const ours = pairs.filter(({ from, to }) => fixture.has(from) && fixture.has(to) && log.clean(`${from} ${to}`));
+    for (const { from, to } of ours.slice(0, PAIRS_SHOWN)) log.say(`- ${what}  ${from} -> ${to}`);
+    if (ours.length > PAIRS_SHOWN)
+      log.say(`- and ${String(ours.length - PAIRS_SHOWN)} more pairs of the fixture project.`);
+    if (ours.length < pairs.length) {
+      log.say(
+        `- ${plural(pairs.length - ours.length, 'pair has', 'pairs have')} a component that is not of the fixture project, and ${pairs.length - ours.length === 1 ? 'is' : 'are'} not named.`,
+      );
+    }
+  };
+  list(comparison.missed, 'missed');
+  log.say(
+    `References of the analysis of a kind Salesforce reports, for which it has no row: ${String(comparison.onlyOrgLens.length)}.`,
+  );
+  list(comparison.onlyOrgLens, 'only OrgLens');
+  const reasons = new Map(comparison.notReported.map(({ reason, pairs }) => [reasonWord(reason), pairs]));
+  log.say(
+    `References of the analysis of kinds the API does not report: ${String([...reasons.values()].reduce((sum, pairs) => sum + pairs, 0))}` +
+      (reasons.size > 0 ? ` (${tallied(reasons)}).` : '.'),
+  );
+  if (left > 0) {
+    log.say('::warning::Rows of the Dependency API are missing. A reference the analysis missed can go unseen.');
+  }
+  return comparison.missed.length > 0 ? 'missed' : 'ok';
+}
+
+const rowIdentity = ({ from, to }: DependencyRow): string =>
+  [from.type, from.id, from.name, from.namespace ?? '', to.type, to.id, to.name, to.namespace ?? ''].join('\u0000');
+
+/**
+ * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
+ * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened.
+ */
+function cutOffAt(session: OrgSession, limit: number): OrgSession {
+  const request = async (url: string, options: unknown): Promise<unknown> => {
+    const page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+    return page !== null && Array.isArray(page.records) && page.records.length > limit
+      ? { ...page, records: page.records.slice(0, limit), done: true }
+      : page;
+  };
+  return { ...session, connection: { request } as never };
+}
+
+/**
+ * Reads the rows of the Dependency API twice more: with one query, as the snapshot did, and then through a
+ * session that cuts every answer off at a few rows. So the engine has to ask per type, per pair of types and
+ * per component, and the org has to answer each of those queries. The two readings follow each other at once,
+ * so that the org has no time to change between them: the rows of the snapshot are minutes old.
+ *
+ * Returns false if the reading in parts gives a row the one query did not give, or if the engine calls it whole
+ * and it lacks one.
+ */
+export async function readInParts(
+  log: PublicLog,
+  session: OrgSession,
+  store: Store,
+  snapshotId: number,
+  apiVersion: string | null,
+  limit = PRETENDED_LIMIT,
+): Promise<boolean> {
+  const version = apiVersion === null ? {} : { apiVersion };
+  const one = await readDependencies(session, version);
+  if (one.state !== 'whole') {
+    log.say('One query did not give every row this time, so reading them in parts was not tried.');
+    return true;
+  }
+  if (one.rows.length < limit) {
+    log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
+    return true;
+  }
+  const ids = new Map<string, string[]>();
+  for (const item of readListedIds(store, snapshotId)) {
+    if (item.id === null) continue;
+    const ofType = ids.get(item.type);
+    if (ofType === undefined) ids.set(item.type, [item.id]);
+    else ofType.push(item.id);
+  }
+  const again = await readDependencies(cutOffAt(session, limit), {
+    ...version,
+    limits: { rowsPerQuery: limit },
+    idsOfType: (type) => ids.get(type) ?? [],
+  });
+  const whole = new Set(one.rows.map(rowIdentity));
+  const parts = new Set(again.rows.map(rowIdentity));
+  const lacking = [...whole].filter((row) => !parts.has(row)).length;
+  const more = [...parts].filter((row) => !whole.has(row)).length;
+  log.say(
+    `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
+      `Queries still at that number for a single component, or with no smaller part to ask for: ${String(again.cutOff)}. ` +
+      `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
+      `Queries asked again per component, for more components than one query names: ${String(again.unproven)}.`,
+  );
+  log.say(
+    lacking === 0 && more === 0
+      ? 'The parts give the same rows as one query just before.'
+      : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
+  );
+  if (again.failed > 0) {
+    log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
+  }
+  // A reading that says that rows are missing may lack rows. One that says it is whole may not.
+  return again.state === 'whole' ? lacking === 0 && more === 0 : more === 0;
+}
+
 export async function readOrg(
   log: PublicLog,
   options: {
@@ -626,8 +830,9 @@ export async function readOrg(
 
   // A login of its own, before the snapshot logs in: it tells this tool the address and the id of the org and the
   // user, which the engine hands to no client. Nothing that holds a word of them is printed from here on.
+  let session: OrgSession;
   try {
-    const session = await connectToOrg(SOURCE, undefined, env);
+    session = await connectToOrg(SOURCE, undefined, env);
     log.forbid(session.instanceUrl, session.orgId, session.orgId.slice(0, 15), session.username);
   } catch (error) {
     log.fail(failureLines(log, 'The test org was not read, because the login to it failed', error));
@@ -675,11 +880,13 @@ export async function readOrg(
 
   try {
     let failure: unknown;
-    let taken: { id: number; status: string } | undefined;
+    let taken: CoverageReport['snapshot'] | undefined;
+    let crossCheck: CrossCheckReport | null = null;
     try {
       const workspace = await openWorkspace({ root, env });
       const report = await workspace.snapshot(SOURCE_NAME, { onProgress });
       taken = report.snapshot;
+      crossCheck = report.crossCheck;
     } catch (error) {
       failure = error;
     }
@@ -700,6 +907,8 @@ export async function readOrg(
     );
 
     let fixtureWhole = false;
+    let compared: ReturnType<typeof crossCheckLines> = 'ok';
+    let sameInParts = true;
     if (existsSync(database)) {
       const store = openStore({ path: database, readOnly: true });
       try {
@@ -708,6 +917,13 @@ export async function readOrg(
           SOURCE_NAME,
         );
         if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
+        // The cross-check is of a snapshot that ended. One that did not end has not asked the API yet.
+        if (row !== undefined && taken !== undefined) {
+          compared = crossCheckLines(log, crossCheck);
+          if (crossCheck?.state === 'whole') {
+            sameInParts = await readInParts(log, session, store, taken.id, taken.apiVersion);
+          }
+        }
       } finally {
         store.close();
       }
@@ -720,6 +936,19 @@ export async function readOrg(
       log.say('');
       log.fail([
         'The fixture project is not whole in the snapshot of the test org. The lines above say what is missing.',
+      ]);
+    } else if (compared === 'not compared') {
+      log.say('');
+      log.fail(['The analysis of the snapshot was not held against the Dependency API. The lines above say why.']);
+    } else if (compared === 'missed') {
+      log.say('');
+      log.fail([
+        'The analysis missed a reference that Salesforce reports. The lines above name it where it is of the fixture project.',
+      ]);
+    } else if (!sameInParts) {
+      log.say('');
+      log.fail([
+        'Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
       ]);
     } else if (taken?.status !== 'complete') {
       // A real org lists components it does not hand out. The step says so and does not fail for it: it fails

@@ -3,7 +3,8 @@
  * on this machine that accepts a login with a key, lists API versions and
  * says who is logged in. Given Apex classes, it also answers the Metadata
  * API: it describes one type, lists the classes and hands them out in a
- * zip file. The tests of the engine have a larger one. A client may not
+ * zip file. Given rows of the Dependency API, it answers the one query a
+ * small org is asked for them. The tests of the engine have a larger one. A client may not
  * reach into the engine, and that holds for its tests too.
  */
 import { createVerify } from 'node:crypto';
@@ -72,6 +73,13 @@ export interface MockOrg {
   retrieveFault: string | null;
   /** The operations of the Metadata API that were asked for. */
   readonly operations: string[];
+  /**
+   * The rows of the Dependency API the org holds, as the Tooling API hands them out. `null`: the org does not
+   * have the API, and says so.
+   */
+  dependencies: Readonly<Record<string, string | null>>[] | null;
+  /** The queries the Tooling API was asked, as their SOQL. */
+  readonly queries: string[];
   close(): Promise<void>;
 }
 
@@ -90,6 +98,8 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     unlisted: [],
     retrieveFault: null,
     operations: [],
+    dependencies: null,
+    queries: [],
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();
@@ -164,7 +174,8 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     const chunks: Buffer[] = [];
     incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
     incoming.on('end', () => {
-      const path = new URL(incoming.url ?? '/', url).pathname;
+      const address = new URL(incoming.url ?? '/', url);
+      const path = address.pathname;
       paths.push(path);
       const answer = (status: number, value: unknown): void => {
         outgoing.writeHead(status, { 'content-type': 'application/json' });
@@ -189,6 +200,19 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
         answer(200, [{ version: '66.0', label: 'Release', url: '/services/data/v66.0' }]);
       } else if (path === '/services/data/v66.0/' && incoming.headers.authorization === 'Bearer the-session') {
         answer(200, { identity: `${url}/id/${orgId}/005xx000000001AAAA` });
+      } else if (
+        path === '/services/data/v66.0/tooling/query' &&
+        incoming.headers.authorization === 'Bearer the-session'
+      ) {
+        org.queries.push(address.searchParams.get('q') ?? '');
+        if (org.dependencies === null) {
+          answer(400, [
+            { message: "sObject type 'MetadataComponentDependency' is not supported.", errorCode: 'INVALID_TYPE' },
+          ]);
+        } else {
+          const records = org.dependencies;
+          answer(200, { size: records.length, totalSize: records.length, done: true, records });
+        }
       } else {
         answer(401, [{ message: 'Session expired or invalid', errorCode: 'INVALID_SESSION_ID' }]);
       }

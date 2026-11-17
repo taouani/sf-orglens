@@ -215,6 +215,11 @@ export interface SnapshotOptions {
    * is never interrupted, so this changes nothing for one.
    */
   readonly restart?: boolean | undefined;
+  /**
+   * False to leave the Dependency API of the org unasked. By default a snapshot of an org or a sandbox asks it
+   * what Salesforce knows about references, and the analysis is held against the answer. A Git source has none.
+   */
+  readonly crossCheck?: boolean | undefined;
   /** Called while an org is read. It is not called for a Git source. */
   readonly onProgress?: ((event: SnapshotProgress) => void) | undefined;
 }
@@ -558,6 +563,7 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
                     env,
                     openStore: open,
                     restart: options.restart,
+                    crossCheck: options.crossCheck,
                     onProgress: options.onProgress,
                   });
             const { id, status, files, commit } = taken.snapshot;

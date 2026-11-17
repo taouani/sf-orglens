@@ -15,7 +15,9 @@ name: Live org
 #           org. Nothing else is ever deployed, and no Apex test is run.
 #   read    takes a snapshot of the test org with the engine, in a folder
 #           that is deleted when the step ends, and prints what it holds in
-#           numbers.
+#           numbers. The snapshot asks the Dependency API of the org, and
+#           the step prints how its rows compare with the analysis. It
+#           fails when the analysis missed a reference Salesforce reports.
 #   probe   asks the org what Salesforce itself knows about references: the
 #           rows of the Dependency API and the symbol tables of the Apex
 #           compiler, both through the Tooling API. It writes nothing, and

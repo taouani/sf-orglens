@@ -865,6 +865,98 @@ Three things the probe of 15 November 2026 showed are for this work package
   a record of a custom metadata type is the name of that type. The test tool got both wrong at first. The
   engine has to name a custom object from a source that has the ending.
 
+Status on 16 November 2026, with the pull request that holds the cross-check. Built: `sources/dependency-api.ts`
+(`readDependencies`) and `sources/org-http.ts`, the sixth migration of the database (the rows of a snapshot and
+the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts`, the comparison in
+`api/analysis.ts`, the step of `api/org-snapshot.ts` that asks the API, `CoverageReport.crossCheck`, the option
+`--no-cross-check` of `orglens snapshot`, the cross-check in the text of `coverage`, the JSON Schema,
+`docs/cli.md`, the two tools of the live-org workflow, their tests and decision record
+[0045](../adr/0045-the-cross-check-of-a-snapshot.md).
+
+- **The three pass marks.**
+  - Against the mock org, the comparison finds a pair that is taken out on purpose. A test changes the rule
+    `Tax_Rate_Matches_Code` of the fixture project so that its formula no longer names `Tax_Code_Name__c`. The
+    snapshot then has the error `REFERENCE_MISSED` with both keys, its analysis is incomplete, and an impact
+    answer for the field says that it may miss something. Without the change, the mock org reports 141 rows.
+    84 are from Apex and from the record of the custom metadata type and are not compared. The other 57 are
+    57 pairs: the analysis has 55, has 2 as a reference to a part of the object, and missed none. The mock org
+    answers from the answer key. It is not Salesforce.
+  - **On the test org: not measured when this was written.** The step is built and can only run from `main`.
+    I start it after the merge, and its result goes into [real-org.md](../research/phase-1/real-org.md) and
+    into this block with a pull request of its own.
+  - Only metadata is read. The engine queries one object, `MetadataComponentDependency`. A test of the reader
+    and a test of the snapshot hold every query the mock org received against it.
+- **Three departures from this plan**, for you to strike. Record 0045 has the reasons.
+  - The rows are not stored "with the origin `dependency-api`". They are stored beside the snapshot, as
+    Salesforce wrote them, and are no references. `impact` cannot show one, because the graph does not read
+    them. As references they would have changed the digest of a component whose files did not change, or been
+    shared with a snapshot of a repository.
+  - The engine does not read "the names behind the ids". It finds the component of a row by the id the org
+    listed it with, which the snapshot already holds. So one object is queried, and not the four more that
+    the test tool reads for the names. The test tool still reads them, and the two ways can be held against
+    each other on the test org.
+  - A query at the limit is asked again on a third level, per group of components that refer, with the ids of
+    the listing. This plan names two levels.
+- **The two questions of this work package** were put to you on 16 November 2026, and you answered both on
+  the same day with the first answer, which is what was built. A row from a rule to an object counts as
+  covered when the analysis has a reference from the same rule to a field or a record of that object
+  (`coveredByPart`). A record of a custom metadata type refers to its type from the phase that analyses
+  records: until then its row is counted with the rows of types this phase does not analyse. Record 0045 holds
+  both as your decisions.
+- **The review of the pull request** found no fault of the highest weight, four of middle weight and nine
+  small ones. All four of middle weight are corrected.
+  - The reading could call itself whole where it was not. After a query at the limit was asked again per
+    component, a row of a component the org did not list was left out without a trace. Now the rows the query
+    gave before have to come again, one more query asks for the rows of every other component where it can
+    name all ids, and where it cannot the reading is `partial` and says that rows may be missing
+    (`queriesNotProven`).
+  - A name could match a row to the wrong component. Now a name is taken only where there is no id: for a
+    standard object, and for a component the org listed without one. A custom object is never taken by name.
+  - One query that ran out of time ended the reading, and a type whose query was refused was not asked for in
+    parts. Now such a type is asked for in parts, and the reading stops only after three in a row.
+  - Nothing bounded the requests, and nothing was said while they ran. Now the reading stops after 2,000
+    requests, and `snapshot` writes a line about the rows so far at most every five seconds. The number 2,000
+    is mine and rests on no measurement.
+  - Of the small ones: the sentence about a pair only OrgLens has now says that its row can be among the
+    missing ones, a snapshot that is continued replaces the warning of its earlier reading, the next page of
+    an answer is followed only to the same query, a comparison stored by another version is shown only with
+    the fields this version knows, and the step on the test org reads one query again just before the parts,
+    so that a change of the org between two readings is less likely to fail it.
+  - Not taken up: a run of the command line against the mock org that ends with `REFERENCE_MISSED` and the
+    exit code `5`. The mock org of the command line tests holds two classes and nothing that is compared. The
+    engine test shows that the error makes the analysis incomplete, and the tests of the command line show
+    that an incomplete analysis ends with `5`.
+- **Other choices of mine**, which record 0045 lists for you to strike. The ones with the most weight:
+  - The API is asked by default, and `--no-cross-check` leaves it unasked. This plan says "optional".
+  - The comparison is kept with the analysis, and `orglens analyse` compares again from the stored rows,
+    without the org.
+  - A missed pair makes the analysis incomplete like every error of it: exit code `5`, and `mayMiss` for every
+    impact answer from that snapshot, not only for the two components.
+  - A pair that only OrgLens has is listed and is no issue.
+  - With rows missing, the comparison is still made, and the report says that rows are missing.
+  - The list of what the API does not report is longer than that of record 0034, as this plan says. Three
+    entries of it rest on no measurement: a standard object as the target of anything but a lookup, the
+    display field of a lookup, and a custom name in a default value.
+  - The text of `coverage` lists the first 20 missed pairs, and `--json` all of them.
+- **Not done, against record 0034.** A row for a pair OrgLens found raises no confidence: nothing of a
+  reference is changed by a row. The output does not say for each reference whether the API reports its kind:
+  it counts pairs per reason.
+- **For WP9.** The cross-check adds two warnings of the reading, `CROSS_CHECK_NOT_READ` and
+  `CROSS_CHECK_PARTIAL`. Neither makes a snapshot partial, and the rule for "complete" has to leave it so. A
+  row that names a component the org did not list is not compared: a type that is read without being listed
+  has no ids.
+- **For WP10.** How many requests the cross-check of a large org needs, and how long they take, was not
+  measured. The public codebases have no org, so WP10 cannot measure it either. It needs an org of yours.
+- **For Phase 2.** With every type that is analysed, its rows move from "not compared" to "compared" without a
+  change to the comparison: the analysis says which types it read.
+- **Not done or not verified.** Not verified on a real org: that the ids of the listing are the ids of the rows,
+  that Salesforce accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, and what the comparison shows
+  there. The read step shows all three. An org with more than 200 components of a type whose pair of types is at the
+  limit gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs
+  for the query was not looked up. The command `orglens snapshot` itself was not run against a real org, as before.
+  The mock org reports the formula of a rule that is not active and of a default value, which Salesforce does not or
+  may not.
+
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 
 Build, as record [0038](../adr/0038-a-snapshot-reads-every-type.md) says, which replaces record

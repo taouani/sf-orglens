@@ -11,6 +11,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
+import { fixtureDependencyRows } from './helpers/fixture-dependencies.ts';
+import { dependencyRow, mockDependencies, type MockDependencies } from './helpers/mock-dependencies.ts';
 import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
@@ -35,6 +37,7 @@ const pair = generateKeyPairSync('rsa', {
 const dirs = tempDirs();
 let mock: MockOrg;
 let metadata: MockMetadata;
+let dependencies: MockDependencies;
 
 beforeAll(async () => {
   mock = await startMockOrg({ orgId: ORG_ID });
@@ -46,6 +49,9 @@ beforeEach(async () => {
   metadata = await metadataFromSource(FIXTURE);
   metadata.pollsBeforeDone = 0;
   mock.metadata = metadata;
+  // What the Dependency API of the org reports: the references of the answer key that Salesforce knows of.
+  dependencies = mockDependencies(fixtureDependencyRows(metadata));
+  mock.dependencies = dependencies;
   mock.key = { username: USERNAME, clientId: CLIENT_ID, publicKey: pair.publicKey };
 });
 afterEach(() => {
@@ -711,6 +717,133 @@ describe('reading the test org', () => {
     expect(output).toMatch(
       /^Files by folder: classes 24, customMetadata 1, customPermissions 1, globalValueSets 1, labels 1, objects \d+, triggers 2$/m,
     );
+    // The cross-check: the rows of the mock org, held against the analysis by the engine.
+    const rows = dependencies.rows.length;
+    const cross = output.split('\n');
+    expect(
+      cross.slice(cross.indexOf('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)')),
+    ).toEqual([
+      'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)',
+      `Rows: ${String(rows)}, read with 1 request. No query left a row out.`,
+      'Rows from a component of a type that this phase does not analyse, which are not compared: 84 (ApexClass (82), ApexTrigger (1), CustomMetadata (1)).',
+      'Rows with an end that is no component the org listed: 0. Rows from a component the snapshot does not hold or that was not analysed: 0.',
+      'Rows compared: 57, which are 57 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+      'References of the analysis of a kind Salesforce reports, for which it has no row: 0.',
+      'References of the analysis of kinds the API does not report: 38 (standard-field (23), roll-up-summary (5), standard-object (4), lookup-filter (2), value-set (2), controlling-field (1), lookup (1)).',
+      expect.stringMatching(
+        new RegExp(
+          `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
+        ),
+      ) as string,
+      'The parts give the same rows as one query just before.',
+    ]);
+    // The rows of a component the org did not list were asked for, where one query names every component.
+    expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
+    // The second reading asked per type, per pair of types and per component, and for nothing but the one object.
+    expect(
+      dependencies.queries.some((soql) =>
+        soql.includes(
+          "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType = 'CustomField' AND MetadataComponentId IN (",
+        ),
+      ),
+    ).toBe(true);
+    for (const soql of dependencies.queries) expect(soql).toContain(' FROM MetadataComponentDependency');
+    expectNoSecret(output);
+  });
+
+  it('fails when the analysis missed a reference that Salesforce reports, and names the pair', async () => {
+    // The formula of this rule does not name the field. For this test, Salesforce says that it does.
+    dependencies.rows.push(
+      dependencyRow(
+        metadata,
+        ['ValidationRule', 'Invoice__c.Tax_Rate_Matches_Code'],
+        ['CustomField', 'Invoice__c.Amount__c'],
+      ),
+    );
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output).toContain(
+      'Rows compared: 58, which are 58 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+    );
+    expect(output).toContain(
+      '- missed  ValidationRule:invoice__c.tax_rate_matches_code -> CustomField:invoice__c.amount__c',
+    );
+    // The analysis of the snapshot has the error, so the snapshot has one observation.
+    expect(output).toContain('- error REFERENCE_MISSED: 1 observation');
+    expect(output.split('\n').slice(-2)).toEqual([
+      '',
+      '::error::The analysis missed a reference that Salesforce reports. The lines above name it where it is of the fixture project.',
+    ]);
+    expectNoSecret(output);
+  });
+
+  it('fails when the org has no Dependency API, and says with its code that nothing was compared', async () => {
+    mock.dependencies = null;
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output).toContain('The snapshot of the test org is complete.');
+    expect(output).toContain('- warning CROSS_CHECK_NOT_READ: 1 observation');
+    expect(output.split('\n').slice(-4)).toEqual([
+      'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)',
+      'The Dependency API gave no answer (INVALID_TYPE), after 3 requests. Nothing was compared.',
+      '',
+      '::error::The analysis of the snapshot was not held against the Dependency API. The lines above say why.',
+    ]);
+    expectNoSecret(output);
+  });
+
+  it('says that rows are missing when the org refuses to be asked per component, and does not fail for it', async () => {
+    // The org answers the one query of the snapshot. It refuses the query the second reading needs at the limit.
+    dependencies.refuse = (soql) => (soql.includes('MetadataComponentId IN (') ? 'MALFORMED_QUERY' : undefined);
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toMatch(
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\.$/m,
+    );
+    expect(output).toMatch(
+      /^The parts lack [1-9]\d* rows? of the one query just before, and give 0 rows it does not have\.$/m,
+    );
+    expect(output.split('\n').at(-1)).toBe(
+      '::warning::The org refused a query the engine asks when a query is at the limit of rows.',
+    );
+    expectNoSecret(output);
+  });
+
+  it('fails when the parts give a row that one query did not give', async () => {
+    // The org gets a row between the query for everything and the queries for the parts. For the step that is
+    // the same as an engine whose parts give something else than one query.
+    const later = dependencyRow(metadata, ['ApexClass', 'InvoiceSelector'], ['CustomField', 'Invoice__c.Region__c']);
+    const answer = dependencies.answer.bind(dependencies);
+    dependencies.answer = (soql) => {
+      if (soql.includes(' WHERE ') && !dependencies.rows.includes(later)) dependencies.rows.push(later);
+      return answer(soql);
+    };
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output.split('\n').slice(-3)).toEqual([
+      'The parts lack 0 rows of the one query just before, and give 1 row it does not have.',
+      '',
+      '::error::Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
+    ]);
+    expectNoSecret(output);
+  });
+
+  it('does not read in parts an org that holds fewer rows than the parts are cut off at', async () => {
+    dependencies.rows.length = 20;
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output.split('\n').at(-1)).toBe('The org holds fewer than 30 rows, so reading them in parts was not tried.');
+    expect(dependencies.queries.every((soql) => !soql.includes(' WHERE '))).toBe(true);
     expectNoSecret(output);
   });
 
@@ -813,6 +946,9 @@ describe('reading an org that holds more than the fixture project', () => {
     const more = await metadataFromSource(join(dir, 'force-app'));
     more.pollsBeforeDone = 0;
     mock.metadata = more;
+    // The same rows, with the ids this org lists the components with.
+    dependencies = mockDependencies(fixtureDependencyRows(more));
+    mock.dependencies = dependencies;
     return more;
   }
 
@@ -873,6 +1009,48 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
     expect(output).toMatch(/^Report +0 +0 +failed$/m);
     expect(output).toContain('Fixture project: 87 components. Listed by the org: 87. Retrieved: 87.');
+    expectNothingForeign(output);
+  });
+
+  it('names no component of the org in what the cross-check found, and counts the pairs it does not name', async () => {
+    const more = await withMore();
+    const date: readonly [string, string] = ['CustomField', 'Secret_Plan__c.Takeover_Date__c'];
+    dependencies.rows.push(
+      // From a class of the org, which is of a type that is not analysed.
+      dependencyRow(more, ['ApexClass', 'SecretPlan'], date),
+      // From a field of the org to a field of the fixture project: a reference the analysis does not have.
+      dependencyRow(more, date, ['CustomField', 'Invoice__c.Amount__c']),
+      // From a record of a custom metadata type of the org, whose type the API writes in the place of a type.
+      {
+        ...dependencyRow(more, ['ApexClass', 'SecretPlan'], date),
+        MetadataComponentType: 'Secret_Plan__mdt',
+        MetadataComponentName: 'Takeover',
+        MetadataComponentId: 'm00xx0000000099AAA',
+      },
+      // A type that is no name of a metadata type.
+      {
+        ...dependencyRow(more, ['ApexClass', 'SecretPlan'], date),
+        MetadataComponentType: 'Hidden_Notes',
+        MetadataComponentId: 'a0Zxx0000000099AAA',
+      },
+    );
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(output).toContain(
+      'Rows from a component of a type that this phase does not analyse, which are not compared: 87 (ApexClass (83), CustomMetadata (2), (a type that is not shown) (1), ApexTrigger (1)).',
+    );
+    expect(output).toContain(
+      'Rows compared: 58, which are 58 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+    );
+    expect(output).toContain('- 1 pair has a component that is not of the fixture project, and is not named.');
+    expect(output).not.toContain('- missed');
+    // The observation of the analysis names the two components in the database. The code is shown, the names are not.
+    expect(output).toContain('- error REFERENCE_MISSED: 1 observation');
+    expect(log.failed).toBe(true);
+    expect(output.split('\n').at(-1)).toBe(
+      '::error::The analysis missed a reference that Salesforce reports. The lines above name it where it is of the fixture project.',
+    );
     expectNothingForeign(output);
   });
 
@@ -1140,10 +1318,9 @@ describe('asking the org what Salesforce knows about references', () => {
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
-    expect(output).toContain('One query without a filter: 12 rows in 1 page.');
-    expect(output).toMatch(/^ApexClass +8 +ok$/m);
-    expect(output).toMatch(/^Flow +1 +ok$/m);
-    expect(output).toMatch(/^ValidationRule +1 +ok$/m);
+    // The rows are read by the reader of the engine. A small org is asked once.
+    expect(output).toContain('The reader of the engine sent 1 request.');
+    expect(asked.filter((soql) => soql.includes('FROM MetadataComponentDependency'))).toHaveLength(1);
     expect(output).toContain(
       'Different rows in all: 12. No query was cut off or failed in a way that leaves a row out.',
     );
@@ -1237,7 +1414,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expectNothingForeign(output);
   });
 
-  it('asks again per pair of types where a query is at the limit of 2,000 rows, and says when rows are still missing', async () => {
+  it('says when rows are still missing after the engine asked per type and per pair of types', async () => {
     const org = tables();
     org['MetadataComponentDependency'] = [
       ...many(2050, 'ApexClass', 'CustomField', id('00N', 9), 'Takeover_Date'),
@@ -1250,16 +1427,13 @@ describe('asking the org what Salesforce knows about references', () => {
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
+    // The pair of types that is at the limit cannot be asked for per component here: this tool takes no
+    // snapshot, so it has no ids the org listed. What is behind the limit elsewhere is found: beside the 2,000
+    // rows of the pair, the 30 rows to the other type of target and 7 of the 12 rows of the small org. The
+    // other 5 are of the pair that is cut off.
     expect(output).toContain(
-      'One query without a filter: 2000 rows in 1 page. That is the limit of 2000 rows: the org may hold more.',
+      'Different rows in all: 2037. 1 query was cut off at the limit or failed, so rows are missing.',
     );
-    expect(output).toMatch(/^ApexClass +2000 +at the limit, asked again per type of the target$/m);
-    expect(output).toMatch(/^ {2}to CustomField +2000 +at the limit: rows are missing$/m);
-    expect(output).toMatch(/^ {2}to every other type +33 +ok$/m);
-    // The types the limit hid are found: the flow, the trigger, the rule and the field that refer.
-    expect(output).toMatch(/^Flow +1 +ok$/m);
-    expect(output).toMatch(/^ApexTrigger +1 +ok$/m);
-    expect(output).toContain('1 query was cut off at the limit or failed, so rows are missing.');
     expect(output).toContain(
       'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
     );
@@ -1269,20 +1443,22 @@ describe('asking the org what Salesforce knows about references', () => {
   });
 
   it('counts a query that failed where its rows can be missing', async () => {
-    // The first query is at the limit, and the org refuses the query for the rows of the classes.
+    // The first query is at the limit, and the org refuses every query for the rows of the classes: the one for
+    // all of them, and the ones for their parts, which the reader asks for then.
     const org = tables();
     org['MetadataComponentDependency'] = [
       ...many(1990, 'Flow', 'CustomField', id('00N', 9), 'Takeover_Date'),
       ...(org['MetadataComponentDependency'] ?? []),
     ];
     tooling(org, {
-      fault: (soql) => (soql.endsWith("WHERE MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined),
+      fault: (soql) => (soql.includes("MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined),
     });
     const first = collected();
     await probeOrg(first.log, { env: environment() });
     expect(first.log.failed).toBe(false);
-    expect(first.text()).toMatch(/^ApexClass +failed \(UNKNOWN_EXCEPTION\): rows may be missing$/m);
-    expect(first.text()).toContain('1 query was cut off at the limit or failed, so rows are missing.');
+    expect(first.text()).toMatch(
+      /\d+ queries were cut off at the limit or failed \(UNKNOWN_EXCEPTION\), so rows are missing\./,
+    );
     expect(first.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
     expectNothingForeign(first.text());
 
@@ -1297,8 +1473,9 @@ describe('asking the org what Salesforce knows about references', () => {
     const second = collected();
     await probeOrg(second.log, { env: environment() });
     expect(second.log.failed).toBe(false);
-    expect(second.text()).toMatch(/^ {2}to CustomField +failed \(UNKNOWN_EXCEPTION\): rows are missing$/m);
-    expect(second.text()).toContain('query was cut off at the limit or failed, so rows are missing.');
+    expect(second.text()).toContain(
+      '1 query was cut off at the limit or failed (UNKNOWN_EXCEPTION), so rows are missing.',
+    );
     expectNothingForeign(second.text());
 
     // The classes are at the limit, and no row says of which type a target is.
@@ -1306,29 +1483,30 @@ describe('asking the org what Salesforce knows about references', () => {
     tooling(org);
     const third = collected();
     await probeOrg(third.log, { env: environment() });
-    expect(third.text()).toMatch(/^ApexClass +2000 +at the limit, asked again per type of the target$/m);
-    expect(third.text()).toMatch(/^ {2}to a type +no type of a target is known: rows are missing$/m);
-    expect(third.text()).toContain('query was cut off at the limit or failed, so rows are missing.');
+    expect(third.text()).toContain(
+      'Different rows in all: 2000. 1 query was cut off at the limit or failed, so rows are missing.',
+    );
     expectNothingForeign(third.text());
   });
 
-  it('does not count a query that failed when the first query gave every row', async () => {
+  it('asks the Dependency API once when the first query gave every row, and tells a field of a package apart', async () => {
     const org = tables();
     // A field of a package with the name of a field of the fixture project.
     org['CustomField']?.push(field(7, 'Amount', INVOICE, 'Invoice__c', 'hidden'));
     org['MetadataComponentDependency']?.push(
       dependency('ApexClass', id('01p', 1), 'InvoiceService', 'CustomField', id('00N', 7), 'Amount'),
     );
-    tooling(org, {
-      // The answer for the flows does not say that it has ended. One object has no field for the prefix of a package.
+    const asked = tooling(org, {
+      // A query for one type would not be answered to its end. It is never asked: the first query gave every row.
       notDone: (soql) => soql.endsWith("WHERE MetadataComponentType = 'Flow'"),
+      // One object has no field for the prefix of a package.
       fault: (soql) => (/NamespacePrefix.* FROM ValidationRule/.test(soql) ? 'INVALID_FIELD' : undefined),
     });
     const { log, text } = collected();
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
-    expect(output).toMatch(/^Flow +failed \(NOT_DONE\)$/m);
+    expect(asked.filter((soql) => soql.includes('FROM MetadataComponentDependency'))).toHaveLength(1);
     expect(output).toContain(
       'Different rows in all: 13. No query was cut off or failed in a way that leaves a row out.',
     );
@@ -1599,10 +1777,13 @@ describe('asking the org what Salesforce knows about references', () => {
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
-    expect(output).toMatch(/^Kind6 +2000 +at the limit, asked again per type of the target$/m);
-    expect(output).not.toMatch(/^Kind7 /m);
-    expect(output).toMatch(/^every other type +2000 +at the limit: rows are missing$/m);
-    expect(output).toContain('7 queries were cut off at the limit or failed, so rows are missing.');
+    // Six types are asked for by name, each with a pair of types at the limit. The seventh is seen in the
+    // answer for every other type, which is at the limit as well, and is not asked for any more.
+    expect(output).toContain(
+      'Different rows in all: 14000. 7 queries were cut off at the limit or failed, so rows are missing.',
+    );
+    expect(asked.some((soql) => soql.includes("MetadataComponentType = 'Kind6'"))).toBe(true);
+    expect(asked.some((soql) => soql.includes("MetadataComponentType = 'Kind7'"))).toBe(false);
     expect(asked.filter((soql) => /(?<!Ref)MetadataComponentType NOT IN/.test(soql))).toHaveLength(6);
     expectNothingForeign(output);
   });
@@ -1615,8 +1796,7 @@ describe('asking the org what Salesforce knows about references', () => {
     await probeOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(true);
-    expect(output).toContain('One query without a filter failed (INVALID_TYPE).');
-    expect(output).toContain('No query of the Dependency API was answered.');
+    expect(output).toContain('No query of the Dependency API was answered (INVALID_TYPE).');
     expect(output).toContain('The classes could not be read with their symbol tables (INSUFFICIENT_ACCESS).');
     expect(output.split('\n').at(-1)).toBe(
       '::error::The org did not answer either of the two. The codes above say why.',
@@ -1677,7 +1857,10 @@ describe('a tool of the live-org workflow as a program', () => {
         : undefined;
     const probed = await run('probe-org.ts', { ...environment(), HOME: home, USERPROFILE: home });
     expect(probed.stderr).toBe('');
-    expect(probed.stdout).toContain('One query without a filter: 0 rows in 1 page.\n');
+    expect(probed.stdout).toContain('The reader of the engine sent 1 request.\n');
+    expect(probed.stdout).toContain(
+      'Different rows in all: 0. No query was cut off or failed in a way that leaves a row out.\n',
+    );
     expect(probed.stdout).toContain(
       'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
     );

@@ -3,10 +3,12 @@
  * Salesforce itself knows about references, and says how much of the answer
  * key of the fixture project each of them reports.
  *
- * - The Dependency API: the rows of `MetadataComponentDependency`. One
- *   query gives at most 2,000 rows and cannot be continued, so the rows are
- *   asked for per type of the component that refers, and per pair of types
- *   where that is still too many.
+ * - The Dependency API: the rows of `MetadataComponentDependency`. They
+ *   are read by the reader of the engine (`sources/dependency-api.ts`),
+ *   which this tool held until it moved there. The names behind the ids of
+ *   the rows are read here, from objects of the Tooling API. The engine
+ *   takes them from what the org listed for a snapshot, which this tool
+ *   does not take: so the two find the components of a row in two ways.
  * - The symbol tables of the compiler: `ApexClass.SymbolTable`, as the org
  *   holds it for a class that is saved.
  *
@@ -27,50 +29,19 @@
  *
  *   node --no-warnings packages/engine/test/live/probe-org.ts
  */
+import { readDependencies, type DependencyEnd, type DependencyRow } from '../../src/sources/dependency-api.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { codeOf, fixtureWords, PLATFORM_WORDS } from './deploy-fixture.ts';
 import { asStep } from './own-output.ts';
 import type { PublicLog } from './public-log.ts';
 import { answerKey, failureLines, loginEnvironment, SOURCE } from './test-org.ts';
 
-/** The most rows one query of the Dependency API gives. A query that gives this many may have left rows out. */
-const CUT_OFF = 2000;
 /** The query for the symbol tables can take long. */
 const REQUEST = { timeout: 180_000 } as const;
 /** No query is followed over more pages than this. */
 const PAGES = 400;
-/** How often the types of target that are left are asked for, where a type of component is at the limit. */
-const ROUNDS = 6;
 /** At most this many lines are printed of one list. */
 const SHOWN = 200;
-
-const DEPENDENCY_FIELDS =
-  'MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, ' +
-  'RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType';
-
-/**
- * Types of components that refer to others, asked for whatever the first query shows: it may be cut off before
- * the rows of a type.
- */
-const REFERRING_TYPES = [
-  'ApexClass',
-  'ApexComponent',
-  'ApexPage',
-  'ApexTrigger',
-  'AuraDefinitionBundle',
-  'CustomField',
-  'CustomObject',
-  'EmailTemplate',
-  'FlexiPage',
-  'Flow',
-  'Layout',
-  'LightningComponentBundle',
-  'QuickAction',
-  'ValidationRule',
-  'WebLink',
-  'WorkflowFieldUpdate',
-  'WorkflowRule',
-];
 
 type Row = Readonly<Record<string, unknown>>;
 
@@ -90,7 +61,6 @@ const text = (value: unknown): string => (typeof value === 'string' ? value : ''
 const short = (value: unknown): string => text(value).slice(0, 15);
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
 const WORD = /[A-Za-z_][A-Za-z0-9_]*/g;
-const TYPE_NAME = /^[A-Za-z][A-Za-z0-9]{0,79}$/;
 
 /** Lines of a table: the columns are as wide as their widest cell. */
 function table(rows: readonly (readonly string[])[]): string[] {
@@ -205,23 +175,13 @@ interface Dependency {
   readonly to: Side;
 }
 
-const dependency = (row: Row): Dependency => ({
-  from: {
-    type: text(row['MetadataComponentType']),
-    id: short(row['MetadataComponentId']),
-    name: text(row['MetadataComponentName']),
-    namespace: text(row['MetadataComponentNamespace']),
-  },
-  to: {
-    type: text(row['RefMetadataComponentType']),
-    id: short(row['RefMetadataComponentId']),
-    name: text(row['RefMetadataComponentName']),
-    namespace: text(row['RefMetadataComponentNamespace']),
-  },
+const side = (end: DependencyEnd): Side => ({
+  type: end.type,
+  id: short(end.id),
+  name: end.name,
+  namespace: end.namespace ?? '',
 });
-
-const identity = ({ from, to }: Dependency): string =>
-  [from.type, from.id, from.name, to.type, to.id, to.name].join('\u0000');
+const dependency = (row: DependencyRow): Dependency => ({ from: side(row.from), to: side(row.to) });
 
 /**
  * Finds the key of the fixture project a side of a row stands for.
@@ -444,143 +404,27 @@ async function probeDependencies(
       ? `${lower} (a custom metadata type of the fixture project)`
       : '(a type that is not shown, and ends in __mdt)';
   };
-  const base = `SELECT ${DEPENDENCY_FIELDS} FROM MetadataComponentDependency`;
-  const rows = new Map<string, Dependency>();
-  const keep = (asked: Asked): void => {
-    for (const row of asked.rows) {
-      const one = dependency(row);
-      rows.set(identity(one), one);
-    }
-  };
-
   log.say('The Dependency API (MetadataComponentDependency)');
-  const all = await ask(log, session, base, counter);
-  keep(all);
-  log.say(
-    all.failed === null
-      ? `One query without a filter: ${plural(all.rows.length, 'row', 'rows')} in ${plural(all.pages, 'page', 'pages')}.` +
-          (all.rows.length >= CUT_OFF ? ` That is the limit of ${String(CUT_OFF)} rows: the org may hold more.` : '')
-      : `One query without a filter failed (${all.failed}).`,
-  );
-
-  // Per type of the component that refers, and per pair of types where one type alone hits the limit.
-  const seen = (pick: (one: Dependency) => string): string[] =>
-    [...new Set([...rows.values()].map(pick))].filter((type) => TYPE_NAME.test(type));
-  const lines: string[][] = [['TYPE THAT REFERS', 'ROWS', 'STATE']];
-  let answered = all.failed === null;
-  /** Whether the first query gave every row of the org. Then no later query can add a row. */
-  const whole = all.failed === null && all.rows.length < CUT_OFF;
-  let cutOff = 0;
-  const quoted = (types: Iterable<string>): string => [...types].map((type) => `'${type}'`).join(', ');
-
-  /** The rows of one type of component, per type of the target where the type alone is at the limit. */
-  const askType = async (type: string): Promise<void> => {
-    const ofType = await ask(log, session, `${base} WHERE MetadataComponentType = '${type}'`, counter);
-    keep(ofType);
-    // An answer that broke off after the limit is at the limit as well.
-    const atLimit = ofType.rows.length >= CUT_OFF;
-    if (ofType.failed !== null && !atLimit) {
-      // The rows of the type are missing, unless the first query gave every row.
-      if (!whole) cutOff += 1;
-      lines.push([shownType(type), '', `failed (${ofType.failed})${whole ? '' : ': rows may be missing'}`]);
-      return;
-    }
-    answered = true;
-    if (!atLimit) {
-      if (ofType.rows.length > 0) lines.push([shownType(type), String(ofType.rows.length), 'ok']);
-      return;
-    }
-    lines.push([shownType(type), String(ofType.rows.length), 'at the limit, asked again per type of the target']);
-    // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
-    const asked = new Set<string>();
-    let targets = seen((one) => one.to.type).sort();
-    if (targets.length === 0) {
-      cutOff += 1;
-      lines.push(['  to a type', '', 'no type of a target is known: rows are missing']);
-    }
-    for (let round = 0; round < ROUNDS && targets.length > 0; round += 1) {
-      for (const target of targets) {
-        asked.add(target);
-        const pair = await ask(
-          log,
-          session,
-          `${base} WHERE MetadataComponentType = '${type}' AND RefMetadataComponentType = '${target}'`,
-          counter,
-        );
-        keep(pair);
-        if (pair.rows.length >= CUT_OFF) {
-          cutOff += 1;
-          lines.push([`  to ${shownType(target)}`, String(pair.rows.length), 'at the limit: rows are missing']);
-        } else if (pair.failed !== null) {
-          cutOff += 1;
-          lines.push([`  to ${shownType(target)}`, '', `failed (${pair.failed}): rows are missing`]);
-        } else if (pair.rows.length > 0) {
-          lines.push([`  to ${shownType(target)}`, String(pair.rows.length), 'ok']);
-        }
-      }
-      const others = await ask(
-        log,
-        session,
-        `${base} WHERE MetadataComponentType = '${type}' AND RefMetadataComponentType NOT IN (${quoted(asked)})`,
-        counter,
-      );
-      keep(others);
-      targets = seen((one) => one.to.type)
-        .filter((target) => !asked.has(target))
-        .sort();
-      if (others.failed !== null) {
-        cutOff += 1;
-        lines.push(['  to every other type', '', `failed (${others.failed}): rows may be missing`]);
-        return;
-      }
-      if (others.rows.length < CUT_OFF) {
-        if (others.rows.length > 0) lines.push(['  to every other type', String(others.rows.length), 'ok']);
-        return;
-      }
-      if (targets.length === 0 || round === ROUNDS - 1) {
-        cutOff += 1;
-        lines.push(['  to every other type', String(others.rows.length), 'at the limit: rows are missing']);
-      }
-    }
-  };
-
-  // The types that are known to refer and the ones the first query shows, then whatever is of another type.
-  const done = new Set<string>();
-  let types = [...new Set([...REFERRING_TYPES, ...seen((one) => one.from.type)])].sort();
-  for (let round = 0; round < ROUNDS && types.length > 0; round += 1) {
-    for (const type of types) {
-      done.add(type);
-      await askType(type);
-    }
-    const others = await ask(log, session, `${base} WHERE MetadataComponentType NOT IN (${quoted(done)})`, counter);
-    keep(others);
-    types = seen((one) => one.from.type)
-      .filter((type) => !done.has(type))
-      .sort();
-    if (others.failed !== null) {
-      // Without this answer, a type that the first query does not show stays unseen.
-      if (!whole) cutOff += 1;
-      lines.push(['every other type', '', `failed (${others.failed})${whole ? '' : ': rows may be missing'}`]);
-      break;
-    }
-    if (others.rows.length < CUT_OFF) {
-      if (others.rows.length > 0) lines.push(['every other type', String(others.rows.length), 'ok']);
-      break;
-    }
-    if (types.length === 0 || round === ROUNDS - 1) {
-      cutOff += 1;
-      lines.push(['every other type', String(others.rows.length), 'at the limit: rows are missing']);
-    }
-  }
-  for (const line of table(lines)) log.say(line);
-  if (!answered) {
-    log.say('No query of the Dependency API was answered.');
+  const reading = await readDependencies(session);
+  counter.requests += reading.requests;
+  if (reading.state === 'none') {
+    log.say(`No query of the Dependency API was answered (${log.code(reading.code) ?? 'a code that is not shown'}).`);
     return 'none';
   }
+  // The same component can stand in two rows with its id in two lengths.
+  const rows = new Map<string, Dependency>();
+  for (const row of reading.rows) {
+    const one = dependency(row);
+    const { from, to } = one;
+    rows.set([from.type, from.id, from.name, to.type, to.id, to.name].join('\u0000'), one);
+  }
+  const cutOff = reading.cutOff + reading.failed;
+  const code = log.code(reading.code);
+  log.say(`The reader of the engine sent ${plural(reading.requests, 'request', 'requests')}.`);
   log.say(
     `Different rows in all: ${String(rows.size)}.` +
       (cutOff > 0
-        ? ` ${plural(cutOff, 'query was', 'queries were')} cut off at the limit or failed, so rows are missing.`
+        ? ` ${plural(cutOff, 'query was', 'queries were')} cut off at the limit or failed${code === null ? '' : ` (${code})`}, so rows are missing.`
         : ' No query was cut off or failed in a way that leaves a row out.'),
   );
 

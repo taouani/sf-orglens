@@ -377,7 +377,7 @@
     "coverage": {
       "description": "What a snapshot holds, per metadata type, what its analysis found, and everything that was observed while it was taken and analysed.",
       "type": "object",
-      "required": ["snapshot", "types", "analysis", "issues"],
+      "required": ["snapshot", "types", "analysis", "crossCheck", "issues"],
       "additionalProperties": false,
       "properties": {
         "snapshot": {
@@ -458,6 +458,10 @@
         "analysis": {
           "description": "The analysis of the snapshot: the components its files make up and the references between them. Null for a snapshot that was not analysed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/analysis" }]
+        },
+        "crossCheck": {
+          "description": "What the Dependency API of Salesforce said about the org, held against the analysis. Null if the API was not asked for the snapshot: a snapshot of a source of the kind git, one taken with --no-cross-check, and one taken by a version before the cross-check existed.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossCheck" }]
         },
         "issues": {
           "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
@@ -872,6 +876,150 @@
           }
         }
       }
+    },
+    "crossCheck": {
+      "description": "How the Dependency API of Salesforce was read for a snapshot of an org, and what the comparison of its rows with the analysis found. The rows are no references of OrgLens: no answer of `impact` is made from them.",
+      "type": "object",
+      "required": [
+        "state",
+        "readAt",
+        "requests",
+        "rows",
+        "queriesCutOff",
+        "queriesFailed",
+        "queriesNotProven",
+        "code",
+        "comparison"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "description": "`whole`: no query left a row out. `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be missing, because rows were asked for component by component and nothing shows that the org listed every component. A reference that Salesforce knows and the analysis missed can then go unseen. `none`: the org answered no query, and nothing was compared.",
+          "enum": ["whole", "partial", "none"]
+        },
+        "readAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
+        "requests": {
+          "description": "The requests that were sent to the org for it.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "rows": { "description": "The rows the snapshot holds.", "type": "integer", "minimum": 0 },
+        "queriesCutOff": {
+          "description": "The queries that reached the limit of rows and could not be asked in smaller parts.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "queriesFailed": {
+          "description": "The queries that failed and whose rows no other query gave.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "queriesNotProven": {
+          "description": "The queries at the limit of rows whose rows were asked for component by component, for more components than one query can name. Every row of a component the org listed was read. A row of a component it did not list would be missing, and nothing shows whether there is one.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "description": "The code of the first failure, such as INVALID_TYPE for an org without the API, TIMEOUT, or REQUESTS_USED_UP when the reading stopped at its limit of requests. Null if the state is `whole`.",
+          "type": ["string", "null"]
+        },
+        "comparison": {
+          "description": "What the comparison found. Null if nothing was compared: the state is `none`, the snapshot is not analysed, or the analysis it has was made by a version whose comparison this version cannot show. It is made again with every analysis, from the rows the snapshot holds.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossCheckComparison" }]
+        }
+      }
+    },
+    "crossCheckComparison": {
+      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
+      "type": "object",
+      "required": [
+        "rows",
+        "rowsNotAnalysed",
+        "notAnalysed",
+        "rowsNotMatched",
+        "rowsNotHeld",
+        "rowsCompared",
+        "pairs",
+        "agreed",
+        "coveredByPart",
+        "missed",
+        "onlyOrgLens",
+        "notReported"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rows": { "description": "The rows of the API the snapshot holds.", "type": "integer", "minimum": 0 },
+        "rowsNotAnalysed": {
+          "description": "The rows from a component of a type this analysis did not read. They are not compared.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "notAnalysed": {
+          "description": "The same per type, sorted by type. The type is the metadata type where the row could be matched or names one, and the type the API writes otherwise.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "rows"],
+            "additionalProperties": false,
+            "properties": { "type": { "type": "string" }, "rows": { "type": "integer", "minimum": 1 } }
+          }
+        },
+        "rowsNotMatched": {
+          "description": "The rows from a component of an analysed type of which one end is no component the org listed. They are not compared.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "rowsNotHeld": {
+          "description": "The rows from a component of an analysed type that the snapshot does not hold or that was not analysed. They are not compared.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "rowsCompared": { "description": "The rows that were compared.", "type": "integer", "minimum": 0 },
+        "pairs": {
+          "description": "The different pairs of components the compared rows are. A pair of a component with itself is not counted.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "agreed": { "description": "The pairs the analysis has as well.", "type": "integer", "minimum": 0 },
+        "coveredByPart": {
+          "description": "The pairs to an object for which the analysis has a reference from the same component to something the object contains, such as a field of it, and none to the object itself.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "missed": {
+          "description": "The pairs Salesforce reports and the analysis lacks, sorted. Each is an issue of the stage `analysis` with the severity `error` and the code REFERENCE_MISSED, so the analysis is not complete.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/crossCheckPair" }
+        },
+        "onlyOrgLens": {
+          "description": "The pairs the analysis has, of a kind the API is known to report, for which no row was compared, sorted. Either the analysis found a reference that is none, or the API left one out, or the row is one that is missing (the state is `partial`) or could not be matched (`rowsNotMatched`). They are no issues.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/crossCheckPair" }
+        },
+        "notReported": {
+          "description": "The pairs the analysis has without a row, of a kind the API does not report, per reason, sorted by reason. They say nothing against the analysis.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "pairs"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `other`: any other reference from the definition of a component. Reasons can be added.",
+                "type": "string"
+              },
+              "pairs": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "crossCheckPair": {
+      "description": "A component, and a component it refers to, by their keys.",
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": { "from": { "type": "string" }, "to": { "type": "string" } }
     },
     "issue": {
       "type": "object",

@@ -9,14 +9,16 @@
  * The analysis belongs to the snapshot and is not part of its reading. Whether a snapshot is `complete` or
  * `partial` says what was read. Whether its analysis is complete is said by the analysis.
  */
-import { EngineError } from '../core/errors.ts';
+import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
+import { crossCheck, crossCheckIssues, type CrossCheck } from '../engines/cross-check.ts';
 import { analyseSource } from '../extraction/analyse.ts';
 import type { AnalysisIssue } from '../extraction/analysed.ts';
 import type { ProjectLayout } from '../sources/project.ts';
 import { resolveComponents } from '../sources/resolve.ts';
 import { pathDetails } from '../sources/tree.ts';
 import { readAnalysis, readOriginCoverage, writeAnalysis } from '../store/analysis.ts';
+import { readDependencyReading, readDependencyRows, readListedIds } from '../store/dependencies.ts';
 import type { Store } from '../store/open.ts';
 import { snapshotTree, type StoredIssue } from '../store/snapshots.ts';
 import { asEngineError } from './boundary.ts';
@@ -104,6 +106,21 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
   }
   for (const issue of analysis.issues) issues.push(issue);
 
+  // A snapshot of an org can hold what the Dependency API of Salesforce said about the org. It is held against
+  // what this analysis found, every time the snapshot is analysed: a later version that finds more is measured
+  // against the same rows, without the org.
+  let compared: CrossCheck | null = null;
+  const reading = readDependencyReading(store, snapshot.id);
+  if (reading !== undefined && reading.state !== 'none') {
+    compared = crossCheck({
+      rows: readDependencyRows(store, snapshot.id),
+      listed: readListedIds(store, snapshot.id),
+      components: analysis.components,
+      analysedTypes: analysis.types,
+    });
+    for (const issue of crossCheckIssues(compared)) issues.push(issue);
+  }
+
   writeAnalysis(store, snapshot.id, {
     engineVersion: engineVersion(),
     analysedAt: now(),
@@ -111,6 +128,7 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
     components: analysis.components,
     work: analysis.work,
     issues,
+    crossCheck: compared === null ? null : (compared as unknown as Readonly<Record<string, JsonValue>>),
   });
 }
 
@@ -145,6 +163,119 @@ export async function analyseStored(store: Store, source: string, snapshot: Anal
     analysisFailures.add(failure);
     throw failure;
   }
+}
+
+/**
+ * The cross-check of a snapshot of an org: how the Dependency API of Salesforce was read for it, and what the
+ * comparison with the analysis found (decision record 0045).
+ */
+export interface CrossCheckReport {
+  /**
+   * - `whole`: no query left a row out.
+   * - `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be
+   *   missing, because rows were asked for per component and nothing shows that the org listed every
+   *   component. A pair without a row says less then.
+   * - `none`: the org answered no query. Nothing was compared.
+   */
+  readonly state: 'whole' | 'partial' | 'none';
+  readonly readAt: string;
+  /** Requests that were sent to the org for it. */
+  readonly requests: number;
+  /** The rows the snapshot holds. */
+  readonly rows: number;
+  /** Queries that reached the limit of rows and could not be asked in smaller parts. */
+  readonly queriesCutOff: number;
+  /** Queries that failed and whose rows no other query gave. */
+  readonly queriesFailed: number;
+  /**
+   * Queries at the limit whose rows were asked for per component, for more components than one query can name.
+   * Every row of a component the org listed was read. A row of a component it did not list would be missing.
+   */
+  readonly queriesNotProven: number;
+  /** The code of the first failure, or `null`. */
+  readonly code: string | null;
+  /**
+   * What the comparison found. `null`: nothing was compared, because the API gave nothing or the snapshot is
+   * not analysed.
+   */
+  readonly comparison: CrossCheck | null;
+}
+
+const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const isPairs = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.every((one: unknown) => {
+    const { from, to } = (one ?? {}) as { from?: unknown; to?: unknown };
+    return typeof from === 'string' && typeof to === 'string';
+  });
+
+/** The fields of a comparison that are counts. */
+const COUNTS = [
+  'rows',
+  'rowsNotAnalysed',
+  'rowsNotMatched',
+  'rowsNotHeld',
+  'rowsCompared',
+  'pairs',
+  'agreed',
+  'coveredByPart',
+] as const;
+
+/**
+ * A comparison as it was stored, or `null` if what is stored is not one this version can show. Another version
+ * may have stored it. What is handed out has the fields of this version and no other, so that the output keeps
+ * its form.
+ */
+function storedComparison(stored: Readonly<Record<string, JsonValue>> | null): CrossCheck | null {
+  if (stored === null) return null;
+  if (!COUNTS.every((name) => isCount(stored[name]))) return null;
+  const { missed, onlyOrgLens, notAnalysed, notReported } = stored;
+  if (!isPairs(missed) || !isPairs(onlyOrgLens)) return null;
+  const isTally = (value: unknown, name: 'type' | 'reason', count: 'rows' | 'pairs'): boolean =>
+    Array.isArray(value) &&
+    value.every((one: unknown) => {
+      const entry = (one ?? {}) as Record<string, unknown>;
+      const number = entry[count];
+      return typeof entry[name] === 'string' && isCount(number) && number > 0;
+    });
+  if (!isTally(notAnalysed, 'type', 'rows') || !isTally(notReported, 'reason', 'pairs')) return null;
+  const pairs = (value: unknown): CrossCheck['missed'] =>
+    (value as CrossCheck['missed']).map(({ from, to }) => ({ from, to }));
+  const count = (name: (typeof COUNTS)[number]): number => stored[name] as number;
+  return {
+    rows: count('rows'),
+    rowsNotAnalysed: count('rowsNotAnalysed'),
+    notAnalysed: (notAnalysed as unknown as CrossCheck['notAnalysed']).map(({ type, rows }) => ({ type, rows })),
+    rowsNotMatched: count('rowsNotMatched'),
+    rowsNotHeld: count('rowsNotHeld'),
+    rowsCompared: count('rowsCompared'),
+    pairs: count('pairs'),
+    agreed: count('agreed'),
+    coveredByPart: count('coveredByPart'),
+    missed: pairs(missed),
+    onlyOrgLens: pairs(onlyOrgLens),
+    notReported: (notReported as unknown as CrossCheck['notReported']).map(({ reason, pairs: n }) => ({
+      reason,
+      pairs: n,
+    })),
+  };
+}
+
+/** The cross-check of a snapshot, or `null` for a snapshot for which the Dependency API was not asked. */
+export function crossCheckReport(store: Store, snapshotId: number): CrossCheckReport | null {
+  const reading = readDependencyReading(store, snapshotId);
+  if (reading === undefined) return null;
+  return {
+    state: reading.state,
+    readAt: reading.readAt,
+    requests: reading.requests,
+    rows: reading.rows,
+    queriesCutOff: reading.cutOff,
+    queriesFailed: reading.failed,
+    queriesNotProven: reading.unproven,
+    code: reading.code,
+    comparison: storedComparison(readAnalysis(store, snapshotId)?.crossCheck ?? null),
+  };
 }
 
 /** The analysis of a snapshot, or `null` for a snapshot that was not analysed. `issues` are those of the snapshot. */

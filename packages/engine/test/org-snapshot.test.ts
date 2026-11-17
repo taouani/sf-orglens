@@ -19,6 +19,7 @@ import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
+import { mockDependencies } from './helpers/mock-dependencies.ts';
 import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
@@ -77,6 +78,8 @@ afterAll(async () => {
 beforeEach(async () => {
   metadata = await metadataFromSource(FIXTURE);
   mock.metadata = metadata;
+  // The org has the Dependency API, and the API knows no reference. A snapshot that asks it gets an answer.
+  mock.dependencies = mockDependencies([]);
   mock.sessions.add('valid-session');
   await seedCliLogin({
     username: 'zoe@example.com',
@@ -166,11 +169,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
   (driverName, driver) => {
     const env = { ORGLENS_SQLITE_DRIVER: driverName };
 
-    /** Takes a snapshot the way the workspace does, with pauses a test can afford and the numbers it sets. */
+    /**
+     * Takes a snapshot the way the workspace does, with pauses a test can afford and the numbers it sets.
+     *
+     * The Dependency API is left unasked unless a test asks for it: these tests count the requests of a
+     * reading of metadata. What the cross-check does to a snapshot is tested in `org-cross-check.test.ts`.
+     */
     async function snap(
       dir: string,
       options: {
         restart?: boolean;
+        crossCheck?: boolean;
         tuning?: Partial<OrgSnapshotTuning>;
         onProgress?: (event: SnapshotProgress) => void;
       } = {},
@@ -185,6 +194,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         env,
         openStore: () => openStore({ path: databaseOf(dir), driver }),
         restart: options.restart,
+        crossCheck: options.crossCheck ?? false,
         onProgress: options.onProgress,
         tuning: { pollFirstMs: 5, ...options.tuning },
       });
@@ -282,9 +292,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
-      expect(events.slice(-3)).toEqual([
+      expect(events.slice(-5)).toEqual([
         { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
+        // Before the first request to the Dependency API, and after its one query, which gave no row here.
+        { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
+        { step: 'cross-checking', snapshot: 1, requests: 1, rows: 0 },
         { step: 'analysing', snapshot: 1 },
       ]);
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.

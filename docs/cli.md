@@ -117,7 +117,8 @@ is stored in one step: it is there with all its files, or not at all.
 
 #### A source of the kind `org` or `sandbox`
 
-The org is read through the Metadata API, with the login described [below](#logins), in three steps:
+The org is read through the Metadata API, with the login described [below](#logins), in three steps. A fourth
+asks the Dependency API, and is described [further down](#the-cross-check-of-a-snapshot-of-an-org).
 
 1. **The inventory.** The org is asked which metadata types it has, and for every type which components. Types
    whose components lie in folders, such as reports, are asked folder by folder. The inventory is what the
@@ -168,9 +169,10 @@ they have below a package directory, such as `classes/Foo.cls`.
   again twice. No request to the Metadata API follows a redirect. A retrieve that Salesforce does not end within
   30 minutes stops the command, and the next run asks for the same retrieve again. If it does not end then
   either, it is started anew. A chunk is started three times in all before it is given up.
-- Only metadata is read. OrgLens makes no request for a record. One thing is not in its hands: when the session
-  of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it and asks the org
-  about the org itself (decision record 0031 names the requests).
+- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries one object,
+  `MetadataComponentDependency`, which says which component refers to which. One thing is not in its hands:
+  when the session of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it
+  and asks the org about the org itself (decision record 0031 names the requests).
 - What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
   `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
   `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
@@ -191,8 +193,13 @@ Logged in to the org of "prod". It is read with API version 66.0.
 Asking the org what it holds: 240 of 312 requests answered.
 Snapshot #4: the org lists 11,862 components. They are retrieved in 9 chunks.
 Snapshot #4: 1 of 9 chunks is stored.
-Snapshot #4: every chunk is done. Analysing its files.
+Snapshot #4: every chunk is done. Asking the Dependency API of Salesforce which references it knows.
+Snapshot #4: the Dependency API gave 5,412 rows so far, in 38 requests.
+Snapshot #4: its files are stored. Analysing them.
 ```
+
+A line about the rows so far comes at most every five seconds, so an org that is done with one request has
+none. With `--no-cross-check` the lines about the Dependency API are not there.
 
 The files of an org are always in the standard form of a Salesforce project, whatever `sfdx-project.json` of the
 folder the command runs in says about the form of labels or permission sets.
@@ -221,8 +228,10 @@ is read and what is not.
 - An analysis is complete or incomplete. It is incomplete when an issue of the analysis has the severity
   `error`: a file of the snapshot could not be read as XML or does not hold what its name says, a component
   could not be analysed, or a file of the snapshot belongs to no component as this version reads it. Each such
-  issue costs the analysis that one file or component. `snapshot` and `analyse` then end with the exit code `5`,
-  with `ok: true`.
+  issue costs the analysis that one file or component. For a snapshot of an org there is one more: a reference
+  that Salesforce reports and the analysis did not find
+  ([the cross-check](#the-cross-check-of-a-snapshot-of-an-org)). `snapshot` and `analyse` then end with the exit
+  code `5`, with `ok: true`.
 - A warning of the analysis says that a name was not read, a path of names was not followed to its end, or a
   formula was not read as a whole. The analysis is complete all the same: what it did not find is counted and
   shown, and an answer that rests on it has to say so.
@@ -240,7 +249,56 @@ is read and what is not.
   as Salesforce lays them out. For a repository whose project changes the layout, take a new snapshot.
 
 Not verified: no snapshot of a real org was analysed by the command. The test org is read by a tool of the
-tests, and what the analysis finds there is measured in a later work package.
+tests.
+
+#### The cross-check of a snapshot of an org
+
+Salesforce keeps a list of which component refers to which, the Dependency API. OrgLens does not answer from
+it: it reads less than OrgLens does, and says of no reference where it is. It is a second opinion. Where
+Salesforce reports a reference and the analysis has none, the analysis is wrong, and OrgLens says so. Decision
+records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
+[0045](adr/0045-the-cross-check-of-a-snapshot.md) have the rules.
+
+- `orglens snapshot` of an org or a sandbox asks the API after the last chunk is stored, and keeps its rows with
+  the snapshot. `--no-cross-check` leaves it unasked. A source of the kind `git` has no cross-check.
+- A snapshot that was interrupted and is continued asks again, and the new reading takes the place of an
+  earlier one and of its warning. Continued with `--no-cross-check`, it keeps a reading it already has.
+- One query gives at most 2,000 rows and cannot be continued. Where a query reaches that number, the rows are
+  asked for in parts: per type of the component that refers, per pair of types, and per group of components.
+  A part that is still at the limit, or a query that fails, leaves rows out. The snapshot then has the warning
+  `CROSS_CHECK_PARTIAL`, and the report says that rows are missing.
+- The groups of components are the components the org listed. Where a type has more of them than one query
+  can name, which is 200, nothing shows whether a component the org did not list has a row as well. The
+  reading is then `partial` too, and the warning and the report say that rows may be missing.
+- The reading stops with what it has after 2,000 requests, which count against the daily limit of the org,
+  after three queries in a row that got no answer in 180 seconds, and when the login or the network goes
+  away. The report then gives the code of the first failure, such as `REQUESTS_USED_UP` or `TIMEOUT`.
+- An org that answers no query, because it does not have the API or not for this user, leaves the warning
+  `CROSS_CHECK_NOT_READ`. Neither warning makes a snapshot partial, and nothing about the API stops a snapshot.
+- The rows are compared with every analysis of the snapshot. `orglens analyse` compares again from the rows the
+  snapshot holds, without asking the org: an update of OrgLens that analyses more is measured against the same
+  rows.
+- Only rows from a component of a type that is analysed are compared. A row from a class or a flow is counted
+  and not compared in this version.
+- A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
+  for a standard object, which Salesforce names in the place of an id, and for a component the org listed
+  without one. A row that names a component the org did not list is counted and not compared.
+- **A pair that Salesforce reports and the analysis lacks** is the issue `REFERENCE_MISSED` of the analysis, with
+  the severity `error`. It makes the analysis incomplete: `snapshot` and `analyse` end with the exit code `5`,
+  and an impact answer from the snapshot says that it may miss something.
+- A pair to an object counts as found when the analysis has a reference from the same component to a field or
+  another part of that object.
+- **A pair that only the analysis has** is no error. It is listed where the API is known to report that kind of
+  reference: either the analysis found a reference that is none, or the API left one out, or its row is among
+  those that are missing or were not compared, which the report then says. It is only counted
+  where the API reports nothing of the kind: a standard field or object, a lookup, the filter of a lookup, a
+  roll-up summary apart from its filter, the value set and the controlling field of a picklist, a rule that is
+  not active.
+- The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
+
+Not verified: the command was not run against a real org. The test org is read by a tool of the tests, which
+compares in the same way. How many requests a large org needs was not measured, and the limit of 2,000 is a
+choice without a measurement.
 
 #### The report of a snapshot
 
@@ -255,7 +313,7 @@ read something. It is `0` for a type that is not analysed yet. It can be larger 
 also counts the fields and rules it finds inside the file of an object, and a type of which the source lists
 nothing can have a line for that reason.
 
-Below it stand the issues of the reading, and then the analysis:
+Below it stand the issues of the reading, then the analysis, and for a snapshot of an org the cross-check:
 
 ```
 Analysed by engine 0.1.0: 89 components, 106 references.
@@ -279,20 +337,82 @@ hundreds. `--json` has every issue. A snapshot without an analysis says so, and 
 it. `orglens status` says in the column `ANALYSED` whether the latest snapshot of a source is analysed, and by
 which version of the engine.
 
+The cross-check of a snapshot of an org comes last:
+
+```
+Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.
+61 rows are from a component of a type this version does not analyse, and are not compared: ApexClass 60, CustomMetadata 1.
+1 row names a component the org did not list, and is not compared.
+2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.
+56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.
+
+Salesforce reports these references, and the analysis has none. Each is an error of the analysis:
+FROM                                       TO
+CustomField:invoice__c.total__c            CustomField:invoice__c.status__c
+ValidationRule:invoice__c.amount_positive  CustomField:invoice__c.amount__c
+
+The analysis has 38 more references of kinds the API does not report: lookup 7, standard-field 31.
+```
+
+Several rows can name the same two components, so there are fewer pairs than rows. A list of pairs shows the
+first 20, and `--json` has all of them. A snapshot of an org that was taken with `--no-cross-check`, or before
+this version, says that the API was not asked. A snapshot of a repository says nothing.
+
+Where the reading is not whole, the first line says why in the place of "No query left a row out.":
+
+```
+Cross-check: the Dependency API of Salesforce reports 9,214 rows. Rows are missing: 2 queries were cut off at the limit of the API or failed (TIMEOUT). Rows of a component the org did not list may be missing: 1 query at the limit of the API was asked again component by component.
+```
+
+The list of the references that only the analysis has then says that their rows can be among those that are
+missing or not compared.
+
+In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it holds:
+
+| Field                            | Meaning                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `state`                          | `whole`: no query left a row out. `partial`: rows are missing, or may be. `none`: the org answered no query, and nothing was compared.                       |
+| `readAt`, `requests`, `rows`     | When the API was read, with how many requests, and how many different rows the snapshot holds.                                                               |
+| `queriesCutOff`, `queriesFailed` | Queries that reached the limit with no smaller part to ask for, and queries that failed and whose rows no other query gave.                                  |
+| `queriesNotProven`               | Queries at the limit that were asked again per component, for more components than one query names. Rows of a component the org did not list may be missing. |
+| `code`                           | The code of the first failure, such as `INVALID_TYPE`, `TIMEOUT` or `REQUESTS_USED_UP`, or `null`. The last is a code of OrgLens.                            |
+| `comparison`                     | What the comparison found, or `null` if nothing was compared: the API gave nothing, or the snapshot has no analysis with a comparison.                       |
+
+`comparison` holds:
+
+| Field                            | Meaning                                                                                                                                                                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rows`                           | The rows that were looked at.                                                                                                                                                                                                                       |
+| `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
+| `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                               |
+| `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                 |
+| `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                        |
+| `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                     |
+| `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                  |
+| `missed`                         | Pairs Salesforce reports and the analysis lacks, each with the keys `from` and `to`. Each is also an issue `REFERENCE_MISSED`.                                                                                                                      |
+| `onlyOrgLens`                    | Pairs the analysis has, of a kind the API reports, without a row that was compared.                                                                                                                                                                 |
+| `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                |
+
+The values of `reason` are `standard-field`, `standard-object`, `inactive-rule`, `lookup`, `lookup-filter`,
+`roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value` and `other`. A later
+version can add one.
+
 The issue codes of the reading (`stage` is `read`):
 
-| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                  |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                           |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                 |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                          |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
 the type in `details.type`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
-there and not out of the text.
+there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
+the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`,
+`details.unproven`, `details.code` and `details.rows`.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -309,6 +429,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                              |
 | `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                   |
 | `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                         |
+| `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.          |
 | `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one. No reference is made for it.                                                                                                                                                                       |
 | `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads, so the names after it have no reference (`details.origin` says whose).                                                                                                                                      |
@@ -603,20 +724,20 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                                                                                                                                                                                                                                                                                                                     |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                      |
-| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
-| `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `impact`        | `snapshot`, `component`, `parts`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Command         | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                                                                                                                                            |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `crossCheck` (how the Dependency API was read, and `comparison`), or `null` for a snapshot the API was not asked for, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
+| `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `impact`        | `snapshot`, `component`, `parts`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 A source is written with all keys of its kind, and `null` for what is not set. Keys are in camel case (`orgId`,
 `sandboxOf`), whereas the configuration file uses snake case (`org_id`, `sandbox_of`). Paths inside the workspace

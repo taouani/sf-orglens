@@ -109,6 +109,8 @@ export interface MockMetadata {
   readonly calls: MetadataCall[];
   /** The members of every retrieve that was started, in order, each as `Type:FullName`. */
   readonly retrieves: string[][];
+  /** The id the org lists a component with, or `null` for a component it does not list. */
+  idOf(type: string, fullName: string): string | null;
   /** Answers one request to the Metadata API. */
   answer(body: string): Promise<{ status: number; body: string; type: string }>;
 }
@@ -176,10 +178,11 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const jobs = new Map<string, RetrieveJob>();
   const deployJobs = new Map<string, { readonly files: string[]; polls: number }>();
 
+  const idOf = (index: number): string => `0Axxx${String(index).padStart(10, '0')}AAA`;
   const properties = (tag: string, item: Listed, index: number): string =>
     `<${tag}><createdById>005xx000000001AAAA</createdById><createdByName>Mock User</createdByName>` +
     `<createdDate>2026-01-15T10:00:00.000Z</createdDate><fileName>${escapeXml(item.fileName)}</fileName>` +
-    `<fullName>${escapeXml(item.fullName)}</fullName><id>0Axxx${String(index).padStart(10, '0')}AAA</id>` +
+    `<fullName>${escapeXml(item.fullName)}</fullName><id>${idOf(index)}</id>` +
     `<lastModifiedById>005xx000000001AAAA</lastModifiedById><lastModifiedByName>Mock User</lastModifiedByName>` +
     `<lastModifiedDate>2026-02-0${String(1 + (index % 9))}T08:30:00.000Z</lastModifiedDate>` +
     `<manageableState>unmanaged</manageableState><type>${item.type}</type></${tag}>`;
@@ -244,6 +247,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     deploys: [],
     calls: [],
     retrieves: [],
+    idOf: (type, fullName) => {
+      const index = listed.findIndex((item) => item.type === type && item.fullName === fullName);
+      return index === -1 ? null : idOf(index);
+    },
     answer: async (body) => {
       const operation = /<soapenv:Body[^>]*>\s*<(\w+)/.exec(body)?.[1] ?? '';
       const one = (tag: string, text = body): string | null => {

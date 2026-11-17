@@ -44,9 +44,10 @@ These rules come from the maintainer and apply to every phase.
   the tests (`packages/engine/test/live/deploy-fixture.ts`).
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
   the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031
-  names those requests, and a test pins them. A tool of the tests asks the test org through the Tooling API what
-  Salesforce knows about references (`packages/engine/test/live/probe-org.ts`). The objects it reads describe
-  metadata.
+  names those requests, and a test pins them. Through the Tooling API the engine queries one object,
+  `MetadataComponentDependency`, which says which component refers to which (`sources/dependency-api.ts`), and a
+  test holds every query against it. A tool of the tests asks the test org for more of the same kind
+  (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata.
 
 ## Architecture
 
@@ -109,6 +110,16 @@ packages/cli   the `orglens` binary                            imports only `@sf
   was not read or its analysis had an error. Which types an analysis read is kept with the analysis
   (`snapshot_analysis.types`), not derived from the version that answers. A statement of the graph that takes
   many ids starts from that list and walks no table: a test reads every query plan.
+- A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
+  Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
+  (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
+  Every analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
+  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by
+  the id the org listed the component with. A name is taken only where there is no id: for a standard object,
+  and for a component the org listed without one. A pair Salesforce reports and the analysis lacks is the error
+  `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The reading is `whole` only
+  where no query could have left a row out. It never fails a snapshot and never makes it partial: an org that
+  does not answer leaves a warning.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

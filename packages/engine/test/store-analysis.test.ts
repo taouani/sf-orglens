@@ -251,6 +251,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       references: 5,
       // Sorted, whatever order they were given in.
       types: ['CustomField', 'CustomObject', 'ValidationRule'],
+      crossCheck: null,
     });
     // An analysis that a version before schema 5 wrote kept no list.
     store.write(() => store.run('UPDATE snapshot_analysis SET types = NULL WHERE snapshot_id = ?', id));
@@ -964,6 +965,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       components: 4,
       references: 6,
       types: ['CustomField', 'CustomObject', 'ValidationRule'],
+      crossCheck: null,
     });
     expect(readAnalysis(store, first)?.engineVersion).toBe('0.2.0');
     // The second snapshot holds no Account any more. It still knows it, through the field a formula reads.

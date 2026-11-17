@@ -224,6 +224,9 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
         'Earlier snapshots are kept. The source is not changed. ' +
         'An org or a sandbox is asked what it holds, and its components are retrieved in chunks, which takes ' +
         'minutes. If that is interrupted, the next run continues the same snapshot. ' +
+        'An org or a sandbox is also asked, through its Dependency API, which references Salesforce knows. ' +
+        'The analysis is held against the answer: a reference that Salesforce reports and the analysis lacks ' +
+        'is an error of the analysis. --no-cross-check leaves that out. ' +
         'OrgLens asks for metadata only, never for records. ' +
         'The exit code is 5 if the snapshot is partial or its analysis is incomplete: something could not be ' +
         'read or analysed, and the output says what. ' +
@@ -231,7 +234,8 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     )
     .argument('<source>', 'the name of the source')
     .option('--restart', 'org, sandbox: give up a snapshot that was interrupted, and take a new one')
-    .action((name: string, options: { restart?: boolean }, command: Command) =>
+    .option('--no-cross-check', 'org, sandbox: do not ask the Dependency API what Salesforce knows about references')
+    .action((name: string, options: { restart?: boolean; crossCheck?: boolean }, command: Command) =>
       run('snapshot', (context) => snapshot(context, name, options))(command),
     );
 
