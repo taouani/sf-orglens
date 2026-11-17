@@ -1078,10 +1078,9 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
 Status on 17 November 2026, with the second pull request of the work package. It holds the key.
 
 - **What it rests on.** You were asked on 17 November 2026 whether to keep the key, with my recommendation to
-  keep it, and had not answered when this was written. I built it as proposed, so that the work does not wait.
-  The pull request is not merged before your answer, and record
-  [0047](../adr/0047-types-a-snapshot-leaves-out.md) stays `Proposed` until then. If you strike the key, the pull
-  request is closed and nothing of it reaches `main`.
+  keep it, and chose "Keep the key" on the same day. I had built it as proposed while the question was open, and
+  merged the pull request after your answer. Record [0047](../adr/0047-types-a-snapshot-leaves-out.md) is
+  `Accepted`.
 - **Built:** the key `exclude_types` of a source of the kind `org` or `sandbox` in `orglens.toml`, the listing
   `excluded` in the coverage of a snapshot with migration 7 of the database, the note `TYPES_EXCLUDED` and the
   warning `TYPE_NOT_EXCLUDED`, `left out` in the text of `coverage`, `excludeTypes` in the JSON output of

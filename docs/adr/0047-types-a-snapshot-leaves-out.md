@@ -1,6 +1,6 @@
 # 0047. A key in `orglens.toml` leaves metadata types out of a snapshot of an org
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-17
 - Decisions: none (work package 9 of the Phase 1 plan. It builds the key that the plan proposes and record 0038
   leaves undecided)
@@ -18,13 +18,12 @@ as a proposal the maintainer can strike. The plan sets three conditions if the k
 is not retrieved, it is named in `coverage` as not read, and a type of the logic tier in the key is an error.
 
 **What this record rests on.** The maintainer was asked on 17 November 2026 whether to keep the key, with the
-recommendation to keep it, and had not answered when this was written. The key is built as proposed, and this
-record stays `Proposed` until the answer is there. The pull request that builds it is not merged before.
+recommendation to keep it. The question was "Keep the orglens.toml key that leaves types out of an org
+snapshot?", and the maintainer chose the option "Keep the key" on the same day. The key was built as proposed
+while the question was open, and the pull request that builds it was merged after the answer.
 
-If the maintainer strikes the key after it was merged, the key, the listing `excluded` and this record are taken
-out again. That is not free: a database that has moved to schema version 7 is refused by an engine that ends at
-version 6, so taking the migration out needs a migration 8 that builds the table again without the value, or a
-word that such a workspace is made anew.
+The answer is to that question. The choices listed under "What goes further than the plan" were not put to the
+maintainer one by one, and stay the maintainer's to strike.
 
 ## Decision
 
