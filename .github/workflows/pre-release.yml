@@ -90,12 +90,14 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
         run: |
           rules=0
-          if answer=$(gh api "repos/$GITHUB_REPOSITORY/environments?per_page=100" --jq '.environments[] | select(.name == "npm-next") | [.protection_rules[]? | select(.type == "required_reviewers")] | length' 2> /dev/null); then
+          # The answer is the number of rules that ask for a reviewer, a blank, and the kinds of all its rules.
+          if answer=$(gh api "repos/$GITHUB_REPOSITORY/environments?per_page=100" --jq '.environments[] | select(.name == "npm-next") | [.protection_rules[]?.type] | "\(map(select(. == "required_reviewers")) | length) \(join(", "))"' 2> /dev/null); then
             if [ -z "$answer" ]; then
               found="The environment npm-next does not exist."
             else
-              rules=$answer
-              found="The environment npm-next has $rules rule(s) that ask for a reviewer."
+              rules=${answer%% *}
+              kinds=${answer#* }
+              found="The environment npm-next has $rules rule(s) that ask for a reviewer. GitHub shows these rules of it: ${kinds:-none}."
             fi
           else
             found="GitHub did not show the environments of the repository to this run."
