@@ -1295,14 +1295,14 @@ and the note [public-codebases.md](../research/phase-1/public-codebases.md). No 
 - The release of Q6: a pre-release on GitHub with the packed command line attached, installed with one
   `npm install` line. Nothing goes to npm.
 
-Status on 17 November 2026, with the third pull request of the work package. The documents are written. The
-way to the pre-release is built. **The pre-release itself is not published.**
+Status on 17 November 2026, after the first publish. The documents are written. **The pre-release
+`0.1.0-next.0` is published on npm and on GitHub.**
 
 - **The documents.** The [phase report](../reports/phase-1.md), the [test plan](../test-plans/phase-1.md), the
   overall plan with a section "At the close of Phase 1", and the draft of the [Phase 2 plan](phase-2.md) with six
   questions to you. Every expected output of parts B to D of the test plan was produced with the built command
   line. Parts E to I were not run by me as a person would run them: E and H are yours alone, F and G repeat
-  what earlier work packages ran, and I waits for the release.
+  what earlier work packages ran, and I is an install by a person, which nobody has done yet.
 - **The pre-release** (record [0050](../adr/0050-the-pre-release-on-github.md), first pull request): the
   workflow "Pre-release", version `0.1.0-next.0` in the pre-release mode of changesets, a change log per
   package, and the [release notes](../releases/v0.1.0-next.0.md). The plan named neither the version nor the
@@ -1311,10 +1311,10 @@ way to the pre-release is built. **The pre-release itself is not published.**
   - npm 12 refuses to install from an address unless it is told to. The install line now holds
     `--allow-remote=root`, and the workflow tries the line on Linux, Windows and macOS, with the npm of Node.js
     and with the newest npm, before it publishes.
-  - After the install, `npm update --global` asks the public registry for the two package names and installs
-    whatever it finds there in the place of OrgLens. Nobody holds the names for this project. This is not
-    closed. The release notes warn, which is no protection. It is a risk of the way of installing you chose
-    with Q6, so how it is closed is yours to decide.
+  - After the install, `npm update --global` asks the public registry for the two package names and installs whatever it
+    finds there in the place of OrgLens. Nobody held the names for this project. This was not closed at that point. The
+    release notes warned, which is no protection. It is a risk of the way of installing you chose with Q6, so how it is
+    closed is yours to decide.
 - **Two questions held the release**, both put to you on 17 November 2026 and answered on the same day.
   - The pre-release is not "the first release" of records 0022 and 0027. The names, the JSON output and the
     exit codes are fixed with the first release on npm (record
@@ -1339,22 +1339,35 @@ way to the pre-release is built. **The pre-release itself is not published.**
   `names`, its golden file, `docs/releases/npm-names.md` and the workflow "Release (dry run)" are removed.
   Choices of mine in that record, which you can strike: that the tag `latest` follows `next`, the name of the
   environment, that provenance is always on, and the removal of that workflow.
-- **What the release still waits for.** Two things. What only you can set up: the organization `sf-orglens`
-  on npm, the environment on GitHub and a token for the first publish
-  ([`docs/releases/publishing.md`](../releases/publishing.md)). And your word for that version: the run that
-  publishes cannot be undone. The release notes hold no mark `[open]` any more: you answered on 17 November
-  2026 that a pre-release on npm fixes neither the names nor the JSON output.
+- **What the release waited for.** Three things that only you can set up, and your word. The three: the
+  organization `sf-orglens` on npm, the environment on GitHub and a token for the first publish
+  ([`docs/releases/publishing.md`](../releases/publishing.md)). Your word is for that version: the run that
+  publishes cannot be undone. You answered on 17 November 2026 that a pre-release on npm fixes neither the
+  names nor the JSON output, so the release notes hold no mark `[open]`.
 - **The rehearsal.** [Run 1 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882)
   on `main` on 17 November 2026, with "publish" off. The check and the packing passed, and so did all six tries
   of the install line: on Linux, Windows and macOS, each with the npm that Node.js brings and with the newest
   npm, which was 12.2.2 on Linux. The jobs that publish and that install from GitHub were skipped, as they are
   in a rehearsal.
-  That rehearsal was of the first way, with two addresses. The rehearsal of the way with npm is run on the pull
-  request of record 0053.
-- **Not done, and not verified.** Nothing of the publishing was tried against npm: I have no account there. The
-  jobs that publish on npm and on GitHub and that install from npm have never run. Record 0053 lists what the
-  first publish will show for the first time. `README.md` and `SECURITY.md` say that no version is published,
-  which stays true until the release.
+  That rehearsal was of the first way, with two addresses. The way with npm was rehearsed three times on the
+  pull request of record 0053 and once on `main`,
+  [run 4](https://github.com/taouani/sf-orglens/actions/runs/44159488894): its check, its packing and five of
+  its six tries of the install line passed, and the sixth, on macOS, got no machine from GitHub. The publishing
+  run tried all six again and they passed.
+- **The publish.** You set up the three things, gave your word for `0.1.0-next.0` and approved the job.
+  [Run 5 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44164088211) on `main` published both
+  packages on npm on 17 November 2026, with a token and with their provenance, moved the tag `latest`, installed from
+  npm on the three systems and created the pre-release on GitHub. One install job on macOS got no machine from GitHub
+  and was run again, so the page on GitHub came eighteen minutes after the packages. `README.md` and `SECURITY.md` say
+  since then that a version is published.
+- **What the publish showed,** in
+  [`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed). npm made a version
+  `0.0.0-stage` of each package by itself when it received the first publish, and put `latest` on it: the job moved the
+  tag. An install found the new version only after four to five and a half minutes, and the install jobs passed with the
+  last of their five tries: they now try eight times.
+- **Not done, and not verified.** Trusted publishing, which every later pre-release is published with, is not
+  tried, and neither is moving a tag with it. Staged publishing is not tried. I have no account on npm and did
+  not look there: what I know of the publish is the log of the run and what you saw on npm and sent me.
 
 ## 6. How the results are proven
 

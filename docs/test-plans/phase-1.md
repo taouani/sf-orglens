@@ -16,7 +16,7 @@ and "you" is the maintainer.
 - **Part H is the main part, and only you can do it:** `orglens snapshot`, `coverage` and `impact` on an org
   you know. None of the three commands has ever run against Salesforce. It takes as long as the org takes to
   hand out its metadata: minutes for a small org, and I do not know how long for a large one.
-- Part I installs the pre-release, once it is published. It is not published yet.
+- Part I installs the pre-release, which was published on 17 November 2026.
 
 Every expected output of parts B to D was produced on Linux x64 with Node.js 24.22.3 on 17 November 2026, as
 the root user, with the code of the engine and the command line of the commit named below. Times and sizes on
@@ -300,27 +300,27 @@ enough for me to build a case of it in the fixture project.
 
 ## I. The pre-release
 
-The pre-release `0.1.0-next.0` is not published, and this part waits for it. It is published on npm and on
-GitHub by the workflow "Pre-release" (records 0050 and 0053). Two things come first:
+The pre-release `0.1.0-next.0` was published on npm and on GitHub on 17 November 2026, by
+[run 5 of the workflow "Pre-release"](https://github.com/taouani/sf-orglens/actions/runs/44164088211) (records 0050 and
+0053), after you approved its job.
 
-1. What only you can set up: the organization `sf-orglens` on npm, the environment `npm-next` on GitHub and the
-   token for the first publish. [`docs/releases/publishing.md`](../releases/publishing.md) has the steps.
-2. Your word for the run that publishes, and your approval of its job in the environment. The run cannot be
-   undone.
+| #   | Do                                                                                    | Expect                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository | One release, `OrgLens 0.1.0-next.0 (pre-release)`, marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. GitHub adds two archives of the source.                                                                                    |
+| I2  | Open `https://www.npmjs.com/package/sf-orglens`                                       | Version `0.1.0-next.0`, under the tags `next` and `latest`, with a mark that it has provenance and a link to the run that built it. The tab "Versions" lists a second version, `0.0.0-stage`, without that mark. `@sf-orglens/engine` shows the same. |
+| I3  | In a terminal without the shell function of this plan, run the install line of I1     | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                                                                                                 |
+| I4  | `orglens doctor` in any folder that is no workspace                                   | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`: `No orglens.toml in this folder or above it.` The last line is `OrgLens can run here.`                                                                            |
+| I5  | `npm update --global`, then `orglens --version`                                       | The version is still `0.1.0-next.0`: it is the newest one under `latest`.                                                                                                                                                                             |
+| I6  | `npm uninstall --global sf-orglens`                                                   | It is removed with the engine, and `orglens` is no longer found.                                                                                                                                                                                      |
 
-| #   | Do                                                                                    | Expect                                                                                                                                                                     |
-| --- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository | One release, `OrgLens 0.1.0-next.0 (pre-release)`, marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. GitHub adds two archives of the source.         |
-| I2  | Open `https://www.npmjs.com/package/sf-orglens`                                       | Version `0.1.0-next.0`, under the tags `next` and `latest`, with a mark that it has provenance and a link to the run that built it. `@sf-orglens/engine` shows the same.   |
-| I3  | In a terminal without the shell function of this plan, run the install line of I1     | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                      |
-| I4  | `orglens doctor` in any folder that is no workspace                                   | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`: `No orglens.toml in this folder or above it.` The last line is `OrgLens can run here.` |
-| I5  | `npm update --global`, then `orglens --version`                                       | The version is still `0.1.0-next.0`: it is the newest one under `latest`.                                                                                                  |
-| I6  | `npm uninstall --global sf-orglens`                                                   | It is removed with the engine, and `orglens` is no longer found.                                                                                                           |
-
-The run of the workflow that publishes also installs from npm on Linux, Windows and macOS. I3 is the first
-install by a person. I2 is written from the pages of npm, and what the page of a package shows is npm's to
-decide. I5 was tried against a registry on my machine, not against npm. I5 updates every global package of your
-machine. Leave it out if you do not want that.
+The run that published also installed from npm on Linux, Windows and macOS. All six installs passed, one of
+them when it was run again. I3
+is the first install by a person. I2 is written from the pages of npm, and I did not look at npm: what the page
+of a package shows is npm's to decide. The version `0.0.0-stage` is not a version of OrgLens: npm made it by
+itself when it received the first publish, as you saw on 17 November 2026
+([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried
+against a registry on my machine, not against npm. I5 updates
+every global package of your machine. Leave it out if you do not want that.
 
 **Do not run `npx orglens`.** The name `orglens` is the command, not a package of this project, and npx fetches
 whatever package has that name.
@@ -340,7 +340,8 @@ whatever package has that name.
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. Your word for the run that publishes the pre-release, once you have set up what part I names.
+2. Your word for the run that publishes the second pre-release, `0.1.0-next.1`. You chose on 17 November 2026
+   to publish it soon, to try trusted publishing. It is prepared in a pull request of its own.
 3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
 4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 

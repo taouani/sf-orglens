@@ -4,10 +4,19 @@ OrgLens tells you what a change to a Salesforce org will affect before you make 
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
 > **Pre-release.** The project is being built in the open. The first slice is built: the first impact answers
-> cover objects, fields and validation rules only. No version of OrgLens is published yet. The first pre-release,
-> version `0.1.0-next.0`, is prepared ([release notes](docs/releases/v0.1.0-next.0.md)). It will be published on
-> npm as `sf-orglens`, under the tag `next`, when the maintainer says so. Until then OrgLens runs from a clone of
-> this repository. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
+> cover objects, fields and validation rules only. The first pre-release, version `0.1.0-next.0`, is on npm as
+> `sf-orglens`, under the tag `next` ([release notes](docs/releases/v0.1.0-next.0.md)). No version without a
+> pre-release part exists, and until there is one the names, the JSON output and the exit codes can change from
+> one pre-release to the next. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes
+> when.
+>
+> ```sh
+> npm install --global sf-orglens@next
+> ```
+>
+> That needs Node.js 24.15 or newer. The package is `sf-orglens`, and the command is `orglens`. **Do not run
+> `npx orglens`:** the name `orglens` is not a package of this project, and npx fetches whatever package has that
+> name. To run OrgLens without installing it, use `npx sf-orglens@next`.
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
 > and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,

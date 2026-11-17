@@ -211,6 +211,16 @@ so in its release notes.
   published with `--tag next`, moving a tag with trusted publishing, and how long npm takes to show a new
   version, for which the install job waits and tries again. The job on npm and the jobs after it have never
   run.
+- Added after the first publish, on 2026-11-17:
+  [run 5 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44164088211) published version
+  `0.1.0-next.0` of both packages with the token, after the maintainer approved its job. npm took the scope, the token,
+  the provenance and the repository address in the form the packages have it. Asked right after the publish, npm named
+  `0.0.0-stage` as the version under `latest` of both packages. The job took that for a pre-release and moved the tag to
+  `0.1.0-next.0`, with the token. `0.0.0-stage` is a placeholder version npm made by itself when it received the first
+  publish, which the page of npm on staged publishing names for a staged package: the maintainer read its time on npm,
+  which is the time the package was created. The installs from npm found the version after about five minutes. Still not
+  tried: the OIDC token and trusted publishing, and moving a tag with it.
+  [`docs/releases/publishing.md`](../releases/publishing.md) has the whole of it.
 - **Read by the reviewer, and so no longer open:** a package of npm's own that is published with trusted
   publishing names its repository in the form `git+https://github.com/<owner>/<name>.git`, which is the form of
   the two packages here. The documentation of `npm trust` that comes with npm 12.2 says of a trusted publisher:

@@ -333,15 +333,17 @@ async function tryInstall(version, from) {
     const line = installLine(version);
     const where = local === undefined ? '' : ` --registry ${local.site}`;
     console.log(`npm ${(await run('npm --version')).trim()}\n${line}${where}`);
-    // The registry of npm can take a moment to show a version that was just published.
+    // The registry of npm took minutes to show the first version to an install: between four and five and a
+    // half minutes after its publish. Eight tries wait eleven minutes in all.
     for (let attempt = 1; ; attempt += 1) {
       try {
         await run(`${line}${where} --no-fund`);
         break;
       } catch (error) {
-        if (local !== undefined || attempt === 5) throw error;
-        console.log(`Attempt ${String(attempt)} failed. Waiting ${String(attempt * 30)} s.`);
-        await setTimeout(attempt * 30_000);
+        if (local !== undefined || attempt === 8) throw error;
+        const seconds = Math.min(attempt, 4) * 30;
+        console.log(`Attempt ${String(attempt)} failed. Waiting ${String(seconds)} s.`);
+        await setTimeout(seconds * 1000);
       }
     }
     const said = (await run('orglens --version')).trim();
