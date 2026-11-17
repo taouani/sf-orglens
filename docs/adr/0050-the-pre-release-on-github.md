@@ -85,7 +85,8 @@ and [0027](0027-json-envelope-and-exit-codes.md), from which the names of the pa
 fixed. That is a question to the maintainer, and the index lists it among the planned records. Also not
 decided: whether the project holds the two names on npm before the first pre-release is published, which the
 second consequence below is about. Both were put to the maintainer on 2026-11-17, and no pre-release is
-published before both are answered.
+published before both are answered: the release notes of the first one hold the mark `[open]` at each of the
+two, and the workflow does not publish notes with the mark.
 
 ## Consequences
 
