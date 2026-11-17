@@ -8,6 +8,9 @@ takes the plan as approved with this change, and the maintainer has not read the
 open and does not hold up the start: how the components of the performance targets are counted (record
 [0037](../adr/0037-performance-targets.md)).
 Date: 2026-11-13, with the answers and the approval written in on 2026-11-15
+Built: all eleven work packages, by 17 November 2026. Each has its status below. The
+[phase report](../reports/phase-1.md) says what was built and measured, and the
+[test plan](../test-plans/phase-1.md) is the maintainer's to run.
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 0 plan](phase-0.md), [Phase 0 report](../reports/phase-0.md)
 
@@ -108,7 +111,8 @@ were asked, unchanged.
 
 One thing your answer to Q6 leaves open, which I put to you before the release of WP11: records 0022 and 0027
 say that the package names and the JSON contract can still change "until the first release". Whether this
-pre-release is that release is not decided.
+pre-release is that release was not decided with your answer. You decided it on 17 November 2026: it is not.
+The first release is the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
 
 The questions as they were asked on 13 November 2026:
 
@@ -1211,6 +1215,8 @@ your decision below asks for more.
   accepted as not readable. My recommendation is to keep the error: the snapshot does lack these components, and
   the words of a remark of Salesforce are a weak ground for calling a snapshot complete. The rule of record
   0049 changed nothing on the test org. It is cheap and does no harm, and is yours to strike as well.
+  **You answered on 17 November 2026: it stays an error.** Nothing is built for it, and a snapshot of the test
+  org stays partial.
 - **Not done, and not verified:** which objects the six components are, and whether they are of a kind no
   retrieve supports. What Salesforce hands out for a part asked for by its own name is still not seen on a real
   org, because none came back. One org was read, a Developer Edition: no sandbox, no other edition and no org
@@ -1285,6 +1291,55 @@ and the note [public-codebases.md](../research/phase-1/public-codebases.md). No 
   your approval.
 - The release of Q6: a pre-release on GitHub with the packed command line attached, installed with one
   `npm install` line. Nothing goes to npm.
+
+Status on 17 November 2026, with the second pull request of the work package. The documents are written. The
+way to the pre-release is built. **The pre-release itself is not published.**
+
+- **The documents.** The [phase report](../reports/phase-1.md), the [test plan](../test-plans/phase-1.md), the
+  overall plan with a section "At the close of Phase 1", and the draft of the [Phase 2 plan](phase-2.md) with six
+  questions to you. Every expected output of parts B to D of the test plan was produced with the built command
+  line. Parts E to I were not run by me as a person would run them: E and H are yours alone, F and G repeat
+  what earlier work packages ran, and I waits for the release.
+- **The pre-release** (record [0050](../adr/0050-the-pre-release-on-github.md), first pull request): the
+  workflow "Pre-release", version `0.1.0-next.0` in the pre-release mode of changesets, a change log per
+  package, and the [release notes](../releases/v0.1.0-next.0.md). The plan named neither the version nor the
+  workflow.
+- **What the review of it found.** Two things I had not seen, both confirmed.
+  - npm 12 refuses to install from an address unless it is told to. The install line now holds
+    `--allow-remote=root`, and the workflow tries the line on Linux, Windows and macOS, with the npm of Node.js
+    and with the newest npm, before it publishes.
+  - After the install, `npm update --global` asks the public registry for the two package names and installs
+    whatever it finds there in the place of OrgLens. Nobody holds the names for this project. This is not
+    closed. The release notes warn, which is no protection. It is a risk of the way of installing you chose
+    with Q6, so how it is closed is yours to decide.
+- **Two questions held the release**, both put to you on 17 November 2026 and answered on the same day.
+  - The pre-release is not "the first release" of records 0022 and 0027. The names, the JSON output and the
+    exit codes are fixed with the first release on npm (record
+    [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
+  - The project holds its names on npm, with an empty package at version `0.0.0` under each. I had recommended
+    it. With your answer I looked the names up: `sf-orglens`, `@sf-orglens/engine` and `orglens` were free on
+    that day, and no organization had the name `sf-orglens`. `node scripts/pre-release.mjs names <folder>`
+    writes the three packages, and a golden file holds what it writes.
+- **The second answer did not stand the review of its own pull request.** The
+  [policy of npm on names](https://docs.npmjs.com/policies/disputes) forbids publishing a package only to
+  reserve its name, and says that an account that does so "may be removed or renamed without notice". I had not
+  read it before I recommended that way. So record
+  [0052](../adr/0052-the-project-holds-its-names-on-npm.md) is not accepted, the steps of
+  [`docs/releases/npm-names.md`](../releases/npm-names.md) are not to be followed, and the choice is back with
+  you, asked on the same day with four ways: an install into a folder of its own, the pre-release itself on
+  npm, the names held against the policy, or a warning only. I recommend the first.
+- **What the release still waits for.** That choice, and what it asks me to build. The release notes keep the
+  mark `[open]` at that point, and the workflow refuses to publish notes with the mark. After that I start the
+  run that publishes only on your word for that version: it cannot be undone.
+- **The rehearsal.** [Run 1 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882)
+  on `main` on 17 November 2026, with "publish" off. The check and the packing passed, and so did all six tries
+  of the install line: on Linux, Windows and macOS, each with the npm that Node.js brings and with the newest
+  npm, which was 12.2.2 on Linux. The jobs that publish and that install from GitHub were skipped, as they are
+  in a rehearsal.
+- **Not done, and not verified.** The install from GitHub, which the workflow tries after it has published.
+  The steps for the names on npm were not run: I have no account there. The workflow "Release (dry run)" has
+  never run. `README.md` and `SECURITY.md` say that no version is published, which stays true until the
+  release.
 
 ## 6. How the results are proven
 

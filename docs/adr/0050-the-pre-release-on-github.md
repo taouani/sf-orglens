@@ -4,6 +4,7 @@
 - Date: 2026-11-17
 - Decisions: none (work package 11 of the Phase 1 plan. It builds the pre-release the maintainer chose on
   2026-11-15 with the sixth question of that plan, and holds the choices its author made while building it)
+- Changed by: [0051](0051-the-first-release-is-the-first-on-npm.md), in the first point this record leaves undecided: "the first release" is the first one on npm, and a pre-release on GitHub is not it. The second point, the names on npm, is the subject of [0052](0052-the-project-holds-its-names-on-npm.md), which is not accepted
 
 ## Context
 

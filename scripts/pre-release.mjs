@@ -22,7 +22,13 @@
  *       stands in for GitHub, so the line is tried before anything is public. With "github", the line is run as
  *       the notes hold it. It installs the libraries the packages need from the registry of npm.
  *
- * No step publishes anything. `check`, `pack` and `page` need no network.
+ *   node scripts/pre-release.mjs names <folder>
+ *       Writes into <folder> the three empty packages with which the project holds its names on the registry
+ *       of npm (decision record 0052): `sf-orglens`, `@sf-orglens/engine` and `orglens`, each at version 0.0.0.
+ *       Record 0052 is not accepted: nothing is published under the names before the maintainer has chosen
+ *       again. docs/releases/npm-names.md says so, and has the steps for the maintainer.
+ *
+ * No step publishes anything. `check`, `pack`, `page` and `names` need no network.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -37,6 +43,16 @@ const REPOSITORY = 'https://github.com/taouani/sf-orglens';
 const PACKAGES = [
   { folder: 'engine', name: '@sf-orglens/engine', tarball: 'sf-orglens-engine' },
   { folder: 'cli', name: 'sf-orglens', tarball: 'sf-orglens' },
+];
+/**
+ * The names the project holds on the registry of npm with an empty package: the two packages, and the name of
+ * the binary, which `npx orglens` would otherwise fetch from whoever has it. `bin` says which of them install a
+ * command `orglens`, which then says what it is.
+ */
+const HELD_NAMES = [
+  { folder: 'sf-orglens', name: 'sf-orglens', bin: true },
+  { folder: 'sf-orglens-engine', name: '@sf-orglens/engine', bin: false },
+  { folder: 'orglens', name: 'orglens', bin: true },
 ];
 /** A version with a pre-release part, such as 0.1.0-next.0. A version without one is not released from here. */
 const PRE_RELEASE = /^\d+\.\d+\.\d+-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$/;
@@ -120,7 +136,8 @@ function usage() {
     'Usage: node scripts/pre-release.mjs check <version> <publish> <ref>\n' +
       '       node scripts/pre-release.mjs pack <version> <folder>\n' +
       '       node scripts/pre-release.mjs page <file>\n' +
-      '       node scripts/pre-release.mjs try <version> <folder>|github',
+      '       node scripts/pre-release.mjs try <version> <folder>|github\n' +
+      '       node scripts/pre-release.mjs names <folder>',
   );
   process.exit(2);
 }
@@ -292,6 +309,62 @@ async function tryInstall(version, from) {
   }
 }
 
+/**
+ * The files of one empty package that holds a name. It has no dependency and no script. `publishConfig` names
+ * the public registry, so that a registry set in the settings of the person who publishes, or in a folder above,
+ * is not the one the package goes to.
+ */
+function heldName({ name, bin }) {
+  const releases = `${REPOSITORY}/releases`;
+  const manifest = {
+    name,
+    version: '0.0.0',
+    description: 'This name is held for OrgLens. OrgLens is not released on npm yet.',
+    license: 'Apache-2.0',
+    repository: { type: 'git', url: `git+${REPOSITORY}.git` },
+    homepage: REPOSITORY,
+    ...(bin ? { bin: { orglens: 'not-orglens.js' } } : {}),
+    files: bin ? ['not-orglens.js'] : [],
+    publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
+  };
+  const files = {
+    'package.json': `${JSON.stringify(manifest, null, 2)}\n`,
+    'README.md':
+      `# ${name}\n\nThis name is held for [OrgLens](${REPOSITORY}). The package is empty.\n\n` +
+      `OrgLens is not released on npm yet. Its pre-releases are on GitHub, each with the line that installs it:\n` +
+      `${releases}\n`,
+  };
+  if (bin) {
+    files['not-orglens.js'] =
+      '#!/usr/bin/env node\n' +
+      'console.error(\n' +
+      `  'This is not OrgLens. It is the empty package that holds the name "${name}" on npm.\\n' +\n` +
+      "    'OrgLens is not released on npm yet. If this took the place of a pre-release you had installed,\\n' +\n" +
+      "    'install that again with the line of its release notes:\\n' +\n" +
+      `    '${releases}',\n` +
+      ');\n' +
+      'process.exitCode = 1;\n';
+  }
+  return files;
+}
+
+function names(folder) {
+  const out = resolve(folder);
+  mkdirSync(out, { recursive: true });
+  if (readdirSync(out).length > 0) {
+    console.error(`FAIL ${out} is not empty.`);
+    process.exit(1);
+  }
+  for (const held of HELD_NAMES) {
+    mkdirSync(join(out, held.folder));
+    for (const [file, text] of Object.entries(heldName(held))) writeFileSync(join(out, held.folder, file), text);
+  }
+  console.log(
+    `Wrote ${HELD_NAMES.map((held) => held.folder).join(', ')} into ${out}.\n` +
+      'Nothing is published. Read docs/releases/npm-names.md first: it says whether the steps are to be followed.',
+  );
+}
+
 const [step, ...rest] = process.argv.slice(2);
 if (step === 'check' && rest.length === 3) {
   check(rest[0], rest[1], rest[2]);
@@ -301,6 +374,8 @@ if (step === 'check' && rest.length === 3) {
   page(rest[0]);
 } else if (step === 'try' && rest.length === 2) {
   await tryInstall(rest[0], rest[1]);
+} else if (step === 'names' && rest.length === 1) {
+  names(rest[0]);
 } else {
   usage();
 }
