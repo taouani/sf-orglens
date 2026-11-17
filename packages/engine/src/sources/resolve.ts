@@ -45,9 +45,9 @@ export interface Resolution {
    * What the library could not make sense of, with the file, the folder or
    * the component it was working on. A failure is narrowed down to the
    * smallest folder or file that causes it, and everything beside that is
-   * resolved.
+   * resolved. `type` is set where the problem is about a component: the type of that component.
    */
-  readonly problems: readonly { readonly at: string; readonly message: string }[];
+  readonly problems: readonly { readonly at: string; readonly message: string; readonly type?: string }[];
   /**
    * Components that are defined in more than one place, such as a class of
    * one name in two package directories, each with the files that define
@@ -185,7 +185,7 @@ export async function resolveComponents(
 
   const types = new RegistryAccess(layout === null ? registry : await registryOf(layout));
   const resolver = new MetadataResolver(types, new Container(), false);
-  const problems: { at: string; message: string }[] = [];
+  const problems: { at: string; message: string; type?: string }[] = [];
   const owner = new Map<string, string>();
   interface Found {
     type: string;
@@ -215,7 +215,7 @@ export async function resolveComponents(
     try {
       children = component.getChildren();
     } catch (error) {
-      problems.push({ at: `${type} ${fullName}`, message: messageOf(error) });
+      problems.push({ at: `${type} ${fullName}`, message: messageOf(error), type });
     }
     // The smaller components first, so that a file goes to the smallest component it belongs to.
     for (const child of children) visit(child, component);
@@ -224,7 +224,7 @@ export async function resolveComponents(
     try {
       content = component.walkContent();
     } catch (error) {
-      problems.push({ at: `${type} ${fullName}`, message: messageOf(error) });
+      problems.push({ at: `${type} ${fullName}`, message: messageOf(error), type });
     }
     // A component whose parts lie in several folders is found once per folder. Its files are put together.
     const entry = entryOf(component);

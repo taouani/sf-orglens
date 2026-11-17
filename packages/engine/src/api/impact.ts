@@ -150,7 +150,12 @@ export function impactOf(store: Store, source: string, component: string, query:
   const direction = query.outgoing === true ? 'outgoing' : 'incoming';
   const minConfidence = query.minConfidence ?? 'possible';
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
-  const gaps = impactGaps(types, countIssues(store, snapshot.id), analysis.types);
+  // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
+  // component. Today these are types of the logic tier only, so no warning outside the tier is counted yet.
+  const covered = [
+    ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
+  ];
+  const gaps = impactGaps(types, countIssues(store, snapshot.id, covered), analysis.types);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what
   // a component refers to that the snapshot does not hold is not known at all.

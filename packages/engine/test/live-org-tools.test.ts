@@ -1186,8 +1186,9 @@ describe('reading an org that holds more than the fixture project', () => {
       '- 1 time: in (a folder that is not shown), 1 level deep, a name that ends in .txt. In everyday words: The file … to no metadata type that is known.',
     );
     // Each of these observations holds a name of the org in the database. The code is shown, the name is not.
+    // A report is of no type of the logic tier, so its listing that failed is a warning.
     expect(output).toContain(
-      '- error LISTING_FAILED: 1 observation. Types: Report. Codes of Salesforce: INSUFFICIENT_ACCESS (1)',
+      '- warning LISTING_FAILED: 1 observation. Types: Report. Codes of Salesforce: INSUFFICIENT_ACCESS (1)',
     );
     expect(output).toContain(
       '- error NOT_RETRIEVED: 1 observation, about 1 components, files or remarks. Types: ApexClass',
@@ -1195,8 +1196,10 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toContain(
       '- info UNLISTED_COMPONENTS: 1 observation, about 1 components, files or remarks. Types: CustomObject',
     );
-    // The file beside the metadata, whose place the engine keeps in the observation.
-    expect(output).toContain('- error RESOLVE_FAILED: 3 observations');
+    // The file beside the metadata, whose place the engine keeps in the observation. Two lie in a folder of no
+    // type that is known, which counts against the logic tier. The third lies in the folder of the documents.
+    expect(output).toContain('- error RESOLVE_FAILED: 2 observations');
+    expect(output).toContain('- warning RESOLVE_FAILED: 1 observation. Types: Document, DocumentFolder');
     expect(output).toContain(
       '- 1 time: in (a folder that is not shown), 1 level deep, a name that ends in (an ending that is not shown). In everyday words:',
     );
@@ -1261,7 +1264,7 @@ describe('reading an org that holds more than the fixture project', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toMatch(
-      /- error RETRIEVE_FAILED: \d+ observations, about \d+ components, files or remarks\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/,
+      /- error RETRIEVE_FAILED: \d+ observations, about \d+ components, files or remarks\. Types: ApexClass, CustomLabels\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/,
     );
     expect(output).toMatch(/- info CHUNK_SPLIT: \d+ observations\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/);
     expect(output.split('\n').slice(-4)).toEqual([

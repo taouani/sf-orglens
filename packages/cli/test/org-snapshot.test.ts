@@ -37,6 +37,7 @@ afterEach(() => {
   mock.operations.length = 0;
   mock.withheld = [];
   mock.unlisted = [];
+  mock.extraFiles = {};
   mock.retrieveFault = null;
   mock.queries.length = 0;
   // The home folder of the test process is an empty folder of its own (tools/vitest-setup.js).
@@ -230,6 +231,52 @@ describe('orglens snapshot of an org', () => {
         ...CROSS_CHECKED,
       ].join('\n'),
     );
+  });
+
+  it('ends with 0 when what is missing is of a type outside the logic tier, and says that something is', async () => {
+    const { dir, env } = setUp();
+    // A file in the folder of custom tabs that is no custom tab.
+    mock.extraFiles = { 'tabs/Thing.mystery': 'What is this?\n' };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toBe(
+      [
+        'Snapshot #1 of "prod" is complete for the logic tier: 2 components in 4 files (456 bytes). Something of other types is missing, and the warnings below say what.',
+        '',
+        'TYPE       LISTED  RETRIEVED  ANALYSED',
+        'ApexClass  2       2          0',
+        '',
+        'SEVERITY  CODE            WHAT',
+        'warning   RESOLVE_FAILED  tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
+        '',
+        ...classesAnalysed('2 components'),
+        ...CROSS_CHECKED,
+      ].join('\n'),
+    );
+    const coverage = await orglens(dir, ['coverage', 'prod'], env);
+    expect(coverage.code).toBe(0);
+    const LACKS =
+      'is complete for the logic tier: 2 components in 4 files (456 bytes). Something of other types is missing, and the warnings below say what.';
+    expect(coverage.stdout.split('\n')[0]?.replace(/taken \S+,/, 'taken TIME,')).toBe(
+      `Snapshot #1 of "prod", taken TIME, ${LACKS}`,
+    );
+    const analysed = await orglens(dir, ['analyse', 'prod'], env);
+    expect(analysed.code).toBe(0);
+    expect(analysed.stdout.split('\n')[0]).toBe(
+      `Snapshot #1 of "prod" was analysed from the files it holds. It ${LACKS}`,
+    );
+    const { data } = await orglensJson(dir, ['coverage', 'prod']);
+    expect(data).toMatchObject({
+      snapshot: { status: 'complete' },
+      issues: [
+        {
+          severity: 'warning',
+          code: 'RESOLVE_FAILED',
+          stage: 'read',
+          details: { at: 'tabs/Thing.mystery', types: ['CustomTab'], tier: 'other' },
+        },
+      ],
+    });
   });
 
   it('counts what the snapshot holds, with a component that came back although the org had not listed it', async () => {

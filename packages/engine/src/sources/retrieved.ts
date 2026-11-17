@@ -33,10 +33,24 @@ export interface Unpacked {
   readonly tree: SourceTree;
   /** The components the files make up. Sorted by type, then by full name. */
   readonly components: readonly ResolvedComponent[];
-  /** What could not be read as metadata, with the file, the folder or the component it is about. */
-  readonly problems: readonly { readonly at: string; readonly message: string }[];
+  /**
+   * What could not be read as metadata, with the file, the folder or the component it is about.
+   *
+   * `types`: the metadata types it can be of. For a component that is its type. For a file or a folder it is
+   * every type that keeps its files in the folder the path starts with, such as `Report` for `reports`, and
+   * every type that is a part of one of those, such as `CustomField` for `objects`. It is
+   * empty where nothing tells the type: a folder no type is known for, a file outside every folder, something
+   * beside what was asked for.
+   */
+  readonly problems: readonly Problem[];
   /** Files that were converted and belong to no component, sorted. */
   readonly unresolved: readonly string[];
+}
+
+interface Problem {
+  readonly at: string;
+  readonly message: string;
+  readonly types: readonly string[];
 }
 
 /** The folder of a zip file that holds what was asked for by name. */
@@ -93,7 +107,18 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     return saidBy(text);
   };
   const resolver = new MetadataResolver(registry, container, false);
-  const problems: { at: string; message: string }[] = [];
+  const problems: Problem[] = [];
+  /**
+   * The types that keep their files in the folder a path starts with, or is, each with the types of its parts:
+   * a file below `objects` can be an object, a field or a list view. A file in no folder has none.
+   */
+  const typesAt = (path: string): string[] => {
+    const [folder] = path.split('/');
+    const names = Object.values(registry.getRegistry().types)
+      .filter((type) => type.directoryName === folder)
+      .flatMap((type) => [type.name, ...Object.values(type.children?.types ?? {}).map((part) => part.name)]);
+    return [...new Set(names)].sort(byCodeUnit);
+  };
   const components: SourceComponent[] = [];
 
   /** Resolves what is at a path of the zip. A folder that fails is resolved entry by entry, down to the cause. */
@@ -106,7 +131,8 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         for (const name of [...container.readDirectory(path)].sort(byCodeUnit)) resolveAt(`${path}/${name}`);
       }
       if (problems.length === before) {
-        problems.push({ at: path.slice(ZIP_ROOT.length + 1), message: said(error) });
+        const at = path.slice(ZIP_ROOT.length + 1);
+        problems.push({ at, message: said(error), types: typesAt(at) });
       }
     }
   };
@@ -130,7 +156,11 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     if (name !== ZIP_ROOT && name !== '') beside.add(name);
   }
   for (const name of [...beside].sort(byCodeUnit)) {
-    problems.push({ at: name, message: `It is outside the folder "${ZIP_ROOT}" of the zip file, so it was not read.` });
+    problems.push({
+      at: name,
+      message: `It is outside the folder "${ZIP_ROOT}" of the zip file, so it was not read.`,
+      types: [],
+    });
   }
 
   // The library passes over a file it has no type for, without a word. Every file of the zip has to belong to a
@@ -142,7 +172,11 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
         if (path !== undefined) claimed.add(path.split('\\').join('/'));
       }
     } catch (error) {
-      problems.push({ at: `${component.type.name} ${component.fullName}`, message: said(error) });
+      problems.push({
+        at: `${component.type.name} ${component.fullName}`,
+        message: said(error),
+        types: [component.type.name],
+      });
     }
   }
   const failed = problems.map((problem) => `${ZIP_ROOT}/${problem.at}`);
@@ -152,10 +186,8 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
       if (path === `${ZIP_ROOT}/package.xml` || failed.includes(path)) continue;
       if (container.isDirectory(path)) walk(path);
       else if (!claimed.has(path)) {
-        problems.push({
-          at: path.slice(ZIP_ROOT.length + 1),
-          message: 'The file belongs to no metadata type that is known.',
-        });
+        const at = path.slice(ZIP_ROOT.length + 1);
+        problems.push({ at, message: 'The file belongs to no metadata type that is known.', types: typesAt(at) });
       }
     }
   };
@@ -178,7 +210,11 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
           await convert([component]);
         } catch (error) {
           checkWorkFolder(workDir);
-          problems.push({ at: `${component.type.name} ${component.fullName}`, message: said(error) });
+          problems.push({
+            at: `${component.type.name} ${component.fullName}`,
+            message: said(error),
+            types: [component.type.name],
+          });
         }
       }
     }
@@ -197,14 +233,22 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
     },
   };
   for (const path of reading.tree.files.filter((one) => !one.startsWith(CONVERTED))) {
-    problems.push({ at: path, message: 'The file was converted to a place where no metadata is expected.' });
+    problems.push({ at: path, message: 'The file was converted to a place where no metadata is expected.', types: [] });
   }
 
   const resolution = await resolveComponents(tree, ['']);
   return {
     tree,
     components: resolution.components,
-    problems: [...problems, ...resolution.problems],
+    problems: [
+      ...problems,
+      // The files are in the form of a repository here, and a type keeps them in a folder of the same name.
+      ...resolution.problems.map(({ at, message, type }) => ({
+        at,
+        message,
+        types: type === undefined ? typesAt(at) : [type],
+      })),
+    ],
     unresolved: resolution.unresolved,
   };
 }

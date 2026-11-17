@@ -7,9 +7,11 @@
  * snapshot is: a snapshot that was interrupted, by a closed laptop or a
  * network that went away, is picked up by the next run where it stopped.
  *
- * The snapshot is measured against the inventory. Whatever the org listed
- * and did not hand out, and every type it refused to list, is an issue of
- * severity `error`, and the snapshot is `partial`.
+ * The snapshot is measured against the inventory, and judged over the logic
+ * tier (`core/tiers.ts`, decision record 0046). Whatever the org listed of
+ * a type of that tier and did not hand out, and every such type it refused
+ * to list, is an issue of severity `error`, and the snapshot is `partial`.
+ * The same in another type is a warning, and the snapshot stays `complete`.
  *
  * Only metadata is read. Nothing here queries records.
  */
@@ -17,6 +19,7 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { basename, dirname, join } from 'node:path';
 import type { OrgSource, SandboxSource } from '../core/config/config.ts';
 import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
+import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
 import { DEFAULT_CHUNK_WEIGHT, planChunks, splitMembers } from '../sources/chunks.ts';
 import { readDependencies, type DependencyLimits } from '../sources/dependency-api.ts';
@@ -33,7 +36,7 @@ import {
 import { loginFailed, saidBy, unreachable } from '../sources/org-errors.ts';
 import { connectToOrg, type OrgSession } from '../sources/org.ts';
 import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
-import { systemCode } from '../sources/tree.ts';
+import { byCodeUnit, systemCode } from '../sources/tree.ts';
 import { readListedIds, writeDependencies } from '../store/dependencies.ts';
 import {
   addChunks,
@@ -322,6 +325,29 @@ const named = (names: readonly string[]): Readonly<Record<string, JsonValue>> =>
 });
 
 /**
+ * A file that holds nothing but parts of one type, by its type, with the type of the parts. An org lists the
+ * file of custom labels also when it has no label, and then hands out nothing: the test org did so until it got
+ * a label (`docs/research/phase-1/real-org.md`). Such a file is not missing when the org lists no part of it.
+ */
+const HOLDS_ONLY: Readonly<Record<string, string>> = { CustomLabels: 'CustomLabel' };
+
+/** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
+const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
+
+/**
+ * What the message of an issue says of something that is missing, with the tier it counts against. `of` names
+ * the types it is counted with, where the message does not name its type.
+ */
+function missingIn(tier: Tier, message: string, of: readonly string[] = []): string {
+  if (tier === 'logic') return message;
+  const text = message.trimEnd();
+  const sentence = `${text}${/[.!?]$/.test(text) ? '' : '.'}`;
+  if (of.length === 0) return `${sentence} This is outside the logic tier and does not make the snapshot partial.`;
+  const types = of.length === 1 ? `the type ${of[0] ?? ''}, which is` : `the types ${of.join(', ')}, which are`;
+  return `${sentence} It is counted with ${types} outside the logic tier, and does not make the snapshot partial.`;
+}
+
+/**
  * Reads an org or a sandbox and stores what was read as a snapshot, or
  * continues the snapshot of the source that was interrupted.
  *
@@ -414,13 +440,17 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
             note: type.reason,
           });
           if (type.listing === 'failed') {
+            const tier = tierOf(type.type);
             issue(
               store,
               id,
-              'error',
+              severityIn(tier),
               'LISTING_FAILED',
-              `The org did not say which components of the type ${type.type} it has. ${type.reason ?? ''}`.trimEnd(),
-              { type: type.type, code: type.code },
+              missingIn(
+                tier,
+                `The org did not say which components of the type ${type.type} it has. ${type.reason ?? ''}`.trimEnd(),
+              ),
+              { type: type.type, code: type.code, tier },
             );
           } else if (type.listing === 'unlistable') {
             issue(
@@ -609,13 +639,15 @@ async function retrieveChunk(
     }
     markRetrieved(store, snapshotId, unpacked.components);
     for (const problem of unpacked.problems) {
+      // What nothing tells the type of counts against the logic tier.
+      const tier = tierOfAny(problem.types);
       issue(
         store,
         snapshotId,
-        'error',
+        severityIn(tier),
         'RESOLVE_FAILED',
-        `${problem.at} could not be read as metadata: ${problem.message}`,
-        { at: problem.at },
+        missingIn(tier, `${problem.at} could not be read as metadata: ${problem.message}`, problem.types),
+        { at: problem.at, types: [...problem.types], tier },
       );
     }
     const other = unpacked.tree.files.filter((path) => !owned.has(path));
@@ -674,15 +706,26 @@ async function retrieveChunks(
       store.write(() => {
         chunkEnded(store, snapshotId, seq, { status: 'failed', at: now(), error: said });
         const first = members[0];
+        // One component of the logic tier among them is enough.
+        const tier = tierOfAny(members.map((member) => member.type));
         issue(
           store,
           snapshotId,
-          'error',
+          severityIn(tier),
           'RETRIEVE_FAILED',
-          members.length === 1 && first !== undefined
-            ? `Salesforce did not hand out ${first.type} ${first.fullName}. ${said}`
-            : `Salesforce did not hand out ${plural(members.length, 'component', 'components')}. ${said}`,
-          { ...named(members.map((member) => `${member.type} ${member.fullName}`)), said, code },
+          missingIn(
+            tier,
+            members.length === 1 && first !== undefined
+              ? `Salesforce did not hand out ${first.type} ${first.fullName}. ${said}`
+              : `Salesforce did not hand out ${plural(members.length, 'component', 'components')}. ${said}`,
+          ),
+          {
+            ...named(members.map((member) => `${member.type} ${member.fullName}`)),
+            types: [...new Set(members.map((member) => member.type))].sort(byCodeUnit),
+            said,
+            code,
+            tier,
+          },
         );
       });
     };
@@ -812,24 +855,39 @@ async function readCrossCheck(
 
 /**
  * Ends a snapshot whose chunks are all done: counts what came back against
- * what the org listed, names what is missing, and sets the status.
+ * what the org listed, names what is missing, and sets the status. The
+ * snapshot is partial if something of the logic tier is missing.
  */
 function finish(store: Store, snapshotId: number): void {
   store.write(() => {
     const coverage = new Map(readCoverage(store, snapshotId).map((row) => [row.type, row]));
-    for (const [type, count] of [...countInventory(store, snapshotId)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const counts = countInventory(store, snapshotId);
+    for (const [type, count] of [...counts].sort(([a], [b]) => (a < b ? -1 : 1))) {
       const row = coverage.get(type);
       const notes = [row?.note ?? null];
       if (count.listed > count.retrieved) {
         const missing = missingComponents(store, snapshotId, type);
-        issue(
-          store,
-          snapshotId,
-          'error',
-          'NOT_RETRIEVED',
-          `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`,
-          { type, ...named(missing) },
-        );
+        const tier = tierOf(type);
+        const said = `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`;
+        // A file of parts that the org lists and has no part for. Whether its parts could be listed is told by
+        // the listing of their type, which is an error of its own if it failed.
+        const parts = HOLDS_ONLY[type];
+        if (parts !== undefined && (counts.get(parts)?.listed ?? 0) === 0) {
+          issue(
+            store,
+            snapshotId,
+            'warning',
+            'NOT_RETRIEVED',
+            `${said}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
+            { type, ...named(missing), tier, holdsNothing: true },
+          );
+        } else {
+          issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said), {
+            type,
+            ...named(missing),
+            tier,
+          });
+        }
       }
       if (count.unlisted > 0) {
         const unlisted = unlistedComponents(store, snapshotId, type);
@@ -854,7 +912,8 @@ function finish(store: Store, snapshotId: number): void {
         note: note === '' ? null : note,
       });
     }
-    // What was read decides. An issue of an analysis says nothing about the reading.
+    // What was read decides, and of that what counts against the logic tier: only that is an error. An issue of
+    // an analysis says nothing about the reading.
     const complete = !readIssues(store, snapshotId).some((one) => one.stage === 'read' && one.severity === 'error');
     finishSnapshot(store, snapshotId, {
       status: complete ? 'complete' : 'partial',

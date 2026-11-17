@@ -399,7 +399,7 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   const lines = [
     `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
       snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
-    }.`,
+    }.${lacksOtherTypes(report) ? ' Something of other types is missing, and the warnings below say what.' : ''}`,
   ];
   // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
   // nothing in a table. A type it could not list always does, and so does one of which something came back.
@@ -623,6 +623,20 @@ const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], st
   failed: 'failed:',
 };
 
+/**
+ * True for a snapshot of an org that is complete and lacks something of a type outside the logic tier, by which
+ * it is not judged. The warnings of its reading say what.
+ */
+const lacksOtherTypes = (report: CoverageReport): boolean =>
+  report.snapshot.status === 'complete' &&
+  report.issues.some(
+    (issue) => issue.stage === 'read' && issue.severity === 'warning' && issue.details['tier'] === 'other',
+  );
+
+/** What a snapshot is called. One that lacks something outside the logic tier is called complete for that tier. */
+const verdictOf = (report: CoverageReport): string =>
+  lacksOtherTypes(report) ? 'is complete for the logic tier:' : SNAPSHOT_VERDICT[report.snapshot.status];
+
 export async function snapshot(
   context: Context,
   source: string,
@@ -634,10 +648,9 @@ export async function snapshot(
     crossCheck: options.crossCheck,
     onProgress: progressLines(source, context.progress),
   });
-  const { id, status } = report.snapshot;
   return {
     data: report,
-    lines: coverageLines(report, `Snapshot #${String(id)} of "${source}" ${SNAPSHOT_VERDICT[status]}`),
+    lines: coverageLines(report, `Snapshot #${String(report.snapshot.id)} of "${source}" ${verdictOf(report)}`),
     exitCode: exitOf(report),
   };
 }
@@ -659,12 +672,11 @@ export async function analyse(
   const id = snapshotNumber(options.snapshot);
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.analyse(source, { snapshot: id });
-  const { status } = report.snapshot;
   return {
     data: report,
     lines: coverageLines(
       report,
-      `Snapshot #${String(report.snapshot.id)} of "${source}" was analysed from the files it holds. It ${SNAPSHOT_VERDICT[status]}`,
+      `Snapshot #${String(report.snapshot.id)} of "${source}" was analysed from the files it holds. It ${verdictOf(report)}`,
     ),
     exitCode: exitOf(report),
   };
@@ -678,12 +690,12 @@ export async function coverage(
   const id = snapshotNumber(options.snapshot);
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.coverage(source, { snapshot: id });
-  const { status, finishedAt, startedAt } = report.snapshot;
+  const { finishedAt, startedAt } = report.snapshot;
   return {
     data: report,
     lines: coverageLines(
       report,
-      `Snapshot #${String(report.snapshot.id)} of "${source}", ${finishedAt === null ? `started ${startedAt}` : `taken ${finishedAt}`}, ${SNAPSHOT_VERDICT[status]}`,
+      `Snapshot #${String(report.snapshot.id)} of "${source}", ${finishedAt === null ? `started ${startedAt}` : `taken ${finishedAt}`}, ${verdictOf(report)}`,
     ),
   };
 }
