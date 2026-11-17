@@ -320,12 +320,16 @@ export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
  *
  * `read`: the errors of the reading, but for the two that the coverage of their type tells: a type that could
  * not be listed, and components of a type that were not retrieved. Any other error counts, also one that names
- * a type. `analysis`: the errors of the analysis. `analysisWarnings`: its warnings, each of which says that a
- * name was not turned into a reference or that a part of a file was not found.
+ * a type. A snapshot of an org writes what is missing outside the logic tier as a warning (decision record
+ * 0046). Such a warning counts too if it says, in `details.types`, that what is missing can be of one of the
+ * types `covered`: the types an answer claims to cover. `analysis`: the errors of the analysis.
+ * `analysisWarnings`: its warnings, each of which says that a name was not turned into a reference or that a
+ * part of a file was not found.
  */
 export function countIssues(
   store: Store,
   snapshotId: number,
+  covered: readonly string[],
 ): { readonly read: number; readonly analysis: number; readonly analysisWarnings: number } {
   const row = store.get(
     `SELECT COALESCE(SUM(severity = 'error' AND stage = 'analysis'), 0) AS analysis,
@@ -336,8 +340,20 @@ export function countIssues(
        FROM snapshot_issue WHERE snapshot_id = ?`,
     snapshotId,
   );
+  const outside = store.get(
+    `SELECT COUNT(*) AS n
+       FROM snapshot_issue AS i
+      WHERE i.snapshot_id = ? AND i.severity = 'warning' AND i.stage <> 'analysis'
+        AND i.code NOT IN ('NOT_RETRIEVED', 'LISTING_FAILED')
+        AND json_extract(COALESCE(i.details, '{}'), '$.tier') = 'other'
+        AND json_type(i.details, '$.types') IS 'array'
+        AND EXISTS (SELECT 1 FROM json_each(i.details, '$.types') AS t
+                     WHERE t.value IN (SELECT c.value FROM json_each(?) AS c))`,
+    snapshotId,
+    JSON.stringify(covered),
+  );
   return {
-    read: Number(row?.['read'] ?? 0),
+    read: Number(row?.['read'] ?? 0) + Number(outside?.['n'] ?? 0),
     analysis: Number(row?.['analysis'] ?? 0),
     analysisWarnings: Number(row?.['warnings'] ?? 0),
   };

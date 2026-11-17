@@ -13,7 +13,7 @@ import { openWorkspace, type Workspace } from '../src/api/workspace.ts';
 import { buildKey, parentKey, type ComponentKey } from '../src/core/keys.ts';
 import { CONFIDENCE_TIERS, type ConfidenceTier } from '../src/core/references.ts';
 import { openStore, type Store } from '../src/store/open.ts';
-import { addCoverage, ensureSource, insertSnapshot, readCoverage } from '../src/store/snapshots.ts';
+import { addCoverage, addIssue, ensureSource, insertSnapshot, readCoverage } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { chainOf } from './helpers/impact-chain.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
@@ -349,6 +349,41 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         complete: false,
         mayMiss: true,
         notCovered: { partial: [], readErrors: 0, analysisErrors: 1 },
+      });
+    });
+
+    it('may miss something when a warning outside the logic tier is about a type the answer covers', async () => {
+      const { database, workspace } = await setUp();
+      const warn = (types: string[]): void => {
+        inStore(database, (store) => {
+          addIssue(store, 1, {
+            severity: 'warning',
+            code: 'RESOLVE_FAILED',
+            message: 'Something could not be read as metadata.',
+            componentKey: null,
+            details: { at: 'somewhere', types, tier: 'other' },
+          });
+        });
+      };
+      // What a snapshot of an org leaves behind for a file in the folder of a type that is not analysed.
+      warn(['CustomTab']);
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
+        mayMiss: false,
+        notCovered: { readErrors: 0 },
+      });
+      // A list view is outside the logic tier too. Once the analysis found one, an answer covers the type.
+      warn(['ListView', 'Report']);
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
+        mayMiss: false,
+        notCovered: { readErrors: 0 },
+      });
+      inStore(database, (store) => {
+        addCoverage(store, 1, { type: 'ListView', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null });
+      });
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
+        complete: false,
+        mayMiss: true,
+        notCovered: { partial: [], readErrors: 1 },
       });
     });
 

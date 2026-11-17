@@ -1028,6 +1028,41 @@ Accepted when:
   the logic tier in the key is an error.
 - A snapshot of a Git source is not changed by any of this.
 
+Status on 17 November 2026, with the first pull request of the work package. It holds the judgement over the
+logic tier. The key in `orglens.toml` and the look at the test org follow, each in a pull request of its own.
+
+- **Built:** `core/tiers.ts` with the 21 names of the logic tier, the severity of the four issues that say
+  something is missing (`LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`) by the tier they
+  count against, `details.tier` and `details.types` on them, the first line of the report of `snapshot`,
+  `analyse` and `coverage`, the count of `readErrors` in an impact answer, `docs/cli.md`, the descriptions of
+  the JSON Schema, and record [0046](../adr/0046-complete-over-the-logic-tier.md). No migration was needed.
+- **Against the acceptance criteria:**
+  - A snapshot of the test org is complete over the logic tier: **not shown yet.** Nothing of this pull request
+    was run against a real org. Thirteen components of types of the tier and three files that cannot be read
+    are expected to keep it partial until they are looked at.
+  - What is missing outside the tier is a warning in `snapshot` and `coverage`, per type and with a count, and
+    the exit code stays `0`: met against the mock org, for a component that does not come back, a listing that
+    is refused, a retrieve that fails and a file that cannot be read.
+  - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it.
+  - A snapshot of a Git source is not changed: its code was not touched, and its tests pass as they were.
+- **Choices of mine, for you to strike.** Record 0046 has the reasons.
+  - The 21 names. Records 0004 and 0038 hold words, and `Workflow` and `CustomLabels` are in the list because
+    the org lists the file and its parts as types of their own.
+  - A type counts by its own name. A list view, a web link, a compact layout and the other parts of an object
+    that the list does not name are outside the tier although the object is in it. The same holds for the
+    actions in the file of workflow rules.
+  - A retrieve that fails counts against the tier if one of its components is of the tier.
+  - A file that cannot be read counts by the types that keep their files in its top folder, and against the
+    tier where no type is known.
+  - The warnings keep their codes, and say the tier in `details.tier`.
+  - A complete snapshot that lacks something outside the tier says so in its first line: "is complete for the
+    logic tier, and something of other types is missing".
+  - An impact answer counts a warning outside the tier in `readErrors` when it can be about a type the answer
+    covers. Without that, an answer would have stopped saying that it may miss something when a part of an
+    object outside the tier could not be read.
+- **Not done:** `notCovered.notAnalysed` of an impact answer is not narrowed, which record 0044 named as
+  something this work package could do. The tier does not say which type can refer to which.
+
 ### WP10 Proof on public codebases, and measurements
 
 Build:

@@ -81,7 +81,8 @@ What the help texts do not say:
   or type and nothing beside it. The snapshot is stored either way, `ok` is `true`, and the exit code is `5`, so
   that a script does not take an incomplete picture for a complete one.
 - Issues of the severity `warning` and `info` say what was left out on purpose or is worth knowing. They do not
-  make a snapshot partial.
+  make a snapshot partial. A snapshot of an org is judged over the logic tier: what is missing of a type outside
+  it is such a warning ([below](#a-source-of-the-kind-org-or-sandbox)).
 - A snapshot is analysed as soon as it is stored. `complete` and `partial` say what was read, whatever the
   analysis found. [The analysis of a snapshot](#the-analysis-of-a-snapshot) has its own word for that.
 
@@ -137,10 +138,34 @@ asks the Dependency API, and is described [further down](#the-cross-check-of-a-s
 The files are stored in the form a repository holds them in (an object with one file per field), under the paths
 they have below a package directory, such as `classes/Foo.cls`.
 
-- The snapshot is partial for: a type whose components the org refused to list (`LISTING_FAILED`), a retrieve
+- Four things can be missing: a type whose components the org refused to list (`LISTING_FAILED`), a retrieve
   that failed for a single component, or a chunk whose retrieve was started three times and gave no result
   (`RETRIEVE_FAILED`), a component the org listed that did not come back (`NOT_RETRIEVED`), a file that came back
   and cannot be read as metadata (`RESOLVE_FAILED`). The other types and components are in the snapshot.
+- **A snapshot of an org is judged over the logic tier.** Every type the org lists is read. The snapshot is
+  partial when one of the four things is missing of a type of the logic tier: the issue is an `error`. Of any
+  other type the same issue is a `warning`. Its message ends with "This is outside the logic tier and does not
+  make the snapshot partial.", the snapshot is `complete`, and the exit code is `0`. The first line of the
+  report then says "is complete for the logic tier, and something of other types is missing". A script that
+  needs every type reads the issues: each of the four carries `details.tier`, which is `logic` or `other`.
+
+  The types of the logic tier are:
+
+  `ApexClass`, `ApexTrigger`, `AuraDefinitionBundle`, `CustomField`, `CustomLabel`, `CustomLabels`,
+  `CustomMetadata`, `CustomObject`, `CustomPermission`, `FieldSet`, `Flow`, `GlobalValueSet`,
+  `LightningComponentBundle`, `NamedCredential`, `PermissionSet`, `PermissionSetGroup`, `Profile`, `RecordType`,
+  `ValidationRule`, `Workflow`, `WorkflowRule`.
+
+  A type is of the tier by its own name. A part of an object that is not in the list, such as a list view, is
+  outside it although the object is in it. Three cases need a rule. A retrieve that fails counts against the
+  tier if one of its components is of the tier. A file that cannot be read as metadata counts by the types that
+  keep their files in its top folder: a file under `reports` is outside the tier, one under `classes` is in it.
+  A file in a folder of no known type, or outside the package that was asked for, counts against the tier,
+  because nothing says what it is.
+
+  A snapshot that an earlier version took keeps the status that version gave it. A snapshot of a repository is
+  not judged by tier: whatever its folders hold and cannot be read makes it partial.
+
 - Warnings: a type Salesforce describes and never lists, which today is `StandardValueSet` (`TYPE_NOT_READ`), what
   Salesforce remarked about a retrieve (`RETRIEVE_MESSAGES`), files of a retrieve that belong to no component
   (`FILES_NOT_METADATA`), and a file that came back in two retrieves (`FILE_RETRIEVED_TWICE`).
@@ -402,11 +427,11 @@ version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
-| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                 |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                          |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                           |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                                                                                                                                       |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
@@ -416,6 +441,12 @@ the code Salesforce gave for its refusal in `details.code`, or `null` if it gave
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
 the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`,
 `details.unproven`, `details.code` and `details.rows`.
+
+`LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
+for an error, `other` for a warning. `RETRIEVE_FAILED` carries the types of its components in `details.types`,
+sorted. `RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
+component, or the types that keep their files in the top folder of the file. The list is empty when nothing
+tells the type. A snapshot taken before these fields existed has issues without them.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -517,7 +548,8 @@ the answer says whether it is complete, and if not, why. Below the results it na
   every type except objects, fields and validation rules;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
-  them;
+  them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
+  about a type the answer covers: a type the analysis read, or one it found a component of;
 - how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
   to its end, or a part of a file was not found. A reference may be missing for each;
 - for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a
@@ -772,9 +804,10 @@ release, the contract can still change with a pull request that says so.
 
 `snapshot` ends with `5` when the snapshot it stored is partial or its analysis is incomplete, `analyse` when the
 snapshot it analysed is partial or its analysis is incomplete, and `source check` when a snapshot of the folders
-would be partial. `impact` ends with `5` when its answer may miss something of a type it covers (`data.mayMiss`).
-`source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login. No command ends
-with `3` yet.
+would be partial. A snapshot of an org that lacks something of a type outside the logic tier is complete, and
+does not end a command with `5`. `impact` ends with `5` when its answer may miss something of a type it covers
+(`data.mayMiss`). `source check`, `source link` and `snapshot` of an org end with `4` for a problem with a login.
+No command ends with `3` yet.
 The code is fixed now, so that scripts written today keep their meaning when the commands that use it arrive.
 
 ## Error codes

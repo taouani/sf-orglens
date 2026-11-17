@@ -4,6 +4,7 @@
 - Date: 2026-11-16
 - Decisions: none (work package 7 of the Phase 1 plan. It builds the first half of record 0013, reachability, and
   the command `impact` of record 0016 for one component)
+- Changed by: [0046](0046-complete-over-the-logic-tier.md), in one point: `readErrors` also counts a warning of a snapshot of an org about something outside the logic tier, if it can be about a type the answer covers
 
 ## Context
 

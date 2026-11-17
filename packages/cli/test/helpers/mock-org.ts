@@ -69,6 +69,8 @@ export interface MockOrg {
   withheld: string[];
   /** Classes the org does not list and hands out with every retrieve. */
   unlisted: string[];
+  /** Files the org hands out with every retrieve besides the classes, by their path in the package. */
+  extraFiles: Record<string, string>;
   /** If set, a retrieve is refused with this code. */
   retrieveFault: string | null;
   /** The operations of the Metadata API that were asked for. */
@@ -96,6 +98,7 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     classes: null,
     withheld: [],
     unlisted: [],
+    extraFiles: {},
     retrieveFault: null,
     operations: [],
     dependencies: null,
@@ -152,6 +155,7 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
         files[`unpackaged/classes/${name}.cls`] = classes[name] ?? '';
         files[`unpackaged/classes/${name}.cls-meta.xml`] = CLASS_META;
       }
+      for (const [path, text] of Object.entries(org.extraFiles)) files[`unpackaged/${path}`] = text;
       const messages = org.withheld.map(
         (name) =>
           `<messages><fileName>unpackaged/package.xml</fileName><problem>Entity of type 'ApexClass' named '${name}' cannot be found</problem></messages>`,

@@ -405,7 +405,7 @@
             "source": { "description": "The name of the source.", "type": "string" },
             "kind": { "enum": ["org", "sandbox", "git"] },
             "status": {
-              "description": "What was read, whatever the analysis found. `complete`: everything the source holds was read. `partial`: something is missing, and the issues of the stage `read` and the severity `error` say what. `running`: a snapshot of an org that is being taken, or that was interrupted and is continued by the next `snapshot`. `failed`: a snapshot of an org that was given up.",
+              "description": "What was read, whatever the analysis found. `complete`: everything the source holds was read. For an org that is judged over the logic tier: something of a type outside it can be missing, and a warning of the stage `read` with `details.tier` = `other` then says what. `partial`: something is missing, and the issues of the stage `read` and the severity `error` say what. `running`: a snapshot of an org that is being taken, or that was interrupted and is continued by the next `snapshot`. `failed`: a snapshot of an org that was given up.",
               "enum": ["running", "complete", "partial", "failed"]
             },
             "startedAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
@@ -464,7 +464,7 @@
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossCheck" }]
         },
         "issues": {
-          "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
+          "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. What a snapshot of an org lacks of a type outside the logic tier is a warning of the stage `read` with `details.tier` = `other`, and leaves it complete. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
           "type": "array",
           "items": { "$ref": "#/$defs/issue" }
         }
@@ -691,7 +691,7 @@
               }
             },
             "readErrors": {
-              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type.",
+              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type. A warning of a snapshot of an org about something outside the logic tier (`details.tier` = `other`) is counted too if one of its `details.types` is a type the answer covers.",
               "type": "integer",
               "minimum": 0
             },

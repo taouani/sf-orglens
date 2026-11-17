@@ -237,7 +237,9 @@ describe('resolving components', () => {
       },
       ['force-app'],
     );
-    expect(problems).toEqual([{ at: 'CustomLabels CustomLabels', message: `${labels} could not be read (EACCES).` }]);
+    expect(problems).toEqual([
+      { at: 'CustomLabels CustomLabels', message: `${labels} could not be read (EACCES).`, type: 'CustomLabels' },
+    ]);
     expect(components.map((component) => component.type)).toEqual([
       'ApexClass',
       'CustomField',

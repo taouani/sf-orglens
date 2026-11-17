@@ -120,6 +120,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The reading is `whole` only
   where no query could have left a row out. It never fails a snapshot and never makes it partial: an org that
   does not answer leaves a warning.
+- A snapshot of an org reads every type and is judged over the logic tier (decision records 0038 and 0046). The
+  tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. What the
+  org listed and did not hand out, a listing it refused, a retrieve that failed and a file that cannot be read
+  as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning` outside it, which
+  does not. Each such issue says which in `details.tier`. What nothing tells the type of counts against the tier.
+  A snapshot of a Git source is not judged by tier. An impact answer counts such a warning when it can be about
+  a type it covers.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

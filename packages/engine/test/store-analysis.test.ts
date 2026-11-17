@@ -1187,7 +1187,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     const store = open();
     const id = snapshot(store);
     const other = snapshot(store, 'other');
-    expect(countIssues(store, id)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, [])).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     const read = (severity: 'error' | 'warning', code: string, details: Record<string, JsonValue> | null): void => {
       addIssue(store, id, { severity, code, message: `${code} happened.`, componentKey: null, details });
     };
@@ -1201,6 +1201,14 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       read('error', 'ODD', { type: 'Report' });
       read('error', 'NOT_RETRIEVED', { type: 7 });
       read('warning', 'FILES_NOT_METADATA', { count: 1 });
+      // What is missing outside the logic tier is a warning. It counts where an answer covers one of its types.
+      read('warning', 'RESOLVE_FAILED', { at: 'ListView A.B', types: ['ListView'], tier: 'other' });
+      read('warning', 'RETRIEVE_FAILED', { count: 2, types: ['Report', 'WebLink'], tier: 'other' });
+      read('warning', 'RESOLVE_FAILED', { at: 'tabs/x', types: ['CustomTab'], tier: 'other' });
+      // The coverage of the type tells these, and one without the mark of the tier is no such warning.
+      read('warning', 'NOT_RETRIEVED', { type: 'ListView', types: ['ListView'], tier: 'other' });
+      read('warning', 'ODD', { types: ['ListView'] });
+      read('warning', 'ODD', { types: 'ListView', tier: 'other' });
       addIssue(store, other, {
         severity: 'error',
         code: 'FOLDER_MISSING',
@@ -1209,7 +1217,11 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         details: null,
       });
     });
-    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, ['CustomObject'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, ['CustomObject', 'ListView'])).toMatchObject({ read: 5 });
+    expect(countIssues(store, id, ['ListView', 'WebLink'])).toMatchObject({ read: 6 });
+    expect(countIssues(store, id, ['CustomTab', 'ListView', 'Report', 'WebLink'])).toMatchObject({ read: 7 });
     writeAnalysis(
       store,
       id,
@@ -1221,9 +1233,9 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         ],
       }),
     );
-    expect(countIssues(store, id)).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
-    expect(countIssues(store, other)).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
-    expect(countIssues(store, 123_456)).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
+    expect(countIssues(store, other, [])).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, 123_456, ['ListView'])).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     store.close();
   });
 

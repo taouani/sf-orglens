@@ -61,6 +61,12 @@ let FIXTURE: string;
 let fixtureFiles: string[];
 /** The files of the whole project, in the same form. */
 let wholeFiles: string[];
+/**
+ * The part with one component of a type outside the logic tier: a static resource, which is two files. It is
+ * written here, because the fixture project holds only types of the logic tier.
+ */
+let WITH_RESOURCE: string;
+const RESOURCE_FILES = ['staticresources/Notice.resource-meta.xml', 'staticresources/Notice.txt'];
 
 beforeAll(async () => {
   mock = await startMockOrg();
@@ -70,6 +76,19 @@ beforeAll(async () => {
   }
   fixtureFiles = walk(join(FIXTURE, 'main/default'));
   wholeFiles = walk(join(WHOLE, 'main/default'));
+  WITH_RESOURCE = join(copies.next(), 'force-app');
+  cpSync(FIXTURE, WITH_RESOURCE, { recursive: true });
+  mkdirSync(join(WITH_RESOURCE, 'main/default/staticresources'));
+  writeFileSync(
+    join(WITH_RESOURCE, 'main/default/staticresources/Notice.resource-meta.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+    <cacheControl>Private</cacheControl>
+    <contentType>text/plain</contentType>
+</StaticResource>
+`,
+  );
+  writeFileSync(join(WITH_RESOURCE, 'main/default/staticresources/Notice.txt'), 'Invoices are due in 30 days.\n');
 });
 afterAll(async () => {
   await mock.close();
@@ -478,8 +497,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         details: {
           count: 1,
           components: ['ApexClass DynamicAccess'],
+          types: ['ApexClass'],
           said: 'LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1.',
           code: 'LIMIT_EXCEEDED',
+          tier: 'logic',
         },
       });
       const missing = ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED');
@@ -549,7 +570,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           code: 'LISTING_FAILED',
           message:
             'The org did not say which components of the type ApexClass it has. INVALID_TYPE: Cannot use: ApexClass in this organization',
-          details: { type: 'ApexClass', code: 'INVALID_TYPE' },
+          details: { type: 'ApexClass', code: 'INVALID_TYPE', tier: 'logic' },
         },
       ]);
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => !path.startsWith('classes/')));
@@ -621,7 +642,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           severity: 'error',
           code: 'NOT_RETRIEVED',
           message: '1 component of the type ApexClass that the org listed did not come back. The first: InvoiceService',
-          details: { type: 'ApexClass', count: 1, components: ['InvoiceService'] },
+          details: { type: 'ApexClass', count: 1, components: ['InvoiceService'], tier: 'logic' },
         },
       ]);
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => !path.startsWith('classes/InvoiceService.')));
@@ -1224,7 +1245,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(typeOf(report, 'ApexClass')?.note).toBeNull();
     });
 
-    it('names a file Salesforce hands out that is no metadata it knows, and calls the snapshot partial', async () => {
+    it('names a file Salesforce hands out in a folder of no type it knows, and calls the snapshot partial', async () => {
       metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
       const dir = workspaceDir();
       const report = await snap(dir);
@@ -1236,9 +1257,129 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           code: 'RESOLVE_FAILED',
           message:
             'mysteries/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known.',
-          details: { at: 'mysteries/Thing.mystery' },
+          // Nothing tells the type of the file, so it counts against the logic tier.
+          details: { at: 'mysteries/Thing.mystery', types: [], tier: 'logic' },
         },
       ]);
+    });
+
+    describe('with a component of a type outside the logic tier', () => {
+      beforeEach(async () => {
+        metadata = await metadataFromSource(WITH_RESOURCE);
+        mock.metadata = metadata;
+      });
+      const withResource = (): string[] => [...expectedFiles(), ...RESOURCE_FILES].sort();
+      const OUTSIDE = 'This is outside the logic tier and does not make the snapshot partial.';
+
+      it('stores it like any other', async () => {
+        const dir = workspaceDir();
+        const report = await snap(dir);
+        expect(report.snapshot.status).toBe('complete');
+        expect(stored(dir, 1)).toEqual(withResource());
+        expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 1, retrieved: 1, listing: 'ok' });
+        expect(ofReading(report)).toEqual([]);
+      });
+
+      it('calls the snapshot complete when the org does not hand it out, and names it in a warning', async () => {
+        metadata.withheld.add('StaticResource:Notice');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'warning',
+            code: 'RETRIEVE_MESSAGES',
+            message:
+              "Salesforce made 1 remark about a retrieve. The first: Entity of type 'StaticResource' named 'Notice' cannot be found",
+            details: { count: 1, messages: ["Entity of type 'StaticResource' named 'Notice' cannot be found"] },
+          },
+          {
+            severity: 'warning',
+            code: 'NOT_RETRIEVED',
+            message: `1 component of the type StaticResource that the org listed did not come back. The first: Notice. ${OUTSIDE}`,
+            details: { type: 'StaticResource', count: 1, components: ['Notice'], tier: 'other' },
+          },
+        ]);
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+      });
+
+      it('calls the snapshot complete when the org refuses to list its type, and says that the number is not known', async () => {
+        metadata.failing.add('StaticResource');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 0, retrieved: 0, listing: 'failed' });
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'warning',
+            code: 'LISTING_FAILED',
+            message: `The org did not say which components of the type StaticResource it has. INVALID_TYPE: Cannot use: StaticResource in this organization. ${OUTSIDE}`,
+            details: { type: 'StaticResource', code: 'INVALID_TYPE', tier: 'other' },
+          },
+        ]);
+      });
+
+      it('is partial for a retrieve that fails with a component of the logic tier in it, and not for one without', async () => {
+        // A class and the static resource are two files each, so neither can be retrieved, and each object can.
+        metadata.maxFiles = 1;
+        const dir = workspaceDir();
+        const report = await snap(dir, { tuning: { failuresInARow: 100 } });
+
+        expect(report.snapshot.status).toBe('partial');
+        const failed = ofReading(report).filter((issue) => issue.code === 'RETRIEVE_FAILED');
+        expect(failed.map((issue) => [issue.severity, issue.details['components'], issue.details['tier']])).toEqual([
+          ...failed.slice(0, -1).map((issue) => ['error', issue.details['components'], 'logic']),
+          ['warning', ['StaticResource Notice'], 'other'],
+        ]);
+        expect(failed).toHaveLength(14);
+        expect(failed.at(-1)?.message).toBe(
+          `Salesforce did not hand out StaticResource Notice. LIMIT_EXCEEDED: Too many files in retrieve call, limit is 1. ${OUTSIDE}`,
+        );
+        const missing = ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED');
+        expect(missing.map((issue) => [issue.severity, issue.details['type'], issue.details['tier']])).toEqual([
+          ['error', 'ApexClass', 'logic'],
+          ['error', 'ApexTrigger', 'logic'],
+          ['warning', 'StaticResource', 'other'],
+        ]);
+      });
+
+      it('is not partial for a file it cannot read in the folder of a type outside the logic tier', async () => {
+        metadata.extraFiles.set('tabs/Thing.mystery', 'what is this');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(stored(dir, 1)).toEqual(withResource());
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'warning',
+            code: 'RESOLVE_FAILED',
+            message:
+              'tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. This is outside the logic tier (CustomTab) and does not make the snapshot partial.',
+            details: { at: 'tabs/Thing.mystery', types: ['CustomTab'], tier: 'other' },
+          },
+        ]);
+      });
+
+      it('is partial for a file it cannot read in the folder of a type of the logic tier', async () => {
+        metadata.extraFiles.set('classes/Thing.mystery', 'what is this');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('partial');
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'error',
+            code: 'RESOLVE_FAILED',
+            message:
+              'classes/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known.',
+            details: { at: 'classes/Thing.mystery', types: ['ApexClass'], tier: 'logic' },
+          },
+        ]);
+      });
     });
 
     it('leaves the work folder of a snapshot that runs alone when it is refused the lock', async () => {

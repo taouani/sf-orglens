@@ -124,6 +124,21 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
     expect(unpacked.problems.map((problem) => problem.at)).toEqual(['mysteries/Thing.mystery']);
+    // No type keeps its files in a folder of that name.
+    expect(unpacked.problems[0]?.types).toEqual([]);
+  });
+
+  it('say which types a file they cannot place can be of, by the folder it lies in', async () => {
+    const zip = await JSZip.loadAsync(await retrieved(['ApexTrigger:InvoiceTrigger']));
+    zip.file('unpackaged/reports/Late/Thing.mystery', 'what is this');
+    zip.file('unpackaged/classes/Thing.mystery', 'what is this');
+    zip.file('unpackaged/Thing.mystery', 'what is this');
+    const unpacked = await unpackRetrieve(await zip.generateAsync({ type: 'nodebuffer' }), workDir());
+    expect(unpacked.problems.map(({ at, types }) => [at, types])).toEqual([
+      ['Thing.mystery', []],
+      ['classes/Thing.mystery', ['ApexClass']],
+      ['reports/Late/Thing.mystery', ['Report', 'ReportFolder']],
+    ]);
   });
 
   it('name a file whose type the library cannot tell, down to the file, and keep everything beside it', async () => {
@@ -146,7 +161,9 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger',
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
-    expect(unpacked.problems.map((problem) => problem.at)).toEqual(['CustomObject Broken__c']);
+    expect(unpacked.problems.map(({ at, types }) => [at, types])).toEqual([
+      ['CustomObject Broken__c', ['CustomObject']],
+    ]);
   });
 
   it('hold custom labels as one file, whatever the project around the work folder says about them', async () => {
@@ -224,8 +241,16 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
     expect(unpacked.problems).toEqual([
-      { at: 'elsewhere', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.' },
-      { at: 'notes.txt', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.' },
+      {
+        at: 'elsewhere',
+        message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.',
+        types: [],
+      },
+      {
+        at: 'notes.txt',
+        message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.',
+        types: [],
+      },
     ]);
   });
 
@@ -238,7 +263,7 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
     expect(unpacked.problems).toEqual([
-      { at: '/abs', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.' },
+      { at: '/abs', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.', types: [] },
     ]);
   });
 

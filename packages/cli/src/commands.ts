@@ -623,6 +623,20 @@ const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], st
   failed: 'failed:',
 };
 
+/**
+ * What a snapshot is called. A snapshot of an org is judged over the logic tier: one that is complete and lacks
+ * something of another type says so, and the warnings below it say what.
+ */
+function verdictOf(report: CoverageReport): string {
+  const { status } = report.snapshot;
+  const gaps = report.issues.some(
+    (issue) => issue.stage === 'read' && issue.severity === 'warning' && issue.details['tier'] === 'other',
+  );
+  return status === 'complete' && gaps
+    ? 'is complete for the logic tier, and something of other types is missing:'
+    : SNAPSHOT_VERDICT[status];
+}
+
 export async function snapshot(
   context: Context,
   source: string,
@@ -634,10 +648,9 @@ export async function snapshot(
     crossCheck: options.crossCheck,
     onProgress: progressLines(source, context.progress),
   });
-  const { id, status } = report.snapshot;
   return {
     data: report,
-    lines: coverageLines(report, `Snapshot #${String(id)} of "${source}" ${SNAPSHOT_VERDICT[status]}`),
+    lines: coverageLines(report, `Snapshot #${String(report.snapshot.id)} of "${source}" ${verdictOf(report)}`),
     exitCode: exitOf(report),
   };
 }
@@ -659,12 +672,11 @@ export async function analyse(
   const id = snapshotNumber(options.snapshot);
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.analyse(source, { snapshot: id });
-  const { status } = report.snapshot;
   return {
     data: report,
     lines: coverageLines(
       report,
-      `Snapshot #${String(report.snapshot.id)} of "${source}" was analysed from the files it holds. It ${SNAPSHOT_VERDICT[status]}`,
+      `Snapshot #${String(report.snapshot.id)} of "${source}" was analysed from the files it holds. It ${verdictOf(report)}`,
     ),
     exitCode: exitOf(report),
   };
@@ -678,12 +690,12 @@ export async function coverage(
   const id = snapshotNumber(options.snapshot);
   const workspace = await openWorkspace(locator(context));
   const report = await workspace.coverage(source, { snapshot: id });
-  const { status, finishedAt, startedAt } = report.snapshot;
+  const { finishedAt, startedAt } = report.snapshot;
   return {
     data: report,
     lines: coverageLines(
       report,
-      `Snapshot #${String(report.snapshot.id)} of "${source}", ${finishedAt === null ? `started ${startedAt}` : `taken ${finishedAt}`}, ${SNAPSHOT_VERDICT[status]}`,
+      `Snapshot #${String(report.snapshot.id)} of "${source}", ${finishedAt === null ? `started ${startedAt}` : `taken ${finishedAt}`}, ${verdictOf(report)}`,
     ),
   };
 }
