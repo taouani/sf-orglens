@@ -267,7 +267,9 @@ is not verified: none was sent to Salesforce.
 
 ## Public codebases
 
-`corpora.toml` lists three public codebases with their repository, licence and a full commit id. `pnpm run
+`corpora.toml` lists four public codebases with their repository, licence and a full commit id. `pnpm run
 corpora:fetch` downloads each at that commit into `.corpora`, which Git ignores. No file of them is stored in this
 repository. No test needs them. They are for measurements: robustness, speed and memory of the parsers, and samples
-that are checked by hand.
+that are checked by hand. `pnpm run corpora:listing` prints what such a check reads: every formula field, default
+value, validation rule, lookup filter and roll-up summary with the references OrgLens reports for it. `pnpm run
+bench:corpora` times the commands on them ([`bench/README.md`](../bench/README.md)).

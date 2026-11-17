@@ -21,10 +21,12 @@
     "knip": "knip",
     "bench": "node bench/bench.mjs",
     "bench:store": "node bench/store.mjs",
+    "bench:corpora": "node bench/corpora.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:adr": "node scripts/check-adr.mjs",
     "check:startup": "node scripts/check-startup.mjs",
     "corpora:fetch": "node scripts/fetch-corpora.mjs",
+    "corpora:listing": "node --no-warnings packages/engine/test/corpora/listing.ts",
     "publint": "pnpm -r --filter \"./packages/*\" exec publint --strict",
     "smoke:pack": "node scripts/pack-smoke.mjs",
     "check": "pnpm run build && pnpm run typecheck:tests && pnpm run lint && pnpm run format && pnpm run depcruise && pnpm run knip && pnpm run check:adr && pnpm run check:boundaries && pnpm run coverage"
