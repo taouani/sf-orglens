@@ -1074,6 +1074,39 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
   not judged by tier, and `FILES_NOT_METADATA` stays a warning in every tier. Record 0046 lists both, and three
   places of the code that no test reaches.
 
+Status on 17 November 2026, with the pull request that looks at the test org. The key in `orglens.toml` is built
+in a pull request of its own, which waits for your answer and is not merged before it.
+
+- **Run 13 of the test org**, the first with the judgement over the logic tier
+  ([real-org.md](../research/phase-1/real-org.md#8-the-snapshot-judged-over-the-logic-tier)): **the snapshot is
+  partial, so the first acceptance criterion is not met yet.** What keeps it partial, per type:
+  - 7 of 7 `LightningComponentBundle`. They are bundles of an installed package, listed with its prefix. Seven
+    bundles came back that the org had not listed.
+  - 2 of 398 `CustomObject`. Not explained.
+  - 2 of 79 `CustomField` and 2 of 2 `RecordType`. The object before the dot is not among the objects the org
+    lists. Not explained further.
+  - 3 files that cannot be read as metadata, in a folder the Salesforce library knows no type for. Most likely
+    they are the three `ContentWorkspacePermission` the org lists, a type this version of the library does not
+    know. That is a reading of the counts.
+  - Custom labels, the fifth open point of Phase 0, come back since the org has a label.
+- **What no longer makes it partial:** 209 components of 10 types outside the tier, and one listing the org
+  refuses. They are warnings, per type and with a count, as the second acceptance criterion asks.
+- **Built for it**, with record [0047](../adr/0047-what-the-org-says-where-the-library-falls-short.md):
+  - A file in a folder the library knows no type for is counted by the type the org describes with that folder.
+    If the reading above holds, the three files become warnings.
+  - A component of a package that comes back under its name without the prefix of the package counts as the
+    one the org listed, when the retrieve asked for the listed name and not for the short one, and Salesforce
+    did not remark that it cannot find it. If the seven bundles are what they look like, they count as
+    retrieved.
+  - The step that reads the test org says more about the objects, fields and record types, without a name.
+- **Choices of mine, for you to strike.** Record 0047 has the reasons: that the word of the org decides the tier
+  of a file the library cannot place, that the rule for the prefix holds for every type that is retrieved by
+  its own name although it was seen for one, that the rule leaves a component missing rather than count one for
+  another, and that the name a component came back with is not kept in the database.
+- **Not done, and not verified:** neither correction was run against the org when this was written. The two
+  objects, two fields and two record types are not explained, so the snapshot of the test org is expected to
+  stay partial for six components after the next run. That run is recorded here when it is made.
+
 ### WP10 Proof on public codebases, and measurements
 
 Build:

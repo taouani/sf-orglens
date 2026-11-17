@@ -4,6 +4,7 @@
 - Date: 2026-11-17
 - Decisions: none (work package 9 of the Phase 1 plan. It builds what record 0038 decided, and holds the choices
   its author made while building it)
+- Changed by: [0047](0047-what-the-org-says-where-the-library-falls-short.md), which counts a file in a folder the Salesforce library does not know by the type the org describes with that folder, and takes a component of a package that comes back without its prefix for the one the org listed
 
 ## Context
 

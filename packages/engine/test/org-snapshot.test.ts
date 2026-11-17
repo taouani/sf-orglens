@@ -1272,6 +1272,152 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           details: { at: 'mysteries/Thing.mystery', types: [], tier: 'logic' },
         },
       ]);
+      // The org was asked what it has when the snapshot began, and once more for the file.
+      expect(metadata.calls.filter((call) => call.operation === 'describeMetadata')).toHaveLength(2);
+    });
+
+    it('counts such a file by the type the org describes with its folder, which the library does not know', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      metadata.extraFiles.set('mysteries/Other.mystery', 'and this');
+      metadata.unknownTypes.set('Mystery', { directory: 'mysteries' });
+      const dir = workspaceDir();
+      const report = await snap(dir);
+      expect(report.snapshot.status).toBe('complete');
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      expect(typeOf(report, 'Mystery')).toMatchObject({ listed: 0, retrieved: 0, listing: 'ok' });
+      expect(ofReading(report)).toEqual(
+        ['Other', 'Thing'].map((name) => ({
+          severity: 'warning',
+          code: 'RESOLVE_FAILED',
+          message:
+            `mysteries/${name}.mystery could not be read as metadata: The file belongs to no metadata type that is known. ` +
+            'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it. ' +
+            'It is counted with the type Mystery, which is outside the logic tier, and does not make the snapshot partial.',
+          details: { at: `mysteries/${name}.mystery`, types: ['Mystery'], tier: 'other', describedByOrg: true },
+        })),
+      );
+      // The org was asked what it has when the snapshot began, and once for the two files.
+      expect(metadata.calls.filter((call) => call.operation === 'describeMetadata')).toHaveLength(2);
+    });
+
+    it('counts such a file with the parts of the type too, and asks the org once for all retrieves', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      metadata.unknownTypes.set('Mystery', { directory: 'mysteries', children: ['MysteryPart'] });
+      const dir = workspaceDir();
+      const report = await snap(dir, { tuning: { chunkWeight: 20 } });
+      expect(metadata.retrieves.length).toBeGreaterThan(1);
+      expect(report.snapshot.status).toBe('complete');
+      // The mock puts the file into every retrieve.
+      expect(ofReading(report)).toEqual(
+        metadata.retrieves.map(() => ({
+          severity: 'warning',
+          code: 'RESOLVE_FAILED',
+          message:
+            'mysteries/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. ' +
+            'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it. ' +
+            'It is counted with the types Mystery, MysteryPart, which are outside the logic tier, and does not make the snapshot partial.',
+          details: {
+            at: 'mysteries/Thing.mystery',
+            types: ['Mystery', 'MysteryPart'],
+            tier: 'other',
+            describedByOrg: true,
+          },
+        })),
+      );
+      expect(metadata.calls.filter((call) => call.operation === 'describeMetadata')).toHaveLength(2);
+    });
+
+    it('calls the snapshot partial when the type the org describes with the folder is of the logic tier', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      // The tier is a list of names the library knows. So the org of this test keeps a type of the tier in a
+      // folder the library does not know for it.
+      metadata.unknownTypes.set('Flow', { directory: 'mysteries' });
+      const report = await snap(workspaceDir());
+      expect(report.snapshot.status).toBe('partial');
+      expect(ofReading(report)).toEqual([
+        {
+          severity: 'error',
+          code: 'RESOLVE_FAILED',
+          message:
+            'mysteries/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. ' +
+            'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it.',
+          details: { at: 'mysteries/Thing.mystery', types: ['Flow'], tier: 'logic', describedByOrg: true },
+        },
+      ]);
+    });
+
+    it('says so when the org does not tell which type keeps its files in the folder', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      metadata.unknownTypes.set('Mystery', { directory: 'mysteries' });
+      // The org answers when the snapshot begins, and refuses the same question later.
+      let asked = 0;
+      mock.intercept = (request) => {
+        if (!request.body.includes('describeMetadata')) return undefined;
+        asked += 1;
+        return asked === 1 ? undefined : soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred.');
+      };
+      const report = await snap(workspaceDir());
+      expect(asked).toBe(2);
+      expect(report.snapshot.status).toBe('partial');
+      expect(ofReading(report)).toEqual([
+        {
+          severity: 'error',
+          code: 'RESOLVE_FAILED',
+          message:
+            'mysteries/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. ' +
+            'The org was asked which type keeps its files in this folder, and did not say: UNKNOWN_EXCEPTION: An unexpected error occurred.',
+          details: { at: 'mysteries/Thing.mystery', types: [], tier: 'logic' },
+        },
+      ]);
+    });
+
+    describe('with components of a package, which the org lists with a prefix and hands out without', () => {
+      it('takes what comes back for the listed components, and is complete in a type of the logic tier', async () => {
+        metadata.packaged.set('ApexClass:InvoiceService', 'pkg');
+        metadata.packaged.set('ApexClass:InvoiceSelector', 'pkg');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(metadata.retrieves.flat()).toContain('ApexClass:pkg__InvoiceService');
+        expect(metadata.retrieves.flat()).not.toContain('ApexClass:InvoiceService');
+        expect(report.snapshot.status).toBe('complete');
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+        const classes = typeOf(report, 'ApexClass');
+        expect(classes?.listed).toBeGreaterThan(2);
+        expect(classes?.retrieved).toBe(classes?.listed);
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'info',
+            code: 'RETRIEVED_WITHOUT_PREFIX',
+            message:
+              '2 components of the type ApexClass came back under their name without the prefix of their package. The org lists them with the prefix, and the files of the snapshot are named without it. The first: pkg__InvoiceSelector',
+            details: { type: 'ApexClass', count: 2, components: ['pkg__InvoiceSelector', 'pkg__InvoiceService'] },
+          },
+        ]);
+      });
+
+      it('does not take it when the retrieve asked for the name without the prefix as well', async () => {
+        // The org lists the fields of the object under its name without the prefix, and no object of that name.
+        // So the object is asked for under both names, and nothing says which of the two came back.
+        metadata.packaged.set('CustomObject:Invoice__c', 'pkg');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(metadata.retrieves.flat()).toContain('CustomObject:pkg__Invoice__c');
+        expect(metadata.retrieves.flat()).toContain('CustomObject:Invoice__c');
+        expect(report.snapshot.status).toBe('partial');
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+        expect(ofReading(report).filter((issue) => issue.severity === 'error')).toEqual([
+          {
+            severity: 'error',
+            code: 'NOT_RETRIEVED',
+            message:
+              '1 component of the type CustomObject that the org listed did not come back. The first: pkg__Invoice__c',
+            details: { type: 'CustomObject', count: 1, components: ['pkg__Invoice__c'], tier: 'logic' },
+          },
+        ]);
+        expect(ofReading(report).map((issue) => issue.code)).not.toContain('RETRIEVED_WITHOUT_PREFIX');
+      });
     });
 
     describe('with the file of custom labels, which the org lists and does not hand out', () => {

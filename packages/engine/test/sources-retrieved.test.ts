@@ -124,8 +124,9 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
     expect(unpacked.problems.map((problem) => problem.at)).toEqual(['mysteries/Thing.mystery']);
-    // No type keeps its files in a folder of that name.
+    // No type keeps its files in a folder of that name. The folder is said, so that the org can be asked.
     expect(unpacked.problems[0]?.types).toEqual([]);
+    expect(unpacked.problems[0]?.folder).toBe('mysteries');
   });
 
   it('say which types a file they cannot place can be of, by the folder it lies in', async () => {
@@ -135,14 +136,16 @@ describe('the files of a retrieve', () => {
     zip.file('unpackaged/Thing.mystery', 'what is this');
     zip.file('unpackaged/sharingRules/Thing.mystery', 'what is this');
     const unpacked = await unpackRetrieve(await zip.generateAsync({ type: 'nodebuffer' }), workDir());
-    expect(unpacked.problems.map(({ at, types }) => [at, types])).toEqual([
-      ['Thing.mystery', []],
-      ['classes/Thing.mystery', ['ApexClass']],
-      ['reports/Late/Thing.mystery', ['Report', 'ReportFolder']],
+    expect(unpacked.problems.map(({ at, types, folder }) => [at, types, folder])).toEqual([
+      // A file in no folder.
+      ['Thing.mystery', [], null],
+      ['classes/Thing.mystery', ['ApexClass'], 'classes'],
+      ['reports/Late/Thing.mystery', ['Report', 'ReportFolder'], 'reports'],
       // A type is named with the types of its parts: the file can be one of the rules.
       [
         'sharingRules/Thing.mystery',
         ['SharingCriteriaRule', 'SharingGuestRule', 'SharingOwnerRule', 'SharingRules', 'SharingTerritoryRule'],
+        'sharingRules',
       ],
     ]);
   });
@@ -167,8 +170,9 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger',
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
-    expect(unpacked.problems.map(({ at, types }) => [at, types])).toEqual([
-      ['CustomObject Broken__c', ['CustomObject']],
+    // A component is no path of the retrieve: it has no folder.
+    expect(unpacked.problems.map(({ at, types, folder }) => [at, types, folder])).toEqual([
+      ['CustomObject Broken__c', ['CustomObject'], null],
     ]);
   });
 
@@ -251,11 +255,13 @@ describe('the files of a retrieve', () => {
         at: 'elsewhere',
         message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.',
         types: [],
+        folder: null,
       },
       {
         at: 'notes.txt',
         message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.',
         types: [],
+        folder: null,
       },
     ]);
   });
@@ -269,7 +275,12 @@ describe('the files of a retrieve', () => {
       'triggers/InvoiceTrigger.trigger-meta.xml',
     ]);
     expect(unpacked.problems).toEqual([
-      { at: '/abs', message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.', types: [] },
+      {
+        at: '/abs',
+        message: 'It is outside the folder "unpackaged" of the zip file, so it was not read.',
+        types: [],
+        folder: null,
+      },
     ]);
   });
 

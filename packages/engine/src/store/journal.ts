@@ -40,12 +40,101 @@ export function addInventory(store: Store, snapshotId: number, items: readonly I
   }
 }
 
+/** What a retrieve asked for, and what Salesforce remarked about it. */
+export interface RetrieveAsked {
+  /** The members the retrieve named. */
+  readonly asked: readonly ChunkMember[];
+  /** The members of which Salesforce remarked that it cannot find them. */
+  readonly notFound: readonly ChunkMember[];
+}
+
+/** What stands between the prefix of a package and the name of a component. */
+const AFTER_PREFIX = '__';
+
+const idOf = (member: ChunkMember): string => `${member.type}\n${member.fullName}`;
+
 /**
  * Notes the components that came back in a retrieve. One that the org had
  * not listed gets a row of its own, marked as not listed.
+ *
+ * A component of a package can come back under its name without the prefix of the package: the org lists a
+ * bundle as `pkg__thing` and hands out the folder `thing`. Such a component is taken for the one the org
+ * listed when all of this holds:
+ *
+ * - the retrieve asked for the listed name, and the org states the prefix the name starts with as its package;
+ * - the retrieve did not ask for the short name, and the org lists nothing under it;
+ * - Salesforce did not remark that it cannot find the listed name;
+ * - no second member of the retrieve gives the same short name.
+ *
+ * Then the row of the listed name is marked, and no row is made for the short one. Without `retrieve` no
+ * component is taken this way. Returned: the listed names that were found this way for the first time, with
+ * their type.
  */
-export function markRetrieved(store: Store, snapshotId: number, components: readonly ChunkMember[]): void {
+export function markRetrieved(
+  store: Store,
+  snapshotId: number,
+  components: readonly ChunkMember[],
+  retrieve: RetrieveAsked = { asked: [], notFound: [] },
+): ChunkMember[] {
+  const asked = new Set(retrieve.asked.map(idOf));
+  const notFound = new Set(retrieve.notFound.map(idOf));
+  // The members that can be a name with a prefix, by the name they have without it. It is read from the
+  // members, not from the table, which can hold a hundred thousand rows of a type.
+  let byShortName: Map<string, ChunkMember[]> | undefined;
+  const candidates = (component: ChunkMember): readonly ChunkMember[] => {
+    if (byShortName === undefined) {
+      byShortName = new Map();
+      for (const member of retrieve.asked) {
+        const at = member.fullName.indexOf(AFTER_PREFIX);
+        if (at <= 0) continue;
+        const short = idOf({ type: member.type, fullName: member.fullName.slice(at + AFTER_PREFIX.length) });
+        byShortName.set(short, [...(byShortName.get(short) ?? []), member]);
+      }
+    }
+    return byShortName.get(idOf(component)) ?? [];
+  };
+  /** The listed name a component without a row came back for, if the rule above gives exactly one. */
+  const listedNameOf = (component: ChunkMember): { fullName: string; retrieved: boolean } | undefined => {
+    if (asked.has(idOf(component))) return undefined;
+    const found: { fullName: string; retrieved: boolean }[] = [];
+    for (const member of candidates(component)) {
+      const row = store.get(
+        `SELECT namespace_prefix, retrieved FROM inventory_item
+          WHERE snapshot_id = ? AND type = ? AND full_name = ? AND listed = 1`,
+        snapshotId,
+        member.type,
+        member.fullName,
+      );
+      const prefix = member.fullName.slice(0, member.fullName.indexOf(AFTER_PREFIX));
+      if (row?.['namespace_prefix'] !== prefix) continue;
+      found.push({ fullName: member.fullName, retrieved: Number(row['retrieved']) !== 0 });
+    }
+    // Two packages with a component of the same short name: nothing says which one came back.
+    const [only] = found.length === 1 ? found : [];
+    return only === undefined || notFound.has(idOf({ type: component.type, fullName: only.fullName }))
+      ? undefined
+      : only;
+  };
+
+  const withoutPrefix: ChunkMember[] = [];
   for (const component of components) {
+    const known = store.get(
+      'SELECT 1 AS found FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+      snapshotId,
+      component.type,
+      component.fullName,
+    );
+    const listedAs = known === undefined ? listedNameOf(component) : undefined;
+    if (listedAs !== undefined) {
+      store.run(
+        'UPDATE inventory_item SET retrieved = 1 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+        snapshotId,
+        component.type,
+        listedAs.fullName,
+      );
+      if (!listedAs.retrieved) withoutPrefix.push({ type: component.type, fullName: listedAs.fullName });
+      continue;
+    }
     store.run(
       `INSERT INTO inventory_item (snapshot_id, type, full_name, listed, retrieved) VALUES (?, ?, ?, 0, 1)
        ON CONFLICT (snapshot_id, type, full_name) DO UPDATE SET retrieved = 1`,
@@ -54,6 +143,7 @@ export function markRetrieved(store: Store, snapshotId: number, components: read
       component.fullName,
     );
   }
+  return withoutPrefix;
 }
 
 /** Per type: how many components the org listed, how many of those came back, and how many came back unlisted. */

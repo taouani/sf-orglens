@@ -21,6 +21,7 @@ const type = (name: string, fields: Partial<DescribedType> = {}): DescribedType 
   name,
   inFolder: false,
   children: [],
+  directory: null,
   ...fields,
 });
 
