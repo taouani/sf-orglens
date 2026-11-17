@@ -1131,7 +1131,8 @@ Status on 17 November 2026, after run 14 of the test org, with a fourth pull req
 - **Not done, and not verified:** whether Salesforce hands out a part by its own name when it cannot find the
   parent is not known. The next run shows it and is recorded here. The two objects stay missing whatever that
   run says, so the snapshot of the test org is expected to stay partial for two components at least, and the
-  first acceptance criterion to stay missed. The phase report gives the counts.
+  first acceptance criterion to stay missed. The phase report gives the counts. Added after run 15: Salesforce
+  does not hand them out. The last status of the work package has it.
 
 Status on 17 November 2026, with the pull request that holds the key. It was the second to be opened and the
 last of the three to be merged.
@@ -1162,6 +1163,47 @@ last of the three to be merged.
 - **Not done:** leaving out the components of managed packages, single components, folders or name patterns. The
   cross-check with the Dependency API is not narrowed by the key, and can come out `partial` for a type that was
   left out and has more rows than one answer holds. Record 0048 says how.
+
+Status on 17 November 2026, after run 15 of the test org. It is the last status of the work package.
+
+- **Run 15**, the first with the rule of record 0049
+  ([real-org.md](../research/phase-1/real-org.md#run-15-the-parts-asked-for-by-their-own-names)): **the snapshot
+  of the test org is partial, for the same six components. The first acceptance criterion is missed.**
+  - The engine asked for the two fields and the two record types by their own names, in a third retrieve of
+    0.6 s. Salesforce remarks of each of the four that it cannot find it. Nothing came back.
+  - The two objects are named by two remarks of Salesforce that say "Not a … type". The other words of the
+    remark are not shown in the public log.
+- **The count the criterion asks for**, per type and with the reason:
+
+  | Type           | Missing  | Reason                                                                                                                    |
+  | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+  | `CustomField`  | 2 of 79  | The org lists the field and not its object. Salesforce cannot find the object, and cannot find the field by its own name. |
+  | `RecordType`   | 2 of 2   | The same: Salesforce cannot find the object, and cannot find the record type by its own name.                             |
+  | `CustomObject` | 2 of 398 | The org lists the object. Salesforce answers "Not a … type" and hands nothing out.                                        |
+
+  The names of the objects have no ending of a custom object. The two fields belong to two objects, and the two
+  record types to one of these. Why the org lists what Salesforce does not hand out is not known.
+
+- **Against the acceptance criteria, at the end of the work package:**
+  - A snapshot of the test org is complete over the logic tier: **missed, for six components.** Of the thirteen
+    components and three files of run 13, the seven bundles and the three files are corrected (record 0047).
+    The engine asks for the six in every way it has, and Salesforce hands none of them out. The plan says that
+    we then decide together. The question is put to you with this status.
+  - What is missing outside the tier is a warning, per type and with a count, and the exit code stays that of a
+    complete snapshot: met against the mock org, and seen on the test org in the counts of runs 13 to 15: 209
+    components of 10 types and one listing are warnings. The exit code was not seen there, because the snapshot
+    of the test org is partial for the six.
+  - The key: met against the mock org, as the status above says. Not run against a real org.
+  - A snapshot of a Git source is not changed.
+- **What is yours to decide.** Whether a component the org lists and Salesforce does not hand out stays an
+  error of the snapshot. If it stays, a snapshot of the test org is never complete, and neither is one of any
+  org that has the like. My recommendation is to keep it: the snapshot does lack these components, and the words
+  of a remark of Salesforce are a weak ground for calling a snapshot complete. The rule of record 0049 changed
+  nothing on the test org. It is cheap and does no harm, and is yours to strike as well.
+- **Not done, and not verified:** which objects the six components are, and whether they are of a kind no
+  retrieve supports. What Salesforce hands out for a part asked for by its own name is still not seen on a real
+  org, because none came back. One org was read, a Developer Edition: no sandbox, no other edition and no org
+  with many components.
 
 ### WP10 Proof on public codebases, and measurements
 

@@ -86,9 +86,16 @@ These are choices of the author of this record. The maintainer can strike any of
   parts that were asked for and nothing else of the parent, which is an assumption. The next run of the test
   org from `main` shows the first for two fields and two record types. It is recorded in the research note and
   in the plan.
+- Added after run 15 of the test org, on 2026-11-17: Salesforce does not hand them out
+  ([real-org.md](../research/phase-1/real-org.md#run-15-the-parts-asked-for-by-their-own-names)). The engine
+  made one more retrieve for the four parts, and Salesforce remarked of each of them that it cannot find it. So
+  the rule changed nothing on the one org it was run against, and what the file holds that comes back is still
+  an assumption. The rule stays, as a choice of the author that the maintainer can strike: an org of another
+  kind may hand such a part out, and where it does not, the cost is one short retrieve.
 - The two objects that the org lists and does not hand out are not explained. This record does nothing for
   them. Of the nine remarks of run 14, two speak of permissions and two say "Not a … type". Whether they are
-  about these objects is not known. The step that reads the test org now counts it.
+  about these objects is not known. The step that reads the test org now counts it. Added after run 15: the
+  two remarks that say "Not a … type" hold the names of the two objects.
 - The remark is read in one form. A parent Salesforce does not hand out without that remark has its parts left
   missing, as before.
 - A part of a parent that is one file is never asked for this way, as said above. Neither is a part whose name

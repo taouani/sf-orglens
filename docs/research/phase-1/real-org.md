@@ -41,6 +41,10 @@ In short:
 - Added from run 14: the two corrections that followed hold on the org. The seven bundles of a package count as
   retrieved, and the three files are warnings. Six components keep the snapshot partial: two objects, and two
   fields and two record types of objects Salesforce cannot find.
+- Added from run 15: asked for by their own names, the two fields and the two record types do not come back
+  either. Salesforce remarks of each of the four that it cannot find it. The two objects are named by two
+  remarks that say "Not a … type". The same six components keep the snapshot partial, and the engine has no
+  other way to ask for them.
 
 ## Conditions
 
@@ -673,6 +677,69 @@ What followed, in decision record [0049](../../adr/0049-a-part-by-its-own-name.m
 it cannot find a component the org does not list, the parts of it that the org lists are asked for by their own
 names in one more retrieve. The tool of the run now says how many of the missing components a remark of
 another form names. Neither was run against the org when this was written. The two objects are not explained.
+
+### Run 15: the parts asked for by their own names
+
+One read, in run 15 on 17 November 2026, from the commit that holds record 0049. Nothing was deployed.
+
+| Measurement | Run 14 | Run 15 |
+| --- | --- | --- |
+| Time in all | 228.2 s | 201.2 s: 0.4 s to log in, 8.4 s to ask what the org holds, 192.3 s to retrieve it |
+| Requests to the Metadata API | 394 | 390 |
+| Retrieves | 2 | 3: 883 components in 170.6 s, 499 in 14.4 s, 4 in 0.6 s |
+| Components the org listed | 1,710, of them 1,495 retrieved | 1,710, of them 1,495 retrieved |
+| Retrieved without being listed | 3,519 | 3,519 |
+| Files | 5,072, together 14.8 MB | 5,072, together 14.8 MB |
+| Remarks of Salesforce about retrieves | 9 | 13 |
+| Status of the snapshot | partial | partial |
+| Observations of the reading | 25 | 27 |
+
+`[run 14]` `[run 15]`
+
+- **The engine asked for the four parts by their own names, once.** One note `PARTS_ASKED_BY_NAME` names two
+  components Salesforce cannot find and that the org does not list, and four parts. The plan held two retrieves,
+  and a third was made at the end: 4 components of 2 types, in 0.6 s. No fourth retrieve followed. `[run 15]`
+- **Salesforce cannot find them by their own names either.** The four new remarks are two of the form
+  `Entity of type 'CustomField' named '…' cannot be found` and two of the same form for `RecordType`. Nothing
+  came back in the third retrieve: the counts of components and of files are those of run 14, to the byte. So
+  the question record 0049 left open has its answer for this org: no. What the file of a parent holds that
+  comes back for its parts is still not known, because none came back. `[run 15]`
+- **The two objects are named by the two remarks that say "Not a … type".** The tool found the name of each of
+  the two objects in a remark of that form, and in no other. The words of the remark that are not everyday
+  words are not shown, so what kind of type Salesforce says they are not is not known. The two remarks about
+  permissions do not hold their names. `[run 15]`
+- **The two missing translations of a standard value set are named by the two remarks of their own form**, which
+  say that a file cannot be retrieved and speak of a language. They are outside the tier. `[run 15]`
+- **What keeps the snapshot partial is unchanged: six components.** `NOT_RETRIEVED` is an error for 2 of 79
+  `CustomField`, 2 of 2 `RecordType` and 2 of 398 `CustomObject`. `[run 15]`
+
+  | What | Count | What Salesforce says, in the retrieve that asks for it |
+  | --- | --- | --- |
+  | `CustomField` | 2 of 79 | Asked for with its object: the object cannot be found. Asked for by its own name: the field cannot be found. |
+  | `RecordType` | 2 of 2 | Asked for with its object: the object cannot be found. Asked for by its own name: the record type cannot be found. |
+  | `CustomObject` | 2 of 398 | "Not a … type", with the name of the object. |
+
+- **A reading of it, not verified.** The org lists these six components and Salesforce does not hand them out
+  in any way the Metadata API offers a retrieve: by the name of the parent, by the name of the part, or by the
+  name of the object. That fits components the listing knows and the retrieve does not support. Which objects
+  they are, and whether another org has the like, the run does not say. No other edition, no sandbox and no
+  second org was read.
+- **The line of the tool about the fields and record types holds two sentences that read alike.** "Salesforce
+  remarked of 2 of them that it cannot be found" is about the objects before the dot. "Salesforce remarked of 2
+  that it cannot be found" is about the parts themselves. The tool was not changed for it. `[run 15]`
+- **The third retrieve cost nothing that can be measured.** The whole run was 27 s shorter than run 14, because
+  the first retrieve took 170.6 s where it took 200.0 s. The engine waits for Salesforce in that time. One run
+  each is no measurement of the org. `[run 15]`
+- **Everything else is as in run 14**: the seven bundles count as retrieved, the three files are warnings, 209
+  components of 10 types outside the tier are warnings, the org refuses to list `ContentWorkspace`, the
+  cross-check has 257 rows with one request, 56 pairs compared and none missed, the same rows in 60 requests
+  in parts, and the fixture project is whole with 87 components in 99 files. `[run 15]`
+
+What follows: nothing is built. The first acceptance criterion of work package 9 of the
+[Phase 1 plan](../../plans/phase-1.md) is missed for these six components, and the plan says that the
+maintainer and the author then decide together. The rule of record 0049 changed nothing on this org. It stays
+in the engine until the maintainer strikes it: it costs one short retrieve where an org has such parts, and
+none elsewhere.
 
 ## The 23 new pairs the Dependency API does not report
 
