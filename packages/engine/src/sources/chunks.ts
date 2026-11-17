@@ -102,49 +102,31 @@ export function planChunks(inventory: Inventory, chunkWeight = DEFAULT_CHUNK_WEI
   return chunks;
 }
 
-let parents: Promise<ReadonlyMap<string, string>> | undefined;
+let partTypes: Promise<ReadonlyMap<string, string>> | undefined;
 
 /**
- * The types whose components are parts of a component of another type, each with the type of its parent, as the
- * Salesforce library describes them: `CustomField` with `CustomObject`.
+ * The types of parts that can be asked for by their own names and stored beside each other, each with the type
+ * of its parent: `CustomField` with `CustomObject`.
+ *
+ * These are the parts of the types the Salesforce library keeps with a file for every part. Salesforce hands a
+ * part out in the file of its parent, and of such a parent every part is written to a file of its own, so two
+ * retrieves with parts of one parent do not replace each other's parts. The rules of a `Workflow` are parts
+ * too, and stay in the one file of their parent: they are not among these types.
  */
-export function parentTypes(): Promise<ReadonlyMap<string, string>> {
-  parents ??= loadSourceLibrary().then(({ registry }) => {
+export function partsWithOwnFiles(): Promise<ReadonlyMap<string, string>> {
+  partTypes ??= loadSourceLibrary().then(({ registry }) => {
     const found = new Map<string, string>();
     for (const type of Object.values(registry.types)) {
+      if (type.strategies?.transformer !== 'decomposed') continue;
       for (const child of Object.values(type.children?.types ?? {})) found.set(child.name, type.name);
     }
     return found;
   });
-  return parents;
+  return partTypes;
 }
 
-/**
- * The two halves of the members of a chunk that failed. A chunk of one member cannot be split.
- *
- * Parts that are asked for by their own names come back in the file of their parent. So the parts of one parent
- * stay in one half: in two retrieves the file would come back twice, each time with other parts. `parentOf`
- * names the types of parts, with the type of their parent. Members that are all parts of one parent cannot be
- * split.
- */
-export function splitMembers(
-  members: readonly Member[],
-  parentOf: ReadonlyMap<string, string> = new Map(),
-): [Member[], Member[]] {
-  const groups = new Map<string, number[]>();
-  members.forEach((member, index) => {
-    const parent = parentOf.get(member.type);
-    const dot = member.fullName.indexOf('.');
-    const group = parent !== undefined && dot > 0 ? `${parent}\n${member.fullName.slice(0, dot)}` : String(index);
-    groups.set(group, [...(groups.get(group) ?? []), index]);
-  });
+/** The two halves of the members of a chunk that failed. A chunk of one member cannot be split. */
+export function splitMembers(members: readonly Member[]): [Member[], Member[]] {
   const middle = Math.ceil(members.length / 2);
-  const first = new Set<number>();
-  const all = [...groups.values()];
-  all.forEach((group, at) => {
-    // The last of several groups goes to the second half if that would be empty otherwise.
-    const last = at === all.length - 1 && at > 0 && first.size === members.length - group.length;
-    if (first.size < middle && !last) for (const index of group) first.add(index);
-  });
-  return [members.filter((_, index) => first.has(index)), members.filter((_, index) => !first.has(index))];
+  return [members.slice(0, middle), members.slice(middle)];
 }

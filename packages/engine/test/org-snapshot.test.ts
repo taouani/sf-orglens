@@ -780,7 +780,38 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         );
       });
 
-      it('does not split the retrieve of the parts of one parent when it fails: they come back in one file', async () => {
+      it('splits the retrieve of the parts like any other when it fails, and names the file that came twice', async () => {
+        // The org refuses a retrieve that asks for these two fields together.
+        mock.intercept = (request) =>
+          request.body.includes('<retrieve>') &&
+          request.body.includes('<members>Account.Billing_Region__c</members>') &&
+          request.body.includes('<members>Account.Tier__c</members>')
+            ? soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred.')
+            : undefined;
+        const dir = workspaceDir();
+        const report = await snap(dir, { tuning: { pollMaxMs: 5 } });
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(metadata.retrieves.slice(1)).toEqual([PARTS.slice(0, 4), PARTS.slice(4)]);
+        // Every part is a file of its own, so the second half does not take the place of the first.
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+        expect(typeOf(report, 'CustomField')).toMatchObject({ listed: 48, retrieved: 48 });
+        expect(codes(report)).toEqual([
+          'info PARTS_ASKED_BY_NAME',
+          'warning RETRIEVE_MESSAGES',
+          'info CHUNK_SPLIT',
+          'warning FILE_RETRIEVED_TWICE',
+          'info UNLISTED_COMPONENTS',
+        ]);
+        // Only the file of the parent came twice, and it holds nothing of the parent either time.
+        expect(ofReading(report).find((issue) => issue.code === 'FILE_RETRIEVED_TWICE')?.details).toEqual({
+          count: 1,
+          paths: ['objects/Account/Account.object-meta.xml'],
+        });
+        expect(chunks(dir, 1)).toEqual(['0 done - 1', '1 done - 1', '2 done - 1']);
+      });
+
+      it('names the parts of a retrieve that fails down to the last half as not retrieved', async () => {
         mock.intercept = (request) =>
           request.body.includes('<retrieve>') && request.body.includes('<members>Account.Tier__c</members>')
             ? soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred.')
@@ -789,70 +820,69 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         const report = await snap(dir, { tuning: { pollMaxMs: 5 } });
 
         expect(report.snapshot.status).toBe('partial');
-        expect(metadata.retrieves).toHaveLength(1);
-        expect(codes(report)).toEqual([
-          'info PARTS_ASKED_BY_NAME',
-          'warning RETRIEVE_MESSAGES',
-          'error RETRIEVE_FAILED',
-          'error NOT_RETRIEVED',
-          'error NOT_RETRIEVED',
-        ]);
+        // The field that fails every retrieve it is in stays missing alone.
+        expect(typeOf(report, 'CustomField')).toMatchObject({ listed: 48, retrieved: 47 });
+        expect(typeOf(report, 'ValidationRule')?.retrieved).toBe(typeOf(report, 'ValidationRule')?.listed);
         expect(ofReading(report).find((issue) => issue.code === 'RETRIEVE_FAILED')?.details).toMatchObject({
-          count: 7,
-          types: ['CustomField', 'ValidationRule'],
+          count: 1,
+          components: ['CustomField Account.Tier__c'],
           tier: 'logic',
         });
-        expect(chunks(dir, 1).map((chunk) => chunk.split(' ')[1])).toEqual(['done', 'failed']);
+        expect(ofReading(report).find((issue) => issue.code === 'NOT_RETRIEVED')?.details).toMatchObject({
+          type: 'CustomField',
+          components: ['Account.Tier__c'],
+        });
       });
 
-      it('asks for the parts of two parents in one retrieve, and splits it between the parents when it fails', async () => {
-        // The part of the fixture project with the fields of a second standard object.
-        const project = join(dirs.next(), 'force-app');
-        cpSync(FIXTURE, project, { recursive: true });
-        cpSync(join(WHOLE, 'main/default/objects/User'), join(project, 'main/default/objects/User'), {
-          recursive: true,
-        });
-        metadata = await metadataFromSource(project);
-        mock.metadata = metadata;
-        for (const parent of ['CustomObject:Account', 'CustomObject:User']) {
-          metadata.unlistedParents.add(parent);
-          metadata.withheld.add(parent);
-        }
-        const ofUser = ['CustomField:User.Backup_Approver__c', 'CustomField:User.Billing_Region__c'];
-        // The org refuses a retrieve that asks for parts of both objects.
-        mock.intercept = (request) =>
-          request.body.includes('<retrieve>') &&
-          request.body.includes('<members>Account.Tier__c</members>') &&
-          request.body.includes('<members>User.Billing_Region__c</members>')
-            ? soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred.')
-            : undefined;
+      it('asks once for the parts when Salesforce makes its remark twice, and not again when it makes it about their retrieve', async () => {
+        // Every answer about a retrieve that has ended carries the remark about the object once more.
+        mock.intercept = async (request) => {
+          if (!request.body.includes('<checkRetrieveStatus>')) return undefined;
+          const answer = await metadata.answer(request.body);
+          const remark = `<messages><fileName>unpackaged/package.xml</fileName><problem>${CANNOT_FIND.replaceAll("'", '&apos;')}</problem></messages>`;
+          return { ...answer, body: answer.body.replace('<done>true</done>', `${remark}<done>true</done>`) };
+        };
         const dir = workspaceDir();
-        const report = await snap(dir, { tuning: { pollMaxMs: 5 } });
+        const report = await snap(dir);
 
         expect(report.snapshot.status).toBe('complete');
-        expect(stored(dir, 1)).toEqual(
-          [
-            ...expectedFiles(),
-            'objects/User/User.object-meta.xml',
-            'objects/User/fields/Backup_Approver__c.field-meta.xml',
-            'objects/User/fields/Billing_Region__c.field-meta.xml',
-          ].sort(),
-        );
-        // The validation rule of Account stands after the fields of User, and goes into the half of Account.
-        expect(metadata.retrieves.slice(1)).toEqual([PARTS, ofUser]);
-        expect(codes(report)).toEqual([
-          'info PARTS_ASKED_BY_NAME',
-          'warning RETRIEVE_MESSAGES',
-          'info CHUNK_SPLIT',
-          'info UNLISTED_COMPONENTS',
+        expect(metadata.retrieves).toHaveLength(2);
+        expect(metadata.retrieves[1]).toEqual(PARTS);
+        expect(ofReading(report).filter((issue) => issue.code === 'PARTS_ASKED_BY_NAME')).toEqual([ASKED_BY_NAME]);
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code === 'RETRIEVE_MESSAGES')
+            .map((issue) => issue.details['count']),
+        ).toEqual([2, 1]);
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+      });
+
+      it('asks once for the parts when the retrieve of their parent is split and when its job is lost', async () => {
+        metadata.maxFiles = 10;
+        const dir = workspaceDir();
+        const report = await snap(dir);
+        expect(report.snapshot.status).toBe('complete');
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+        expect(ofReading(report).filter((issue) => issue.code === 'PARTS_ASKED_BY_NAME')).toEqual([ASKED_BY_NAME]);
+        expect(metadata.retrieves.filter((members) => members.includes('CustomField:Account.Tier__c'))).toEqual([
+          PARTS,
         ]);
-        expect(ofReading(report)[0]).toMatchObject({
-          message:
-            'Salesforce cannot find 2 components that the org does not list and lists parts of. 9 parts are asked for by their own names in another retrieve. The first component: CustomObject Account',
-          details: { count: 2, components: ['CustomObject Account', 'CustomObject User'], parts: 9 },
-        });
-        expect(ofReading(report).find((issue) => issue.code === 'CHUNK_SPLIT')?.details).toMatchObject({ members: 9 });
-        expect(chunks(dir, 1)).toEqual(['0 done - 1', '1 done - 1', '2 done - 1']);
+
+        // The org forgets the first job once, so the retrieve with the parent is started twice.
+        metadata.maxFiles = Infinity;
+        metadata.retrieves.length = 0;
+        let forgotten = false;
+        mock.intercept = (request) => {
+          if (forgotten || !request.body.includes('<checkRetrieveStatus>')) return undefined;
+          forgotten = true;
+          return soapFault('INVALID_CROSS_REFERENCE_KEY', 'invalid cross reference id');
+        };
+        const other = workspaceDir();
+        const again = await snap(other, { tuning: { pollMaxMs: 5 } });
+        expect(again.snapshot.status).toBe('complete');
+        expect(metadata.retrieves.map((members) => members.length)).toEqual([16, 16, 7]);
+        expect(ofReading(again).filter((issue) => issue.code === 'PARTS_ASKED_BY_NAME')).toEqual([ASKED_BY_NAME]);
+        expect(stored(other, 1)).toEqual(expectedFiles());
       });
 
       it('retrieves the parts when the snapshot is continued after it was interrupted before their retrieve', async () => {
@@ -874,6 +904,28 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         expect(stored(dir, 1)).toEqual(expectedFiles());
         expect(ofReading(report)[0]).toEqual(ASKED_BY_NAME);
       });
+    });
+
+    it('stores nothing of a parent that has a file of its own when its parts are asked for by their own names', async () => {
+      // A custom object, which has a label and more in the project. The org lists its parts and not the object.
+      metadata.unlistedParents.add('CustomObject:Invoice__c');
+      metadata.withheld.add('CustomObject:Invoice__c');
+      const dir = workspaceDir();
+      const report = await snap(dir);
+
+      expect(report.snapshot.status).toBe('complete');
+      expect(metadata.retrieves).toHaveLength(2);
+      expect(metadata.retrieves[1]?.every((member) => /^(CustomField|ValidationRule):Invoice__c\./.test(member))).toBe(
+        true,
+      );
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      const own = 'objects/Invoice__c/Invoice__c.object-meta.xml';
+      expect(readFileSync(join(FIXTURE, 'main/default', own), 'utf8')).toContain('<label>');
+      // The file of the object is in the snapshot, and it holds none of the settings of the object.
+      expect(content(dir, 1, own).toString('utf8')).toBe(
+        content(dir, 1, 'objects/Account/Account.object-meta.xml').toString('utf8').replaceAll('Account', 'Invoice__c'),
+      );
+      expect(content(dir, 1, own).toString('utf8')).not.toContain('<label>');
     });
 
     it('asks for no part by its own name when Salesforce cannot find a parent that the org lists', async () => {

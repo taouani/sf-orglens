@@ -32,24 +32,30 @@ does not list that component, the parts of it that the org lists and that did no
 their own names, in one more retrieve.
 
 - **Which components.** The remark has the form `Entity of type '…' named '…' cannot be found`. The component
-  is of a type that has parts, as the Salesforce library describes the types. Its parts are the components of
-  those types whose name is the name of the component, a dot and a name of their own.
-- **Only for a parent the org does not list.** Such a parent was asked for only for the sake of its parts. A
-  parent the org lists and Salesforce cannot find is what is missing, and its parts are not asked for alone:
-  the file that comes back for a part is the file of the parent with that part in it, and it would count as the
-  parent.
+  is of a type that the Salesforce library keeps with a file for every part: `CustomObject`, and in the version
+  the engine is built with also `CustomObjectTranslation` and `Bot`. Its parts are the components of the types
+  of its parts whose name is the name of the component, a dot and a name of their own.
+- **Only for a parent the org does not list, and that did not come back.** Such a parent was asked for only for
+  the sake of its parts. A parent the org lists and Salesforce cannot find is what is missing, and its parts
+  are not asked for alone: the file that comes back for a part is the file of the parent, and it would count as
+  the parent. For the same reason nothing is asked for when a file of the parent is in the snapshot already.
+- **Only for a parent with a file for every part.** Salesforce hands a part out in the file of its parent. Of an
+  object, the snapshot stores every field in a file of its own, so two retrieves with fields of one object do
+  not replace each other's fields. The rules of a `Workflow` or of `SharingRules` stay in the one file of their
+  parent. Two retrieves would each bring that file with other rules, and the snapshot would hold what came
+  last. For such a parent nothing is asked for.
 - **One more retrieve, at the end of the plan.** It is a chunk like any other: it is in the journal, so a
-  snapshot that is interrupted before it continues with it. It is asked once. A part that Salesforce cannot
+  snapshot that is interrupted before it continues with it, and when Salesforce fails it, it is tried in two
+  halves, down to the one part that cannot be handed out. It is asked for once: a remark Salesforce makes
+  twice, or makes again about the retrieve of the parts, starts no second one. A part that Salesforce cannot
   find by its own name either stays `NOT_RETRIEVED`, and the remark about it is kept with the others.
-- **The parts of one parent stay in one retrieve.** They come back in one file. In two retrieves the file would
-  come back twice, each time with other parts, and the snapshot would hold what came last. So a retrieve of
-  parts that fails is split between two parents and never inside one. If the parts of a single parent fail
-  together, they stay missing and `RETRIEVE_FAILED` names them.
 - **The note `PARTS_ASKED_BY_NAME`** says of how many components Salesforce said that it cannot find them, names
   the first, and says how many parts are asked for.
-- **What comes back.** The file of the parent, with the parts that were asked for and nothing else. The parent
-  then counts among the components that came back and that the org had not listed (`UNLISTED_COMPONENTS`), as
-  an object does that comes back whole for the sake of its fields.
+- **What is expected to come back**: the file of the parent, with the parts that were asked for and nothing else
+  of the parent. The parent then counts among the components that came back and that the org had not listed
+  (`UNLISTED_COMPONENTS`), as an object does that comes back whole for the sake of its fields. When the
+  retrieve of the parts was split, the file of the parent itself comes back once per half, and
+  `FILE_RETRIEVED_TWICE` names it.
 - A snapshot without such a remark makes no request more than before. Which types are parts is read from the
   library, not asked of the org.
 
@@ -63,32 +69,38 @@ These are choices of the author of this record. The maintainer can strike any of
    that has one partial.
 2. **Not for a parent the org lists.** A snapshot must not call a component retrieved of which only a part came
    back.
-3. **The library says which types are parts, not the org.** A part of a type the library does not know could
+3. **Not for a parent that is one file.** Its parts would have to come back in one retrieve that is never
+   split, or two files of one parent would have to be put together. The engine does neither. The case that was
+   seen is an object.
+4. **The library says which types are parts, not the org.** A part of a type the library does not know could
    not be read when it came back. And the org does not have to be asked once more, which it could refuse.
-4. **A retrieve of the parts of one parent is not tried part by part when it fails.** That would need a way to
-   put two files of one parent together, which the engine does not have.
 5. **A note of its own**, so that a retrieve the plan did not hold is not silent.
 6. **The step that reads the test org says how many of the missing components a remark of another form
-   names**, and shows that remark in its everyday words. The two objects have no remark of the known form.
+   names**, and shows that remark in its everyday words with the name cut out. The two objects have no remark
+   of the known form.
 
 ## Not done
 
 - **Not verified on a real org.** Whether Salesforce hands out a part by its own name when it cannot find the
-  parent is not known. The next run of the test org from `main` shows it for two fields and two record types.
-  It is recorded in the research note and in the plan.
+  parent is not known. Neither is what the file holds that comes back: the mock org of the tests hands out the
+  parts that were asked for and nothing else of the parent, which is an assumption. The next run of the test
+  org from `main` shows the first for two fields and two record types. It is recorded in the research note and
+  in the plan.
 - The two objects that the org lists and does not hand out are not explained. This record does nothing for
   them. Of the nine remarks of run 14, two speak of permissions and two say "Not a … type". Whether they are
   about these objects is not known. The step that reads the test org now counts it.
 - The remark is read in one form. A parent Salesforce does not hand out without that remark has its parts left
   missing, as before.
-- A part whose name does not begin with the name of its parent and a dot is never asked for this way. A custom
-  label is such a part, and its file is one the org lists.
+- A part of a parent that is one file is never asked for this way, as said above. Neither is a part whose name
+  does not begin with the name of its parent and a dot.
 - The file of a parent that came back for its parts is stored and analysed as the file of that parent. Nothing
   in the database says that it holds a part of the component only, beyond the note of the retrieve.
-- The first retrieve of the parts is not held below a number of members. If Salesforce fails it, it is split
-  between parents like any other retrieve of parts.
-- Not tested: a retrieve of parts that Salesforce fails for a reason of its size, and a type other than
-  `CustomObject` as the parent. The tests take an object with fields and a validation rule.
+- The retrieve of the parts is not held below a number of members. If Salesforce fails it, it is tried in
+  halves like any other. Retrieves that fail one after the other stop a snapshot, as they do for any chunk
+  (twenty in a row by default), and the next run continues it.
+- Not tested: a retrieve of parts that Salesforce fails for a reason of its size, a type other than
+  `CustomObject` as the parent, and the parts of two parents in one retrieve. The tests take an object with
+  fields and a validation rule.
 
 ## Consequences
 
@@ -97,10 +109,6 @@ These are choices of the author of this record. The maintainer can strike any of
   partial, and the remarks of Salesforce say for each part that it cannot be found.
 - Such a snapshot makes one retrieve more, and its count of chunks grows while it runs, as it does when a
   chunk is split.
-- A retrieve that fails is no longer cut in the middle in every case: parts of one parent that it names stay
-  together. The plan of the engine names a part only in a retrieve of parts, as long as the org and the library
-  agree on which types are parts. Where the library calls a type a part that the org describes as a type of its
-  own, the components of that type with the same name before a dot stay together too.
 - The JSON output changes in one place: the issue code `PARTS_ASKED_BY_NAME` is new, with `details.count`,
   `details.components` and `details.parts`. The JSON Schema does not list the codes, so only `docs/cli.md`
   changes.

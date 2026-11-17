@@ -1126,8 +1126,8 @@ Status on 17 November 2026, after run 14 of the test org, with a fourth pull req
   names in one more retrieve. The step that reads the test org says how many missing components a remark of
   another form names.
 - **Choices of mine, for you to strike.** Record 0049 has the reasons: that parts are asked for a second time
-  at all, that this is not done for a parent the org lists, that the Salesforce library says which types are
-  parts, and that the parts of one parent stay in one retrieve and are not tried one by one when it fails.
+  at all, that this is not done for a parent the org lists, that it is done only for a parent with a file for
+  every part, such as an object, and that the Salesforce library says which types are parts.
 - **Not done, and not verified:** whether Salesforce hands out a part by its own name when it cannot find the
   parent is not known. The next run shows it and is recorded here. The two objects stay missing whatever that
   run says, so the snapshot of the test org is expected to stay partial for two components at least, and the

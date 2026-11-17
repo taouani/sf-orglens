@@ -192,8 +192,10 @@ export function unlistedComponents(store: Store, snapshotId: number, type: strin
 
 /**
  * The parts of a parent that the org listed and that did not come back: the components of the given types whose
- * name is the name of the parent, a dot and a name of their own. Sorted by type and name. Nothing if the org
- * lists the parent itself: then the parent is what is missing.
+ * name is the name of the parent, a dot and a name of their own. Sorted by type and name.
+ *
+ * Nothing if the org lists the parent itself: then the parent is what is missing. Nothing either if the parent
+ * came back, listed or not: its file is in the snapshot, and the file a part comes back in would replace it.
  */
 export function missingPartsOf(
   store: Store,
@@ -201,13 +203,14 @@ export function missingPartsOf(
   parent: ChunkMember,
   partTypes: readonly string[],
 ): ChunkMember[] {
-  const listed = store.get(
-    'SELECT 1 AS found FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ? AND listed = 1',
+  const known = store.get(
+    `SELECT 1 AS found FROM inventory_item
+      WHERE snapshot_id = ? AND type = ? AND full_name = ? AND (listed = 1 OR retrieved = 1)`,
     snapshotId,
     parent.type,
     parent.fullName,
   );
-  if (listed !== undefined) return [];
+  if (known !== undefined) return [];
   // The names from `Parent.` up to, and without, `Parent/`: the slash is the character after the dot. Read by
   // the primary key, not by a pattern, in which an underscore of the name would stand for any character.
   return [...partTypes].sort().flatMap((type) =>

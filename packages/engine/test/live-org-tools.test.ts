@@ -683,9 +683,15 @@ describe('what is said about components that are missing', () => {
         item('CustomObject', 'SecretPlan', true, false),
         item('CustomObject', 'Takeover', true, false),
         item('CustomObject', 'Plan', true, false),
+        // Names that are everyday words, which a remark is shown with.
+        item('CustomObject', 'User', true, false),
+        item('CustomObject', 'Settings', true, false),
         item('CustomField', 'Hidden.Secret__c', true, false),
+        // A name with signs that mean something in a pattern.
+        item('Layout', 'Merger-Big (new) $1 Layout', true, false),
       ],
       [
+        'Unable to retrieve Merger-Big (new) $1 Layout',
         'You do not have the proper permissions to access SecretPlan.',
         'You do not have the proper permissions to access Takeover.',
         'Not a CustomObject type: Takeover',
@@ -693,16 +699,27 @@ describe('what is said about components that are missing', () => {
         'You do not have the proper permissions to access Hidden.',
         'You do not have the proper permissions to access Hidden.Secret__c_2.',
         'You do not have the proper permissions to access MasterPlan and Plans.',
+        // A name with a dot before or after it is one side of another name, and a letter of any script is a letter.
+        'You do not have the proper permissions to access Plan.Secret__c, My.Plan and Planä.',
+        'You do not have the proper permissions to access User.',
+        'Unable to retrieve Settings',
+        'Unable to retrieve Hidden.Secret__c.',
         "Entity of type 'CustomObject' named 'Plan' cannot be found",
       ],
     );
+    // The remarks as they are shown elsewhere in the log, with a name that is an everyday word.
+    expect(everydayWords('You do not have the proper permissions to access User.')).toContain('User');
+    expect(everydayWords('Unable to retrieve Settings')).toContain('Settings');
     expect(lines).toEqual([
       '',
       'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
-      '- CustomField: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Salesforce remarked of 0 of them that it cannot be found.',
-      '- CustomObject: 3 of 3 did not come back. Forms of the names: a (3). By how the name ends: no ending of a custom object (3). Salesforce remarked of 1 that it cannot be found. A remark of Salesforce of another form holds the name of 2. In everyday words: You do not have the proper permissions to access … (2), Not a … type: … (1).',
+      '- CustomField: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1). Not in the list: 1 object, by how the name ends: no ending of a custom object (1). Salesforce remarked of 0 of them that it cannot be found. A remark of Salesforce of another form holds the name of 1. In everyday words, without the name: Unable to retrieve … (1).',
+      '- CustomObject: 5 of 5 did not come back. Forms of the names: a (5). By how the name ends: no ending of a custom object (5). Salesforce remarked of 1 that it cannot be found. A remark of Salesforce of another form holds the name of 4. In everyday words, without the name: You do not have the proper permissions to access … (3), Not a … type: … (1), Unable to retrieve … (1).',
+      '- Layout: 1 of 1 did not come back. Forms of the names: a-a (a) $a a (1). A remark of Salesforce of another form holds the name of 1. In everyday words, without the name: Unable to retrieve … (1).',
     ]);
-    for (const name of ['Secret', 'Takeover', 'Hidden', 'Plan']) expect(lines.join('\n')).not.toContain(name);
+    for (const name of ['Secret', 'Takeover', 'Hidden', 'Plan', 'User', 'Settings', 'Merger', 'Big']) {
+      expect(lines.join('\n')).not.toContain(name);
+    }
   });
 
   it('takes what stands before a dot for an object only in the name of a part of an object', () => {
@@ -723,7 +740,7 @@ describe('what is said about components that are missing', () => {
     );
     expect(missingLines(log, items, [remark], 70).slice(-2)).toEqual([
       '',
-      'Salesforce made 70 remarks about the retrieves, and the snapshot keeps 1 of them. The counts above of what Salesforce cannot find can be too low.',
+      'Salesforce made 70 remarks about the retrieves, and the snapshot keeps 1 of them. The counts above of what Salesforce remarked can be too low.',
     ]);
     // Nothing is missing: there is no count that could be too low.
     expect(missingLines(log, [item('CustomObject', 'SecretPlan', true, true)], [], 70)).toEqual([]);

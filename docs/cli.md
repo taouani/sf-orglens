@@ -211,9 +211,11 @@ they have below a package directory, such as `classes/Foo.cls`.
   so a retrieve names the object, also when the org lists the field and not the object. When Salesforce remarks
   that it cannot find such an object, the fields, record types and other parts of it that the org lists are
   asked for by their own names in one more retrieve. The note `PARTS_ASKED_BY_NAME` says so. The file that
-  comes back holds those parts and nothing else of the object, and the object counts among the components that
-  came back although the org had not listed them. A part that Salesforce cannot find by its own name either
-  stays missing. Nothing of this is done for an object the org lists: then the object is what is missing.
+  comes back is the file of the object, so the object counts among the components that came back although the
+  org had not listed them. It is expected to hold those parts and nothing else of the object. A part that
+  Salesforce cannot find by its own name either stays missing. Nothing of this is done for an object the org
+  lists: then the object is what is missing. Nor is it done for a parent whose parts stay in its one file, such
+  as the rules of a workflow. Not verified on a real org.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.

@@ -243,9 +243,9 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     expect(missingPartsOf(store, id, member('CustomObject', 'Nobody'), parts)).toEqual([]);
     // The org lists this parent. It is what is missing, and its part is not asked for alone.
     expect(missingPartsOf(store, id, member('CustomObject', 'Invoice__c'), parts)).toEqual([]);
-    // A parent that came back unlisted in an earlier retrieve is still one the org does not list.
+    // A parent that came back, although the org does not list it: its file is in the snapshot.
     markRetrieved(store, id, [member('CustomObject', 'Per_son')]);
-    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), parts)).toHaveLength(3);
+    expect(missingPartsOf(store, id, member('CustomObject', 'Per_son'), parts)).toEqual([]);
     expect(missingPartsOf(store, begin(store, 'uat'), member('CustomObject', 'Per_son'), parts)).toEqual([]);
     store.close();
   });
