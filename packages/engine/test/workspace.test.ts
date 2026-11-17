@@ -589,6 +589,10 @@ describe('workspace sources', () => {
     // whether the test passes or not.
     const slow = logLines(dir).filter((line) => line.includes('"config.lock.slow"'));
     if (slow.length > 0) console.warn(`Slow locks of the configuration:\n${slow.join('\n')}`);
+    // A second run on Windows failed here because Windows refused to create the lock. The step is tried again
+    // since then, and a command that was refused wrote that to the log. Nothing else says that it happened.
+    const refused = logLines(dir).filter((line) => line.includes('"config.lock.refused"'));
+    if (refused.length > 0) console.warn(`Refused steps on the lock of the configuration:\n${refused.join('\n')}`);
     expect(results).toEqual(names.map(() => ''));
     const workspace = await openWorkspace({ root: dir, env: {} });
     expect((await workspace.sources.list()).map((source) => source.name).sort()).toEqual(names);

@@ -7,6 +7,7 @@ import {
   LOCK_STALE_MS,
   LOCK_WAIT_MS,
   withConfigLock,
+  type LockRefusals,
   type LockSystem,
   type LockTimes,
 } from '../src/api/config-lock.ts';
@@ -69,6 +70,35 @@ const locked = (lock: string, waitedMs: number, heldMs: number): object => ({
   hint: `Try again. If no other command is running, delete ${lock}.`,
   details: { reason: 'LOCKED', operation: 'lock', waitedMs, heldMs },
 });
+
+/**
+ * A system that refuses to create a file a number of times, as Windows did once for the lock. `only` says which
+ * files it refuses.
+ */
+function refusing(
+  platform: string,
+  code: string,
+  times: number,
+  only: (file: string) => boolean = () => true,
+): { system: LockSystem; pauses: number[] } {
+  const pauses: number[] = [];
+  let refused = 0;
+  return {
+    pauses,
+    system: {
+      now: () => START,
+      pause: (milliseconds) => pauses.push(milliseconds),
+      platform,
+      create: (file, mark) => {
+        if (refused < times && only(file)) {
+          refused += 1;
+          throw Object.assign(new Error(`${code}: operation not permitted, open '${file}'`), { code });
+        }
+        writeFileSync(file, mark, { flag: 'wx' });
+      },
+    },
+  };
+}
 
 describe('the lock of the configuration', () => {
   it('holds the lock while the work runs, and gives it back afterwards', () => {
@@ -162,48 +192,63 @@ describe('the lock of the configuration', () => {
     expect(pauses).toEqual([]);
   });
 
-  /** A system that refuses to create the lock a number of times, as Windows does for a file that is busy. */
-  function refusing(platform: string, code: string, times: number): { system: LockSystem; pauses: number[] } {
-    const pauses: number[] = [];
-    let refused = 0;
-    return {
-      pauses,
-      system: {
-        now: () => START,
-        pause: (milliseconds) => pauses.push(milliseconds),
-        platform,
-        create: (file, mark) => {
-          if (refused < times) {
-            refused += 1;
-            throw Object.assign(new Error(`${code}: operation not permitted, open '${file}'`), { code });
-          }
-          writeFileSync(file, mark, { flag: 'wx' });
-        },
-      },
-    };
-  }
-
+  // Only `EPERM` was seen, once. `EBUSY` is the other code that Windows gives for a file it does not let go.
   it.each(['EPERM', 'EBUSY'])('creates the lock again on Windows when the creation is refused with %s', (code) => {
     const lock = join(dirs.next(), 'config.lock');
     const { system, pauses } = refusing('win32', code, 2);
-    expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), { system })).toMatch(OWN);
+    const refused: LockRefusals[] = [];
+    const options = { system, refused: (refusals: LockRefusals) => refused.push(refusals) };
+    expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), options)).toMatch(OWN);
     expect(pauses).toEqual(BUSY_PAUSES_MS.slice(0, 2));
+    expect(refused).toEqual([{ refusals: 2, codes: [code] }]);
     expect(existsSync(lock)).toBe(false);
   });
 
-  it('passes the refusal on when Windows still refuses after a third of a second', () => {
+  it('passes the refusal on when Windows still refuses after a third of a second, and says how often', () => {
     const lock = join(dirs.next(), 'config.lock');
     const { system, pauses } = refusing('win32', 'EPERM', Number.POSITIVE_INFINITY);
-    expect(thrownBy(() => withConfigLock(lock, () => 'done', { system }))).toMatchObject({ code: 'EPERM' });
+    const refused: LockRefusals[] = [];
+    const options = { system, refused: (refusals: LockRefusals) => refused.push(refusals) };
+    expect(thrownBy(() => withConfigLock(lock, () => 'done', options))).toMatchObject({ code: 'EPERM' });
     expect(pauses).toEqual(BUSY_PAUSES_MS);
+    expect(refused).toEqual([{ refusals: BUSY_PAUSES_MS.length, codes: ['EPERM'] }]);
     expect(existsSync(lock)).toBe(false);
   });
 
-  it('passes the same refusal on at once on another system', () => {
+  it('passes the same refusal on at once on another system, and says nothing', () => {
     const lock = join(dirs.next(), 'config.lock');
     const { system, pauses } = refusing('linux', 'EPERM', 1);
-    expect(thrownBy(() => withConfigLock(lock, () => 'done', { system }))).toMatchObject({ code: 'EPERM' });
+    const refused: LockRefusals[] = [];
+    const options = { system, refused: (refusals: LockRefusals) => refused.push(refusals) };
+    expect(thrownBy(() => withConfigLock(lock, () => 'done', options))).toMatchObject({ code: 'EPERM' });
     expect(pauses).toEqual([]);
+    expect(refused).toEqual([]);
+  });
+
+  it('waits for the lock of another command when a refusal is followed by a lock that is there', () => {
+    const lock = join(dirs.next(), 'config.lock');
+    hold(lock, 1, START);
+    // The other command gives its lock back after a tenth of a second.
+    const { system: time, waited } = clock((now) => {
+      if (now === START + 95) rmSync(lock);
+    });
+    const system = { ...time, platform: 'win32', create: refusing('win32', 'EPERM', 2).system.create };
+    expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), { system })).toMatch(OWN);
+    // Two pauses of the refusals, 5 and 10 milliseconds, then four pauses of the wait.
+    expect(waited()).toBe(95);
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it('counts the pauses of a refusal in the time the command waited', () => {
+    const lock = join(dirs.next(), 'config.lock');
+    hold(lock, 1, START);
+    const { system: time, waited } = clock();
+    const system = { ...time, platform: 'win32', create: refusing('win32', 'EPERM', 2).system.create };
+    // The 15 milliseconds of the two refusals come first, and the wait goes on in steps of 20 from there.
+    expect(thrownBy(() => withConfigLock(lock, () => 'done', { system }))).toMatchObject(
+      locked(lock, LOCK_HELD_MS + 15, LOCK_HELD_MS + 15),
+    );
+    expect(waited()).toBe(LOCK_HELD_MS + 15);
   });
 
   it('waits on while the lock goes from one command to the next, each with its own time', () => {
@@ -295,6 +340,18 @@ describe('a lock of the configuration that was left behind', () => {
     // The fresh lock of the other command stayed, and this command waited for it.
     expect(found).toBe('7\n');
     expect(now).toBe(START + 1000);
+    expect(readdirSync(dirname(lock))).toEqual([]);
+  });
+
+  it('is taken over on Windows although the creation of the second file is refused at first', () => {
+    const lock = join(dirs.next(), 'config.lock');
+    hold(lock, 1, START - 60_000);
+    const { system, pauses } = refusing('win32', 'EPERM', 2, (file) => file.endsWith('.takeover'));
+    const refused: LockRefusals[] = [];
+    const options = { system, refused: (refusals: LockRefusals) => refused.push(refusals) };
+    expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), options)).toMatch(OWN);
+    expect(pauses).toEqual(BUSY_PAUSES_MS.slice(0, 2));
+    expect(refused).toEqual([{ refusals: 2, codes: ['EPERM'] }]);
     expect(readdirSync(dirname(lock))).toEqual([]);
   });
 
