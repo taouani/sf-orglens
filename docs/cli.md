@@ -49,9 +49,12 @@ What the help texts do not say:
   reports a database that is missing, outdated, newer, foreign or busy as the `state` of the store, and still exits
   with `0`: the command did what it was asked to do. `doctor` is the command that turns a problem into an exit
   code.
-- `source add`, `source remove` and `source link` take a lock while they change a configuration file, so two of
-  them at the same moment do not lose each other's change. A command that cannot get the lock within two seconds
-  ends with `WORKSPACE_IO`.
+- `source add`, `source remove` and `source link` take a lock while they change a configuration file, so two of them
+  at the same moment do not lose each other's change. A command that finds the lock taken waits for it, and prints
+  nothing while it waits. It ends with `WORKSPACE_IO` when the command in front has held the lock for ten seconds,
+  or when it has waited thirty seconds in all while several commands took their turn. `details.reason` is then
+  `LOCKED`, `details.waitedMs` says how long the command waited, and `details.heldMs` how long the lock it saw last
+  had been held, both in milliseconds.
 - `source remove` also removes the login that `source link` set for the source from `.orglens/local.toml`.
 - `doctor` connects to nothing. Its check `logins` says how many logins the Salesforce CLI has on this machine and
   by which route each org and sandbox of the workspace would be logged in. It names no login and no user, so the

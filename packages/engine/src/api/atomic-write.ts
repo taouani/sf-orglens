@@ -39,10 +39,10 @@ const SYSTEM: AtomicWriteSystem = { platform: process.platform, rename: renameSy
 /**
  * How long a step waits before each further try on Windows: seven tries in all, with 315 milliseconds of pauses.
  *
- * A write happens while the lock of the configuration is held, and another command waits two seconds for that
- * lock. A refusal that passes costs a few milliseconds. One that does not pass, such as a file that is
- * read-only, costs each command the whole wait while it holds the lock, so the last of several commands in a
- * queue can end with the message of the lock in place of the real cause.
+ * A write happens while the lock of the configuration is held, and another command waits for that lock
+ * (`config-lock.ts`). A refusal that passes costs a few milliseconds. One that does not pass, such as a file
+ * that is read-only, costs each command the whole third of a second while it holds the lock. Each command of a
+ * queue then ends with the real cause, a little later.
  */
 export const BUSY_PAUSES_MS: readonly number[] = [5, 10, 20, 40, 80, 160];
 

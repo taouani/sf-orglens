@@ -5,7 +5,7 @@
  * `JSON.stringify`, and every failure is an `EngineError`. A client never
  * opens the database or reads the configuration files itself.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   diagnosticsJson,
@@ -28,9 +28,10 @@ import type { SqlDriver } from '../store/driver.ts';
 import { nodeSqliteDriver } from '../store/node-sqlite.ts';
 import { openStore } from '../store/open.ts';
 import { analyseStored, isAnalysisFailure } from './analysis.ts';
-import { pause, whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
+import { whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
+import { withConfigLock, type LockOptions } from './config-lock.ts';
 import { finishedSnapshot, impactOf, type ImpactQuery, type ImpactReport } from './impact.ts';
 import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
 import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
@@ -331,46 +332,6 @@ function ensureDataDir(paths: WorkspacePaths): boolean {
   return true;
 }
 
-const LOCK_WAIT_MS = 2000;
-const LOCK_PAUSE_MS = 20;
-/** A lock this old was left behind by a command that did not end properly. An edit takes milliseconds. */
-const LOCK_STALE_MS = 30_000;
-
-/**
- * Runs one change of the configuration files while no other command changes them.
- *
- * A change reads a file, edits the text and writes it back. Two commands doing that at the same moment would
- * each write their own result, and one of the two changes would be lost without a word. The lock is a file that
- * only one process can create. A hand-made edit in an editor is not held off by it.
- */
-function withConfigLock<T>(paths: WorkspacePaths, work: () => T): T {
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  for (;;) {
-    try {
-      writeFileSync(paths.configLockFile, `${String(process.pid)}\n`, { flag: 'wx' });
-      break;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== 'EEXIST') throw error;
-      const held = statSync(paths.configLockFile, { throwIfNoEntry: false });
-      if (held !== undefined && Date.now() - held.mtimeMs > LOCK_STALE_MS) {
-        rmSync(paths.configLockFile, { force: true });
-      } else if (Date.now() >= deadline) {
-        throw new EngineError('WORKSPACE_IO', 'Another OrgLens command is changing the configuration.', {
-          hint: `Try again. If no other command is running, delete ${paths.configLockFile}.`,
-          details: { reason: 'LOCKED', operation: 'lock' },
-        });
-      } else {
-        pause(LOCK_PAUSE_MS);
-      }
-    }
-  }
-  try {
-    return work();
-  } finally {
-    rmSync(paths.configLockFile, { force: true });
-  }
-}
-
 const STORE_STATES: Readonly<Record<string, StoreStatus['state']>> = {
   STORE_NOT_FOUND: 'missing',
   STORE_OUTDATED: 'outdated',
@@ -503,22 +464,32 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       // The folder may be a fresh clone that has the configuration and nothing else. The file that keeps the data
       // folder out of Git comes first, before the lock, the log and the personal file are written into it.
       ensureDataDir(paths);
-      withConfigLock(paths, () => {
-        const shared = readText(paths.configFile, SHARED_CONFIG_FILE);
-        if (typeof shared !== 'string') throw invalidConfig([shared]);
-        const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
-        if (typeof local === 'object') throw invalidConfig([local]);
-        const changed = change(shared, local);
-        // The shared file first. If the second write fails, a login is left for a source that is no longer
-        // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
-        // of a source that is still there.
-        if (changed.shared !== undefined && changed.shared !== shared) {
-          writeFileAtomically(paths.configFile, changed.shared);
-        }
-        if (changed.local !== undefined && changed.local !== local) {
-          writeFileAtomically(paths.localConfigFile, changed.local);
-        }
-      });
+      // A lock that was slow is the only trace of what made a command wait, so it goes to the log.
+      const slowLock: LockOptions = {
+        slow: (times) => {
+          workspaceLogger(paths).warn('config.lock.slow', { ...times });
+        },
+      };
+      withConfigLock(
+        paths.configLockFile,
+        () => {
+          const shared = readText(paths.configFile, SHARED_CONFIG_FILE);
+          if (typeof shared !== 'string') throw invalidConfig([shared]);
+          const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
+          if (typeof local === 'object') throw invalidConfig([local]);
+          const changed = change(shared, local);
+          // The shared file first. If the second write fails, a login is left for a source that is no longer
+          // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
+          // of a source that is still there.
+          if (changed.shared !== undefined && changed.shared !== shared) {
+            writeFileAtomically(paths.configFile, changed.shared);
+          }
+          if (changed.local !== undefined && changed.local !== local) {
+            writeFileAtomically(paths.localConfigFile, changed.local);
+          }
+        },
+        slowLock,
+      );
       config = loadConfig(paths, env);
     };
 
