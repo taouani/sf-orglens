@@ -74,8 +74,8 @@ In numbers: about 18,400 lines of TypeScript in the engine and the command line,
 tests. 2,099 tests are defined. On my machine, with the four public codebases downloaded, 2,088 pass and 11 are
 skipped. Without them, 35 are skipped: CI does not download the codebases and skips the tests on them.
 Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from version 2 at
-the end of Phase 0, and every earlier version is migrated. 19 decision records are new, 0035 to 0053, of which
-0036 is superseded by 0038 and 0052 by 0053. 27 pull requests, 20 to 46, each with a code review by a separate
+the end of Phase 0, and every earlier version is migrated. 20 decision records are new, 0035 to 0054, of which
+0036 is superseded by 0038 and 0052 by 0053. 28 pull requests, 20 to 47, each with a code review by a separate
 agent, which comes before the merge. The workflow "Live org" ran ten times against the test org.
 
 ## What was measured
@@ -148,7 +148,7 @@ them was not read. Only one org was read, so how common this is in other orgs is
   their own: a command that waited two seconds for the lock of the configuration and gave up while others
   took their turn, and two commands that could both take over a lock that was left behind.
 - **Effort.** The plan estimated about 33 developer-days in about twelve pull requests. The phase was built in
-  three calendar days, in 27 pull requests. As in Phase 0, the estimate measured the size of the work and
+  three calendar days, in 28 pull requests. As in Phase 0, the estimate measured the size of the work and
   not the time it took.
 - **The pre-release has a version with a pre-release part,** `0.1.0-next.0`, and is made by a workflow. The
   plan named neither. Record 0050 holds both.
@@ -226,8 +226,9 @@ them was not read. Only one org was read, so how common this is in other orgs is
 3. **The second pre-release.** You set up a trusted publisher for each of the two packages on 17 November
    2026 ([`docs/releases/publishing.md`](../releases/publishing.md#before-the-second-pre-release)). npm keeps a
    new one for two days and wants a publish through it by then, so you chose to publish `0.1.0-next.1` within
-   that time. It is prepared in a pull request of its own. A run that publishes cannot be undone, and I start
-   one only on your word for that version.
+   that time (record 0054). The version changes nothing in what OrgLens does. It is set, and its
+   [release notes](../releases/v0.1.0-next.1.md) are written, in pull request 47. A run that publishes cannot be
+   undone, and I start one only on your word for that version. Trusted publishing is still not tried.
    - Not a question, a setting: GitHub can make releases immutable. It is off in this repository, and only you
      can turn it on. Record 0050 says that a published pre-release is not changed. The setting would hold that.
 4. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as

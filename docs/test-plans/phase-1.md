@@ -341,7 +341,8 @@ whatever package has that name.
 
 1. Whether the phase is accepted, after this plan.
 2. Your word for the run that publishes the second pre-release, `0.1.0-next.1`. You chose on 17 November 2026
-   to publish it soon, to try trusted publishing. It is prepared in a pull request of its own.
+   to publish it soon, to try trusted publishing (record 0054). It changes nothing in what OrgLens does. Its
+   version is set and its [release notes](../releases/v0.1.0-next.1.md) are written.
 3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
 4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 

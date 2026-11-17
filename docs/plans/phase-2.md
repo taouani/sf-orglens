@@ -66,7 +66,7 @@ Two smaller ones:
 | WP7 Managed packages (Q2)                     | What of a package is read, analysed and shown                                                                                                                                        |
 | WP8 What Q1 adds                              | Email templates, report types and quick actions, if you choose them                                                                                                                  |
 | WP9 Proof                                     | Every flow of the public codebases checked by hand, and the measurements                                                                                                             |
-| WP10 Phase close                              | Updated overall plan, test plan, phase report, the second pre-release, draft of the Phase 3 plan                                                                                     |
+| WP10 Phase close                              | Updated overall plan, test plan, phase report, the next pre-release, draft of the Phase 3 plan                                                                                       |
 
 ### Deliberately not in Phase 2
 
@@ -352,8 +352,11 @@ Accepted when:
 
 - The overall plan updated, `docs/test-plans/phase-2.md`, a phase report, and the draft of the Phase 3 plan for
   your approval.
-- The second pre-release, `0.1.0-next.1`, made by the workflow of records 0050 and 0053. The maintainer sets up
-  the trusted publishers of the two packages shortly before it (`docs/releases/publishing.md`).
+- The next pre-release, made by the workflow of records 0050 and 0053, under the next number that is free then.
+  That is `0.1.0-next.2`, unless another one is made before it: `0.1.0-next.1` is a version without a change,
+  which you chose on 17 November 2026 to publish at once, to try trusted publishing (record 0054). If that
+  publish has not gone through, the maintainer sets up the trusted publishers of the two packages shortly
+  before this one (`docs/releases/publishing.md`).
 
 Accepted when:
 

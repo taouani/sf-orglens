@@ -14,7 +14,9 @@ one into the repository, a pull request or an issue.**
 [What the first publish showed](#what-the-first-publish-showed) is at the end of this page. The steps before the second
 pre-release, with trusted publishing, have been tried by nobody. They follow the pages of npm as I read them on 17
 November 2026 and the workflow of your other project. Where a page of npm or GitHub reads differently today, the page is
-right.
+right. **The second pre-release, `0.1.0-next.1`, is prepared and not published.** It changes nothing in what OrgLens
+does and is the first try of trusted publishing (decision record
+[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)).
 
 ## Once, before the first pre-release
 
@@ -114,7 +116,11 @@ You set the two up on 17 November 2026, half an hour after the first publish. Th
 the publisher with the permissions `npm publish`, `npm stage publish` and `npm dist-tag`, and the status
 "Pending validation": npm asks for a publish through it before 19 November 2026, about 21:00 UTC. You chose on
 the same day to publish a second pre-release, `0.1.0-next.1`, within that time, to try the way without a
-token. Steps 1 to 3 below are done.
+token (decision record [0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). The version is set,
+and its [release notes](v0.1.0-next.1.md) are written. Steps 1 to 3 below are done, and you said on that day
+that the secret of step 4 is deleted. What is left is step 5: a rehearsal, your word for the version, the run
+with "publish" on, and your approval of its job. If the two days pass without a publish, the publishers
+expire, and steps 1 to 3 are done again before the next try.
 
 1. On npmjs.com, in the settings of `sf-orglens`, under "Trusted publishing", add a publisher for GitHub
    Actions: the owner and the name of this repository, the workflow file `pre-release.yml` (the file name
@@ -191,10 +197,18 @@ pages of npm and of the times npm gives is what you saw and sent me on the same 
   minutes after npm had it ready. The install jobs on Linux and Windows passed with their fifth try, which was
   their last. They now try eight times and wait eleven minutes in all.
 - **One install job on macOS waited fifteen minutes for a machine of GitHub and was cancelled,** so the job
-  that creates the pre-release on GitHub did not run. Fifteen minutes was also the limit of that job, and I do
+  that creates the pre-release on GitHub did not run. Fifteen minutes was also the limit of that job, and I did
   not know whether the limit ended it or GitHub did. The limit is twenty minutes now. "Re-run failed jobs" ran
   the install, which passed, and the pre-release on GitHub was created eighteen minutes after the two packages
   were on npm. The job on npm did not run a second time.
+
+  An hour later the same happened to the three macOS jobs of a run of the workflow "CI": each was cancelled
+  fifteen minutes to the second after it was queued, without a machine, and two of them have a limit of twenty
+  minutes. So the limit of a job did not end them, and the longer limit of the install jobs does not help
+  against a wait for a machine. What helped both times is "Re-run failed jobs", after which the jobs got a
+  machine within seconds to minutes. A publishing run can meet this again, between the publish on npm and the
+  pre-release on GitHub.
+
 - **A read does not see a new version for minutes, which the publish step did not expect.** It asks npm for
   the version before it publishes and after an error. Had a publish gone through and been answered with an
   error, or had the failed jobs been run again within those minutes, the step would have tried to publish
