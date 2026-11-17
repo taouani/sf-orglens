@@ -83,10 +83,10 @@ session of the snapshot and the API version the snapshot is read with.
 - **The conditions `IN` and `NOT IN` are kept**: `NOT IN` on the two types, `IN` and `NOT IN` on the id of the
   component. The documentation of the object lists every operator other than `=`, `!=`, `AND` and `OR` as not
   supported. The test org answered `NOT IN` on the type of the component that refers, and both on the id. `NOT IN`
-  on the type of the target it was asked only with `StandardEntity` on the list. An org that does not answer one of
-  them gets a reading that is `partial` and says so, except where the point above has another way of asking. The
-  same conditions can be written with `=`, `!=` and `OR`, which is not done. This is a choice of the author, made
-  on what one org does.
+  on the type of the target it was asked only with `StandardEntity` on the list when this was written, and answered
+  it without in the run after. An org that does not answer one of them gets a reading that is `partial` and says
+  so, except where the point above has another way of asking. The same conditions can be written with `=`, `!=` and
+  `OR`, which is not done. This is a choice of the author, made on what one org does.
 - **The reading says how far it came.** It is `whole` only when no query left a row out and none could have.
   It is `partial` when a query was cut off at the limit with no smaller part to ask for, or failed, or was not
   proven: rows are missing, or may be. It is `none` when the org answered no query and gave no row. It carries
@@ -253,9 +253,13 @@ Both answers are the ones that were recommended, and the ones the build had foll
   reading in parts, and the missed pairs. Its result is recorded with the run.
 - The runs of 17 November 2026 showed all three on the test org (`docs/research/phase-1/real-org.md`, section 7),
   and that the org refuses a query that names a standard object as the type of the target. The reader was corrected
-  for that. The corrected reader was not run against the org when this was written. So it is not shown whether the
+  for that. The corrected reader was not run against the org when this was written. So it was not shown whether the
   org answers the rest of a type whose list does not hold `StandardEntity`, and whether that answer holds the rows
   to standard objects.
+- Added after run 12 of the same day, from the commit with the corrected reader: the test org does both. Read in
+  parts, no request failed, the parts gave the same 257 rows as the one query, and the reading is `whole`. The check
+  of the rest and the whole type per group of components stay: one org says nothing about another, and only tests
+  against the mock org cover them.
 - An org with more than 200 components of a type of which a part is at the limit, a pair of types or the rest,
   never gets a reading that is `whole`: it is `partial`, with `unproven` above zero. That is the price of not
   claiming what cannot be shown. Whether a real org of that size comes out so, and how often, was not measured.

@@ -31,8 +31,9 @@ In short:
   6 queries failed and 9 of 257 rows were lacking.
 - Added from run 11: the 6 queries are the ones that name a standard object as the type of the target, by name or
   in a list of types to leave out. The documentation of Salesforce says that the first is not supported. The 9 rows
-  are from an Apex class to a standard object. The reader no longer names that type in a condition. That is not run
-  against the org yet.
+  are from an Apex class to a standard object. The reader no longer names that type in a condition.
+- Added from run 12: read in parts by the corrected reader, the org answered every one of 60 requests, and the
+  parts gave the same 257 rows as the one query. The engine calls that reading whole.
 
 ## Conditions
 
@@ -52,8 +53,9 @@ In short:
 | [8](https://github.com/taouani/sf-orglens/actions/runs/43763715996) | probe | `fdd34b6` | green |
 | [10](https://github.com/taouani/sf-orglens/actions/runs/43996393289) | read and probe | `9aadacb` | green, with a warning for the partial snapshot and one for a query the org refused |
 | [11](https://github.com/taouani/sf-orglens/actions/runs/44003600959) | read | `faae654` | green, with the same two warnings |
+| [12](https://github.com/taouani/sf-orglens/actions/runs/44011261203) | read | `678f7df` | green, with one warning: the snapshot is not complete |
 
-Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Runs 10 and 11
+Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Runs 10 to 12
 are of 17 November 2026, after work package 8 was merged, and section 7 is about them.
 
 ## 1. The deploy of the larger fixture project
@@ -477,9 +479,9 @@ condition of every request that failed. The comparison and the reading in parts 
 - **The same page says something the org does not do.** It lists a condition with an operator other than `=`, `!=`,
   `AND` and `OR` as not supported. The reader uses `NOT IN` on the two types, and `IN` and `NOT IN` on the id of the
   component. The test org answered every such query that does not name `StandardEntity`: `NOT IN` on the type of
-  the component that refers, and both on the id. It was not asked `NOT IN` on the type of the target with a list
-  that does not hold `StandardEntity`. Whether another org or another version of the API refuses them is
-  `[unverified]`. A reading stays honest if one does: a query that is
+  the component that refers, and both on the id. In this run it was not asked `NOT IN` on the type of the target
+  with a list that does not hold `StandardEntity`. Run 12 asked that, and the org answered. Whether another org or
+  another version of the API refuses them is `[unverified]`. A reading stays honest if one does: a query that is
   refused is counted, and the reading is `partial`. The same conditions can be written with `=`, `!=` and `OR`,
   which makes a query with 200 ids about twice as long. That is not done.
 - **What this meant.** An org above 2,000 rows that has a type at the limit was asked both queries for that type.
@@ -502,10 +504,40 @@ api.ts`).
 - Where the org refuses the list of types of the rest, the whole type is asked for per group of components.
 - Both mock orgs of the tests refuse a condition that names `StandardEntity`, alone or in a list, with the code the
   test org gave.
-- **Not verified:** the corrected reader against the test org. The workflow runs from `main` only, so the run is
-  after the merge. It is not shown that the org answers `RefMetadataComponentType NOT IN` with a list that does not
-  hold `StandardEntity`, or that the answer holds the rows to standard objects: every such query of runs 10 and 11
-  held it. The check of the rest and the whole type per group of components are for an org that does not.
+- Not verified when the change was merged: the corrected reader against the test org. The workflow runs from `main`
+  only, so the run was after the merge. Until then it was not shown that the org answers `RefMetadataComponentType
+  NOT IN` with a list that does not hold `StandardEntity`, or that the answer holds the rows to standard objects:
+  every such query of runs 10 and 11 held it. The check of the rest and the whole type per group of components are
+  for an org that does not.
+
+**Run 12: the corrected reader.** The step "read" was run a third time on 17 November 2026, from the commit with
+the corrected reader. The one query and the comparison gave the numbers of runs 10 and 11. `[run 12]`
+
+| Reading in parts, with every answer cut off at 30 rows                | Run 11  | Run 12 |
+| --------------------------------------------------------------------- | ------- | ------ |
+| Requests                                                              | 63      | 60     |
+| Rows                                                                  | 248     | 257    |
+| What the engine calls the reading                                     | partial | whole  |
+| Queries at the limit with no smaller part to ask for                  | 0       | 0      |
+| Queries that failed and whose rows no other query gave                | 6       | 0      |
+| Queries asked again per component, for more components than one names | 0       | 0      |
+| Rows of the one query that the parts lack                             | 9       | 0      |
+| Rows the parts give that the one query does not have                  | 0       | 0      |
+
+- **The parts give the same rows as the one query**, and the engine calls the reading whole. The step ended without
+  the warning about a refused query.
+- **No request failed.** The step prints a line for every request that failed, also for one whose rows came another
+  way, and printed none. So the org answered the rest of each type that was at the limit: the condition
+  `RefMetadataComponentType NOT IN` with a list that does not hold `StandardEntity`.
+- **The rest holds the rows to standard objects.** The 9 rows from an Apex class to a standard object that runs 10
+  and 11 lacked are there, and no query but the rest of that type, or a part of it, can have given them.
+- There are three requests fewer than in run 11. That fits the three queries for a standard object by name, which
+  are no longer asked. It is a reading of the number: the step does not print the queries that were answered.
+- The 60 requests took about 9 seconds.
+- **Not shown by this run.** The two ways the reader has for an org that does not answer as the test org did, the
+  check of the rest against the rows it has and the whole type per group of components, did not come into play, and
+  only tests against the mock org cover them. The cut at 30 rows stands in for the limit of 2,000: an org with more
+  than 2,000 rows was not read.
 
 **The step "probe"** reads through the reader of the engine now: 1 request, 257 rows. Its comparison with the
 answer key gives the numbers of run 8: 129 of 189 pairs, the same tables by type, by way and by tier, and the
