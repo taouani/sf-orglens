@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { membersOf, planChunks, splitMembers } from '../src/sources/chunks.ts';
+import { membersOf, partsWithOwnFiles, planChunks, splitMembers } from '../src/sources/chunks.ts';
 import { takeInventory, type Inventory } from '../src/sources/inventory.ts';
 import {
   metadataApi,
@@ -435,6 +435,20 @@ describe('the plan of a retrieve', () => {
   it('splits the members of a chunk in two halves', () => {
     const members = ['A', 'B', 'C'].map((fullName) => ({ type: 'ApexClass', fullName }));
     expect(splitMembers(members).map((half) => half.map((member) => member.fullName))).toEqual([['A', 'B'], ['C']]);
+    expect(splitMembers(members.slice(0, 1))).toEqual([members.slice(0, 1), []]);
+    expect(splitMembers([])).toEqual([[], []]);
+  });
+
+  it('names the types of parts that are stored in files of their own, with the type of their parent', async () => {
+    const parentOf = await partsWithOwnFiles();
+    expect(parentOf.get('CustomField')).toBe('CustomObject');
+    expect(parentOf.get('RecordType')).toBe('CustomObject');
+    expect(parentOf.get('ValidationRule')).toBe('CustomObject');
+    // The rules of a workflow and the labels stay in the one file of their parent.
+    expect(parentOf.has('WorkflowRule')).toBe(false);
+    expect(parentOf.has('CustomLabel')).toBe(false);
+    expect(parentOf.has('CustomObject')).toBe(false);
+    expect(parentOf.has('ApexClass')).toBe(false);
   });
 });
 

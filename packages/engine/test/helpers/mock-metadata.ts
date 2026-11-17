@@ -135,7 +135,7 @@ const key = (type: string, fullName: string): string => `${type}:${fullName}`;
 
 /** The metadata of an org that holds what the folder holds. `dir` is a folder in source format. */
 export async function metadataFromSource(dir: string): Promise<MockMetadata> {
-  const { ComponentSet, MetadataConverter, RegistryAccess } = await library();
+  const { ComponentSet, MetadataConverter, RegistryAccess, SourceComponent: Component } = await library();
   const registry = new RegistryAccess();
   const top = ComponentSet.fromSource(dir).getSourceComponents().toArray();
 
@@ -165,6 +165,19 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const listed: Listed[] = [];
   /** What a retrieve of a member hands out: the component, or the parts of one that has no file of its own. */
   const owners = new Map<string, SourceComponent[]>();
+  /**
+   * The parts by their own names. A retrieve of a part hands out the file of its parent with the parts that
+   * were asked for and nothing else of the parent: each part is kept here with a parent that has no file.
+   * Whether Salesforce does the same is not verified.
+   */
+  const parts = new Map<string, SourceComponent>();
+  const alone = (part: SourceComponent, owner: SourceComponent): SourceComponent =>
+    new Component({
+      name: part.name,
+      type: part.type,
+      ...(part.xml === undefined ? {} : { xml: part.xml }),
+      parent: new Component({ name: owner.name, type: owner.type }),
+    });
   const list = (component: SourceComponent, file: SourceComponent): void => {
     if (listed.some((item) => item.type === component.type.name && item.fullName === component.fullName)) return;
     listed.push({
@@ -181,7 +194,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const id = key(owner.type.name, owner.fullName);
     owners.set(id, [...(owners.get(id) ?? []), component]);
     list(owner, owner);
-    for (const part of owner === component ? component.getChildren() : [component]) list(part, owner);
+    for (const part of owner === component ? component.getChildren() : [component]) {
+      list(part, owner);
+      parts.set(key(part.type.name, part.fullName), alone(part, owner));
+    }
   }
 
   let issued = 0;
@@ -223,7 +239,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       // A folder is asked for under the type of what it holds.
       const folderType = folderTypeOf(member.type);
       const asFolder = folderType === null ? id : key(folderType, member.fullName);
-      const owned = owners.get(id) ?? owners.get(asFolder);
+      const part = parts.get(id);
+      const owned = owners.get(id) ?? owners.get(asFolder) ?? (part === undefined ? undefined : [part]);
       // The org knows a component of a package by its name with the prefix only.
       const shortName = inProject === undefined && metadata.packaged.has(id);
       if (owned === undefined || metadata.withheld.has(id) || shortName) {

@@ -190,6 +190,44 @@ export function unlistedComponents(store: Store, snapshotId: number, type: strin
     .map((row) => String(row['full_name']));
 }
 
+/**
+ * The parts of a parent that the org listed and that did not come back: the components of the given types whose
+ * name is the name of the parent, a dot and a name of their own. Sorted by type and name.
+ *
+ * Nothing if the org lists the parent itself: then the parent is what is missing. Nothing either if the parent
+ * came back, listed or not: its file is in the snapshot, and the file a part comes back in would replace it.
+ */
+export function missingPartsOf(
+  store: Store,
+  snapshotId: number,
+  parent: ChunkMember,
+  partTypes: readonly string[],
+): ChunkMember[] {
+  const known = store.get(
+    `SELECT 1 AS found FROM inventory_item
+      WHERE snapshot_id = ? AND type = ? AND full_name = ? AND (listed = 1 OR retrieved = 1)`,
+    snapshotId,
+    parent.type,
+    parent.fullName,
+  );
+  if (known !== undefined) return [];
+  // The names from `Parent.` up to, and without, `Parent/`: the slash is the character after the dot. Read by
+  // the primary key, not by a pattern, in which an underscore of the name would stand for any character.
+  return [...partTypes].sort().flatMap((type) =>
+    store
+      .all(
+        `SELECT full_name FROM inventory_item
+          WHERE snapshot_id = ? AND type = ? AND full_name >= ? AND full_name < ? AND listed = 1 AND retrieved = 0
+          ORDER BY full_name`,
+        snapshotId,
+        type,
+        `${parent.fullName}.`,
+        `${parent.fullName}/`,
+      )
+      .map((row) => ({ type, fullName: String(row['full_name']) })),
+  );
+}
+
 type ChunkStatus = 'pending' | 'running' | 'done' | 'failed';
 
 export interface Chunk {
@@ -318,11 +356,16 @@ export function splitChunk(
     snapshotId,
     seq,
   );
+  addChunk(store, snapshotId, halves[1]);
+}
+
+/** Adds a chunk at the end of the plan of a retrieve. It is to be started. */
+export function addChunk(store: Store, snapshotId: number, members: readonly ChunkMember[]): void {
   store.run(
     `INSERT INTO retrieve_chunk (snapshot_id, seq, status, members)
-     SELECT ?, MAX(seq) + 1, 'pending', ? FROM retrieve_chunk WHERE snapshot_id = ?`,
+     SELECT ?, COALESCE(MAX(seq), -1) + 1, 'pending', ? FROM retrieve_chunk WHERE snapshot_id = ?`,
     snapshotId,
-    packMembers(halves[1]),
+    packMembers(members),
     snapshotId,
   );
 }

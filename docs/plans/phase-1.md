@@ -1108,6 +1108,31 @@ in a pull request of its own, whose status follows this one.
   objects, two fields and two record types are not explained, so the snapshot of the test org is expected to
   stay partial for six components after the next run. That run is recorded here when it is made.
 
+Status on 17 November 2026, after run 14 of the test org, with a fourth pull request of the work package.
+
+- **Run 14**, the first with the two corrections of record 0047
+  ([real-org.md](../research/phase-1/real-org.md#run-14-the-two-corrections-on-the-org)): **both hold on the
+  org, and the snapshot is still partial, so the first acceptance criterion is not met.**
+  - The seven bundles count as retrieved, and the three files are warnings.
+  - Six components of the tier keep the snapshot partial, as expected: 2 of 79 `CustomField`, 2 of 2
+    `RecordType` and 2 of 398 `CustomObject`.
+  - The fields and record types belong to objects the org does not list. Salesforce remarked of these objects
+    that it cannot find them. So the fields and record types were never asked for: the engine asks for the
+    object they belong to.
+  - The two objects are listed and do not come back. Salesforce does not remark that it cannot find them. They
+    are not explained.
+- **Built for it**, with record [0049](../adr/0049-a-part-by-its-own-name.md): when Salesforce remarks that it
+  cannot find a component the org does not list, the parts of it that the org lists are asked for by their own
+  names in one more retrieve. The step that reads the test org says how many missing components a remark of
+  another form names.
+- **Choices of mine, for you to strike.** Record 0049 has the reasons: that parts are asked for a second time
+  at all, that this is not done for a parent the org lists, that it is done only for a parent with a file for
+  every part, such as an object, and that the Salesforce library says which types are parts.
+- **Not done, and not verified:** whether Salesforce hands out a part by its own name when it cannot find the
+  parent is not known. The next run shows it and is recorded here. The two objects stay missing whatever that
+  run says, so the snapshot of the test org is expected to stay partial for two components at least, and the
+  first acceptance criterion to stay missed. The phase report gives the counts.
+
 Status on 17 November 2026, with the pull request that holds the key. It was the second to be opened and the
 last of the three to be merged.
 

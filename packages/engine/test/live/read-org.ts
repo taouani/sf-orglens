@@ -329,6 +329,22 @@ function notFoundNames(remarks: readonly string[]): Map<string, Set<string>> {
   return found;
 }
 
+/** A letter, a digit or an underscore, of any script. */
+const WORD = '[\\p{L}\\p{N}_]';
+
+/**
+ * A remark with a name cut out wherever it stands as a name of its own, or `null` if it stands nowhere so. A
+ * name of its own has no letter, digit or underscore before or after it, and is not one side of a longer name
+ * with a dot: `Plan` stands in neither `Plans` nor `Plan.Field__c` nor `My.Plan`. Upper and lower case count.
+ */
+function withoutName(remark: string, name: string): string | null {
+  if (name === '') return null;
+  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const alone = new RegExp(`(?<!${WORD})(?<!${WORD}\\.)${literal}(?!${WORD})(?!\\.${WORD})`, 'gu');
+  const cut = remark.replace(alone, ' … ');
+  return cut === remark ? null : cut;
+}
+
 const tallied = (counts: ReadonlyMap<string, number>, most = Infinity): string =>
   [...counts]
     .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
@@ -350,11 +366,11 @@ export interface InventoryRow {
  * What can be said about the components the org listed and did not hand out, and about the ones it handed out
  * and had not listed, without a name: how many, of which package state, how their names are built, whether the
  * object or the folder they belong to came back, whether they came back under a name that is nearly the same,
- * and of how many Salesforce remarked that it cannot find them.
+ * of how many Salesforce remarked that it cannot find them, and how many a remark of another form names.
  *
  * `remarks`: what Salesforce remarked about the retrieves, as the engine kept it. `remarksMade`: how many
  * remarks Salesforce made. The engine keeps the first of each retrieve, so the lines say when a count of what
- * Salesforce cannot find can be too low.
+ * Salesforce remarked can be too low.
  */
 export function missingLines(
   log: PublicLog,
@@ -369,6 +385,8 @@ export function missingLines(
     readonly state: string;
   }
   const notFound = notFoundNames(remarks);
+  /** The remarks that do not say "cannot be found". */
+  const otherRemarks = remarks.filter((remark) => notFoundIn([remark]).length === 0);
   /** The names of the remarks "cannot be found" that a line has spoken of, as type and name. */
   const spokenOf = new Set<string>();
   const remarked = (type: string, names: readonly string[]): number => {
@@ -465,6 +483,26 @@ export function missingLines(
         );
         if (cannot > 0) parts.push(`Salesforce remarked of ${String(cannot)} that it cannot be found`);
       }
+      // A remark of another form that holds the name of a missing component. It can be about the component, or
+      // hold a word that is the same as its name. The remark is shown with the name cut out: a name can be an
+      // everyday word, and then the line would say which of the words shown is a name.
+      const forms = new Map<string, number>();
+      let held = 0;
+      for (const item of group.missing) {
+        const about = new Set(
+          otherRemarks
+            .map((remark) => withoutName(remark, item.name))
+            .filter((cut) => cut !== null)
+            .map((cut) => everydayWords(cut)),
+        );
+        if (about.size > 0) held += 1;
+        for (const form of about) forms.set(form, (forms.get(form) ?? 0) + 1);
+      }
+      if (held > 0) {
+        parts.push(
+          `A remark of Salesforce of another form holds the name of ${String(held)}. In everyday words, without the name: ${tallied(forms)}`,
+        );
+      }
       // A component that came back under a name that is nearly the one the org listed.
       const twins = new Map<string, number>();
       for (const item of group.missing) {
@@ -509,7 +547,7 @@ export function missingLines(
   if (lines.length > 0 && remarksMade > remarks.length) {
     lines.push(
       '',
-      `Salesforce made ${String(remarksMade)} remarks about the retrieves, and the snapshot keeps ${String(remarks.length)} of them. The counts above of what Salesforce cannot find can be too low.`,
+      `Salesforce made ${String(remarksMade)} remarks about the retrieves, and the snapshot keeps ${String(remarks.length)} of them. The counts above of what Salesforce remarked can be too low.`,
     );
   }
   return lines;

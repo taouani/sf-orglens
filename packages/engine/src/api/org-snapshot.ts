@@ -21,7 +21,7 @@ import type { OrgSource, SandboxSource } from '../core/config/config.ts';
 import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
 import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
-import { DEFAULT_CHUNK_WEIGHT, planChunks, splitMembers } from '../sources/chunks.ts';
+import { DEFAULT_CHUNK_WEIGHT, partsWithOwnFiles, planChunks, splitMembers } from '../sources/chunks.ts';
 import { readDependencies, type DependencyLimits } from '../sources/dependency-api.ts';
 import { takeInventory, type NotExcluded } from '../sources/inventory.ts';
 import {
@@ -40,6 +40,7 @@ import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
 import { byCodeUnit, systemCode } from '../sources/tree.ts';
 import { readListedIds, writeDependencies } from '../store/dependencies.ts';
 import {
+  addChunk,
   addChunks,
   addInventory,
   chunkEnded,
@@ -49,11 +50,13 @@ import {
   countInventory,
   markRetrieved,
   missingComponents,
+  missingPartsOf,
   nextChunk,
   refreshCoverage,
   splitChunk,
   unlistedComponents,
   type Chunk,
+  type ChunkMember,
 } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
 import {
@@ -707,6 +710,8 @@ async function retrieveChunk(
   }
   const owned = new Set(unpacked.components.flatMap((component) => component.files));
   const messages = state.problems.map((problem) => saidBy(problem));
+  const notFound = notFoundIn(state.problems);
+  const parentOf = notFound.length > 0 ? await partsWithOwnFiles() : new Map<string, string>();
   // A file in a folder the library knows no type for is placed by what the org says about its types.
   const problems: { at: string; message: string; types: readonly string[]; byOrg: boolean }[] = [];
   for (const problem of unpacked.problems) {
@@ -727,10 +732,7 @@ async function retrieveChunk(
     for (const path of unpacked.tree.files) {
       if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
     }
-    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components, {
-      asked: members,
-      notFound: notFoundIn(state.problems),
-    });
+    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components, { asked: members, notFound });
     for (const type of [...new Set(withoutPrefix.map((component) => component.type))].sort(byCodeUnit)) {
       const names = withoutPrefix.filter((component) => component.type === type).map((one) => one.fullName);
       issue(
@@ -752,6 +754,37 @@ async function retrieveChunk(
         'RESOLVE_FAILED',
         missingIn(tier, `${problem.at} could not be read as metadata: ${problem.message}`, problem.types),
         { at: problem.at, types: [...problem.types], tier, ...(problem.byOrg ? { describedByOrg: true } : {}) },
+      );
+    }
+    // A parent the org does not list is asked for because the org lists parts of it. If Salesforce cannot find
+    // the parent, the parts that did not come back are asked for by their own names, in a retrieve of their own
+    // (decision record 0049). Only for a parent whose parts are stored in files of their own: the retrieve of
+    // the parts can be split like any other.
+    const asked = new Set(members.map((member) => `${member.type}\n${member.fullName}`));
+    const parents: string[] = [];
+    const byName: ChunkMember[] = [];
+    for (const parent of notFound) {
+      // Salesforce can make a remark twice. And a remark about a name this retrieve did not ask for, such as
+      // the parent of a part that was asked for by its own name, starts nothing.
+      const id = `${parent.type}\n${parent.fullName}`;
+      if (!asked.delete(id)) continue;
+      const partTypes = [...parentOf].filter(([, of]) => of === parent.type).map(([type]) => type);
+      const missing = partTypes.length === 0 ? [] : missingPartsOf(store, snapshotId, parent, partTypes);
+      if (missing.length === 0) continue;
+      parents.push(`${parent.type} ${parent.fullName}`);
+      byName.push(...missing);
+    }
+    if (byName.length > 0) {
+      const parts = byName.length;
+      byName.sort((a, b) => byCodeUnit(a.type, b.type) || byCodeUnit(a.fullName, b.fullName));
+      addChunk(store, snapshotId, byName);
+      issue(
+        store,
+        snapshotId,
+        'info',
+        'PARTS_ASKED_BY_NAME',
+        `Salesforce cannot find ${plural(parents.length, 'component', 'components')} that the org does not list and lists parts of. ${plural(parts, 'part is', 'parts are')} asked for by ${parts === 1 ? 'its' : 'their'} own ${parts === 1 ? 'name' : 'names'} in another retrieve. The first component: ${parents[0] ?? ''}`,
+        { ...named(parents), parts },
       );
     }
     const other = unpacked.tree.files.filter((path) => !owned.has(path));

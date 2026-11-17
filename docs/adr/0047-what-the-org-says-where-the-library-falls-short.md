@@ -122,6 +122,11 @@ These are choices of the author of this record. The maintainer can strike any of
   change: the listed components count as retrieved, and the same number is no longer "not listed".
 - Not verified on a real org when this was written. The next run of the test org shows whether the three files
   and the seven bundles are what this record takes them for.
+- Added after run 14 of the test org, on 2026-11-17: they are. The three files are warnings, counted with
+  `ContentWorkspacePermission`, and the seven bundles count as retrieved, with one note
+  `RETRIEVED_WITHOUT_PREFIX` ([real-org.md](../research/phase-1/real-org.md#run-14-the-two-corrections-on-the-org)).
+  What the run says about the fields, the record types and the objects is in record
+  [0049](0049-a-part-by-its-own-name.md).
 - The JSON output changes in two places: `RESOLVE_FAILED` can carry `details.describedByOrg`, and the issue code
   `RETRIEVED_WITHOUT_PREFIX` is new. The JSON Schema does not describe the fields of `details` or list the codes,
   so only `docs/cli.md` changes.

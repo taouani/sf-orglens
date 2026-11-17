@@ -11,6 +11,7 @@
  * components of installed packages, and nothing would say so.
  */
 import type { Inventory } from './inventory.ts';
+import { loadSourceLibrary } from './library.ts';
 import type { Member } from './metadata-api.ts';
 import { byCodeUnit } from './tree.ts';
 
@@ -99,6 +100,29 @@ export function planChunks(inventory: Inventory, chunkWeight = DEFAULT_CHUNK_WEI
   }
   if (current.length > 0) chunks.push(current);
   return chunks;
+}
+
+let partTypes: Promise<ReadonlyMap<string, string>> | undefined;
+
+/**
+ * The types of parts that can be asked for by their own names and stored beside each other, each with the type
+ * of its parent: `CustomField` with `CustomObject`.
+ *
+ * These are the parts of the types the Salesforce library keeps with a file for every part. Salesforce hands a
+ * part out in the file of its parent, and of such a parent every part is written to a file of its own, so two
+ * retrieves with parts of one parent do not replace each other's parts. The rules of a `Workflow` are parts
+ * too, and stay in the one file of their parent: they are not among these types.
+ */
+export function partsWithOwnFiles(): Promise<ReadonlyMap<string, string>> {
+  partTypes ??= loadSourceLibrary().then(({ registry }) => {
+    const found = new Map<string, string>();
+    for (const type of Object.values(registry.types)) {
+      if (type.strategies?.transformer !== 'decomposed') continue;
+      for (const child of Object.values(type.children?.types ?? {})) found.set(child.name, type.name);
+    }
+    return found;
+  });
+  return partTypes;
 }
 
 /** The two halves of the members of a chunk that failed. A chunk of one member cannot be split. */

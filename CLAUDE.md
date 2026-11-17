@@ -128,7 +128,10 @@ packages/cli   the `orglens` binary                            imports only `@sf
   Where the Salesforce library falls short, the word of the org is taken (decision record 0047): a file in a
   folder the library knows no type for is counted by the type the org describes with that folder, and a
   component of a package that comes back without the prefix of the package is the one the org listed, when the
-  retrieve asked for the listed name and not for the short one.
+  retrieve asked for the listed name and not for the short one. A part comes with its parent and is not named
+  in a retrieve, with one exception (decision record 0049): when Salesforce cannot find a parent the org does
+  not list, its listed parts are asked for by their own names in one more retrieve. That is done only for a
+  parent the Salesforce library keeps with a file for every part, such as an object.
   The file of custom labels is not missing when the org lists no label. A snapshot of a Git source is not judged
   by tier. An impact answer counts such a warning when it can be about a type it covers, which no warning is
   while every analysed type is of the tier. `exclude_types` of an org source in `orglens.toml` leaves types
