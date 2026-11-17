@@ -11,6 +11,14 @@ your own machine.
 > [roadmap](https://github.com/taouani/sf-orglens/blob/main/docs/plans/re-architecture-plan.md#roadmap).
 
 ```sh
+npm install --global sf-orglens@next
+```
+
+That installs the newest pre-release, and the engine with it. The package is `sf-orglens`, and the command is
+`orglens`. **Do not run `npx orglens`:** the name `orglens` is not a package of this project, and npx fetches
+whatever package has that name. To run OrgLens without installing it, use `npx sf-orglens@next`.
+
+```sh
 orglens init                              # make the current folder a workspace
 orglens source add prod --kind org        # declare an org, a sandbox or repository folders
 orglens source add repo --kind git --path force-app --tracks prod

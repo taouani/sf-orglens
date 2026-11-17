@@ -74,7 +74,7 @@ skipped. Without them, 35 are skipped: CI does not download the codebases and sk
 Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from version 2 at
 the end of Phase 0, and every earlier version is migrated. 19 decision records are new, 0035 to 0053, of which
 0036 is superseded by 0038 and 0052 by 0053. 26 pull requests, 20 to 45, each with a code review by a separate
-agent before it was merged. The workflow "Live org" ran ten times against the test org.
+agent, which comes before the merge. The workflow "Live org" ran ten times against the test org.
 
 ## What was measured
 
@@ -155,9 +155,10 @@ them was not read. Only one org was read, so how common this is in other orgs is
   npm forbids that, and the record of that answer was never accepted (record 0052). Your second answer of that
   day was to publish the pre-release itself on npm (record 0053). The install line is now
   `npm install --global sf-orglens@0.1.0-next.0`.
-- **What "the first release" is, was decided and is asked again.** You decided that it is the first one on npm
-  (record 0051), when no pre-release went there. Whether a pre-release on npm fixes the names, the JSON output
-  and the exit codes is put to you again.
+- **What "the first release" is, is decided:** the first version on npm without a pre-release part. You decided
+  that it is the first one on npm (record 0051), when no pre-release went there, and when asked again that a
+  pre-release on npm is not it (record 0053). Until then the names, the JSON output and the exit codes can
+  change from one pre-release to the next.
 
 ## What is not done, and what is not verified
 
@@ -189,7 +190,8 @@ them was not read. Only one org was read, so how common this is in other orgs is
   GitHub and the jobs that install from npm have never run.
 - **Nothing of the publishing was tried against npm.** I have no account there. The script of the job was run
   on my machine against a registry that keeps what it is sent, without the provenance: a first publish, the
-  same run again, a second version, the tag `latest` moved, and other bytes under a version refused. Not tried:
+  same run again, a second version, the tag `latest` moved, a move of the tag refused, and other bytes under a
+  version refused. Not tried:
   trusted publishing, the provenance, the token of the first publish, the organization, and whether npm takes
   the address of the repository as the packages name it. Record 0053 lists them.
 - The new install line was tried against a registry on my machine that holds the two packed files, on Linux
@@ -210,20 +212,17 @@ them was not read. Only one org was read, so how common this is in other orgs is
    `npm-next` on GitHub with yourself as reviewer, and a token for the first publish as a secret of that
    environment. [`docs/releases/publishing.md`](../releases/publishing.md) has the steps. Never send me the
    token.
-3. **What a pre-release on npm fixes.** Asked on 17 November 2026, with three answers: nothing before the first
-   version without a pre-release part, which I recommend, the names now, or everything now. The release notes
-   hold the mark `[open]` at that point.
-4. **Your word for the pre-release.** When the two points above are done, I take the mark out of the release
-   notes in a pull request, rehearse, and then ask you. The run that publishes cannot be undone, and I start it
-   only on your word for that version. You then approve its job in the environment.
+3. **Your word for the pre-release.** When the point above is done, I rehearse and then ask you. The run that
+   publishes cannot be undone, and I start it only on your word for that version. You then approve its job in
+   the environment. The release notes hold no mark `[open]` any more.
    - Not a question, a setting: GitHub can make releases immutable. It is off in this repository, and only you
      can turn it on. Record 0050 says that a published pre-release is not changed. The setting would hold that.
-5. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as
+4. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as
    an org lists them, fields included. Asked on 15 November 2026.
-6. **The draft of the [Phase 2 plan](../plans/phase-2.md)** and its questions. Nothing of Phase 2 is built
+5. **The draft of the [Phase 2 plan](../plans/phase-2.md)** and its questions. Nothing of Phase 2 is built
    before you approve it.
-7. **From Phase 0, still open:** part G of its test plan, your reading of ten entries of the answer key, and
+6. **From Phase 0, still open:** part G of its test plan, your reading of ten entries of the answer key, and
    whether private vulnerability reporting is switched on in the settings of the repository.
-8. **Choices of mine that are yours to strike.** Records 0039 to 0050 and record 0053 each list the choices
+7. **Choices of mine that are yours to strike.** Records 0039 to 0050 and record 0053 each list the choices
    their author made.
    The ones with the most weight are named in the status of each work package in the plan.

@@ -2,8 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-11-17
-- Decisions: none (an answer of the maintainer of 2026-11-17, which changes the answer to the sixth question of the
-  Phase 1 plan and takes the place of record 0052)
+- Decisions: none (two answers of the maintainer of 2026-11-17. The first changes the answer to the sixth question
+  of the Phase 1 plan and takes the place of record 0052. The second says what record 0051 means now)
 
 ## Context
 
@@ -56,11 +56,13 @@ of a newer one. Once a version without a pre-release part is under `latest`, the
 
 **Who publishes.** Only the workflow `.github/workflows/pre-release.yml`, started by hand on `main` with
 "publish" on. Its job "Publish on npm" runs in the environment `npm-next` of GitHub. The maintainer gives that
-environment required reviewers, so every publish waits for an approval there. npm trusts the job through
-trusted publishing. The first publish cannot: the two packages do not exist, so they have no settings. For that
-one run the maintainer puts a token of npm into the environment as the secret `NPM_TOKEN`, and deletes the
-secret and the token afterwards. The assistant has no account on npm, never holds a token and publishes nothing
-by itself. It starts a run with "publish" on only after the maintainer has said so for that version, as before.
+environment required reviewers and lets only `main` use it, so every publish waits for an approval there. The
+first job of the workflow reads the environment and stops a run with "publish" on when it asks for no reviewer.
+npm trusts the job through trusted publishing. The first publish cannot: the two packages do not exist, so they
+have no settings. For that one run the maintainer puts a token of npm into the environment as the secret
+`NPM_TOKEN`, and deletes the secret and the token afterwards. The assistant has no account on npm, never holds
+a token and publishes nothing by itself. It starts a run with "publish" on only after the maintainer has said
+so for that version, as before. It never approves a job in the environment and never changes the environment.
 
 **What the job does.**
 
@@ -73,12 +75,14 @@ by itself. It starts a run with "publish" on only after the maintainer has said 
   npm shows with other bytes stops the job: npm never takes a version twice.
 - An error that can pass (the transparency log of Sigstore, a 5xx answer of npm, the network) is tried again,
   three attempts in all. Any other error stops at once, with a sentence that says what to look at.
-- Then it moves `latest` as said above. When the tag cannot be moved, the job stays green and its summary gives
-  the command to run by hand.
+- Then it moves `latest` as said above. When the tag cannot be moved, the job fails and the jobs after it do
+  not run. The publish is not undone by that. The summary of the job gives the command to run by hand, and the
+  failed jobs are run again once the tag can be moved or was moved.
 
 **The order of a run with "publish" on:** check and pack, try the install on three systems, publish on npm,
-create the pre-release on GitHub, and install from npm on the three systems, each with the npm that Node.js
-brings and with the newest one.
+install from npm on the three systems, each with the npm that Node.js brings and with the newest one, and last
+create the pre-release on GitHub. The page of a release is what tells people that there is one, so it comes
+after an install from npm has worked.
 
 **The rehearsal.** With "publish" off the run checks, packs and tries the install line, and publishes nothing.
 The line is tried against a registry on the runner that holds the two packed files and sends every other
@@ -95,25 +99,38 @@ it rehearsed a publish to npm by another way than the one that now exists, and a
 "publish" off is the rehearsal. A workflow for a release without a pre-release part is written when one is
 planned. The workflow "Pre-release" refuses such a version.
 
-**Choices of the author, which the maintainer can strike:** the name `npm-next` of the environment and that
-`latest` follows `next`, both taken from the workflow the maintainer showed; that provenance is always on; that
-the files stay attached to the pre-release on GitHub; that the install line names the exact version and not
-`@next`; and the removal of the workflow "Release (dry run)".
+**Choices of the author, which the maintainer can strike:**
 
-**Not decided here: what a pre-release on npm fixes.** Record
-[0051](0051-the-first-release-is-the-first-on-npm.md) fixes the names, the JSON output and the exit codes with
-"the first release on npm", and was written when no pre-release went there. It says that the question comes
-back to the maintainer before a package of OrgLens goes to npm. It was put to the maintainer on 2026-11-17 with
-three answers: nothing is fixed before the first version without a pre-release part, which the author
-recommends, the names are fixed now, or everything is fixed now. The release notes of the first pre-release
-hold the mark `[open]` at that point, and the workflow publishes no notes with the mark.
+- The name `npm-next` of the environment and that `latest` follows `next`, both taken from the workflow the
+  maintainer showed.
+- That the packages are published directly with `npm publish`, as in that workflow, and not staged
+  (see "Staged publishing was not taken" below).
+- That the job fails when `latest` cannot be moved. The workflow the maintainer showed goes on with a warning.
+- That the pre-release on GitHub waits for the installs from npm.
+- That the first job stops a publishing run when the environment asks for no reviewer.
+- That provenance is always on, and that the files stay attached to the pre-release on GitHub.
+- That the install line names the exact version and not `@next`.
+- The removal of the workflow "Release (dry run)".
+- The rule in [`CLAUDE.md`](../../CLAUDE.md) about what the assistant never does on npm and in the environment.
+  The maintainer said that the workflow publishes with an approval. The words of the rule are the author's.
+
+**A pre-release on npm fixes nothing.** Record [0051](0051-the-first-release-is-the-first-on-npm.md) fixes the
+names, the JSON output and the exit codes with "the first release on npm", and was written when no pre-release
+went there. It says that the question comes back to the maintainer before a package of OrgLens goes to npm. It
+was put to the maintainer on 2026-11-17 with three answers: nothing is fixed before the first version without a
+pre-release part, the names are fixed now, or everything is fixed now. The maintainer chose the first. So "the
+first release" of records 0022, 0027 and 0051 is the first version of OrgLens on npm that has no pre-release
+part. Until then the names of the two packages and of the command, the JSON output and the exit codes can
+change from one pre-release to the next, as record 0051 says, and a pre-release that changes one of them says
+so in its release notes.
 
 ## Consequences
 
 - **The hole of record 0050 is closed for a pre-release made this way.** What `npm update --global` finds under
   the two names is what this project published, and it moves an install to the newest pre-release.
-- **The names are in public use from the first pre-release.** A later change of a name leaves the old packages
-  on npm. That is what the open question above is about.
+- **The names are in public use from the first pre-release, and can still change.** A later change of a name
+  leaves the old packages on npm, under the account of the maintainer. Whoever installed under the old name
+  gets no newer version unless the old package says where the new one is, which `npm deprecate` can do.
 - **A published version stays.** npm never takes the same version twice, and by its
   [policy on unpublishing](https://docs.npmjs.com/policies/unpublish) a version can be taken back only under
   conditions. A pre-release with a defect is corrected by the next version, as record 0050 says. `npm deprecate`
@@ -128,34 +145,65 @@ hold the mark `[open]` at that point, and the workflow publishes no notes with t
   sign-in, and the settings of the repository on GitHub. Whoever can change the workflow on `main` and approve
   in the environment can publish. After trusted publishing works, the page of npm recommends to forbid tokens
   for the packages.
+- **The environment is the only thing that holds a branch back.** A trusted publisher on npm names a
+  repository, a workflow file and an environment, and no branch. The condition of the job on `main` is in the
+  workflow file, and a copy of the file on another branch can leave it out. Such a copy is stopped by the
+  environment alone: by its rule that only `main` may use it, and by its reviewer.
+- **The approval does not tell the assistant from the maintainer.** The assistant works on GitHub through the
+  account of the maintainer. A run it starts is a run of that account, and the reviewer of the environment is
+  the same account, which is why "Prevent self-review" stays unticked there. Whether the access the assistant
+  was given would let it approve a waiting job or change an environment was not tried, and is not to be tried.
+  That it never does either is a rule of conduct, written into `CLAUDE.md`, and no barrier of GitHub. A barrier
+  needs an account of its own for the assistant, which is the maintainer's to set up.
 - **The token of the first publish** is a credential in a secret of an environment of GitHub, as the logins of
-  the test org are. It is never in the repository, in a log or in a message. While it exists, a run that is
-  approved in the environment can use it. The maintainer deletes the secret and the token after the first
-  publish.
+  the test org are. It is never in the repository, in a log or in a message. It cannot be limited to the two
+  packages, which do not exist yet, and a workflow cannot type a second factor. So it is a token that can
+  publish a new version of every package of the maintainer's account without a second factor, also those of
+  other projects. While it exists, a run that is approved in the environment can use it. The maintainer creates
+  it just before the run, with a life of one day, and deletes the secret and the token after the first publish.
+- **Publishing with a token has an end.** The page of npm on access tokens says: "The ability to publish new
+  package versions directly with a granular access token will be removed in January 2027." A first publish after
+  that needs another way, and the one in sight is the staged publish below.
 - **A trusted publisher cannot be set up long before it is used.** By the page of npm it expires when it has
   not published within two days. So the maintainer sets the two publishers up shortly before the second
   pre-release. Until then nothing can be published without a new token.
 - **Provenance is public.** A package records the repository, the workflow and the run that built it, and the
   transparency log of Sigstore keeps that. `npm audit signatures` checks it. The checksums of record 0050 still
   only show a download that went wrong.
-- **npm can hold a version that GitHub does not show.** The job on GitHub runs after the one on npm. When it
-  fails, the failed jobs of the run are run again. The same holds for one package of two. A new run packs
-  again, and whether its files have the same bytes was not tried: run the failed jobs again, not a new run.
+- **npm can hold a version that GitHub does not show.** The job on GitHub runs last. When a job between the
+  publish and it fails, or the tag `latest` cannot be moved, the two packages are on npm and no page on GitHub
+  says so. The failed jobs of the run are run again. The same holds for one package of two. The packed files of
+  a run are kept for seven days. After that all jobs are run again, which packs again. The reviewer of this
+  record packed twice from one commit, with a full build between, and got the same bytes both times, on one
+  machine. With the same bytes a package on npm is left as it is, and with other bytes the job stops.
 - **An environment that does not exist is made by GitHub without reviewers** the first time a job names it.
-  Such a job does not wait. The steps say to create the environment first.
+  Such a job does not wait. The steps say to create the environment first, and the first job of the workflow
+  stops a publishing run when the environment asks for no reviewer. Whether the token of a run may read the
+  environments is seen in the first rehearsal with that step.
 - **Staged publishing was not taken.** `npm stage publish` puts a version in front of a maintainer, who approves
   it on npm with a second factor. Here the approval is the one of the environment on GitHub, as in the workflow
   the maintainer showed. A trusted publisher made today allows only `npm stage publish` unless `npm publish` is
-  ticked, which the steps say.
+  ticked, which the steps say. The pages of npm recommend the staged way for automation. It would also serve
+  the first publish: by the documentation that comes with npm 12.2, `npm stage publish` creates a package that
+  does not exist, with a token of any kind, so a token that can only stage would do, and no token that passes
+  the second factor would be needed. That way is not built and was not tried. It is named in the steps of the
+  maintainer as the other way.
 - **Tried, on the machine of the author.** The install line against the stand-in registry, with npm 11.19 and
   12.2 on Linux. The publish step and the tag step of the workflow, without `--provenance`, against a registry
   on that machine that keeps what it is sent: a first publish, the same run again, a second version, `latest`
-  moved, a missing `latest` set, a release under `latest` left alone, other bytes under a version refused. That
-  try found one defect: npm read `release/<file>` as the short name of a repository on GitHub, so the step
-  names the files with `./` in front. The second version was the first with another version number.
+  moved, a missing `latest` set, a release under `latest` left alone, other bytes under a version refused, and
+  a move of the tag refused, which fails the job. That try found one defect: npm read `release/<file>` as the
+  short name of a repository on GitHub, so the step names the files with `./` in front. The second version was
+  the first with another version number.
+- **Tried by the reviewer,** the same way, with the npm that the job installs: every publish answered with an
+  error of the server, a publish that was stored and answered with an error, the engine published and the
+  command line refused and then the run again, and the answers 401, 404 and 422. Each ended as this record
+  says.
 - **What `latest` does was tried the same way,** with npm 11.19 and 12.2. While `latest` stays on the first
   pre-release and `next` is on the second, `npm update --global` leaves an installed first pre-release where it
-  is. Once `latest` is moved, `npm outdated --global` names the second and `npm update --global` installs it.
+  is, and the reviewer saw it put the first back in the place of an installed second. That is why the job fails
+  when the tag cannot be moved. Once `latest` is moved, `npm outdated --global` names the second and
+  `npm update --global` installs it.
   An install without a tag gives the version under `latest`. `npx sf-orglens@next` runs the command.
 - **Not tried, and it cannot be before the first publish:** anything against the registry of npm. That is the
   OIDC token and trusted publishing, provenance, whether npm takes the repository address in the form the
@@ -163,5 +211,13 @@ hold the mark `[open]` at that point, and the workflow publishes no notes with t
   published with `--tag next`, moving a tag with trusted publishing, and how long npm takes to show a new
   version, for which the install job waits and tries again. The job on npm and the jobs after it have never
   run.
+- **Read by the reviewer, and so no longer open:** a package of npm's own that is published with trusted
+  publishing names its repository in the form `git+https://github.com/<owner>/<name>.git`, which is the form of
+  the two packages here. The documentation of `npm trust` that comes with npm 12.2 says of a trusted publisher:
+  "Package must exist".
+- **Not confirmed from any page:** that npm answers "OIDC permission denied" when a publisher does not allow
+  `npm publish`, and that it refuses a repository that does not match with the code E422. Two sentences of the
+  job rest on them. The reviewer found the first neither on the page nor in the code of npm. Whether a job that
+  is skipped makes its environment, the pages of GitHub do not say.
 - The first pre-release was to go to a few colleagues by a link. On npm anybody can find and install it. The
   release notes already say what it is.

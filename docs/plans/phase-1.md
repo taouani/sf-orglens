@@ -113,7 +113,9 @@ One thing your answer to Q6 leaves open, which I put to you before the release o
 say that the package names and the JSON contract can still change "until the first release". Whether this
 pre-release is that release was not decided with your answer. You decided it on 17 November 2026: it is not.
 The first release is the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
-With your later choice that pre-releases go to npm, I put to you again what the first of them fixes.
+With your later choice that pre-releases go to npm, I put to you again what the first of them fixes. You
+answered on the same day: nothing. The first release is the first version on npm without a pre-release part
+(record [0053](../adr/0053-a-pre-release-is-published-on-npm.md)).
 
 The questions as they were asked on 13 November 2026:
 
@@ -1337,11 +1339,11 @@ way to the pre-release is built. **The pre-release itself is not published.**
   `names`, its golden file, `docs/releases/npm-names.md` and the workflow "Release (dry run)" are removed.
   Choices of mine in that record, which you can strike: that the tag `latest` follows `next`, the name of the
   environment, that provenance is always on, and the removal of that workflow.
-- **What the release still waits for.** Three things. What only you can set up: the organization `sf-orglens`
+- **What the release still waits for.** Two things. What only you can set up: the organization `sf-orglens`
   on npm, the environment on GitHub and a token for the first publish
-  ([`docs/releases/publishing.md`](../releases/publishing.md)). Your answer to what a pre-release on npm fixes:
-  the release notes hold the mark `[open]` at that point, and the workflow refuses to publish notes with the
-  mark. And your word for that version: the run that publishes cannot be undone.
+  ([`docs/releases/publishing.md`](../releases/publishing.md)). And your word for that version: the run that
+  publishes cannot be undone. The release notes hold no mark `[open]` any more: you answered on 17 November
+  2026 that a pre-release on npm fixes neither the names nor the JSON output.
 - **The rehearsal.** [Run 1 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882)
   on `main` on 17 November 2026, with "publish" off. The check and the packing passed, and so did all six tries
   of the install line: on Linux, Windows and macOS, each with the npm that Node.js brings and with the newest

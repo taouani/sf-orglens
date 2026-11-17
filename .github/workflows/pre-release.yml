@@ -9,8 +9,11 @@ name: Pre-release
 # a release can be rehearsed. Nothing publishes on a push or a merge.
 #
 # The job that publishes on npm runs in the environment "npm-next". Give that
-# environment required reviewers (Settings > Environments), so that each
-# publish also waits for an approval. Without them the job does not wait.
+# environment required reviewers (Settings > Environments) and let only the
+# branch main use it, so that each publish also waits for an approval. Without
+# reviewers the job would not wait, so the first job refuses to go on. A
+# trusted publisher of npm names no branch: the environment is what keeps a
+# copy of this workflow on another branch from publishing.
 #
 # It publishes through trusted publishing: npm trusts this workflow, in that
 # environment, through the OIDC token of GitHub, so no token for npm is stored
@@ -24,11 +27,12 @@ name: Pre-release
 # published within two days, so it is set up shortly before the second
 # pre-release. docs/releases/publishing.md has the steps of the maintainer.
 #
-# Each publish also tries to move the tag "latest" to the new version, while
-# "latest" is a pre-release: npm install and npm update without a tag follow
-# "latest", and would otherwise stay on the first pre-release. Once a version
+# Each publish also moves the tag "latest" to the new version, while "latest"
+# is a pre-release: npm install and npm update without a tag follow "latest",
+# and npm update would otherwise put an older pre-release back. Once a version
 # without a pre-release part is "latest", it is left alone. When the tag
-# cannot be moved, the job stays green and its summary gives the command.
+# cannot be moved, the job fails and says what to do. Its failed jobs can be
+# run again: what is on npm already is left as it is.
 #
 # The two jobs that publish run no code of the repository and of its
 # dependencies: they publish the files the first job packed. Values reach the
@@ -59,6 +63,10 @@ jobs:
     name: Check and pack
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # To read the environments of the repository, for the step that looks for the reviewer of npm-next.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,6 +81,33 @@ jobs:
           VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
         run: node scripts/pre-release.mjs check "$VERSION" "$PUBLISH" "$GITHUB_REF"
+      # GitHub makes an environment that a job names and that does not exist, without reviewers, and a job in
+      # it then waits for nobody. A rehearsal only says what it found. The list is asked for, not the one
+      # environment, so that "it does not exist" and "this run may not look" are two answers.
+      - name: The environment npm-next asks for a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          rules=0
+          if answer=$(gh api "repos/$GITHUB_REPOSITORY/environments?per_page=100" --jq '.environments[] | select(.name == "npm-next") | [.protection_rules[]? | select(.type == "required_reviewers")] | length' 2> /dev/null); then
+            if [ -z "$answer" ]; then
+              found="The environment npm-next does not exist."
+            else
+              rules=$answer
+              found="The environment npm-next has $rules rule(s) that ask for a reviewer."
+            fi
+          else
+            found="GitHub did not show the environments of the repository to this run."
+          fi
+          if [ "$rules" -ge 1 ]; then
+            echo "$found"
+          elif [ "$PUBLISH" = "true" ]; then
+            echo "::error::$found Nothing is published without a reviewer: docs/releases/publishing.md has the steps."
+            exit 1
+          else
+            echo "::notice::$found A run with publish on would stop here."
+          fi
       - name: The tag of the version does not exist yet
         if: ${{ inputs.publish }}
         env:
@@ -140,7 +175,7 @@ jobs:
     needs: [pack, try]
     if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment: npm-next
     permissions:
       # For trusted publishing (the OIDC token of GitHub stands in for a token of npm) and for
@@ -208,8 +243,10 @@ jobs:
                 if grep -q 'OIDC permission denied' "$log"; then
                   # npm knew the workflow, and its trusted publisher does not allow a direct publish.
                   echo "::error::npm accepted the identity of the workflow but not the publish. On npmjs.com, edit the trusted publisher of $name and tick npm publish and npm dist-tag under Allowed actions. Then run the failed jobs of this run again."
+                elif grep -q 'E_STAGE_REQUIRED' "$log"; then
+                  echo "::error::The token may only stage a version, not publish it. For the first publish the secret NPM_TOKEN needs the permission Read and write (publish and stage). Then run the failed jobs of this run again."
                 elif grep -Eq 'code E401|code E403|code E404|code ENEEDAUTH|code EOTP' "$log"; then
-                  echo "::error::npm refused the publish of $name. Check its trusted publisher on npmjs.com (this repository, workflow pre-release.yml, environment npm-next), or, for a package that is not on npm yet, the secret NPM_TOKEN of the environment npm-next and that the organization of the scope exists. Then run the failed jobs of this run again."
+                  echo "::error::npm refused the publish of $name. Check its trusted publisher on npmjs.com (this repository, workflow pre-release.yml, environment npm-next), or, for a package that is not on npm yet, the secret NPM_TOKEN of the environment npm-next (Read and write for all packages, allowed to bypass the second factor) and that the organization of the scope exists. npm can also refuse a new name as too near to one that exists: the error above says so. Then run the failed jobs of this run again."
                 elif grep -q 'code E422' "$log"; then
                   echo "::error::npm did not accept the provenance of $name: see the error of npm above. The repository that its package.json names must be the one of this workflow."
                 else
@@ -230,9 +267,10 @@ jobs:
           # With "./" in front: npm reads "release/<file>" as the short name of a repository on GitHub.
           publish @sf-orglens/engine "./release/sf-orglens-engine-$VERSION.tgz" || exit 1
           publish sf-orglens "./release/sf-orglens-$VERSION.tgz" || exit 1
-      # A failure here does not undo the publish: the summary says how to move the tag by hand.
+      # npm install and npm update without a tag follow "latest". A failure here does not undo the publish.
+      # It stops the jobs after this one, because npm update would put an older pre-release back in the place
+      # of this one. The failed jobs can be run again once the tag can be moved, or was moved by hand.
       - name: Move the tag latest, while it is a pre-release
-        id: latest
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ inputs.version }}
@@ -244,11 +282,12 @@ jobs:
               # No answer: npm could not be reached, or the package has no tag latest. The list of its tags
               # tells the two apart. When npm could not be reached nothing moves: a release could otherwise
               # lose its tag to a pre-release.
-              if ! tags=$(npm dist-tag ls "$name" 2>/dev/null) || [ -z "$tags" ] || printf '%s\n' "$tags" | grep -q '^latest: '; then
-                echo "::warning::npm did not say which version of $name is latest, so the tag was not moved. If it is a pre-release, run: npm dist-tag add $name@$VERSION latest"
+              if ! tags=$(npm dist-tag ls "$name" 2>/dev/null) || [ -z "$tags" ]; then
+                echo "::error::npm did not say which version of $name is latest, so the tag was not moved."
                 not_moved="$not_moved $name"
                 continue
               fi
+              current=$(printf '%s\n' "$tags" | sed -n 's/^latest: //p')
             fi
             case "$current" in
               "$VERSION") echo "latest of $name is $VERSION already." ;;
@@ -257,29 +296,54 @@ jobs:
                 if npm dist-tag add "$name@$VERSION" latest; then
                   echo "latest of $name moved from ${current:-nothing} to $VERSION."
                 else
-                  echo "::warning::$name@$VERSION is published, but the tag latest could not be moved to it: npm needs a trusted publisher that allows npm dist-tag, or a token. Run, after npm login: npm dist-tag add $name@$VERSION latest"
+                  echo "::error::$name@$VERSION is published, but the tag latest could not be moved to it: npm needs a trusted publisher that allows npm dist-tag, or a token."
                   not_moved="$not_moved $name"
                 fi
                 ;;
               *) echo "latest of $name is $current, a release: left as it is." ;;
             esac
           done
-          echo "not_moved=$not_moved" >> "$GITHUB_OUTPUT"
-      - name: Summary
-        env:
-          VERSION: ${{ inputs.version }}
-          NOT_MOVED: ${{ steps.latest.outputs.not_moved }}
-        run: |
           {
             echo "Published @sf-orglens/engine@$VERSION and sf-orglens@$VERSION with the tag next: https://www.npmjs.com/package/sf-orglens"
-            for name in $NOT_MOVED; do
-              echo "The tag latest of $name was not moved. After npm login, run: npm dist-tag add $name@$VERSION latest"
+            for name in $not_moved; do
+              echo "The tag latest of $name is not on $VERSION. Tick npm dist-tag in its trusted publisher on npmjs.com, or run after npm login: npm dist-tag add $name@$VERSION latest. Then run the failed jobs of this run again."
             done
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$not_moved" ]; then
+            echo "::error::The two packages are published, and the tag latest is not on $VERSION for:$not_moved. The summary of this job says what to do. Then run the failed jobs of this run again."
+            exit 1
+          fi
 
+  install:
+    name: Install from npm (${{ matrix.os }}, npm ${{ matrix.npm }})
+    needs: npm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        npm: [bundled, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Take the newest npm
+        if: ${{ matrix.npm == 'latest' }}
+        run: npm install --global npm@latest
+      - name: Install with the line of the release notes, and run the binary
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/pre-release.mjs try "$VERSION" npm
+
+  # After the installs from npm: the page of a release is what tells people that there is one.
   github:
     name: Publish on GitHub
-    needs: npm
+    needs: [npm, install]
     if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -313,29 +377,3 @@ jobs:
             --prerelease \
             --title "OrgLens $VERSION (pre-release)" \
             --notes-file release/notes.md
-
-  install:
-    name: Install from npm (${{ matrix.os }}, npm ${{ matrix.npm }})
-    needs: npm
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        npm: [bundled, latest]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .node-version
-      - name: Take the newest npm
-        if: ${{ matrix.npm == 'latest' }}
-        run: npm install --global npm@latest
-      - name: Install with the line of the release notes, and run the binary
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: node scripts/pre-release.mjs try "$VERSION" npm

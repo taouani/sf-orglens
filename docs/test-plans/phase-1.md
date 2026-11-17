@@ -301,12 +301,11 @@ enough for me to build a case of it in the fixture project.
 ## I. The pre-release
 
 The pre-release `0.1.0-next.0` is not published, and this part waits for it. It is published on npm and on
-GitHub by the workflow "Pre-release" (records 0050 and 0053). Three things come first:
+GitHub by the workflow "Pre-release" (records 0050 and 0053). Two things come first:
 
 1. What only you can set up: the organization `sf-orglens` on npm, the environment `npm-next` on GitHub and the
    token for the first publish. [`docs/releases/publishing.md`](../releases/publishing.md) has the steps.
-2. Your answer to what a pre-release on npm fixes, which the release notes wait for.
-3. Your word for the run that publishes, and your approval of its job in the environment. The run cannot be
+2. Your word for the run that publishes, and your approval of its job in the environment. The run cannot be
    undone.
 
 | #   | Do                                                                                    | Expect                                                                                                                                                                     |
@@ -341,11 +340,10 @@ whatever package has that name.
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. What a pre-release on npm fixes of the names and the JSON output (part I). Asked on 17 November 2026.
-3. Your word for the run that publishes the pre-release, once you have set up what part I names.
-4. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
-5. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
+2. Your word for the run that publishes the pre-release, once you have set up what part I names.
+3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
+4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 
 Two questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does not
-hand out stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027
-(record 0051).
+hand out stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027,
+on GitHub or on npm (records 0051 and 0053).

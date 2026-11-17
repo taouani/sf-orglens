@@ -29,7 +29,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -320,7 +320,15 @@ async function tryInstall(version, from) {
     console.error(`FAIL "${version}" is not a pre-release version such as 0.1.0-next.0.`);
     process.exit(1);
   }
+  if (from !== 'npm') {
+    const missing = PACKAGES.map((pkg) => tarballOf(pkg, version)).filter((file) => !existsSync(join(from, file)));
+    if (missing.length > 0) {
+      console.error(`FAIL ${resolve(from)} does not hold ${missing.join(' and ')}.`);
+      process.exit(1);
+    }
+  }
   const local = from === 'npm' ? undefined : await standIn(resolve(from), version);
+  const workspace = mkdtempSync(join(tmpdir(), 'orglens-try-'));
   try {
     const line = installLine(version);
     const where = local === undefined ? '' : ` --registry ${local.site}`;
@@ -340,7 +348,6 @@ async function tryInstall(version, from) {
     if (!said.startsWith(`sf-orglens/${version} engine/${version} `)) {
       throw new Error(`The installed binary does not say that it is version ${version}.`);
     }
-    const workspace = mkdtempSync(join(tmpdir(), 'orglens-try-'));
     await run('orglens init', { cwd: workspace });
     await run('orglens doctor', { cwd: workspace });
     console.log(`Version ${version} installs with the line of its release notes, and runs.`);
@@ -350,6 +357,7 @@ async function tryInstall(version, from) {
   } finally {
     local?.server.close();
     local?.server.closeAllConnections();
+    rmSync(workspace, { recursive: true, force: true });
   }
 }
 
