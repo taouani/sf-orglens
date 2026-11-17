@@ -526,14 +526,21 @@ the corrected reader. The one query and the comparison gave the numbers of runs 
 
 - **The parts give the same rows as the one query**, and the engine calls the reading whole. The step ended without
   the warning about a refused query.
-- **No request failed.** The step prints a line for every request that failed, also for one whose rows came another
-  way, and printed none. So the org answered the rest of each type that was at the limit: the condition
-  `RefMetadataComponentType NOT IN` with a list that does not hold `StandardEntity`.
-- **The rest holds the rows to standard objects.** The 9 rows from an Apex class to a standard object that runs 10
-  and 11 lacked are there, and no query but the rest of that type, or a part of it, can have given them.
+- **No request failed.** The step prints the requests that failed by the form of their condition, also one whose
+  rows came another way, and printed none. So the org answered the rest of each type that was at the limit: the
+  condition `RefMetadataComponentType NOT IN` with a list that does not hold `StandardEntity`. That such a query was
+  sent for each of the three types follows from the reader and from run 11: the reader asks by name for every type
+  of target it has seen in a row and leaves it out of the rest, and in run 11 the list of each of the three types
+  held other types than `StandardEntity`. The step does not print the queries that were answered.
+- **The rows to standard objects are all there, most likely through the rest.** Run 11 lacked 9 rows from an Apex
+  class to a standard object, and run 10 lacked 9 rows whose types it did not print. In run 12 none is lacking.
+  Three queries can have given them: the first query without a condition, the query for the whole type, which are
+  both cut off at 30 rows, and the rest of the type. If the two that are cut off gave the rows they gave in run 11,
+  the 9 came with the rest. Nothing guarantees that: the query has no order, and the step does not print which
+  query gave a row.
 - There are three requests fewer than in run 11. That fits the three queries for a standard object by name, which
   are no longer asked. It is a reading of the number: the step does not print the queries that were answered.
-- The 60 requests took about 9 seconds.
+- The one query and the 60 requests took about 9 seconds together.
 - **Not shown by this run.** The two ways the reader has for an org that does not answer as the test org did, the
   check of the rest against the rows it has and the whole type per group of components, did not come into play, and
   only tests against the mock org cover them. The cut at 30 rows stands in for the limit of 2,000: an org with more
@@ -543,7 +550,7 @@ the corrected reader. The one query and the comparison gave the numbers of runs 
 answer key gives the numbers of run 8: 129 of 189 pairs, the same tables by type, by way and by tier, and the
 same 20 pairs the key does not hold. The symbol tables are as before.
 
-**Not verified by this run.** The command `orglens snapshot` itself, which the step does not start: it calls
+**Not verified by runs 10 to 12.** The command `orglens snapshot` itself, which the step does not start: it calls
 the engine as the command does. An org above 2,000 rows, where the parts are asked for in earnest. Another
 edition, a sandbox, an org with a namespace. How many requests a large org needs.
 
