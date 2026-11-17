@@ -40,6 +40,10 @@ const LOCK_PAUSE_MS = 20;
 export interface LockSystem {
   readonly now: () => number;
   readonly pause: (milliseconds: number) => void;
+  /** The system the command runs on, when it is not the one of this process. */
+  readonly platform?: string | undefined;
+  /** Creates the lock file with its content, and fails with `EEXIST` when the file is there. */
+  readonly create?: ((file: string, mark: string) => void) | undefined;
 }
 
 /** How long a command waited for the lock and how long it held it, in milliseconds. */
@@ -55,6 +59,10 @@ export interface LockOptions {
 }
 
 const SYSTEM: LockSystem = { now: Date.now, pause };
+
+function createLock(file: string, mark: string): void {
+  writeFileSync(file, mark, { flag: 'wx' });
+}
 
 const codeOf = (error: unknown): unknown => (error as { code?: unknown }).code;
 
@@ -115,9 +123,19 @@ export function withConfigLock<T>(lockFile: string, work: () => T, options: Lock
   // The id of the process is for a person who reads the file. The rest tells this lock from any other.
   const mark = `${String(process.pid)} ${randomBytes(6).toString('hex')}\n`;
   const from = system.now();
+  const create = system.create ?? createLock;
+  const busy = { platform: system.platform ?? process.platform, pause: system.pause };
   for (;;) {
     try {
-      writeFileSync(lockFile, mark, { flag: 'wx' });
+      // Windows can refuse to create the lock at the moment the command in front removes its own, with the
+      // answer it gives for a file that is busy and not with `EEXIST`. One CI run on Windows failed that way:
+      // of eight commands that changed the configuration at the same moment, one ended with `EPERM` from this
+      // line. Most likely a third command still had the old lock open to look at it, so that the file was
+      // neither there nor gone. That is a reading of the error, not something that was watched. The step is
+      // tried again for a third of a second, as a read and a removal of the lock are.
+      whileBusyOnWindows(() => {
+        create(lockFile, mark);
+      }, busy);
       break;
     } catch (error) {
       if (codeOf(error) !== 'EEXIST') throw error;

@@ -10,6 +10,7 @@ import {
   type LockSystem,
   type LockTimes,
 } from '../src/api/config-lock.ts';
+import { BUSY_PAUSES_MS } from '../src/api/atomic-write.ts';
 import { tempDirs } from './helpers/store.ts';
 
 const dirs = tempDirs();
@@ -158,6 +159,50 @@ describe('the lock of the configuration', () => {
       pause: (milliseconds) => pauses.push(milliseconds),
     };
     expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), { system })).toMatch(OWN);
+    expect(pauses).toEqual([]);
+  });
+
+  /** A system that refuses to create the lock a number of times, as Windows does for a file that is busy. */
+  function refusing(platform: string, code: string, times: number): { system: LockSystem; pauses: number[] } {
+    const pauses: number[] = [];
+    let refused = 0;
+    return {
+      pauses,
+      system: {
+        now: () => START,
+        pause: (milliseconds) => pauses.push(milliseconds),
+        platform,
+        create: (file, mark) => {
+          if (refused < times) {
+            refused += 1;
+            throw Object.assign(new Error(`${code}: operation not permitted, open '${file}'`), { code });
+          }
+          writeFileSync(file, mark, { flag: 'wx' });
+        },
+      },
+    };
+  }
+
+  it.each(['EPERM', 'EBUSY'])('creates the lock again on Windows when the creation is refused with %s', (code) => {
+    const lock = join(dirs.next(), 'config.lock');
+    const { system, pauses } = refusing('win32', code, 2);
+    expect(withConfigLock(lock, () => readFileSync(lock, 'utf8'), { system })).toMatch(OWN);
+    expect(pauses).toEqual(BUSY_PAUSES_MS.slice(0, 2));
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it('passes the refusal on when Windows still refuses after a third of a second', () => {
+    const lock = join(dirs.next(), 'config.lock');
+    const { system, pauses } = refusing('win32', 'EPERM', Number.POSITIVE_INFINITY);
+    expect(thrownBy(() => withConfigLock(lock, () => 'done', { system }))).toMatchObject({ code: 'EPERM' });
+    expect(pauses).toEqual(BUSY_PAUSES_MS);
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it('passes the same refusal on at once on another system', () => {
+    const lock = join(dirs.next(), 'config.lock');
+    const { system, pauses } = refusing('linux', 'EPERM', 1);
+    expect(thrownBy(() => withConfigLock(lock, () => 'done', { system }))).toMatchObject({ code: 'EPERM' });
     expect(pauses).toEqual([]);
   });
 
