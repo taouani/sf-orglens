@@ -20,19 +20,27 @@ name: Pre-release
 # (npmjs.com, Settings of each of the two packages > Trusted publishing >
 # GitHub Actions: this repository, workflow pre-release.yml, environment
 # npm-next, with "npm publish" and "npm dist-tag" allowed). A package has
-# settings only once it exists, so the first publish uses a secret NPM_TOKEN
-# of the environment instead. npm tries trusted publishing first, so a run
-# that works with the secret present proves nothing: delete the secret after
-# the first publish. A new trusted publisher expires when it has not
-# published within two days, so it is set up shortly before the second
-# pre-release. docs/releases/publishing.md has the steps of the maintainer.
+# settings only once it exists, so the first publish used a secret NPM_TOKEN
+# of the environment instead (version 0.1.0-next.0, 17 November 2026). npm
+# tries trusted publishing first, so a run that works with the secret present
+# proves nothing: the secret is deleted after the first publish. A new trusted
+# publisher expires when it has not published within two days, so it is set up
+# shortly before the second pre-release. docs/releases/publishing.md has the
+# steps of the maintainer, and what the first publish showed.
 #
 # Each publish also moves the tag "latest" to the new version, while "latest"
 # is a pre-release: npm install and npm update without a tag follow "latest",
-# and npm update would otherwise put an older pre-release back. Once a version
-# without a pre-release part is "latest", it is left alone. When the tag
-# cannot be moved, the job fails and says what to do. Its failed jobs can be
-# run again: what is on npm already is left as it is.
+# and npm update would otherwise put an older pre-release back. npm creates a
+# new package with a placeholder version 0.0.0-stage under "latest", which the
+# step moves the tag away from as from any pre-release. Once a version without
+# a pre-release part is "latest", it is left alone. When the tag cannot be
+# moved, the job fails and says what to do. Its failed jobs can be run again:
+# what is on npm already is left as it is. The tags are read once more before
+# the pre-release on GitHub is created.
+#
+# npm shows a new version to a read only minutes after its publish. The
+# installs from npm wait for it, and so does the publish step when npm says
+# that a version exists which it does not show yet.
 #
 # The two jobs that publish run no code of the repository and of its
 # dependencies: they publish the files the first job packed. Values reach the
@@ -146,7 +154,7 @@ jobs:
     name: Try the install line (${{ matrix.os }}, npm ${{ matrix.npm }})
     needs: pack
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -241,6 +249,27 @@ jobs:
                 if [ "$(shown "$name" || true)" = "$integrity" ]; then
                   echo "$name@$VERSION is on npm."
                   return 0
+                fi
+                if grep -q 'cannot publish over' "$log"; then
+                  # npm holds the version and does not show it yet. A read saw the first version of a package
+                  # only minutes after its publish, so this is a publish that went through before: in this
+                  # run and answered with an error, or in the attempt of the run before this one.
+                  echo "npm says that $name@$VERSION exists and does not show it yet. Looking once a minute, ten times."
+                  for look in 1 2 3 4 5 6 7 8 9 10; do
+                    sleep 60
+                    on_npm=$(shown "$name" || true)
+                    if [ -n "$on_npm" ]; then break; fi
+                  done
+                  if [ "$on_npm" = "$integrity" ]; then
+                    echo "$name@$VERSION is on npm already, with the bytes of this run: left as it is."
+                    return 0
+                  fi
+                  if [ -n "$on_npm" ]; then
+                    echo "::error::$name@$VERSION is on npm with other bytes than the file of this run. npm never takes a version twice: set the next version in a pull request."
+                  else
+                    echo "::error::npm says that $name@$VERSION exists and did not show it within ten minutes. Run the failed jobs of this run again later: a version with the bytes of this run is then left as it is."
+                  fi
+                  return 1
                 fi
                 if grep -q 'OIDC permission denied' "$log"; then
                   # npm knew the workflow, and its trusted publisher does not allow a direct publish.
@@ -359,6 +388,40 @@ jobs:
           path: release
       - name: Hold the files against their checksums
         run: cd release && sha256sum --check SHA256SUMS
+      # The tags were moved seconds after the publish, when npm did not show the version yet. By now an install
+      # has found it, so they are read once more before a page says that there is a release. A read needs no
+      # login. "next" must be on the version, and "latest" too unless a release holds it.
+      - name: The tags on npm are on the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          wrong=""
+          for name in @sf-orglens/engine sf-orglens; do
+            if ! tags=$(npm dist-tag ls "$name" 2>/dev/null) || [ -z "$tags" ]; then
+              echo "::error::npm did not say where the tags of $name are."
+              wrong="$wrong $name"
+              continue
+            fi
+            next=$(printf '%s\n' "$tags" | sed -n 's/^next: //p')
+            latest=$(printf '%s\n' "$tags" | sed -n 's/^latest: //p')
+            echo "$name: next is on ${next:-no version}, latest is on ${latest:-no version}."
+            if [ "$next" != "$VERSION" ]; then
+              echo "::error::The tag next of $name is not on $VERSION."
+              wrong="$wrong $name"
+            fi
+            case "$latest" in
+              "$VERSION") ;;
+              "" | *-*)
+                echo "::error::The tag latest of $name is not on $VERSION: an install without a tag would not get this version."
+                wrong="$wrong $name"
+                ;;
+              *) echo "latest of $name is a release, which a pre-release leaves alone." ;;
+            esac
+          done
+          if [ -n "$wrong" ]; then
+            echo "::error::The tags on npm could not be read, or are not where they belong. docs/releases/publishing.md says how to move a tag by hand. Then run the failed jobs of this run again."
+            exit 1
+          fi
       - name: Create the pre-release
         env:
           GH_TOKEN: ${{ github.token }}

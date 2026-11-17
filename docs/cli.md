@@ -849,7 +849,8 @@ Within one `schemaVersion`:
   A program that reads the output ignores fields it does not know and handles values it does not know.
 
 A change that breaks the first two rules raises `schemaVersion` and is announced in the changelog. Until the first
-release on npm, the contract can still change with a pull request that says so (decision record 0051).
+version on npm without a pre-release part, the contract can still change with a pull request that says so
+(decision records 0051 and 0053). The pre-releases on npm do not fix it.
 
 ## Exit codes
 

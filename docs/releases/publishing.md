@@ -18,9 +18,11 @@ right.
 
 ## Once, before the first pre-release
 
+Both steps are done. They stay here for what the environment must keep.
+
 1. **The organization on npm.** Sign in on npmjs.com and create the organization `sf-orglens`, with the free
    plan for public packages. The engine is published as `@sf-orglens/engine`, and npm takes a package with that
-   scope only from the user or the organization of that name. No organization had the name on 17 November 2026.
+   scope only from the user or the organization of that name. No organization had the name before you made it.
    If npm refuses the name, stop and tell me: the scope of the engine has to be chosen again, which changes a
    package name.
 2. **The environment on GitHub.** In the repository: Settings, Environments. If `npm-next` is in the list, open
@@ -51,8 +53,10 @@ barrier, GitHub must know me by another account than yours, and that is yours to
 
 ## The first pre-release
 
-These steps were done once, for `0.1.0-next.0`. They are needed again only for a package that is not on npm
-yet, and after January 2027 they no longer work.
+These steps were done once, for `0.1.0-next.0`, all eleven: you said on 17 November 2026 that the token and
+the secret are deleted, you looked at the two packages, and step 11 is the pull request that added this
+sentence. They are needed again only for a package that is not on npm yet, and npm takes this way away in
+January 2027.
 
 1. I start the workflow on `main` with "publish" off. It checks, packs and tries the install on three systems.
    Its first job also says what it found of the environment.
@@ -82,7 +86,8 @@ yet, and after January 2027 they no longer work.
    it is. The packed files of a run are kept for seven days. After that only "Re-run all jobs" works, which
    packs again. Two packs of the same commit had the same bytes when the reviewer of this page tried it on one
    machine, and with the same bytes a package on npm is left as it is. With other bytes the job stops and
-   publishes nothing.
+   publishes nothing. npm shows a new version to a read only minutes after its publish. When npm says that a
+   version exists which it does not show yet, the job looks once a minute, ten times, before it gives up.
 9. **Delete the secret `NPM_TOKEN`** from the environment, and delete the token on npmjs.com.
 10. Look at the two packages on npmjs.com: each shows version `0.1.0-next.0` under `next` and under `latest`.
 11. I open a pull request that changes `README.md` and `SECURITY.md`, which say until then that no version is
@@ -97,12 +102,19 @@ create a package that does not exist, with a token of any kind. The token would 
 and write (stage only)" and no bypass of the second factor: what the workflow sends waits on npmjs.com until you
 approve it there with your second factor. Such a token can publish nothing by itself. The workflow would have to
 be changed for it, and neither the reviewer nor I tried it. I kept the way of your other project. Say so if you
-prefer this one.
+prefer this one. It leaves the same placeholder version `0.0.0-stage` that the first publish left, by the
+[page of npm on staged publishing](https://docs.npmjs.com/staged-publishing/).
 
 ## Before the second pre-release
 
 By the page of npm, a new trusted publisher that has not published within two days expires. So set the two up
 shortly before the second pre-release, not after the first.
+
+You set the two up on 17 November 2026, half an hour after the first publish. The page of each package shows
+the publisher with the permissions `npm publish`, `npm stage publish` and `npm dist-tag`, and the status
+"Pending validation": npm asks for a publish through it before 19 November 2026, about 21:00 UTC. You chose on
+the same day to publish a second pre-release, `0.1.0-next.1`, within that time, to try the way without a
+token. Steps 1 to 3 below are done.
 
 1. On npmjs.com, in the settings of `sf-orglens`, under "Trusted publishing", add a publisher for GitHub
    Actions: the owner and the name of this repository, the workflow file `pre-release.yml` (the file name
@@ -147,7 +159,8 @@ and the run goes on.
 ## What the first publish showed
 
 [Run 5 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44164088211) published `0.1.0-next.0` on 17
-November 2026, from `main`, after you approved its job. I read its log. I did not look at npm.
+November 2026, from `main`, after you approved its job. I read its log. I did not look at npm: what is said here of the
+pages of npm and of the times npm gives is what you saw and sent me on the same day.
 
 - **npm took both packages with the token,** `@sf-orglens/engine` first and `sf-orglens` after it, each with
   its provenance, which was signed and written to the public log of Sigstore. npm took the scope, the name
@@ -155,26 +168,53 @@ November 2026, from `main`, after you approved its job. I read its log. I did no
   `git+https://github.com/taouani/sf-orglens.git`.
 - **npm warned about the token** at every use of it: "npm tokens that bypass 2FA are being restricted for
   account changes and direct publishing." That is the end this page names above.
-- **The tag `latest` was not on the new version.** Asked right after the publish, npm named `0.0.0-stage` as the
-  version under `latest` of both packages. The job took that for a pre-release and moved `latest` to
-  `0.1.0-next.0`, with the token. What `0.0.0-stage` is, I do not know: no page I read names it, and the
-  workflow published one version of each package. Look at the tab "Versions" of both packages. If a version
-  `0.0.0-stage` is listed there, tell me.
-- **npm showed the version to an install between four and five and a half minutes after the publish.** The
-  install jobs on Linux and Windows passed with their fifth try, which was their last. They now try eight
-  times and wait eleven minutes in all.
-- **One install job on macOS got no machine from GitHub** within fifteen minutes and was cancelled, so the job
-  that creates the pre-release on GitHub did not run. "Re-run failed jobs" ran the install, which passed, and
-  the pre-release on GitHub was created eighteen minutes after the two packages were on npm. The job on npm
-  did not run a second time.
+- **npm made a version `0.0.0-stage` of each package, by itself.** The page of each package lists two versions,
+  `0.0.0-stage` and `0.1.0-next.0`, both with the status "Published", and only `0.1.0-next.0` has the mark of a
+  provenance. `npm view sf-orglens time` gives 20:22:42.327 UTC for `0.0.0-stage`, which is to the millisecond the time
+  the package was created and the second in which `npm publish` of the workflow came back, and 20:24:50.715 UTC for
+  `0.1.0-next.0`. The workflow sent one publish per package, and no other run of the repository had the token. So npm
+  creates a new package with that version when it receives the first publish, and has the real version ready two minutes
+  later. `0.0.0-stage` is not a version of OrgLens. The
+  [page of npm on staged publishing](https://docs.npmjs.com/staged-publishing/), last edited on 10 November 2026, names
+  it: "When you stage a package that does not yet exist, npm publishes a placeholder version of the package with the
+  version `0.0.0-stage`", and "This placeholder version is publicly available". The page speaks of `npm stage publish`.
+  The workflow used `npm publish`, and no page I read says that a direct first publish gets the placeholder too. What it
+  holds, whether npm still needs it and whether it can be removed, the page does not say. I recommended to leave it
+  alone.
+- **The tag `latest` was on `0.0.0-stage`, not on the new version.** Asked right after the publish, npm named
+  `0.0.0-stage` as the version under `latest` of both packages. The job took that for a pre-release and moved
+  `latest` to `0.1.0-next.0`, with the token. Without that step an install without a tag would have got the
+  placeholder. You read the tags on the pages half an hour later: `next` and `latest` are on `0.1.0-next.0` for
+  both packages. The installs of the run name the version, so they did not show it. The run now reads the tags
+  once more before it creates the pre-release on GitHub, and fails when one is not on the version.
+- **An install found the version between four and five and a half minutes after the publish,** two to three
+  minutes after npm had it ready. The install jobs on Linux and Windows passed with their fifth try, which was
+  their last. They now try eight times and wait eleven minutes in all.
+- **One install job on macOS waited fifteen minutes for a machine of GitHub and was cancelled,** so the job
+  that creates the pre-release on GitHub did not run. Fifteen minutes was also the limit of that job, and I do
+  not know whether the limit ended it or GitHub did. The limit is twenty minutes now. "Re-run failed jobs" ran
+  the install, which passed, and the pre-release on GitHub was created eighteen minutes after the two packages
+  were on npm. The job on npm did not run a second time.
+- **A read does not see a new version for minutes, which the publish step did not expect.** It asks npm for
+  the version before it publishes and after an error. Had a publish gone through and been answered with an
+  error, or had the failed jobs been run again within those minutes, the step would have tried to publish
+  again, npm would have refused, and the step would have named the wrong cause. The step now waits when npm
+  says that the version exists: I tried it against a registry on my machine that hides a new version for a
+  while. It rests on the words "cannot publish over" in the answer of npm, which I know from npm and did not
+  see in this run.
 
 ## Not known
 
 - Anything of trusted publishing: whether npm accepts the identity of the workflow, whether the address of the
   repository passes there too, and whether the job can move a tag that way. The page says that the repository
   "must exactly match" and gives no example. The reviewer found a package of npm's own that is published with
-  trusted publishing and names its repository in the same form, so I expect it to pass.
-- What the version `0.0.0-stage` is that npm named under `latest`, and whether npm does the same for every new
-  package. The job moves `latest` whether a first version has it or not.
-- How long npm takes to show a new version to an install on another day. It was seen once.
+  trusted publishing and names its repository in the same form, so I expect it to pass. On moving a tag two
+  pages of npm disagree: the page on trusted publishers has the allowed action `npm dist-tag`, and the page of
+  the command `npm stage` says that such a token "can only be used with `npm stage publish` and `npm publish`".
+  The workflow follows the first, and the steps by hand are above.
+- What the version `0.0.0-stage` holds, whether npm makes one for every new package or only for one that is
+  published with such a token, and whether it can be removed. The job moves `latest` whether a first version
+  has it or not.
+- How long npm takes to show a new version to an install on another day, and whether a second version of a
+  package that exists takes as long as the first. It was seen once.
 - Staged publishing, the other way for a first publish. Nobody tried it.

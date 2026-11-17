@@ -75,7 +75,7 @@ tests. 2,099 tests are defined. On my machine, with the four public codebases do
 skipped. Without them, 35 are skipped: CI does not download the codebases and skips the tests on them.
 Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from version 2 at
 the end of Phase 0, and every earlier version is migrated. 19 decision records are new, 0035 to 0053, of which
-0036 is superseded by 0038 and 0052 by 0053. 26 pull requests, 20 to 45, each with a code review by a separate
+0036 is superseded by 0038 and 0052 by 0053. 27 pull requests, 20 to 46, each with a code review by a separate
 agent, which comes before the merge. The workflow "Live org" ran ten times against the test org.
 
 ## What was measured
@@ -148,7 +148,7 @@ them was not read. Only one org was read, so how common this is in other orgs is
   their own: a command that waited two seconds for the lock of the configuration and gave up while others
   took their turn, and two commands that could both take over a lock that was left behind.
 - **Effort.** The plan estimated about 33 developer-days in about twelve pull requests. The phase was built in
-  three calendar days, in 25 pull requests. As in Phase 0, the estimate measured the size of the work and
+  three calendar days, in 27 pull requests. As in Phase 0, the estimate measured the size of the work and
   not the time it took.
 - **The pre-release has a version with a pre-release part,** `0.1.0-next.0`, and is made by a workflow. The
   plan named neither. Record 0050 holds both.
@@ -193,21 +193,25 @@ them was not read. Only one org was read, so how common this is in other orgs is
   token on 17 November 2026, with their provenance, moved the tag `latest`, installed from npm on Linux, Windows and
   macOS, each with the npm that Node.js brings and with the newest one, and created the
   [pre-release on GitHub](https://github.com/taouani/sf-orglens/releases/tag/v0.1.0-next.0). I read the log of the run.
-  I have no account on npm and did not look there. Before that run, the script of the job had only run on my machine,
-  against a registry that keeps what it is sent.
+  I have no account on npm and did not look there. Before that run, the script of the job had only run against a
+  registry on one machine that keeps what it is sent, on mine and on the reviewer's.
   [`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed) has what the run showed.
   Three things of it:
-  - Asked right after the publish, npm named `0.0.0-stage` as the version under `latest` of both packages. The
-    job moved the tag to `0.1.0-next.0`. What `0.0.0-stage` is, I do not know.
-  - npm showed the version to an install only four to five and a half minutes after the publish. The install
-    jobs on Linux and Windows passed with the last of their five tries. They now try eight times.
+  - npm made a version `0.0.0-stage` of each package by itself when it received the first publish, and put
+    `latest` on it. The job moved the tag to `0.1.0-next.0`. You looked at npm on the same day: both versions
+    are listed, and the time of `0.0.0-stage` is the time the package was created. It is not a version of
+    OrgLens. The page of npm on staged publishing names it as a placeholder for a staged package. What it holds
+    and whether it can be removed, I do not know. You also read the tags: `next` and `latest` are on
+    `0.1.0-next.0` for both packages.
+  - An install found the version only four to five and a half minutes after the publish. The install jobs on
+    Linux and Windows passed with the last of their five tries. They now try eight times.
   - One install job on macOS got no machine from GitHub and was cancelled. "Re-run failed jobs" ran it, and the
     pre-release on GitHub came eighteen minutes after the packages were on npm.
-- **Not tried: trusted publishing,** which every pre-release after the first is published with, and moving a
-  tag with it. Staged publishing, the other way for a first publish. An install by a person, and
-  `npm update --global` against npm: both are in part I of the test plan.
-- Whether the token of the first publish and the secret that held it are deleted. Only you can do that, and I
-  cannot see it.
+- **Trusted publishing is not tried,** which every pre-release after the first is published with, and neither
+  is moving a tag with it. Staged publishing, the other way for a first publish, is not tried. An install by a
+  person and `npm update --global` against npm are not done: both are in part I of the test plan.
+- You said on 17 November 2026 that the token of the first publish and the secret that held it are deleted. I
+  did not check it, and I did not try to read the list of secrets of the environment.
 - **The name `orglens` is free on npm, and stays so.** It is the name of the command, not of a package.
   `npx orglens` on a machine without OrgLens fetches whatever package has that name. The policy of npm does not
   let the project hold it empty. The release notes say not to run it.
@@ -218,12 +222,12 @@ them was not read. Only one org was read, so how common this is in other orgs is
 ## Open with you
 
 1. **Run the test plan**, and approve or reject the phase. Its main part needs an org you know.
-2. **After the first publish.** Delete the secret `NPM_TOKEN` of the environment `npm-next` and the token on
-   npmjs.com: while the token exists, whoever has it can publish under every package of your account. Then look
-   at the tab "Versions" of both packages on npmjs.com and tell me whether a version `0.0.0-stage` is listed.
-3. **Before the second pre-release.** A trusted publisher for each of the two packages, set up shortly before
-   the run ([`docs/releases/publishing.md`](../releases/publishing.md#before-the-second-pre-release)). A run
-   that publishes cannot be undone, and I start one only on your word for that version.
+2. **After the first publish.** Nothing is open: you deleted the token and the secret.
+3. **The second pre-release.** You set up a trusted publisher for each of the two packages on 17 November
+   2026 ([`docs/releases/publishing.md`](../releases/publishing.md#before-the-second-pre-release)). npm keeps a
+   new one for two days and wants a publish through it by then, so you chose to publish `0.1.0-next.1` within
+   that time. It is prepared in a pull request of its own. A run that publishes cannot be undone, and I start
+   one only on your word for that version.
    - Not a question, a setting: GitHub can make releases immutable. It is off in this repository, and only you
      can turn it on. Record 0050 says that a published pre-release is not changed. The setting would hold that.
 4. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as

@@ -7,9 +7,10 @@ version without a pre-release part exists. Security fixes go to the `main` branc
 supported versions once the first release exists.
 
 Pre-releases are published on npm as `sf-orglens` and `@sf-orglens/engine`, only by the workflow "Pre-release"
-of this repository, each with a provenance attestation that names the run that built it. A package under one of
-the two names without one is not from this project. The name `orglens` is the name of the command and is not a
-package of this project.
+of this repository, each with a provenance attestation that names the run that built it. A version under one of
+the two names without one is not from this project. There is one such version, `0.0.0-stage`, of each package:
+npm made it by itself when the first pre-release was published, and it is not a version of OrgLens. The name
+`orglens` is the name of the command and is not a package of this project.
 
 ## Reporting a vulnerability
 
