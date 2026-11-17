@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-17
 - Decisions: none (an answer of the maintainer of 2026-11-17 to a question the Phase 1 plan left open)
+- Changed by: [0053](0053-a-pre-release-is-published-on-npm.md), with which pre-releases are published on npm. Such a pre-release is not "the first release on npm" of this record: by the maintainer's answer of 2026-11-17 that is the first version on npm without a pre-release part. Record 0052, which this record names, was never accepted and is superseded
 
 ## Context
 

@@ -13,6 +13,10 @@ Most people want the command line, [`sf-orglens`](https://github.com/taouani/sf-
 This package is for programs that drive the engine themselves. Everything it offers is exported from the package
 entry point. Nothing below it is part of the API.
 
+```sh
+npm install @sf-orglens/engine@next
+```
+
 ```js
 import { openWorkspace } from '@sf-orglens/engine';
 

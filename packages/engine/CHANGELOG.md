@@ -2,8 +2,9 @@
 
 ## 0.1.0-next.0
 
-The first pre-release, on GitHub only. What this version does as a whole, what it does not do and what is not
-verified is in its [release notes](https://github.com/taouani/sf-orglens/blob/main/docs/releases/v0.1.0-next.0.md).
+The first pre-release, on npm under the tag `next` and on GitHub. What this version does as a whole, what it
+does not do and what is not verified is in its
+[release notes](https://github.com/taouani/sf-orglens/blob/main/docs/releases/v0.1.0-next.0.md).
 
 The entries are in the order in which their pull requests were merged, under each heading, and each says what
 was true on that day. Where one says that something is not available yet, or was not run against a real org, a

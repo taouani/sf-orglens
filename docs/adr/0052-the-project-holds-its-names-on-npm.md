@@ -1,6 +1,6 @@
 # 0052. The project holds its names on npm with empty packages, before the first pre-release
 
-- Status: Proposed
+- Status: Superseded by [0053](0053-a-pre-release-is-published-on-npm.md)
 - Date: 2026-11-17
 - Decisions: none (an answer of the maintainer of 2026-11-17 to a finding of the review of record 0050, put in question on the same day by the review of this record)
 
@@ -65,8 +65,8 @@ again, and ends with the exit code 1.
 
 **How they are made.** `node scripts/pre-release.mjs names <folder>` writes the three packages, so that what is
 published is what was reviewed. A golden file holds the eight files it writes. The maintainer publishes them by
-hand: [`docs/releases/npm-names.md`](../releases/npm-names.md) has the steps. No workflow of this repository
-publishes to npm, and no token for npm is stored in it.
+hand: `docs/releases/npm-names.md` had the steps, and was removed with record 0053, as the step was. No
+workflow of this repository publishes to npm, and no token for npm is stored in it.
 
 **The first pre-release waits.** Its release notes hold the mark `[open]` at this point, and the workflow
 publishes no notes with the mark (record 0050). The mark goes with the answer of the maintainer. If the names

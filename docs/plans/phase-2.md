@@ -352,7 +352,8 @@ Accepted when:
 
 - The overall plan updated, `docs/test-plans/phase-2.md`, a phase report, and the draft of the Phase 3 plan for
   your approval.
-- The second pre-release, `0.1.0-next.1`, made by the workflow of record 0050.
+- The second pre-release, `0.1.0-next.1`, made by the workflow of records 0050 and 0053. The maintainer sets up
+  the trusted publishers of the two packages shortly before it (`docs/releases/publishing.md`).
 
 Accepted when:
 

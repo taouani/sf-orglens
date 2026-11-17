@@ -5,6 +5,11 @@
 OrgLens is in pre-release and no version has been published. Security fixes go to the `main` branch. This section
 will list supported versions once the first release exists.
 
+Pre-releases will be published on npm as `sf-orglens` and `@sf-orglens/engine`, only by the workflow
+"Pre-release" of this repository, each with a provenance attestation. A package under one of the two names
+without one is not from this project. The name `orglens` is the name of the command and is not a package of this
+project.
+
 ## Reporting a vulnerability
 
 Please report security problems privately through GitHub:
