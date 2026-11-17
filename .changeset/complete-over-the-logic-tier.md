@@ -11,4 +11,5 @@ report then says "is complete for the logic tier" and that something of other ty
 four issues carries `details.tier`. The file of custom labels is not missing when the org lists no label.
 `impact` ends with `0` where it ended with `5` for a snapshot in which a file or a retrieve outside the tier
 failed: the answer does not cover that type and names it in `notCovered.notAnalysed`. A snapshot of a repository
-is not changed. Not verified on a real org.
+is not changed. The judgement was seen on one real org, where 209 components of 10 types outside the tier are
+warnings. The commands were not run against a real org, so their lines and exit codes are shown by tests only.

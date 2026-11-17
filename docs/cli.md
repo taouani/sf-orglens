@@ -215,7 +215,8 @@ they have below a package directory, such as `classes/Foo.cls`.
   org had not listed them. It is expected to hold those parts and nothing else of the object. A part that
   Salesforce cannot find by its own name either stays missing. Nothing of this is done for an object the org
   lists: then the object is what is missing. Nor is it done for a parent whose parts stay in its one file, such
-  as the rules of a workflow. Not verified on a real org.
+  as the rules of a workflow. On the one real org this was run against, Salesforce could not find the parts by
+  their own names either, and they stayed missing. A real org that hands such a part out was not seen.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
