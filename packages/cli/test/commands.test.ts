@@ -280,7 +280,7 @@ describe('orglens status', () => {
       [
         `Workspace  test (${dir})`,
         'Config     orglens.toml',
-        'Database   .orglens/orglens.db, schema version 6, N KiB, node:sqlite',
+        'Database   .orglens/orglens.db, schema version 7, N KiB, node:sqlite',
         '',
         'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT  ANALYSED',
         'prod    org   0          none',
@@ -297,7 +297,7 @@ describe('orglens status', () => {
         root: dir,
         name: 'test',
         configFiles: ['orglens.toml'],
-        store: { state: 'ready', schemaVersion: 6, driver: 'node:sqlite' },
+        store: { state: 'ready', schemaVersion: 7, driver: 'node:sqlite' },
         sources: [{ name: 'prod', kind: 'org', snapshots: 0, latestSnapshot: null }],
       },
     });
@@ -929,7 +929,7 @@ describe('the --json contract', () => {
     expect(matchesSchema({ ...good, schemaVersion: 2 })).toBe(false);
     const withoutWarnings = Object.fromEntries(Object.entries(good).filter(([key]) => key !== 'warnings'));
     expect(matchesSchema(withoutWarnings)).toBe(false);
-    const source = { name: 'prod', kind: 'org', description: null, orgId: null, loginUrl: null };
+    const source = { name: 'prod', kind: 'org', description: null, orgId: null, loginUrl: null, excludeTypes: [] };
     const added = { ...good, command: 'source add', data: { source } };
     expect(matchesSchema(added)).toBe(true);
     expect(matchesSchema({ ...added, data: { source: { ...source, repo: '.' } } })).toBe(false);

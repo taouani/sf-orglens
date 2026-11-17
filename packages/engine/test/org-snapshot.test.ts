@@ -1482,6 +1482,79 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           },
         ]);
       });
+
+      describe('that the configuration leaves out', () => {
+        const leavingOut = (types: string): string => `${CONFIG}exclude_types = [${types}]\n`;
+        const asked = (): string[] =>
+          metadata.calls.filter((call) => call.operation === 'listMetadata').map((call) => call.about);
+
+        it('neither lists nor retrieves it, and says in the coverage that it was not read', async () => {
+          // If the org were asked, the snapshot would say so: it refuses to list the type.
+          metadata.failing.add('StaticResource');
+          const dir = workspaceDir(leavingOut('"StaticResource"'));
+          const report = await snap(dir);
+
+          expect(report.snapshot.status).toBe('complete');
+          expect(asked()).not.toContain('StaticResource');
+          expect(asked()).toContain('ApexClass');
+          expect(stored(dir, 1)).toEqual(expectedFiles());
+          expect(typeOf(report, 'StaticResource')).toEqual({
+            type: 'StaticResource',
+            listed: 0,
+            retrieved: 0,
+            analysed: 0,
+            listing: 'excluded',
+            note: 'The configuration leaves this type out (exclude_types).',
+          });
+          expect(ofReading(report)).toEqual([
+            {
+              severity: 'info',
+              code: 'TYPES_EXCLUDED',
+              message:
+                '1 type is left out of the snapshot, as exclude_types of the source says: StaticResource. The org was not asked for its components, and none was read.',
+              details: { count: 1, types: ['StaticResource'] },
+            },
+          ]);
+        });
+
+        it('keeps what a snapshot started with when it is continued under another configuration', async () => {
+          const dir = workspaceDir(leavingOut('"StaticResource"'));
+          metadata.hold = true;
+          await failure(() => snap(dir, { tuning: { jobMs: 20 } }));
+          metadata.hold = false;
+          // The key is taken out, and the org would now be asked for the type.
+          writeFileSync(join(dir, 'orglens.toml'), CONFIG);
+          const report = await snap(dir);
+          expect(asked()).not.toContain('StaticResource');
+          expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+          expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 0, retrieved: 0, listing: 'excluded' });
+          expect(stored(dir, 1)).toEqual(expectedFiles());
+        });
+
+        it('reads a type it cannot leave out, and says why', async () => {
+          const dir = workspaceDir(leavingOut('"Reprot", "ListView", "StaticResource"'));
+          const report = await snap(dir);
+
+          expect(report.snapshot.status).toBe('complete');
+          expect(typeOf(report, 'ListView')?.listing ?? 'ok').toBe('ok');
+          expect(ofReading(report).filter((issue) => issue.code !== 'TYPES_EXCLUDED')).toEqual([
+            {
+              severity: 'warning',
+              code: 'TYPE_NOT_EXCLUDED',
+              message:
+                'exclude_types of the source names ListView. Its components are parts of a component of the type CustomObject and come with it, so it cannot be left out alone. It was read.',
+              details: { type: 'ListView', reason: 'part', of: 'CustomObject' },
+            },
+            {
+              severity: 'warning',
+              code: 'TYPE_NOT_EXCLUDED',
+              message:
+                'exclude_types of the source names Reprot, and the org describes no metadata type of that name. Nothing was left out for it.',
+              details: { type: 'Reprot', reason: 'unknown', of: null },
+            },
+          ]);
+        });
+      });
     });
 
     it('leaves the work folder of a snapshot that runs alone when it is refused the lock', async () => {

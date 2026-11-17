@@ -170,6 +170,15 @@ they have below a package directory, such as `classes/Foo.cls`.
   A snapshot that an earlier version took keeps the status that version gave it. A snapshot of a repository is
   not judged by tier: whatever its folders hold and cannot be read makes it partial.
 
+- **Types can be left out.** `exclude_types` of the source in `orglens.toml` names metadata types that a snapshot
+  does not read ([configuration.md](configuration.md#a-source-of-kind-org-or-sandbox)). The org is not asked for
+  the components of such a type, nor for those of its parts and its folders, and none is retrieved. The report
+  has a line for each with `left out` in the column `LISTED`, and the note `TYPES_EXCLUDED` names them. A type of
+  the logic tier cannot be left out: the file is refused. A name that cannot be left out for another reason is
+  read, and the warning `TYPE_NOT_EXCLUDED` says why: the org describes no such type, the type is a part of
+  another, or it holds the folders of another. Leaving a type out does not make a snapshot partial. A reference
+  to a component of such a type keeps its name and is not resolved, as for any component the snapshot does not
+  hold.
 - Warnings: a type Salesforce describes and never lists, which today is `StandardValueSet` (`TYPE_NOT_READ`), what
   Salesforce remarked about a retrieve (`RETRIEVE_MESSAGES`), files of a retrieve that belong to no component
   (`FILES_NOT_METADATA`), and a file that came back in two retrieves (`FILE_RETRIEVED_TWICE`).
@@ -339,11 +348,11 @@ It ends with `0` also when that snapshot is partial or its analysis is incomplet
 was asked to do. `snapshot` and `analyse` print the same report.
 
 The first table has one line per metadata type that has components. For an org, the column `LISTED` says
-`not listed` for a type Salesforce never lists, and adds `(listing failed)` to the number of a type the org
-refused to list in whole or in part. The column `ANALYSED` says of how many components of the type the analysis
-read something. It is `0` for a type that is not analysed yet. It can be larger than `RETRIEVED`: the analysis
-also counts the fields and rules it finds inside the file of an object, and a type of which the source lists
-nothing can have a line for that reason.
+`not listed` for a type Salesforce never lists and `left out` for a type that `exclude_types` of the source
+leaves out, and adds `(listing failed)` to the number of a type the org refused to list in whole or in part. The
+column `ANALYSED` says of how many components of the type the analysis read something. It is `0` for a type that
+is not analysed yet. It can be larger than `RETRIEVED`: the analysis also counts the fields and rules it finds
+inside the file of an object, and a type of which the source lists nothing can have a line for that reason.
 
 Below it stand the issues of the reading, then the analysis, and for a snapshot of an org the cross-check:
 
@@ -431,11 +440,11 @@ version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
-| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                 |
-| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                           |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                                                                                                                                       |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`                                                                                                                                                                                          |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
@@ -452,6 +461,12 @@ sorted. Those are the types that are retrieved by name: a field that fails with 
 `RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
 component, or the types that keep their files in the top folder of the file with the types of their parts. The
 list is empty when nothing tells the type. A snapshot taken before these fields existed has issues without them.
+
+`TYPES_EXCLUDED` carries the types a snapshot left out in `details.types`, sorted, and their number in
+`details.count`: the types `exclude_types` names, with their parts and their folders. `TYPE_NOT_EXCLUDED` carries
+the name in `details.type` and why it was not left out in `details.reason`: `unknown` (the org describes no such
+type), `part` or `folder` (its components are parts or folders of the type in `details.of`), or `logic-part` (the
+type in `details.of`, a part of it, is of the logic tier).
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -550,7 +565,8 @@ the answer says whether it is complete, and if not, why. Below the results it na
 
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each.
   A component of such a type can refer to the component and is not in the answer. In this pre-release, that is
-  every type except objects, fields and validation rules;
+  every type except objects, fields and validation rules. A type that `exclude_types` leaves out of a snapshot
+  of an org is among them, with `left out` for its number;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be

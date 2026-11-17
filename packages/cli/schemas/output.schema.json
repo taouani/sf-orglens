@@ -245,20 +245,30 @@
       "oneOf": [
         {
           "title": "org",
-          "required": ["orgId", "loginUrl"],
+          "required": ["orgId", "loginUrl", "excludeTypes"],
           "properties": {
             "kind": { "const": "org" },
             "orgId": { "type": ["string", "null"] },
-            "loginUrl": { "type": ["string", "null"] }
+            "loginUrl": { "type": ["string", "null"] },
+            "excludeTypes": {
+              "description": "The metadata types a snapshot of the source leaves out (`exclude_types`), sorted. Empty: every type is read.",
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         },
         {
           "title": "sandbox",
-          "required": ["orgId", "loginUrl", "sandboxOf", "sandboxName"],
+          "required": ["orgId", "loginUrl", "excludeTypes", "sandboxOf", "sandboxName"],
           "properties": {
             "kind": { "const": "sandbox" },
             "orgId": { "type": ["string", "null"] },
             "loginUrl": { "type": ["string", "null"] },
+            "excludeTypes": {
+              "description": "The metadata types a snapshot of the source leaves out (`exclude_types`), sorted. Empty: every type is read.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
             "sandboxOf": { "description": "The name of an org source.", "type": ["string", "null"] },
             "sandboxName": { "type": ["string", "null"] }
           }
@@ -449,7 +459,7 @@
               },
               "listing": {
                 "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet.",
-                "enum": ["ok", "failed", "unlistable"]
+                "enum": ["ok", "failed", "unlistable", "excluded"]
               },
               "note": { "type": ["string", "null"] }
             }
@@ -817,8 +827,8 @@
           "minimum": 0
         },
         "listing": {
-          "description": "As in the coverage: `failed` if an org refused to list the type, `unlistable` if Salesforce never lists it.",
-          "enum": ["ok", "failed", "unlistable"]
+          "description": "As in the coverage: `failed` if an org refused to list the type, `unlistable` if Salesforce never lists it, `excluded` if the configuration of the source leaves it out.",
+          "enum": ["ok", "failed", "unlistable", "excluded"]
         }
       }
     },

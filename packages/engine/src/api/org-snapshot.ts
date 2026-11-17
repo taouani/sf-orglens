@@ -23,7 +23,7 @@ import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
 import { DEFAULT_CHUNK_WEIGHT, planChunks, splitMembers } from '../sources/chunks.ts';
 import { readDependencies, type DependencyLimits } from '../sources/dependency-api.ts';
-import { takeInventory } from '../sources/inventory.ts';
+import { takeInventory, type NotExcluded } from '../sources/inventory.ts';
 import {
   DEFAULT_LIMITS,
   isAboutTheOrg,
@@ -331,6 +331,18 @@ const named = (names: readonly string[]): Readonly<Record<string, JsonValue>> =>
  */
 const HOLDS_ONLY: Readonly<Record<string, string>> = { CustomLabels: 'CustomLabel' };
 
+/** Why a type that exclude_types of the source names is read all the same, by the reason the inventory gives. */
+const NOT_EXCLUDED: Readonly<Record<NotExcluded['reason'], (type: string, of: string) => string>> = {
+  unknown: (type) =>
+    `exclude_types of the source names ${type}, and the org describes no metadata type of that name. Nothing was left out for it.`,
+  part: (type, of) =>
+    `exclude_types of the source names ${type}. Its components are parts of a component of the type ${of} and come with it, so it cannot be left out alone. It was read.`,
+  folder: (type, of) =>
+    `exclude_types of the source names ${type}. Its components are the folders of the type ${of}, so it cannot be left out alone. It was read.`,
+  'logic-part': (type, of) =>
+    `exclude_types of the source names ${type}. Its part ${of} is of the logic tier, which a snapshot is judged by, so it cannot be left out. It was read.`,
+};
+
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
 const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
 
@@ -400,6 +412,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
     if (interrupted === undefined) {
       api = await metadataApi(session.connection, session.apiVersion, tuning.requests);
       const inventory = await takeInventory(api, {
+        exclude: source.excludeTypes,
         onProgress: (done, total) => {
           progress({ step: 'listing', done, total });
         },
@@ -462,6 +475,20 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
               { type: type.type },
             );
           }
+        }
+        const leftOut = inventory.types.filter((type) => type.listing === 'excluded').map((type) => type.type);
+        if (leftOut.length > 0) {
+          issue(
+            store,
+            id,
+            'info',
+            'TYPES_EXCLUDED',
+            `${plural(leftOut.length, 'type is', 'types are')} left out of the snapshot, as exclude_types of the source says: ${leftOut.join(', ')}. The org was not asked for ${leftOut.length === 1 ? 'its' : 'their'} components, and none was read.`,
+            { count: leftOut.length, types: leftOut },
+          );
+        }
+        for (const { type, reason, of } of inventory.notExcluded) {
+          issue(store, id, 'warning', 'TYPE_NOT_EXCLUDED', NOT_EXCLUDED[reason](type, of ?? ''), { type, reason, of });
         }
         const access = [...ACCESS_TYPES].filter((type) => (listed.get(type) ?? 0) > 0).sort();
         if (access.length > 0) {

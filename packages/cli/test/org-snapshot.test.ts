@@ -38,6 +38,8 @@ afterEach(() => {
   mock.withheld = [];
   mock.unlisted = [];
   mock.extraFiles = {};
+  mock.extraTypes = [];
+  mock.listed.length = 0;
   mock.retrieveFault = null;
   mock.queries.length = 0;
   // The home folder of the test process is an empty folder of its own (tools/vitest-setup.js).
@@ -277,6 +279,39 @@ describe('orglens snapshot of an org', () => {
         },
       ],
     });
+  });
+
+  it('leaves out the types that orglens.toml names, and says in the report that they were not read', async () => {
+    const { dir, env } = setUp();
+    mock.extraTypes = ['Dashboard', 'Report'];
+    writeFileSync(
+      join(dir, 'orglens.toml'),
+      `schema_version = 1\n[sources.prod]\nkind = "org"\norg_id = "${ORG_ID}"\nexclude_types = ["Report", "Reprot"]\n`,
+    );
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toBe(
+      [
+        'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
+        '',
+        'TYPE       LISTED    RETRIEVED  ANALYSED',
+        'ApexClass  2         2          0',
+        'Report     left out  0          0',
+        '',
+        '1 more type has no components.',
+        '',
+        'SEVERITY  CODE               WHAT',
+        'info      TYPES_EXCLUDED     1 type is left out of the snapshot, as exclude_types of the source says: Report. The org was not asked for its components, and none was read.',
+        'warning   TYPE_NOT_EXCLUDED  exclude_types of the source names Reprot, and the org describes no metadata type of that name. Nothing was left out for it.',
+        '',
+        ...classesAnalysed('2 components'),
+        ...CROSS_CHECKED,
+      ].join('\n'),
+    );
+    // The org was asked for the two types that are read.
+    expect([...mock.listed].sort()).toEqual(['ApexClass', 'Dashboard']);
+    const { data } = await orglensJson(dir, ['status']);
+    expect(data).toMatchObject({ sources: [{ name: 'prod', excludeTypes: ['Report', 'Reprot'] }] });
   });
 
   it('counts what the snapshot holds, with a component that came back although the org had not listed it', async () => {

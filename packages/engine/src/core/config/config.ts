@@ -11,7 +11,7 @@
  * line and column, and all problems of a file are reported together.
  *
  * A key exists here only once a feature reads it. Keys for later features
- * (metadata scope, retention, retrieve limits) are added with those features.
+ * (retention, retrieve limits) are added with those features.
  *
  * The variables of the environment that carry a login for a job without a
  * person (`ORGLENS_JWT_...`) are not read here. They hold a key, and only
@@ -20,6 +20,7 @@
 import { parse, TomlError } from 'smol-toml';
 import type { JsonValue } from '../errors.ts';
 import { hasSecretShape, redactText } from '../redact.ts';
+import { tierOf } from '../tiers.ts';
 import { readLayout, type TomlLayout } from './layout.ts';
 
 export const SHARED_CONFIG_FILE = 'orglens.toml';
@@ -47,6 +48,11 @@ export interface OrgSource extends SourceBase {
   /** The Salesforce org id. It identifies the org and is not a credential. */
   readonly orgId: string | null;
   readonly loginUrl: string | null;
+  /**
+   * The metadata types a snapshot of the org leaves out, by their names in the Metadata API, sorted. None of
+   * them is of the logic tier. Empty: every type is read.
+   */
+  readonly excludeTypes: readonly string[];
 }
 
 /** A sandbox. */
@@ -54,6 +60,8 @@ export interface SandboxSource extends SourceBase {
   readonly kind: 'sandbox';
   readonly orgId: string | null;
   readonly loginUrl: string | null;
+  /** As for an org. */
+  readonly excludeTypes: readonly string[];
   /** The name of the org source this is a sandbox of. */
   readonly sandboxOf: string | null;
   readonly sandboxName: string | null;
@@ -315,6 +323,43 @@ function readLoginUrl(reader: TableReader): string | null {
   return loginUrl;
 }
 
+/** The name of a metadata type as the Metadata API writes one: letters and digits, a letter first. */
+const TYPE_NAME = /^[A-Za-z][A-Za-z0-9]*$/;
+
+/**
+ * The types a snapshot of an org leaves out. A type of the logic tier cannot be left out: a snapshot is judged
+ * by it. Whether the org has a type of a name is not known here, and is said by the snapshot.
+ */
+function readExcludeTypes(reader: TableReader): readonly string[] {
+  const value = reader.value('exclude_types');
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    reader.fail('exclude_types', 'This must be a list of names of metadata types, such as ["Report", "Dashboard"].');
+    return [];
+  }
+  const types: string[] = [];
+  value.forEach((item: unknown, index) => {
+    if (typeof item !== 'string' || !TYPE_NAME.test(item)) {
+      reader.fail(
+        'exclude_types',
+        'A metadata type is named as the Metadata API names it, in quotes: letters and digits only, such as "Report".',
+        index,
+      );
+    } else if (tierOf(item) === 'logic') {
+      reader.fail(
+        'exclude_types',
+        `"${item}" is a type of the logic tier, which a snapshot is judged by. It cannot be left out.`,
+        index,
+      );
+    } else if (types.includes(item)) {
+      reader.fail('exclude_types', `"${item}" is in the list twice.`, index);
+    } else {
+      types.push(item);
+    }
+  });
+  return types.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 /** A path inside a repository: relative, forward slashes, no way out of the repository. */
 function pathProblem(path: string): string | undefined {
   if (path === '') return 'A path must not be empty.';
@@ -407,9 +452,10 @@ function readSource(name: string, reader: TableReader): SourceDeclaration | unde
 
   const orgId = readOrgId(reader);
   const loginUrl = readLoginUrl(reader);
+  const excludeTypes = readExcludeTypes(reader);
   if (kind === 'org') {
     reader.finish();
-    return { name, kind, description, orgId, loginUrl };
+    return { name, kind, description, orgId, loginUrl, excludeTypes };
   }
   const sandboxName = reader.string('sandbox_name');
   if (sandboxName !== undefined && !SANDBOX_NAME.test(sandboxName)) {
@@ -421,6 +467,7 @@ function readSource(name: string, reader: TableReader): SourceDeclaration | unde
     description,
     orgId,
     loginUrl,
+    excludeTypes,
     sandboxOf: reader.string('sandbox_of') ?? null,
     sandboxName: sandboxName ?? null,
   };

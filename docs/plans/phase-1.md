@@ -1046,7 +1046,8 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
     lines of `snapshot`, `analyse` and `coverage` for a file that cannot be read. The tests of the engine show
     the status `complete` for a component that does not come back, a listing that is refused and a retrieve
     that fails. No test of the command line runs those three.
-  - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it.
+  - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it. The second
+    status below has it.
   - A snapshot of a Git source is not changed: its code was not touched, and its tests pass as they were.
 - **Choices of mine, for you to strike.** Record 0046 has the reasons.
   - The 21 names. Records 0004 and 0038 hold words, and `Workflow` and `CustomLabels` are in the list because
@@ -1073,6 +1074,31 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
   something this work package could do. The tier does not say which type can refer to which. The analysis is
   not judged by tier, and `FILES_NOT_METADATA` stays a warning in every tier. Record 0046 lists both, and three
   places of the code that no test reaches.
+
+Status on 17 November 2026, with the second pull request of the work package. It holds the key.
+
+- **What it rests on.** You were asked on 17 November 2026 whether to keep the key, with my recommendation to
+  keep it, and had not answered when this was written. I built it as proposed, so that the work does not wait.
+  If you strike it, the key, the listing `excluded`, migration 7 and record
+  [0047](../adr/0047-types-a-snapshot-leaves-out.md) are taken out again.
+- **Built:** the key `exclude_types` of a source of the kind `org` or `sandbox` in `orglens.toml`, the listing
+  `excluded` in the coverage of a snapshot with migration 7 of the database, the note `TYPES_EXCLUDED` and the
+  warning `TYPE_NOT_EXCLUDED`, `left out` in the text of `coverage`, `excludeTypes` in `status` and the `source`
+  commands, `docs/configuration.md`, `docs/cli.md`, the JSON Schema and record 0047.
+- **Against the acceptance criterion** "a type it leaves out is not retrieved and is named in `coverage` as not
+  read. A type of the logic tier in the key is an error": met against the mock org. A test counts the requests:
+  the org is asked neither for the components of such a type nor for those of its folders. The file is refused
+  for a type of the tier before anything is read. Not run against a real org, and how much time the key saves on
+  an org with many reports is not measured.
+- **Choices of mine, for you to strike.** Record 0047 has the reasons.
+  - The name `exclude_types`, and that it is a key of the source and not of the workspace.
+  - A type that is left out is not listed at all, so `coverage` shows no count for it.
+  - The parts and the folders of a type go with it, and a part or a folder type cannot be named alone.
+  - A name the org does not know, or one that cannot be left out, is a warning and the type is read. It is not
+    an error of the file, because only the org says which types it has.
+  - A value of its own for the listing, with a migration, so that an impact answer can name the type.
+  - No option of the command line for the key. It is written by hand.
+- **Not done:** leaving out the components of managed packages, single components, folders or name patterns.
 
 ### WP10 Proof on public codebases, and measurements
 

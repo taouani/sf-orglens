@@ -33,7 +33,15 @@ const failure = (run: () => unknown): EngineError => {
 };
 
 const org = (name: string, more: Partial<SourceDeclaration> = {}): SourceDeclaration =>
-  ({ name, kind: 'org', description: null, orgId: null, loginUrl: null, ...more }) as SourceDeclaration;
+  ({
+    name,
+    kind: 'org',
+    description: null,
+    orgId: null,
+    loginUrl: null,
+    excludeTypes: [],
+    ...more,
+  }) as SourceDeclaration;
 
 describe('addSourceText', () => {
   it('appends a table and changes no other byte', () => {
@@ -43,6 +51,7 @@ describe('addSourceText', () => {
       description: 'Developer "pro" sandbox',
       orgId: '00D000000000003EAA',
       loginUrl: 'https://test.salesforce.com',
+      excludeTypes: [],
       sandboxOf: 'prod',
       sandboxName: 'dev',
     });
@@ -121,6 +130,7 @@ describe('addSourceText', () => {
         description: null,
         orgId: null,
         loginUrl: null,
+        excludeTypes: [],
         sandboxOf: 'nope',
         sandboxName: null,
       },

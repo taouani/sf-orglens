@@ -9,7 +9,14 @@ import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 
 const FIXTURE = join(import.meta.dirname, '../../../fixtures/billing-sfdx/force-app');
 const ORG_ID = '00Dxx0000000001EAA';
-const source: OrgSource = { name: 'prod', kind: 'org', description: null, orgId: ORG_ID, loginUrl: null };
+const source: OrgSource = {
+  name: 'prod',
+  kind: 'org',
+  description: null,
+  orgId: ORG_ID,
+  loginUrl: null,
+  excludeTypes: [],
+};
 const FAST = { requestMs: 2_000, zipMs: 2_000, repeats: 1, repeatAfterMs: 10 };
 
 let mock: MockOrg;

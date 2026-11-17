@@ -160,8 +160,9 @@ export interface TypeCoverage {
    * - `ok`: the source said which components of the type it has.
    * - `failed`: it refused to. `listed` counts what it had said before, and the true number is not known.
    * - `unlistable`: it never lists components of this type.
+   * - `excluded`: the configuration of the source leaves the type out, and the source was not asked.
    */
-  readonly listing: 'ok' | 'failed' | 'unlistable';
+  readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
   readonly note: string | null;
 }
 

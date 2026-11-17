@@ -74,7 +74,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         file: '.orglens/orglens.db',
         state: 'ready',
         driver: driverName,
-        schemaVersion: 6,
+        schemaVersion: 7,
         sizeBytes: expect.any(Number) as number,
         problem: null,
       },
@@ -162,6 +162,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
         description: null,
         orgId: null,
         loginUrl: null,
+        excludeTypes: [],
         // The latest snapshot is the latest that is finished. What is under way is told beside it.
         snapshots: 1,
         latestSnapshot: {
@@ -237,7 +238,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('workspac
       ['logins', 'ok'],
     ]);
     expect(report.checks[5]?.details).toEqual({ sources: [], driver: driverName });
-    expect(report.checks[6]?.summary).toBe('The database is at schema version 6.');
+    expect(report.checks[6]?.summary).toBe('The database is at schema version 7.');
     // The report is plain data.
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });
@@ -444,7 +445,14 @@ describe('workspace sources', () => {
     const workspace = await workspaceIn(dir);
     const before = read(dir, 'orglens.toml');
     const prod = await workspace.sources.add({ name: 'prod', kind: 'org', orgId: '00D000000000009' });
-    expect(prod).toEqual({ name: 'prod', kind: 'org', description: null, orgId: '00D000000000009', loginUrl: null });
+    expect(prod).toEqual({
+      name: 'prod',
+      kind: 'org',
+      description: null,
+      orgId: '00D000000000009',
+      loginUrl: null,
+      excludeTypes: [],
+    });
     await workspace.sources.add({ name: 'uat', kind: 'sandbox', sandboxOf: 'prod', sandboxName: 'uat' });
     await workspace.sources.add({ name: 'repo', kind: 'git', ref: 'main', paths: ['force-app'], tracks: 'prod' });
 
