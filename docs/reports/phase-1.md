@@ -20,13 +20,14 @@ can run yourself are in the [test plan](../test-plans/phase-1.md).
 - **Nothing was run on an org of the size of your targets, and `orglens snapshot` as a command still never ran
   against Salesforce.** The engine behind it read the test org eight times in this phase. The test plan asks
   you for both.
-- The first pre-release is prepared and not published: version `0.1.0-next.0`, installed with one `npm install`
-  line from GitHub. **The review of it found a security hole in that way of installing:** after the install,
+- The first pre-release is prepared and not published: version `0.1.0-next.0`. **The review of it found a
+  security hole in its way of installing,** from two addresses on GitHub: after the install,
   `npm update --global` replaces OrgLens with whatever the public registry holds under the two package names,
-  and nobody holds them for this project. You decided on 17 November 2026 to hold the names on npm with empty
-  packages, on my recommendation. **Do not do it:** the review of that decision found that the policy of npm
-  forbids a package that only reserves a name. I had not read the policy. The choice is back with you, and the
-  workflow refuses to publish until it is made.
+  and nobody held them for this project. You first decided to hold the names on npm with empty packages, on my
+  recommendation. The review of that decision found that the policy of npm forbids it. I had not read the
+  policy. You then chose, on 17 November 2026, to publish the pre-release itself on npm, by a workflow that
+  waits for your approval, as your other project does. That is built (record 0053). The release waits for what
+  only you can set up on npm and GitHub, for one more answer, and for your word.
 
 ## The outcomes of the plan
 
@@ -53,27 +54,27 @@ reader of the same kind as I am. No person read an entry.
 
 ## What was built
 
-| Work package                         | What exists                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 Fixture v1 and its key             | The fixture project grew from 52 to 87 components. Its key holds 106 references of fields and rules, 62 more than before. 178 formula probes, and ten formulas that cannot be deployed with what the analysis must say of each. Salesforce accepted the project on the second deploy.                                                                                                                                                                 |
-| 2 XML with positions                 | A reader of our own for metadata files that gives the line and column of every value (record 0039). No library does. It refuses six things well-formed XML can hold, none of which a file of the fixture or the public codebases holds.                                                                                                                                                                                                               |
-| 3 Components and references in store | Tables for components, their versions and references, shared between the snapshots of a source (record 0040). A benchmark through the real store.                                                                                                                                                                                                                                                                                                     |
-| 4 Objects, fields, validation rules  | Every file of a snapshot becomes a component. Objects, fields and rules are read, and the ten kinds of parts an org keeps inside the file of an object are components too. A model of the objects resolves names, with a table of standard relationships (record 0041).                                                                                                                                                                               |
-| 5 Formulas                           | A parser of the formula language and the rules that turn its names into references: paths through relationships, global variables, `Owner:User`, picklist values (record 0042). A formula that is not read as a whole still gives its names, as `probable`.                                                                                                                                                                                           |
-| 6 Analysis in the snapshot           | `snapshot` analyses what it stored. The new command `orglens analyse` analyses a stored snapshot again without reading the source. `coverage` and `status` show the analysis (record 0043).                                                                                                                                                                                                                                                           |
-| 7 Impact                             | The walk over references, and the command `orglens impact` with `--depth`, `--min-confidence`, `--outgoing` and `--snapshot`. Six golden answers, and a test that works out the answer for 96 components from the key alone (record 0044).                                                                                                                                                                                                            |
-| 8 Cross-check                        | A snapshot of an org asks the Dependency API, keeps the rows beside the snapshot and compares them with the analysis. A pair Salesforce reports and the analysis lacks is the error `REFERENCE_MISSED` (record 0045). An org too large for one query is read in parts.                                                                                                                                                                                |
-| 9 What a snapshot reads              | A snapshot reads every type (record 0038) and is judged complete over the 21 types of the logic tier (0046). Two corrections where the Salesforce library falls short (0047). The key `exclude_types` in `orglens.toml` (0048). Parts asked for by their own names (0049).                                                                                                                                                                            |
-| 10 Proof on public codebases         | PMM as the fourth codebase. A listing for a check by hand, a test that holds what was checked by its digest, a timing of the built commands, and the note with the numbers.                                                                                                                                                                                                                                                                           |
-| 11 Phase close                       | The workflow that makes a pre-release on GitHub and tries its install line on three systems before it publishes, version `0.1.0-next.0` with its release notes (record 0050). Record 0051. The step that writes empty packages for the names on npm, and its instructions, which are not to be used before you have chosen again (record 0052, not accepted). This report, the test plan, the updated overall plan and the draft of the Phase 2 plan. |
+| Work package                         | What exists                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 Fixture v1 and its key             | The fixture project grew from 52 to 87 components. Its key holds 106 references of fields and rules, 62 more than before. 178 formula probes, and ten formulas that cannot be deployed with what the analysis must say of each. Salesforce accepted the project on the second deploy.                                                                                                                                                                           |
+| 2 XML with positions                 | A reader of our own for metadata files that gives the line and column of every value (record 0039). No library does. It refuses six things well-formed XML can hold, none of which a file of the fixture or the public codebases holds.                                                                                                                                                                                                                         |
+| 3 Components and references in store | Tables for components, their versions and references, shared between the snapshots of a source (record 0040). A benchmark through the real store.                                                                                                                                                                                                                                                                                                               |
+| 4 Objects, fields, validation rules  | Every file of a snapshot becomes a component. Objects, fields and rules are read, and the ten kinds of parts an org keeps inside the file of an object are components too. A model of the objects resolves names, with a table of standard relationships (record 0041).                                                                                                                                                                                         |
+| 5 Formulas                           | A parser of the formula language and the rules that turn its names into references: paths through relationships, global variables, `Owner:User`, picklist values (record 0042). A formula that is not read as a whole still gives its names, as `probable`.                                                                                                                                                                                                     |
+| 6 Analysis in the snapshot           | `snapshot` analyses what it stored. The new command `orglens analyse` analyses a stored snapshot again without reading the source. `coverage` and `status` show the analysis (record 0043).                                                                                                                                                                                                                                                                     |
+| 7 Impact                             | The walk over references, and the command `orglens impact` with `--depth`, `--min-confidence`, `--outgoing` and `--snapshot`. Six golden answers, and a test that works out the answer for 96 components from the key alone (record 0044).                                                                                                                                                                                                                      |
+| 8 Cross-check                        | A snapshot of an org asks the Dependency API, keeps the rows beside the snapshot and compares them with the analysis. A pair Salesforce reports and the analysis lacks is the error `REFERENCE_MISSED` (record 0045). An org too large for one query is read in parts.                                                                                                                                                                                          |
+| 9 What a snapshot reads              | A snapshot reads every type (record 0038) and is judged complete over the 21 types of the logic tier (0046). Two corrections where the Salesforce library falls short (0047). The key `exclude_types` in `orglens.toml` (0048). Parts asked for by their own names (0049).                                                                                                                                                                                      |
+| 10 Proof on public codebases         | PMM as the fourth codebase. A listing for a check by hand, a test that holds what was checked by its digest, a timing of the built commands, and the note with the numbers.                                                                                                                                                                                                                                                                                     |
+| 11 Phase close                       | The workflow that makes a pre-release on GitHub and tries its install line on three systems before it publishes, version `0.1.0-next.0` with its release notes (record 0050). Record 0051. The job that publishes a pre-release on npm, in an environment that waits for your approval, and what you set up for it (record 0053, which takes the place of record 0052). This report, the test plan, the updated overall plan and the draft of the Phase 2 plan. |
 
 In numbers: about 18,400 lines of TypeScript in the engine and the command line, and about 35,700 lines of
-tests. 2,103 tests are defined. On my machine, with the four public codebases downloaded, 2,092 pass and 11 are
+tests. 2,099 tests are defined. On my machine, with the four public codebases downloaded, 2,088 pass and 11 are
 skipped. Without them, 35 are skipped: CI does not download the codebases and skips the tests on them.
 Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from version 2 at
-the end of Phase 0, and every earlier version is migrated. 18 decision records are new, 0035 to 0052, of which
-0036 is superseded by 0038. 25 pull requests, 20 to 44, each with a code review by a separate agent before it
-was merged. The workflow "Live org" ran ten times against the test org.
+the end of Phase 0, and every earlier version is migrated. 19 decision records are new, 0035 to 0053, of which
+0036 is superseded by 0038 and 0052 by 0053. 26 pull requests, 20 to 45, each with a code review by a separate
+agent before it was merged. The workflow "Live org" ran ten times against the test org.
 
 ## What was measured
 
@@ -149,13 +150,14 @@ them was not read. Only one org was read, so how common this is in other orgs is
   not the time it took.
 - **The pre-release has a version with a pre-release part,** `0.1.0-next.0`, and is made by a workflow. The
   plan named neither. Record 0050 holds both.
-- **Whether something goes to npm before the first release there is open again.** Your answer to Q6 was that
-  nothing does. Your answer of 17 November 2026 was that the project holds three names on npm with empty
-  packages at version `0.0.0`. A step of the script of the pre-release writes them, and a golden file holds
-  what it writes. Then the review found the policy of npm, and the record of that answer is not accepted
-  (record 0052).
-- **What "the first release" is, is decided:** the first one on npm (record 0051). Until then the names, the
-  JSON output and the exit codes can change from one pre-release to the next.
+- **The pre-release goes to npm.** Your answer to Q6 was that nothing does. Your first answer of 17 November
+  2026 was that the project holds three names on npm with empty packages. The review found that the policy of
+  npm forbids that, and the record of that answer was never accepted (record 0052). Your second answer of that
+  day was to publish the pre-release itself on npm (record 0053). The install line is now
+  `npm install --global sf-orglens@0.1.0-next.0`.
+- **What "the first release" is, was decided and is asked again.** You decided that it is the first one on npm
+  (record 0051), when no pre-release went there. Whether a pre-release on npm fixes the names, the JSON output
+  and the exit codes is put to you again.
 
 ## What is not done, and what is not verified
 
@@ -183,22 +185,20 @@ them was not read. Only one org was read, so how common this is in other orgs is
 - The namespace of a package project is not known to the analysis.
 - Profiles and permission sets are still read incompletely, as in Phase 0.
 - A row of the Dependency API for a pair OrgLens found raises no confidence, which record 0034 foresaw.
-- The pre-release is not published. Its install line was tried with the two files served from an address on a
-  machine, not from GitHub: on Linux with npm 11.0, 11.19 and 12.2 by me, and on Linux, Windows and macOS by
-  [a rehearsal of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882) on `main`
-  without the publishing, each with the npm that Node.js brings and with the newest npm. All six passed. The
-  jobs that publish and that install from GitHub were skipped, as a rehearsal does, and have never run.
-- **The hole of the install is open, and how it is closed is open again.** A global install keeps no address,
-  so `npm update --global` asks the public registry for the two names and installs what it finds there in the
-  place of OrgLens. The review showed it with a made-up package on its own machine, and I repeated it. You
-  chose to hold the names on npm, and with your answer I looked them up on 17 November 2026: `sf-orglens`,
-  `@sf-orglens/engine` and `orglens` are free, and no organization of npm has the name `sf-orglens`. The review
-  of this pull request then read the [policy of npm on names](https://docs.npmjs.com/policies/disputes): to
-  publish a package only to reserve its name is against the terms of npm, and an account that does it "may be
-  removed or renamed without notice". **I recommended that way to you without having read the policy.** I read
-  the page after the review, and it says so. Nothing is published under the names, and the steps of
-  `docs/releases/npm-names.md` are not to be followed before you have chosen again. They were never run.
-- The workflow "Release (dry run)" has never run. Its last step asks the registry for both names.
+- The pre-release is not published. The job that publishes on npm, the job that creates the pre-release on
+  GitHub and the jobs that install from npm have never run.
+- **Nothing of the publishing was tried against npm.** I have no account there. The script of the job was run
+  on my machine against a registry that keeps what it is sent, without the provenance: a first publish, the
+  same run again, a second version, the tag `latest` moved, and other bytes under a version refused. Not tried:
+  trusted publishing, the provenance, the token of the first publish, the organization, and whether npm takes
+  the address of the repository as the packages name it. Record 0053 lists them.
+- The new install line was tried against a registry on my machine that holds the two packed files, on Linux
+  with npm 11.19 and 12.2. The earlier line, with two addresses, had passed
+  [a rehearsal of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882) on three
+  systems. The rehearsal with the new line is run on the pull request of record 0053, and its result is there.
+- **The name `orglens` is free on npm, and stays so.** It is the name of the command, not of a package.
+  `npx orglens` on a machine without OrgLens fetches whatever package has that name. The policy of npm does not
+  let the project hold it empty. The release notes say not to run it.
 - Three things I could not trace: why two objects of the test org are listed and not handed out, why Salesforce
   refused two files of the first deploy of the fixture, and where the count of 1,579 files for Nebula Logger in
   the status of work package 6 came from. A snapshot holds 1,021.
@@ -206,23 +206,24 @@ them was not read. Only one org was read, so how common this is in other orgs is
 ## Open with you
 
 1. **Run the test plan**, and approve or reject the phase. Its main part needs an org you know.
-2. **How the hole of the install is closed.** Asked again on 17 November 2026, with four ways: the install goes
-   into a folder of its own that `npm update --global` does not touch, the pre-release itself is published on
-   npm so that the names are in use, the names are held with empty packages against the policy of npm, or the
-   release notes only warn. I recommend the first: it needs no account on npm, breaks no rule of npm and keeps
-   your answer to Q6. It leaves the names free on npm until the first release there. **Until you answer,
-   publish nothing on npm.**
-3. **Your word for the pre-release.** When that is settled and built, I take the last mark `[open]` out of the
-   release notes in a pull request, and then ask you. The run that publishes cannot be undone, and I start it
-   only on your word for that version.
+2. **What only you can set up for the release.** The organization `sf-orglens` on npm, the environment
+   `npm-next` on GitHub with yourself as reviewer, and a token for the first publish as a secret of that
+   environment. [`docs/releases/publishing.md`](../releases/publishing.md) has the steps. Never send me the
+   token.
+3. **What a pre-release on npm fixes.** Asked on 17 November 2026, with three answers: nothing before the first
+   version without a pre-release part, which I recommend, the names now, or everything now. The release notes
+   hold the mark `[open]` at that point.
+4. **Your word for the pre-release.** When the two points above are done, I take the mark out of the release
+   notes in a pull request, rehearse, and then ask you. The run that publishes cannot be undone, and I start it
+   only on your word for that version. You then approve its job in the environment.
    - Not a question, a setting: GitHub can make releases immutable. It is off in this repository, and only you
      can turn it on. Record 0050 says that a published pre-release is not changed. The setting would hold that.
-4. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as
+5. **How you count the 100,000 components of your targets** (record 0037). This phase worked with the count as
    an org lists them, fields included. Asked on 15 November 2026.
-5. **The draft of the [Phase 2 plan](../plans/phase-2.md)** and its questions. Nothing of Phase 2 is built
+6. **The draft of the [Phase 2 plan](../plans/phase-2.md)** and its questions. Nothing of Phase 2 is built
    before you approve it.
-6. **From Phase 0, still open:** part G of its test plan, your reading of ten entries of the answer key, and
+7. **From Phase 0, still open:** part G of its test plan, your reading of ten entries of the answer key, and
    whether private vulnerability reporting is switched on in the settings of the repository.
-7. **Choices of mine that are yours to strike.** Records 0039 to 0050 and record 0052 each list the choices
+8. **Choices of mine that are yours to strike.** Records 0039 to 0050 and record 0053 each list the choices
    their author made.
    The ones with the most weight are named in the status of each work package in the plan.

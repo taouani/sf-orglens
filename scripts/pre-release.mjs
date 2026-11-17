@@ -1,12 +1,13 @@
 /*
- * The steps of the workflow "Pre-release" that need more than a line of shell (decision record 0050).
+ * The steps of the workflow "Pre-release" that need more than a line of shell (decision records 0050 and 0053).
  *
  *   node scripts/pre-release.mjs check <version> <publish> <ref>
  *       Holds a request for a pre-release against the repository, before anything is built. It fails when
- *       the version is not a pre-release version, when a package has another version, when the change log of a
- *       package has no section for it, when a changeset is waiting, when docs/releases/v<version>.md is missing,
- *       does not hold the line that installs this version or is written in a form `page` cannot keep, or when
- *       <publish> is "true" and <ref> is not the branch main or the release notes still hold the mark "[open]".
+ *       the version is not a pre-release version, when a package has another version or does not name this
+ *       repository as npm needs it for trusted publishing, when the change log of a package has no section for
+ *       the version, when a changeset is waiting, when docs/releases/v<version>.md is missing, does not hold the
+ *       line that installs this version or is written in a form `page` cannot keep, or when <publish> is "true"
+ *       and <ref> is not the branch main or the release notes still hold the mark "[open]".
  *
  *   node scripts/pre-release.mjs pack <version> <folder>
  *       Packs the two packages into <folder>, and writes SHA256SUMS and notes.md next to them: the release
@@ -16,19 +17,15 @@
  *       Prints a file of release notes in the form the page of a release needs. A test holds it.
  *
  *   node scripts/pre-release.mjs try <version> <folder>
- *   node scripts/pre-release.mjs try <version> github
+ *   node scripts/pre-release.mjs try <version> npm
  *       Installs the version with the line of its release notes, into the global folder of npm, and runs the
- *       binary. With a folder, the packed files of that folder are served from an address on this machine that
- *       stands in for GitHub, so the line is tried before anything is public. With "github", the line is run as
- *       the notes hold it. It installs the libraries the packages need from the registry of npm.
+ *       binary. With a folder, the line is given a registry on this machine that holds the two packed files of
+ *       that folder and sends every other question on to the registry of npm, so the line is tried before
+ *       anything is public. With "npm", the line is run as the notes hold it. The libraries the packages need
+ *       come from the registry of npm in both cases.
  *
- *   node scripts/pre-release.mjs names <folder>
- *       Writes into <folder> the three empty packages with which the project holds its names on the registry
- *       of npm (decision record 0052): `sf-orglens`, `@sf-orglens/engine` and `orglens`, each at version 0.0.0.
- *       Record 0052 is not accepted: nothing is published under the names before the maintainer has chosen
- *       again. docs/releases/npm-names.md says so, and has the steps for the maintainer.
- *
- * No step publishes anything. `check`, `pack`, `page` and `names` need no network.
+ * No step publishes anything: the workflow does that, with the files `pack` wrote. `check`, `pack` and `page`
+ * need no network.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -36,7 +33,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPOSITORY = 'https://github.com/taouani/sf-orglens';
@@ -44,16 +43,8 @@ const PACKAGES = [
   { folder: 'engine', name: '@sf-orglens/engine', tarball: 'sf-orglens-engine' },
   { folder: 'cli', name: 'sf-orglens', tarball: 'sf-orglens' },
 ];
-/**
- * The names the project holds on the registry of npm with an empty package: the two packages, and the name of
- * the binary, which `npx orglens` would otherwise fetch from whoever has it. `bin` says which of them install a
- * command `orglens`, which then says what it is.
- */
-const HELD_NAMES = [
-  { folder: 'sf-orglens', name: 'sf-orglens', bin: true },
-  { folder: 'sf-orglens-engine', name: '@sf-orglens/engine', bin: false },
-  { folder: 'orglens', name: 'orglens', bin: true },
-];
+/** The public registry of npm. A question the stand-in of `try` cannot answer is sent on to it. */
+const REGISTRY = 'https://registry.npmjs.org';
 /** A version with a pre-release part, such as 0.1.0-next.0. A version without one is not released from here. */
 const PRE_RELEASE = /^\d+\.\d+\.\d+-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$/;
 /** Release notes that hold this mark say that something is still to be answered. They are not published. */
@@ -64,13 +55,11 @@ const tarballOf = (pkg, version) => `${pkg.tarball}-${version}.tgz`;
 const notesFile = (version) => `docs/releases/v${version}.md`;
 
 /**
- * The one line that installs a version. The engine comes first: the command line depends on it. npm 12 installs
- * from an address only when it is told to, with `--allow-remote`. By the documentation of npm, `root` allows the
- * addresses of the line itself and no address that a dependency names.
+ * The one line that installs a version. It names the command line by its exact version, which in turn names the
+ * engine by the same exact version: `pnpm pack` writes it in the place of `workspace:*`.
  */
-function installLine(version, site = REPOSITORY) {
-  const urls = PACKAGES.map((pkg) => `${site}/releases/download/v${version}/${tarballOf(pkg, version)}`);
-  return `npm install --global --allow-remote=root ${urls.join(' ')}`;
+function installLine(version) {
+  return `npm install --global ${PACKAGES[1].name}@${version}`;
 }
 
 /**
@@ -136,8 +125,7 @@ function usage() {
     'Usage: node scripts/pre-release.mjs check <version> <publish> <ref>\n' +
       '       node scripts/pre-release.mjs pack <version> <folder>\n' +
       '       node scripts/pre-release.mjs page <file>\n' +
-      '       node scripts/pre-release.mjs try <version> <folder>|github\n' +
-      '       node scripts/pre-release.mjs names <folder>',
+      '       node scripts/pre-release.mjs try <version> <folder>|npm',
   );
   process.exit(2);
 }
@@ -156,6 +144,10 @@ function check(version, publish, ref) {
     if (manifest.name !== pkg.name) problems.push(`packages/${pkg.folder} is named ${String(manifest.name)}.`);
     if (manifest.version !== version) {
       problems.push(`${pkg.name} is at version ${String(manifest.version)}, not ${version}.`);
+    }
+    // npm holds the repository a package names against the repository of the workflow that publishes it.
+    if (manifest.repository?.url !== `git+${REPOSITORY}.git`) {
+      problems.push(`packages/${pkg.folder}/package.json does not name git+${REPOSITORY}.git as its repository.`);
     }
     const changeLog = `packages/${pkg.folder}/CHANGELOG.md`;
     if (!existsSync(join(root, changeLog)) || !read(changeLog).split('\n').includes(`## ${version}`)) {
@@ -265,20 +257,61 @@ function run(line, options = {}) {
   });
 }
 
-/** Serves the files of a folder under the addresses a release on GitHub has, on a free port of this machine. */
+/** The `package.json` of a packed package: the file `package/package.json` of the archive. */
+function manifestOf(tarball) {
+  const tar = gunzipSync(readFileSync(tarball));
+  for (let at = 0; at + 512 <= tar.length;) {
+    const name = tar.toString('utf8', at, at + 100).replace(/\0.*$/s, '');
+    const size = Number.parseInt(
+      tar
+        .toString('utf8', at + 124, at + 136)
+        .replace(/\0.*$/s, '')
+        .trim() || '0',
+      8,
+    );
+    if (name === 'package/package.json') return JSON.parse(tar.toString('utf8', at + 512, at + 512 + size));
+    at += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error(`${tarball} holds no package/package.json.`);
+}
+
+/**
+ * A registry on a free port of this machine that stands in for the one of npm. It answers for the two packages
+ * with the packed files of a folder, as the registry will once they are published, and sends every other request
+ * on to the registry of npm with a redirect.
+ */
 function standIn(folder, version) {
-  const files = new Map(PACKAGES.map((pkg) => [`/releases/download/v${version}/${tarballOf(pkg, version)}`, pkg]));
+  const answers = new Map();
   const server = createServer((request, response) => {
-    const pkg = files.get(request.url ?? '');
-    const file = pkg === undefined ? undefined : join(folder, tarballOf(pkg, version));
-    if (file === undefined || !existsSync(file)) {
-      response.writeHead(404).end();
-      return;
+    const url = decodeURIComponent(request.url ?? '').replace(/\?.*$/, '');
+    const answer = answers.get(url);
+    if (answer === undefined) {
+      response.writeHead(307, { location: `${REGISTRY}${request.url ?? ''}` }).end();
+    } else {
+      response.writeHead(200, { 'content-type': answer.type }).end(answer.body);
     }
-    response.writeHead(200, { 'content-type': 'application/octet-stream' }).end(readFileSync(file));
   });
   return new Promise((done) => {
-    server.listen(0, '127.0.0.1', () => done({ server, site: `http://127.0.0.1:${String(server.address().port)}` }));
+    server.listen(0, '127.0.0.1', () => {
+      const site = `http://127.0.0.1:${String(server.address().port)}`;
+      for (const pkg of PACKAGES) {
+        const file = tarballOf(pkg, version);
+        const bytes = readFileSync(join(folder, file));
+        const dist = {
+          tarball: `${site}/-/packed/${file}`,
+          integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
+          shasum: createHash('sha1').update(bytes).digest('hex'),
+        };
+        const packument = {
+          name: pkg.name,
+          'dist-tags': { latest: version, next: version },
+          versions: { [version]: { ...manifestOf(join(folder, file)), dist } },
+        };
+        answers.set(`/${pkg.name}`, { type: 'application/json', body: JSON.stringify(packument) });
+        answers.set(`/-/packed/${file}`, { type: 'application/octet-stream', body: bytes });
+      }
+      done({ server, site });
+    });
   });
 }
 
@@ -287,11 +320,22 @@ async function tryInstall(version, from) {
     console.error(`FAIL "${version}" is not a pre-release version such as 0.1.0-next.0.`);
     process.exit(1);
   }
-  const local = from === 'github' ? undefined : await standIn(resolve(from), version);
+  const local = from === 'npm' ? undefined : await standIn(resolve(from), version);
   try {
-    const line = installLine(version, local?.site);
-    console.log(`npm ${(await run('npm --version')).trim()}\n${line}`);
-    await run(`${line} --no-fund`);
+    const line = installLine(version);
+    const where = local === undefined ? '' : ` --registry ${local.site}`;
+    console.log(`npm ${(await run('npm --version')).trim()}\n${line}${where}`);
+    // The registry of npm can take a moment to show a version that was just published.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await run(`${line}${where} --no-fund`);
+        break;
+      } catch (error) {
+        if (local !== undefined || attempt === 5) throw error;
+        console.log(`Attempt ${String(attempt)} failed. Waiting ${String(attempt * 30)} s.`);
+        await setTimeout(attempt * 30_000);
+      }
+    }
     const said = (await run('orglens --version')).trim();
     if (!said.startsWith(`sf-orglens/${version} engine/${version} `)) {
       throw new Error(`The installed binary does not say that it is version ${version}.`);
@@ -309,62 +353,6 @@ async function tryInstall(version, from) {
   }
 }
 
-/**
- * The files of one empty package that holds a name. It has no dependency and no script. `publishConfig` names
- * the public registry, so that a registry set in the settings of the person who publishes, or in a folder above,
- * is not the one the package goes to.
- */
-function heldName({ name, bin }) {
-  const releases = `${REPOSITORY}/releases`;
-  const manifest = {
-    name,
-    version: '0.0.0',
-    description: 'This name is held for OrgLens. OrgLens is not released on npm yet.',
-    license: 'Apache-2.0',
-    repository: { type: 'git', url: `git+${REPOSITORY}.git` },
-    homepage: REPOSITORY,
-    ...(bin ? { bin: { orglens: 'not-orglens.js' } } : {}),
-    files: bin ? ['not-orglens.js'] : [],
-    publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
-  };
-  const files = {
-    'package.json': `${JSON.stringify(manifest, null, 2)}\n`,
-    'README.md':
-      `# ${name}\n\nThis name is held for [OrgLens](${REPOSITORY}). The package is empty.\n\n` +
-      `OrgLens is not released on npm yet. Its pre-releases are on GitHub, each with the line that installs it:\n` +
-      `${releases}\n`,
-  };
-  if (bin) {
-    files['not-orglens.js'] =
-      '#!/usr/bin/env node\n' +
-      'console.error(\n' +
-      `  'This is not OrgLens. It is the empty package that holds the name "${name}" on npm.\\n' +\n` +
-      "    'OrgLens is not released on npm yet. If this took the place of a pre-release you had installed,\\n' +\n" +
-      "    'install that again with the line of its release notes:\\n' +\n" +
-      `    '${releases}',\n` +
-      ');\n' +
-      'process.exitCode = 1;\n';
-  }
-  return files;
-}
-
-function names(folder) {
-  const out = resolve(folder);
-  mkdirSync(out, { recursive: true });
-  if (readdirSync(out).length > 0) {
-    console.error(`FAIL ${out} is not empty.`);
-    process.exit(1);
-  }
-  for (const held of HELD_NAMES) {
-    mkdirSync(join(out, held.folder));
-    for (const [file, text] of Object.entries(heldName(held))) writeFileSync(join(out, held.folder, file), text);
-  }
-  console.log(
-    `Wrote ${HELD_NAMES.map((held) => held.folder).join(', ')} into ${out}.\n` +
-      'Nothing is published. Read docs/releases/npm-names.md first: it says whether the steps are to be followed.',
-  );
-}
-
 const [step, ...rest] = process.argv.slice(2);
 if (step === 'check' && rest.length === 3) {
   check(rest[0], rest[1], rest[2]);
@@ -374,8 +362,6 @@ if (step === 'check' && rest.length === 3) {
   page(rest[0]);
 } else if (step === 'try' && rest.length === 2) {
   await tryInstall(rest[0], rest[1]);
-} else if (step === 'names' && rest.length === 1) {
-  names(rest[0]);
 } else {
   usage();
 }

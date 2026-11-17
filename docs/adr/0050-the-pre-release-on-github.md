@@ -4,7 +4,7 @@
 - Date: 2026-11-17
 - Decisions: none (work package 11 of the Phase 1 plan. It builds the pre-release the maintainer chose on
   2026-11-15 with the sixth question of that plan, and holds the choices its author made while building it)
-- Changed by: [0051](0051-the-first-release-is-the-first-on-npm.md), in the first point this record leaves undecided: "the first release" is the first one on npm, and a pre-release on GitHub is not it. The second point, the names on npm, is the subject of [0052](0052-the-project-holds-its-names-on-npm.md), which is not accepted
+- Changed by: [0051](0051-the-first-release-is-the-first-on-npm.md), in the first point this record leaves undecided: "the first release" is the first one on npm, and a pre-release on GitHub is not it. [0053](0053-a-pre-release-is-published-on-npm.md) changes where a pre-release is and how it is installed: it is published on npm as well, and installed from there by its name. With that the second point this record leaves undecided is settled, the hole of the install that its consequences describe is closed, and the workflow "Release (dry run)" is removed
 
 ## Context
 

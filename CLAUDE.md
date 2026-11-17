@@ -40,6 +40,10 @@ These rules come from the maintainer and apply to every phase.
   another form, only the words of a short list of everyday words are shown
   (`packages/engine/test/live/public-log.ts` has the rule, decision record 0033 the reasons). No file of the org
   is kept or uploaded.
+- Nothing is published to npm from a machine. Only the workflow "Pre-release" publishes, started by hand on
+  `main`, in an environment of GitHub that waits for the maintainer's approval (decision record 0053). The
+  assistant has no account on npm and never holds a token for it. A run with "publish" on cannot be undone and is
+  started only after the maintainer has said so for that version.
 - The fixture project is the only thing that is ever deployed to an org, and only to the test org, by a tool of
   the tests (`packages/engine/test/live/deploy-fixture.ts`).
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when

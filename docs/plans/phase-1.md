@@ -105,7 +105,7 @@ were asked, unchanged.
 | Q3  | (a).                                                                                                                                                                                 | Record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md) adds the second half to the gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Q4  | Your own numbers, for an org of 100,000 components: first snapshot under 60 minutes, impact query under 5 seconds, comparison under 10 seconds, incremental refresh under 5 minutes. | Record [0037](../adr/0037-performance-targets.md). **How you count a component is open**, and I asked you on the same day. The question counted top-level components only, and by that count your target is ten times the synthetic org of Phase 0. Counted as the org lists them, fields included, it is twice that org. Until you answer, this plan works with the second count, as a reading of mine. Two more readings of mine are in the record: the org of the gate stays at 10,000 or more, and the 5 seconds hold for the worst impact query that is measured. This phase measures the impact query at the target size, through the real store (WP3 and WP7). Nothing that was measured supports 60 minutes for a first snapshot, by either count, and this phase does not change that (section 8).                                                                                                                                                                                                                                 |
 | Q5  | As proposed.                                                                                                                                                                         | The four pass marks stand. If one is missed, the phase reports the gap and we decide together.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Q6  | (a).                                                                                                                                                                                 | WP11 ends with a pre-release on GitHub that has the packed command line attached. Nothing goes to npm.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Q6  | (a).                                                                                                                                                                                 | WP11 ends with a pre-release on GitHub that has the packed command line attached. Nothing goes to npm. **Changed by you on 17 November 2026:** the pre-release is also published on npm (record [0053](../adr/0053-a-pre-release-is-published-on-npm.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Q7  | (a).                                                                                                                                                                                 | WP6 builds `orglens analyse <source>`. The record that extends 0016 is written in the pull request of WP6.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Q8  | (a).                                                                                                                                                                                 | WP2 builds a reader of our own. I still search for a library on the first day of WP2, and take it and tell you if one exists and is maintained. The record is written in the pull request of WP2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -113,6 +113,7 @@ One thing your answer to Q6 leaves open, which I put to you before the release o
 say that the package names and the JSON contract can still change "until the first release". Whether this
 pre-release is that release was not decided with your answer. You decided it on 17 November 2026: it is not.
 The first release is the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)).
+With your later choice that pre-releases go to npm, I put to you again what the first of them fixes.
 
 The questions as they were asked on 13 November 2026:
 
@@ -1292,7 +1293,7 @@ and the note [public-codebases.md](../research/phase-1/public-codebases.md). No 
 - The release of Q6: a pre-release on GitHub with the packed command line attached, installed with one
   `npm install` line. Nothing goes to npm.
 
-Status on 17 November 2026, with the second pull request of the work package. The documents are written. The
+Status on 17 November 2026, with the third pull request of the work package. The documents are written. The
 way to the pre-release is built. **The pre-release itself is not published.**
 
 - **The documents.** The [phase report](../reports/phase-1.md), the [test plan](../test-plans/phase-1.md), the
@@ -1325,21 +1326,33 @@ way to the pre-release is built. **The pre-release itself is not published.**
   reserve its name, and says that an account that does so "may be removed or renamed without notice". I had not
   read it before I recommended that way. So record
   [0052](../adr/0052-the-project-holds-its-names-on-npm.md) is not accepted, the steps of
-  [`docs/releases/npm-names.md`](../releases/npm-names.md) are not to be followed, and the choice is back with
+  `docs/releases/npm-names.md` were not to be followed, and the choice was back with
   you, asked on the same day with four ways: an install into a folder of its own, the pre-release itself on
-  npm, the names held against the policy, or a warning only. I recommend the first.
-- **What the release still waits for.** That choice, and what it asks me to build. The release notes keep the
-  mark `[open]` at that point, and the workflow refuses to publish notes with the mark. After that I start the
-  run that publishes only on your word for that version: it cannot be undone.
+  npm, the names held against the policy, or a warning only. I recommended the first.
+- **You chose the second, on the same day: the pre-release itself is published on npm,** as another project of
+  yours does it. Record [0053](../adr/0053-a-pre-release-is-published-on-npm.md) holds it and takes the place of
+  record 0052. This changes your answer to Q6. The workflow "Pre-release" got a job that publishes the two
+  packages under the tag `next`, in the environment `npm-next`, which waits for your approval, through the
+  trusted publishing of npm. The install line is `npm install --global sf-orglens@0.1.0-next.0`. The step
+  `names`, its golden file, `docs/releases/npm-names.md` and the workflow "Release (dry run)" are removed.
+  Choices of mine in that record, which you can strike: that the tag `latest` follows `next`, the name of the
+  environment, that provenance is always on, and the removal of that workflow.
+- **What the release still waits for.** Three things. What only you can set up: the organization `sf-orglens`
+  on npm, the environment on GitHub and a token for the first publish
+  ([`docs/releases/publishing.md`](../releases/publishing.md)). Your answer to what a pre-release on npm fixes:
+  the release notes hold the mark `[open]` at that point, and the workflow refuses to publish notes with the
+  mark. And your word for that version: the run that publishes cannot be undone.
 - **The rehearsal.** [Run 1 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44097701882)
   on `main` on 17 November 2026, with "publish" off. The check and the packing passed, and so did all six tries
   of the install line: on Linux, Windows and macOS, each with the npm that Node.js brings and with the newest
   npm, which was 12.2.2 on Linux. The jobs that publish and that install from GitHub were skipped, as they are
   in a rehearsal.
-- **Not done, and not verified.** The install from GitHub, which the workflow tries after it has published.
-  The steps for the names on npm were not run: I have no account there. The workflow "Release (dry run)" has
-  never run. `README.md` and `SECURITY.md` say that no version is published, which stays true until the
-  release.
+  That rehearsal was of the first way, with two addresses. The rehearsal of the way with npm is run on the pull
+  request of record 0053.
+- **Not done, and not verified.** Nothing of the publishing was tried against npm: I have no account there. The
+  jobs that publish on npm and on GitHub and that install from npm have never run. Record 0053 lists what the
+  first publish will show for the first time. `README.md` and `SECURITY.md` say that no version is published,
+  which stays true until the release.
 
 ## 6. How the results are proven
 
