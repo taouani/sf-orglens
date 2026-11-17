@@ -75,7 +75,11 @@ The files are documented for users in [configuration.md](../configuration.md).
   that quotes one. There is no switch to turn the check off. The value has to be reworded.
 - The lock holds off other OrgLens commands, not an editor. A hand-made change that is saved in the instant between
   the read and the write of a command is lost. A lock that a crashed command left behind is taken over after 30
-  seconds.
+  seconds. Since 17 November 2026 a command that finds the lock taken gives up when the command in front has
+  held it for ten seconds, or after thirty seconds in all. It was two seconds in all, which one run of the tests
+  on Windows showed to be too short. Two commands that find the same old lock no longer both take it over: a
+  second file, `.orglens/config.lock.takeover`, lets one of them look and remove. A command that runs for longer
+  than 30 seconds still loses its lock, and its change can be lost.
 - Settings that will be needed later (which metadata to retrieve, retention of snapshots, limits) have no place in
   the file yet. Each arrives with its feature, and with a decision if it changes this contract.
 - The layout reader is a second, smaller reading of TOML. It is only used on text the parser accepted, and for

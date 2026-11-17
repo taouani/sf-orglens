@@ -11,6 +11,7 @@
  *   .orglens/local.toml      personal settings, optional, written by hand
  *   .orglens/orglens.db      the workspace database (plus -wal and -shm, which SQLite creates beside it)
  *   .orglens/config.lock     held while a command changes orglens.toml
+ *   .orglens/config.lock.takeover   held for a moment while a command removes a lock that was left behind
  *   .orglens/logs/           one JSON-lines file per day
  *   .orglens/snapshot-<source>.lock   held while a snapshot of an org is taken, with the id of the process
  *   .orglens/tmp/snapshot-<source>/   where the files of one retrieve are converted, emptied when a snapshot starts

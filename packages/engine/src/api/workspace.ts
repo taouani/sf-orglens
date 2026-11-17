@@ -31,7 +31,7 @@ import { analyseStored, isAnalysisFailure } from './analysis.ts';
 import { whileBusyOnWindows, writeFileAtomically } from './atomic-write.ts';
 import { boundary } from './boundary.ts';
 import { checkSource, type SourceCheck } from './check.ts';
-import { withConfigLock } from './config-lock.ts';
+import { withConfigLock, type LockOptions } from './config-lock.ts';
 import { finishedSnapshot, impactOf, type ImpactQuery, type ImpactReport } from './impact.ts';
 import { takeOrgSnapshot, type SnapshotProgress } from './org-snapshot.ts';
 import { coverageOf, noSnapshot, takeSnapshot, type CoverageReport } from './snapshot.ts';
@@ -464,22 +464,32 @@ export function openWorkspace(locator: WorkspaceLocator = {}): Promise<Workspace
       // The folder may be a fresh clone that has the configuration and nothing else. The file that keeps the data
       // folder out of Git comes first, before the lock, the log and the personal file are written into it.
       ensureDataDir(paths);
-      withConfigLock(paths.configLockFile, () => {
-        const shared = readText(paths.configFile, SHARED_CONFIG_FILE);
-        if (typeof shared !== 'string') throw invalidConfig([shared]);
-        const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
-        if (typeof local === 'object') throw invalidConfig([local]);
-        const changed = change(shared, local);
-        // The shared file first. If the second write fails, a login is left for a source that is no longer
-        // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
-        // of a source that is still there.
-        if (changed.shared !== undefined && changed.shared !== shared) {
-          writeFileAtomically(paths.configFile, changed.shared);
-        }
-        if (changed.local !== undefined && changed.local !== local) {
-          writeFileAtomically(paths.localConfigFile, changed.local);
-        }
-      });
+      // A lock that was slow is the only trace of what made a command wait, so it goes to the log.
+      const slowLock: LockOptions = {
+        slow: (times) => {
+          workspaceLogger(paths).warn('config.lock.slow', { ...times });
+        },
+      };
+      withConfigLock(
+        paths.configLockFile,
+        () => {
+          const shared = readText(paths.configFile, SHARED_CONFIG_FILE);
+          if (typeof shared !== 'string') throw invalidConfig([shared]);
+          const local = isFile(paths.localConfigFile) ? readText(paths.localConfigFile, LOCAL_CONFIG_FILE) : undefined;
+          if (typeof local === 'object') throw invalidConfig([local]);
+          const changed = change(shared, local);
+          // The shared file first. If the second write fails, a login is left for a source that is no longer
+          // declared. That is a valid configuration, and `doctor` names it. The other order would remove the login
+          // of a source that is still there.
+          if (changed.shared !== undefined && changed.shared !== shared) {
+            writeFileAtomically(paths.configFile, changed.shared);
+          }
+          if (changed.local !== undefined && changed.local !== local) {
+            writeFileAtomically(paths.localConfigFile, changed.local);
+          }
+        },
+        slowLock,
+      );
       config = loadConfig(paths, env);
     };
 

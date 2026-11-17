@@ -14,6 +14,7 @@ orglens.toml             shared configuration. Commit it.
 .orglens/local.toml      personal settings. Optional, never committed. Written by hand or by "source link".
 .orglens/orglens.db      the workspace database (plus the -wal and -shm files SQLite creates beside it)
 .orglens/config.lock     exists only while a command changes a configuration file
+.orglens/config.lock.takeover   exists for a moment while a command removes a lock that was left behind
 .orglens/snapshot-<source>.lock   exists only while a snapshot of an org or a sandbox is taken
 .orglens/tmp/            files of a retrieve on their way into the database. Emptied when a snapshot starts and ends.
 .orglens/logs/           log files
@@ -280,8 +281,14 @@ and the layout of every other line stay exactly as they were.
   stays.
 - While one command changes a file, a second one waits for it. It gives up when the command in front has held
   the lock for ten seconds, or when it has waited thirty seconds in all while several commands took their turn.
-  A lock that is older than thirty seconds was left behind by a command that did not end properly, and the next
-  command takes it over.
+  A lock that is older than thirty seconds is taken for one that a command left behind when it did not end
+  properly, and the next command takes it over. A command that is still running after thirty seconds loses its
+  lock that way, and its change can be lost.
+- The age of a lock is the time of this machine minus the time the file system gave the lock file. On a folder
+  whose clock is more than ten seconds behind, such as some network folders, a command that finds the lock taken
+  gives up at once. More than thirty seconds behind, the lock keeps no command out.
+- A command that waited for the lock for a second or longer, or held it that long, writes the two times to the
+  log of the workspace (`config.lock.slow`).
 - On Windows a file cannot be replaced while a program has it open. OrgLens then tries the move again for up to
   a third of a second, and does the same when it reads a file at the moment another command replaces it.
 - The file has to be UTF-8. A file in another encoding is refused, not converted.

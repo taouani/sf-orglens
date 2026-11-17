@@ -29,6 +29,16 @@ const posix = process.platform !== 'win32';
 const dirs = tempDirs();
 afterEach(dirs.cleanUp);
 
+/** The lines of the log of a workspace. */
+function logLines(dir: string): string[] {
+  const logs = join(dir, '.orglens', 'logs');
+  if (!existsSync(logs)) return [];
+  return readdirSync(logs)
+    .sort()
+    .flatMap((file) => readFileSync(join(logs, file), 'utf8').split('\n'))
+    .filter((line) => line !== '');
+}
+
 /** The engine error thrown by `run`, as its JSON form. */
 async function failure(run: () => Promise<unknown>): Promise<{ code: string; message: string; hint?: string }> {
   try {
@@ -566,11 +576,40 @@ describe('workspace sources', () => {
           }),
       ),
     );
+    // A command that held the lock for a second or longer wrote that to the log. One run on Windows failed
+    // here because one command held it for more than two seconds, and nothing said how long. This says it,
+    // whether the test passes or not.
+    const slow = logLines(dir).filter((line) => line.includes('"config.lock.slow"'));
+    if (slow.length > 0) console.warn(`Slow locks of the configuration:\n${slow.join('\n')}`);
     expect(results).toEqual(names.map(() => ''));
     const workspace = await openWorkspace({ root: dir, env: {} });
     expect((await workspace.sources.list()).map((source) => source.name).sort()).toEqual(names);
     expect(readdirSync(dir).sort()).toEqual(['.orglens', 'orglens.toml']);
-  }, 30_000);
+    // Longer than a command waits in all, so that a command that gives up says so before the test ends.
+  }, 60_000);
+
+  it('writes to the log that it waited for the lock when it waited for a second or longer', async () => {
+    const dir = dirs.next();
+    const workspace = await workspaceIn(dir);
+    const lock = join(dir, '.orglens', 'config.lock');
+    writeFileSync(lock, '1\n');
+    // Another process gives the lock back after more than a second. This one waits meanwhile and can do
+    // nothing else, so the other process has to be a process of its own.
+    const other = spawn(process.execPath, [
+      '--eval',
+      `setTimeout(() => require('node:fs').rmSync(${JSON.stringify(lock)}), 1200)`,
+    ]);
+    const ended = new Promise((done) => other.on('close', done));
+    await workspace.sources.add({ name: 'prod', kind: 'org' });
+    await ended;
+    const slow = logLines(dir)
+      .filter((line) => line.includes('"config.lock.slow"'))
+      .map((line) => JSON.parse(line) as { level: string; waitedMs: number; heldMs: number });
+    expect(slow).toHaveLength(1);
+    expect(slow[0]).toMatchObject({ level: 'warn' });
+    expect(slow[0]?.waitedMs).toBeGreaterThanOrEqual(1000);
+    expect((await workspace.sources.list()).map((source) => source.name)).toEqual(['prod']);
+  });
 
   it('replaces the file in one step and leaves no other file behind', async () => {
     const dir = dirs.next();
