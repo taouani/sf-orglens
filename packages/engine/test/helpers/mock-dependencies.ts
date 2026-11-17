@@ -90,10 +90,10 @@ function condition(clause: string): ((row: MockDependencyRow) => boolean) | null
     const values = new Set(quotedList(notIn[2] ?? ''));
     return (row) => !values.has(row[notIn[1] ?? ''] ?? '');
   }
-  const ids = /^MetadataComponentId IN \(((?:'[A-Za-z0-9]{15,18}'(?:, )?)+)\)$/.exec(clause);
+  const ids = /^MetadataComponentId (IN|NOT IN) \(((?:'[A-Za-z0-9]{15,18}'(?:, )?)+)\)$/.exec(clause);
   if (ids !== null) {
-    const values = new Set(quotedList(ids[1] ?? '').map((id) => id.slice(0, 15)));
-    return (row) => values.has((row['MetadataComponentId'] ?? '').slice(0, 15));
+    const values = new Set(quotedList(ids[2] ?? '').map((id) => id.slice(0, 15)));
+    return (row) => values.has((row['MetadataComponentId'] ?? '').slice(0, 15)) === (ids[1] === 'IN');
   }
   return null;
 }

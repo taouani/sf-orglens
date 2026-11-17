@@ -172,8 +172,9 @@ export async function analyseStored(store: Store, source: string, snapshot: Anal
 export interface CrossCheckReport {
   /**
    * - `whole`: no query left a row out.
-   * - `partial`: rows are missing, because a query was cut off at the limit of the API or failed. A pair
-   *   without a row says less then.
+   * - `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be
+   *   missing, because rows were asked for per component and nothing shows that the org listed every
+   *   component. A pair without a row says less then.
    * - `none`: the org answered no query. Nothing was compared.
    */
   readonly state: 'whole' | 'partial' | 'none';
@@ -186,6 +187,11 @@ export interface CrossCheckReport {
   readonly queriesCutOff: number;
   /** Queries that failed and whose rows no other query gave. */
   readonly queriesFailed: number;
+  /**
+   * Queries at the limit whose rows were asked for per component, for more components than one query can name.
+   * Every row of a component the org listed was read. A row of a component it did not list would be missing.
+   */
+  readonly queriesNotProven: number;
   /** The code of the first failure, or `null`. */
   readonly code: string | null;
   /**
@@ -203,20 +209,56 @@ const isPairs = (value: unknown): boolean =>
     return typeof from === 'string' && typeof to === 'string';
   });
 
-/** A comparison as it was stored, or `null` if what is stored is not one this version can show. */
+/** The fields of a comparison that are counts. */
+const COUNTS = [
+  'rows',
+  'rowsNotAnalysed',
+  'rowsNotMatched',
+  'rowsNotHeld',
+  'rowsCompared',
+  'pairs',
+  'agreed',
+  'coveredByPart',
+] as const;
+
+/**
+ * A comparison as it was stored, or `null` if what is stored is not one this version can show. Another version
+ * may have stored it. What is handed out has the fields of this version and no other, so that the output keeps
+ * its form.
+ */
 function storedComparison(stored: Readonly<Record<string, JsonValue>> | null): CrossCheck | null {
   if (stored === null) return null;
-  const counts = ['rows', 'rowsNotAnalysed', 'rowsNotMatched', 'rowsNotHeld', 'rowsCompared', 'pairs', 'agreed'];
-  if (![...counts, 'coveredByPart'].every((name) => isCount(stored[name]))) return null;
-  if (!isPairs(stored['missed']) || !isPairs(stored['onlyOrgLens'])) return null;
-  const isTally = (value: unknown, name: string): boolean =>
+  if (!COUNTS.every((name) => isCount(stored[name]))) return null;
+  const { missed, onlyOrgLens, notAnalysed, notReported } = stored;
+  if (!isPairs(missed) || !isPairs(onlyOrgLens)) return null;
+  const isTally = (value: unknown, name: 'type' | 'reason', count: 'rows' | 'pairs'): boolean =>
     Array.isArray(value) &&
     value.every((one: unknown) => {
       const entry = (one ?? {}) as Record<string, unknown>;
-      return typeof entry[name] === 'string' && isCount(entry[name === 'type' ? 'rows' : 'pairs']);
+      const number = entry[count];
+      return typeof entry[name] === 'string' && isCount(number) && number > 0;
     });
-  if (!isTally(stored['notAnalysed'], 'type') || !isTally(stored['notReported'], 'reason')) return null;
-  return stored as unknown as CrossCheck;
+  if (!isTally(notAnalysed, 'type', 'rows') || !isTally(notReported, 'reason', 'pairs')) return null;
+  const pairs = (value: unknown): CrossCheck['missed'] =>
+    (value as CrossCheck['missed']).map(({ from, to }) => ({ from, to }));
+  const count = (name: (typeof COUNTS)[number]): number => stored[name] as number;
+  return {
+    rows: count('rows'),
+    rowsNotAnalysed: count('rowsNotAnalysed'),
+    notAnalysed: (notAnalysed as unknown as CrossCheck['notAnalysed']).map(({ type, rows }) => ({ type, rows })),
+    rowsNotMatched: count('rowsNotMatched'),
+    rowsNotHeld: count('rowsNotHeld'),
+    rowsCompared: count('rowsCompared'),
+    pairs: count('pairs'),
+    agreed: count('agreed'),
+    coveredByPart: count('coveredByPart'),
+    missed: pairs(missed),
+    onlyOrgLens: pairs(onlyOrgLens),
+    notReported: (notReported as unknown as CrossCheck['notReported']).map(({ reason, pairs: n }) => ({
+      reason,
+      pairs: n,
+    })),
+  };
 }
 
 /** The cross-check of a snapshot, or `null` for a snapshot for which the Dependency API was not asked. */
@@ -230,6 +272,7 @@ export function crossCheckReport(store: Store, snapshotId: number): CrossCheckRe
     rows: reading.rows,
     queriesCutOff: reading.cutOff,
     queriesFailed: reading.failed,
+    queriesNotProven: reading.unproven,
     code: reading.code,
     comparison: storedComparison(readAnalysis(store, snapshotId)?.crossCheck ?? null),
   };

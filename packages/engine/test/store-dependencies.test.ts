@@ -43,6 +43,7 @@ const reading = (more: Partial<DependencyReading> = {}): DependencyReading => ({
   requests: 1,
   cutOff: 0,
   failed: 0,
+  unproven: 0,
   code: null,
   ...more,
 });
@@ -75,7 +76,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
       writeDependencies(
         store,
         id,
-        reading({ state: 'partial', requests: 12, cutOff: 2, failed: 1, code: 'TIMEOUT' }),
+        reading({ state: 'partial', requests: 12, cutOff: 2, failed: 1, unproven: 3, code: 'TIMEOUT' }),
         T1,
       );
     });
@@ -85,6 +86,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
       requests: 12,
       cutOff: 2,
       failed: 1,
+      unproven: 3,
       code: 'TIMEOUT',
       rows: 3,
     });
@@ -128,6 +130,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
       requests: 3,
       cutOff: 0,
       failed: 2,
+      unproven: 0,
       code: 'INVALID_TYPE',
       rows: 0,
     });

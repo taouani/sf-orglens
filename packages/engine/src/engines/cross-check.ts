@@ -3,9 +3,11 @@
  * analysis found in the snapshot of that org (decision records 0034 and 0045).
  *
  * A row of the API names two components. It is matched to two components of the snapshot by the ids the org
- * listed them with, never by a guess from a name. A pair that Salesforce reports and the analysis lacks is a
- * reference that was missed. A pair the analysis has and Salesforce lacks is counted only where the API is
- * known to report that kind of reference, and is no error: the API does not see everything.
+ * listed them with. A name is taken only where there is no id: for a standard object, which the API itself
+ * names in the place of an id, and for a component the org listed without one. A pair that Salesforce reports
+ * and the analysis lacks is a reference that was missed. A pair the analysis has and Salesforce lacks is
+ * counted only where the API is known to report that kind of reference, and is no error: the API does not see
+ * everything.
  *
  * The comparison is for the types the analysis read. A row from a component of another type is counted and
  * not compared.
@@ -63,8 +65,9 @@ export interface CrossCheck {
   /** Pairs Salesforce reports and the analysis lacks, sorted. Each is an error of the analysis. */
   readonly missed: readonly CrossCheckPair[];
   /**
-   * Pairs the analysis has, of a kind the API is known to report, for which it has no row, sorted. Either the
-   * analysis found a reference that is none, or the API left one out.
+   * Pairs the analysis has, of a kind the API is known to report, for which no row was compared, sorted. Either
+   * the analysis found a reference that is none, or the API left one out, or the row is one that is missing or
+   * could not be matched.
    */
   readonly onlyOrgLens: readonly CrossCheckPair[];
   /** Pairs the analysis has without a row, of a kind the API does not report. Per reason, sorted by reason. */
@@ -109,30 +112,45 @@ const isStandardObject = (key: string): boolean =>
 
 /** Finds the components of the snapshot that the ends of rows stand for. */
 function matcher(listed: readonly ListedId[]): (end: DependencyEnd) => ComponentKey | null {
-  const byId = new Map<string, ComponentKey>();
-  const byName = new Map<string, ComponentKey>();
+  const byId = new Map<string, { readonly type: string; readonly key: ComponentKey }[]>();
+  /** The components the org listed without an id, by type and full name. */
+  const withoutId = new Map<string, ComponentKey>();
   for (const item of listed) {
     const key = keyOf(item.type, item.fullName);
     if (key === null) continue;
-    if (item.id !== null && item.id !== '') byId.set(shortId(item.id), key);
-    byName.set(`${item.type.toLowerCase()}\u0000${item.fullName.toLowerCase()}`, key);
+    if (item.id === null || item.id === '') {
+      withoutId.set(`${item.type.toLowerCase()}\u0000${item.fullName.toLowerCase()}`, key);
+    } else {
+      const sameId = byId.get(shortId(item.id)) ?? [];
+      sameId.push({ type: item.type, key });
+      byId.set(shortId(item.id), sameId);
+    }
   }
   const named = (type: string, fullName: string): ComponentKey | null =>
-    byName.get(`${type.toLowerCase()}\u0000${fullName.toLowerCase()}`) ?? null;
+    withoutId.get(`${type.toLowerCase()}\u0000${fullName.toLowerCase()}`) ?? null;
 
   return (end) => {
-    const known = byId.get(shortId(end.id));
-    if (known !== undefined) return known;
-    const name = end.namespace === null ? end.name : `${end.namespace}__${end.name}`;
-    // A standard object has no id. The API writes its name in the place of one.
+    const sameId = byId.get(shortId(end.id));
+    if (sameId !== undefined) {
+      // An id stands for one component. Should the org list it under two types, the type of the row decides,
+      // and without a type that fits the id says nothing.
+      if (sameId.length === 1) return sameId[0]?.key ?? null;
+      const ofType = sameId.filter((one) => one.type === end.type);
+      return ofType.length === 1 ? (ofType[0]?.key ?? null) : null;
+    }
+    // A standard object has no id. The API writes its name in the place of one, so the name is what
+    // Salesforce identifies it by, and no guess.
     if (end.type === 'StandardEntity') return keyOf('CustomObject', end.name);
+    // A custom object always has an id. The API names it without its ending, which can be the name of a
+    // standard object: `Order` for `Order__c`. So a custom object is never taken by its name.
+    if (end.type === 'CustomObject') return null;
+    // What is left is a component the org listed without an id. Its type and full name are all there is. A
+    // component that was listed with an id is found by that id or not at all: a row with another id is no
+    // row about it. The API names a field and a rule without their object, so they find nothing here.
+    const name = end.namespace === null ? end.name : `${end.namespace}__${end.name}`;
     // A record of a custom metadata type: the type of the row is the name of the custom metadata type.
     const recordType = /^(.+)__mdt$/i.exec(end.type)?.[1];
-    if (recordType !== undefined) {
-      return named('CustomMetadata', `${recordType}.${end.name}`) ?? named('CustomMetadata', end.name);
-    }
-    // The API names a field and a rule without their object, and a custom object without its ending. Such a
-    // name is not the full name of anything the org listed, so it finds nothing here, and nothing is guessed.
+    if (recordType !== undefined) return named('CustomMetadata', `${recordType}.${name}`);
     return named(end.type, name);
   };
 }

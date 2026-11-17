@@ -190,6 +190,13 @@ export interface SnapshotIssue {
   readonly details: Readonly<Record<string, JsonValue>> | null;
 }
 
+/** Removes the issues of the reading of a snapshot that have one of these codes. Inside a write of the caller. */
+export function removeIssues(store: Store, snapshotId: number, codes: readonly string[]): void {
+  for (const code of codes) {
+    store.run("DELETE FROM snapshot_issue WHERE snapshot_id = ? AND stage = 'read' AND code = ?", snapshotId, code);
+  }
+}
+
 export function addIssue(store: Store, snapshotId: number, issue: SnapshotIssue): void {
   store.run(
     'INSERT INTO snapshot_issue (snapshot_id, severity, code, component_key, message, details) VALUES (?, ?, ?, ?, ?, ?)',

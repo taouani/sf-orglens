@@ -292,10 +292,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
-      expect(events.slice(-4)).toEqual([
+      expect(events.slice(-5)).toEqual([
         { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
-        { step: 'cross-checking', snapshot: 1 },
+        // Before the first request to the Dependency API, and after its one query, which gave no row here.
+        { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
+        { step: 'cross-checking', snapshot: 1, requests: 1, rows: 0 },
         { step: 'analysing', snapshot: 1 },
       ]);
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.

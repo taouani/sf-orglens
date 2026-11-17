@@ -897,11 +897,35 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
     each other on the test org.
   - A query at the limit is asked again on a third level, per group of components that refer, with the ids of
     the listing. This plan names two levels.
-- **The two questions of this work package** were put to you on 16 November 2026 and are not answered. The
-  build follows what I recommended. A row from a rule to an object counts as covered when the analysis has a
-  reference from the same rule to a field or a record of that object (`coveredByPart`). A row from a record of
-  a custom metadata type is counted with the rows of types this phase does not analyse. If you answer
-  otherwise, I change it.
+- **The two questions of this work package** were put to you on 16 November 2026, and you answered both on
+  the same day with the first answer, which is what was built. A row from a rule to an object counts as
+  covered when the analysis has a reference from the same rule to a field or a record of that object
+  (`coveredByPart`). A record of a custom metadata type refers to its type from the phase that analyses
+  records: until then its row is counted with the rows of types this phase does not analyse. Record 0045 holds
+  both as your decisions.
+- **The review of the pull request** found no fault of the highest weight, four of middle weight and nine
+  small ones. All four of middle weight are corrected.
+  - The reading could call itself whole where it was not. After a query at the limit was asked again per
+    component, a row of a component the org did not list was left out without a trace. Now the rows the query
+    gave before have to come again, one more query asks for the rows of every other component where it can
+    name all ids, and where it cannot the reading is `partial` and says that rows may be missing
+    (`queriesNotProven`).
+  - A name could match a row to the wrong component. Now a name is taken only where there is no id: for a
+    standard object, and for a component the org listed without one. A custom object is never taken by name.
+  - One query that ran out of time ended the reading, and a type whose query was refused was not asked for in
+    parts. Now such a type is asked for in parts, and the reading stops only after three in a row.
+  - Nothing bounded the requests, and nothing was said while they ran. Now the reading stops after 2,000
+    requests, and `snapshot` writes a line about the rows so far at most every five seconds. The number 2,000
+    is mine and rests on no measurement.
+  - Of the small ones: the sentence about a pair only OrgLens has now says that its row can be among the
+    missing ones, a snapshot that is continued replaces the warning of its earlier reading, the next page of
+    an answer is followed only to the same query, a comparison stored by another version is shown only with
+    the fields this version knows, and the step on the test org reads one query again just before the parts,
+    so that a change of the org between two readings is less likely to fail it.
+  - Not taken up: a run of the command line against the mock org that ends with `REFERENCE_MISSED` and the
+    exit code `5`. The mock org of the command line tests holds two classes and nothing that is compared. The
+    engine test shows that the error makes the analysis incomplete, and the tests of the command line show
+    that an incomplete analysis ends with `5`.
 - **Other choices of mine**, which record 0045 lists for you to strike. The ones with the most weight:
   - The API is asked by default, and `--no-cross-check` leaves it unasked. This plan says "optional".
   - The comparison is kept with the analysis, and `orglens analyse` compares again from the stored rows,
@@ -925,11 +949,13 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
   measured. The public codebases have no org, so WP10 cannot measure it either. It needs an org of yours.
 - **For Phase 2.** With every type that is analysed, its rows move from "not compared" to "compared" without a
   change to the comparison: the analysis says which types it read.
-- **Not done or not verified.** Not verified on a real org: that the ids of the listing are the ids of the
-  rows, that Salesforce accepts a filter on `MetadataComponentId`, and what the comparison shows there. The read
-  step shows all three. Which permission the user needs for the query was not looked up. The command
-  `orglens snapshot` itself was not run against a real org, as before. The mock org reports the formula of a
-  rule that is not active and of a default value, which Salesforce does not or may not.
+- **Not done or not verified.** Not verified on a real org: that the ids of the listing are the ids of the rows,
+  that Salesforce accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, and what the comparison shows
+  there. The read step shows all three. An org with more than 200 components of a type whose pair of types is at the
+  limit gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs
+  for the query was not looked up. The command `orglens snapshot` itself was not run against a real org, as before.
+  The mock org reports the formula of a rule that is not active and of a default value, which Salesforce does not or
+  may not.
 
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 

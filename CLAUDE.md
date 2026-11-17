@@ -115,9 +115,11 @@ packages/cli   the `orglens` binary                            imports only `@sf
   (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
   Every analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
   (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by
-  the id the org listed the component with, never by a guess from a name. A pair Salesforce reports and the
-  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The
-  reading never fails a snapshot and never makes it partial: an org that does not answer leaves a warning.
+  the id the org listed the component with. A name is taken only where there is no id: for a standard object,
+  and for a component the org listed without one. A pair Salesforce reports and the analysis lacks is the error
+  `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The reading is `whole` only
+  where no query could have left a row out. It never fails a snapshot and never makes it partial: an org that
+  does not answer leaves a warning.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

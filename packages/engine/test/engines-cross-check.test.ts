@@ -177,23 +177,78 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     });
   });
 
-  it('takes a standard object by its name, and a record of a custom metadata type by its type and its name', () => {
+  it('takes a standard object by its name, and a record of a custom metadata type by its id', () => {
     const rule = end('ValidationRule', 'Invoice__c.Amount_Positive');
     const record = end('CustomMetadata', 'Billing_Rule.Default');
     expect(record).toMatchObject({ type: 'Billing_Rule__mdt', name: 'Default' });
-    const rows = [
-      row(rule, end('CustomObject', 'Account')),
-      row(rule, record),
-      // The same record, with an id the org did not list it with: its type and its name still name one record.
-      row(end('CustomField', 'Invoice__c.Total__c'), { ...record, id: 'm00xx0000000777AAA' }),
+    const analysis = [
+      component(POSITIVE, { active: true }, [reference(POSITIVE, ACCOUNT), reference(POSITIVE, RECORD)]),
+      component(TOTAL, { formula: true }, [reference(TOTAL, RECORD)]),
     ];
-    const result = crossCheck(
-      input(rows, [
-        component(POSITIVE, { active: true }, [reference(POSITIVE, ACCOUNT), reference(POSITIVE, RECORD)]),
-        component(TOTAL, { formula: true }, [reference(TOTAL, RECORD)]),
-      ]),
-    );
-    expect(result).toMatchObject({ rowsCompared: 3, pairs: 3, agreed: 3, missed: [], rowsNotMatched: 0 });
+    const rows = [row(rule, end('CustomObject', 'Account')), row(rule, record)];
+    expect(crossCheck(input(rows, analysis))).toMatchObject({ rowsCompared: 2, pairs: 2, agreed: 2, missed: [] });
+
+    // A component the org listed with an id is found by that id or not at all. A row with another id is no row
+    // about it, whatever its type and its name say.
+    const other = row(end('CustomField', 'Invoice__c.Total__c'), { ...record, id: 'm00xx0000000777AAA' });
+    expect(crossCheck(input([other], analysis))).toMatchObject({ rowsNotMatched: 1, rowsCompared: 0 });
+    const service = { type: 'ApexClass', id: '01pxx0000000777AAA', name: 'InvoiceService', namespace: null };
+    expect(
+      crossCheck({
+        ...input([row(service, end('CustomField', 'Invoice__c.Amount__c'))], []),
+        analysedTypes: ['ApexClass'],
+      }),
+    ).toMatchObject({ rowsNotMatched: 1, rowsNotHeld: 0 });
+
+    // A record the org listed without an id has its type and its name, and nothing else.
+    const listed: ListedId[] = [...LISTED, { type: 'CustomMetadata', fullName: 'Billing_Rule.Other', id: null }];
+    const unlisted = { type: 'Billing_Rule__mdt', id: 'm00xx0000000778AAA', name: 'Other', namespace: null };
+    expect(crossCheck({ ...input([row(rule, unlisted)], analysis), listed })).toMatchObject({
+      rowsCompared: 1,
+      missed: [{ from: POSITIVE, to: key('CustomMetadata', 'Billing_Rule.Other') }],
+    });
+  });
+
+  it('never takes a custom object by its name, which can be the name of a standard object', () => {
+    // The org has the standard object `Order` and a custom object `Order__c`. The API names the custom one
+    // without its ending.
+    const listed: ListedId[] = [
+      ...LISTED,
+      { type: 'CustomObject', fullName: 'Order', id: null },
+      { type: 'CustomObject', fullName: 'Order__c', id: '01Ixx0000000009AAA' },
+    ];
+    const rule = end('ValidationRule', 'Invoice__c.Amount_Positive');
+    const analysis = [component(POSITIVE, { active: true }, [reference(POSITIVE, key('CustomObject', 'Order__c'))])];
+    const custom = { type: 'CustomObject', id: '01Ixx0000000009AAA', name: 'Order', namespace: null };
+    expect(crossCheck({ ...input([row(rule, custom)], analysis), listed })).toMatchObject({ agreed: 1, missed: [] });
+    // With an id the org did not list, it is no component: not the custom object, and not the standard one.
+    const unknown = { ...custom, id: '01Ixx0000000010AAA' };
+    expect(crossCheck({ ...input([row(rule, unknown)], analysis), listed })).toMatchObject({
+      rowsNotMatched: 1,
+      rowsCompared: 0,
+      missed: [],
+    });
+    // The standard object is named as one.
+    const standard = { type: 'StandardEntity', id: 'Order', name: 'Order', namespace: null };
+    expect(crossCheck({ ...input([row(rule, standard)], analysis), listed })).toMatchObject({
+      missed: [{ from: POSITIVE, to: key('CustomObject', 'Order') }],
+    });
+  });
+
+  it('lets the type of the row decide where the org lists one id under two types', () => {
+    const listed: ListedId[] = [
+      ...LISTED,
+      { type: 'CustomTab', fullName: 'Invoice__c', id: '00Nxx0000000001AAA' },
+      { type: 'Layout', fullName: 'Invoice__c-Invoice Layout', id: '00Nxx0000000002AAA' },
+    ];
+    const analysis = [component(TOTAL, { formula: true }, [reference(TOTAL, AMOUNT)])];
+    const rows = [row(end('CustomField', 'Invoice__c.Total__c'), end('CustomField', 'Invoice__c.Amount__c'))];
+    expect(crossCheck({ ...input(rows, analysis), listed })).toMatchObject({ rowsCompared: 1, agreed: 1, missed: [] });
+    // A row whose type is neither of the two says nothing about which it is.
+    const odd = [
+      row(end('CustomField', 'Invoice__c.Total__c'), { ...end('CustomField', 'Invoice__c.Amount__c'), type: 'Odd' }),
+    ];
+    expect(crossCheck({ ...input(odd, analysis), listed })).toMatchObject({ rowsNotMatched: 1, rowsCompared: 0 });
   });
 
   it('counts a row to an object as covered when the analysis has a reference to a part of that object', () => {

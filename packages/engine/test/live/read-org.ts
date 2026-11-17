@@ -20,17 +20,17 @@
  * - the cross-check: what the Dependency API of Salesforce reports for the
  *   org, held by the engine against its analysis of the snapshot. A pair of
  *   components is named only if both are of the fixture project,
- * - the same rows read once more with every answer cut off at a few rows,
- *   to see that the parts the engine asks for then give every row, and
- *   that the org answers each way of asking.
+ * - the rows read twice more, with one query and then with every answer
+ *   cut off at a few rows, to see that the parts the engine asks for then
+ *   give every row, and that the org answers each way of asking.
  *
  * The step fails when the snapshot does not end, when the fixture project
  * is not whole in it, when the Dependency API gave nothing to compare, when
- * the analysis missed a reference that Salesforce reports, or when a
- * reading in parts that the engine calls whole gives other rows than one
- * query. A real org lists components it
- * does not hand out, so a snapshot that is partial for that reason is a
- * warning.
+ * the analysis missed a reference that Salesforce reports, when the parts
+ * give a row that one query just before did not give, or when a reading
+ * in parts that the engine calls whole lacks a row of that query. A real
+ * org lists components it does not hand out, so a snapshot that is partial
+ * for that reason is a warning.
  *
  *   node --no-warnings packages/engine/test/live/read-org.ts
  */
@@ -49,7 +49,7 @@ import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
-import { readDependencyRows, readListedIds } from '../../src/store/dependencies.ts';
+import { readListedIds } from '../../src/store/dependencies.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
 import { asStep } from './own-output.ts';
 import { everydayWords, type PublicLog } from './public-log.ts';
@@ -757,11 +757,13 @@ function cutOffAt(session: OrgSession, limit: number): OrgSession {
 }
 
 /**
- * Reads the rows of the Dependency API once more through a session that cuts every answer off at a few rows,
- * and holds them against the rows the snapshot holds, which one query gave. So the engine has to ask per type,
- * per pair of types and per component, and the org has to answer each of those queries.
+ * Reads the rows of the Dependency API twice more: with one query, as the snapshot did, and then through a
+ * session that cuts every answer off at a few rows. So the engine has to ask per type, per pair of types and
+ * per component, and the org has to answer each of those queries. The two readings follow each other at once,
+ * so that the org has no time to change between them: the rows of the snapshot are minutes old.
  *
- * Returns false if the engine calls the second reading whole and its rows are not those of the one query.
+ * Returns false if the reading in parts gives a row the one query did not give, or if the engine calls it whole
+ * and it lacks one.
  */
 export async function readInParts(
   log: PublicLog,
@@ -771,8 +773,13 @@ export async function readInParts(
   apiVersion: string | null,
   limit = PRETENDED_LIMIT,
 ): Promise<boolean> {
-  const stored = readDependencyRows(store, snapshotId);
-  if (stored.length < limit) {
+  const version = apiVersion === null ? {} : { apiVersion };
+  const one = await readDependencies(session, version);
+  if (one.state !== 'whole') {
+    log.say('One query did not give every row this time, so reading them in parts was not tried.');
+    return true;
+  }
+  if (one.rows.length < limit) {
     log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
     return true;
   }
@@ -784,23 +791,24 @@ export async function readInParts(
     else ofType.push(item.id);
   }
   const again = await readDependencies(cutOffAt(session, limit), {
-    ...(apiVersion === null ? {} : { apiVersion }),
+    ...version,
     limits: { rowsPerQuery: limit },
     idsOfType: (type) => ids.get(type) ?? [],
   });
-  const one = new Set(stored.map(rowIdentity));
+  const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
-  const lacking = [...one].filter((row) => !parts.has(row)).length;
-  const more = [...parts].filter((row) => !one.has(row)).length;
+  const lacking = [...whole].filter((row) => !parts.has(row)).length;
+  const more = [...parts].filter((row) => !whole.has(row)).length;
   log.say(
     `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
       `Queries still at that number for a single component, or with no smaller part to ask for: ${String(again.cutOff)}. ` +
-      `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}.`,
+      `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
+      `Queries asked again per component, for more components than one query names: ${String(again.unproven)}.`,
   );
   log.say(
     lacking === 0 && more === 0
-      ? 'The parts give the same rows as the one query.'
-      : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query, and give ${plural(more, 'row', 'rows')} it does not have.`,
+      ? 'The parts give the same rows as one query just before.'
+      : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
   );
   if (again.failed > 0) {
     log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
@@ -939,7 +947,9 @@ export async function readOrg(
       ]);
     } else if (!sameInParts) {
       log.say('');
-      log.fail(['Reading the Dependency API in parts gave other rows than one query. The lines above say how many.']);
+      log.fail([
+        'Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
+      ]);
     } else if (taken?.status !== 'complete') {
       // A real org lists components it does not hand out. The step says so and does not fail for it: it fails
       // when the snapshot did not end or when the fixture project is not whole in it.

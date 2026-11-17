@@ -63,6 +63,7 @@ import {
   readCoverage,
   readIssues,
   readRunningSnapshot,
+  removeIssues,
 } from '../store/snapshots.ts';
 import { analyseStored } from './analysis.ts';
 import type { WorkspacePaths } from './layout.ts';
@@ -80,6 +81,8 @@ type Environment = Readonly<Record<string, string | undefined>>;
  * - `resumed`: a snapshot that was interrupted is continued. `done` of its `chunks` are stored already.
  * - `retrieved`: a chunk is stored. `chunks` grows when a chunk has to be split.
  * - `cross-checking`: every chunk is done. The org is asked what its Dependency API knows about references.
+ *   It comes once before the first request, and then after every query, with the requests sent and the
+ *   different rows read so far.
  * - `analysing`: the snapshot has ended. Its files are analysed now.
  */
 export type SnapshotProgress =
@@ -88,7 +91,7 @@ export type SnapshotProgress =
   | { readonly step: 'planned'; readonly snapshot: number; readonly components: number; readonly chunks: number }
   | { readonly step: 'resumed'; readonly snapshot: number; readonly done: number; readonly chunks: number }
   | { readonly step: 'retrieved'; readonly snapshot: number; readonly done: number; readonly chunks: number }
-  | { readonly step: 'cross-checking'; readonly snapshot: number }
+  | { readonly step: 'cross-checking'; readonly snapshot: number; readonly requests: number; readonly rows: number }
   | { readonly step: 'analysing'; readonly snapshot: number };
 
 /** The numbers a snapshot of an org works with. A test sets them to make things happen that are rare. */
@@ -466,8 +469,11 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
     if (job.crossCheck !== false) {
       // Before the snapshot ends, so that a snapshot that is interrupted here is continued here.
-      progress({ step: 'cross-checking', snapshot: snapshotId });
-      await readCrossCheck(store, snapshotId, session, api.apiVersion, tuning);
+      const snapshot = snapshotId;
+      progress({ step: 'cross-checking', snapshot, requests: 0, rows: 0 });
+      await readCrossCheck(store, snapshot, session, api.apiVersion, tuning, (requests, rows) => {
+        progress({ step: 'cross-checking', snapshot, requests, rows });
+      });
     }
     finish(store, snapshotId);
     finished = true;
@@ -743,6 +749,7 @@ async function readCrossCheck(
   session: OrgSession,
   apiVersion: string,
   tuning: OrgSnapshotTuning,
+  onProgress: (requests: number, rows: number) => void,
 ): Promise<void> {
   // With the ids the org listed its components with, a query that reaches the limit of rows can be asked again
   // for a part of the components.
@@ -757,9 +764,12 @@ async function readCrossCheck(
     apiVersion,
     limits: tuning.dependencies,
     idsOfType: (type) => ids.get(type) ?? [],
+    onProgress,
   });
   store.write(() => {
     writeDependencies(store, snapshotId, reading, now());
+    // A snapshot that was interrupted after an earlier reading has the warning of that reading.
+    removeIssues(store, snapshotId, ['CROSS_CHECK_NOT_READ', 'CROSS_CHECK_PARTIAL']);
     if (reading.state === 'none') {
       issue(
         store,
@@ -771,13 +781,30 @@ async function readCrossCheck(
       );
     } else if (reading.state === 'partial') {
       const left = reading.cutOff + reading.failed;
+      const said: string[] = [];
+      if (left > 0) {
+        said.push(
+          `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing.`,
+        );
+      }
+      if (reading.unproven > 0) {
+        said.push(
+          `${plural(reading.unproven, 'query', 'queries')} at the limit of rows ${reading.unproven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing.`,
+        );
+      }
       issue(
         store,
         snapshotId,
         'warning',
         'CROSS_CHECK_PARTIAL',
-        `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing: a reference that Salesforce knows and the analysis missed may go unseen.`,
-        { cutOff: reading.cutOff, failed: reading.failed, code: reading.code, rows: reading.rows.length },
+        `${said.join(' ')} A reference that Salesforce knows and the analysis missed may go unseen.`,
+        {
+          cutOff: reading.cutOff,
+          failed: reading.failed,
+          unproven: reading.unproven,
+          code: reading.code,
+          rows: reading.rows.length,
+        },
       );
     }
   });

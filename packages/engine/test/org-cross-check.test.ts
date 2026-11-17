@@ -15,8 +15,9 @@ import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
 import { DEPENDENCY_OBJECT } from '../src/sources/dependency-api.ts';
-import { readDependencyRows } from '../src/store/dependencies.ts';
+import { readDependencyRows, writeDependencies } from '../src/store/dependencies.ts';
 import { openStore } from '../src/store/open.ts';
+import { addIssue } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { fixtureDependencyRows, keyedPairs } from './helpers/fixture-dependencies.ts';
@@ -146,6 +147,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         rows: pairs.length + 3,
         queriesCutOff: 0,
         queriesFailed: 0,
+        queriesNotProven: 0,
         code: null,
         comparison: {
           rows: pairs.length + 3,
@@ -293,6 +295,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         rows: 0,
         queriesCutOff: 0,
         queriesFailed: expect.any(Number) as number,
+        queriesNotProven: 0,
         code: 'INVALID_TYPE',
         comparison: null,
       });
@@ -311,7 +314,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(stalled.snapshot.status).toBe('complete');
       expect(ofReading(stalled)).toEqual(['warning CROSS_CHECK_NOT_READ']);
-      expect(stalled.crossCheck).toMatchObject({ state: 'none', code: 'TIMEOUT', requests: 2, comparison: null });
+      // Three queries in a row got no answer in time, each asked once.
+      expect(stalled.crossCheck).toMatchObject({ state: 'none', code: 'TIMEOUT', requests: 3, comparison: null });
 
       // The session ends between the retrieve and the query, and nothing renews it.
       mock.intercept = (request) =>
@@ -331,15 +335,24 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const LIMIT = 20;
       dependencies.limit = LIMIT;
       const dir = workspaceDir();
-      const report = await snap(dir, { tuning: { dependencies: { rowsPerQuery: LIMIT, idsPerQuery: 8 } } });
+      const report = await snap(dir, { tuning: { dependencies: { rowsPerQuery: LIMIT } } });
       const all = rowsOf(metadata).length;
       // Per type, per pair of types and per group of components every row was found: no query is left at the limit.
-      expect(report.crossCheck).toMatchObject({ state: 'whole', rows: all, queriesCutOff: 0, queriesFailed: 0 });
+      expect(report.crossCheck).toMatchObject({
+        state: 'whole',
+        rows: all,
+        queriesCutOff: 0,
+        queriesFailed: 0,
+        queriesNotProven: 0,
+      });
       expect(ofReading(report)).toEqual([]);
       expect(report.crossCheck?.comparison).toMatchObject({ missed: [], rowsNotMatched: 0 });
       // The third level names components by the ids of the listing, and the org knows them.
       const perComponent = dependencies.queries.filter((soql) => soql.includes('MetadataComponentId IN ('));
       expect(perComponent.length).toBeGreaterThan(2);
+      // One query names every component of a type here, so a last one asks for the rows of every other
+      // component, and gives none: the org listed them all.
+      expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
       expect(report.crossCheck?.requests).toBe(dependencies.queries.length);
       for (const soql of dependencies.queries) expect(soql).toContain(` FROM ${DEPENDENCY_OBJECT}`);
 
@@ -353,6 +366,26 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const whole = openStore({ path: databaseOf(other), driver, readOnly: true });
       expect(stored).toEqual(readDependencyRows(whole, 1));
       whole.close();
+
+      // Where a type has more components than one query names, the rows of a component the org did not list
+      // cannot be asked for. The rows are the same, and the snapshot says what it cannot know.
+      dependencies.limit = LIMIT;
+      const many = workspaceDir();
+      const unproven = await snap(many, { tuning: { dependencies: { rowsPerQuery: LIMIT, idsPerQuery: 8 } } });
+      expect(unproven.crossCheck).toMatchObject({ state: 'partial', rows: all, queriesCutOff: 0, queriesFailed: 0 });
+      const notProven = unproven.crossCheck?.queriesNotProven ?? 0;
+      expect(notProven).toBeGreaterThan(0);
+      expect(unproven.snapshot.status).toBe('complete');
+      expect(unproven.issues.filter((issue) => issue.stage === 'read')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'CROSS_CHECK_PARTIAL',
+          message: `${String(notProven)} ${notProven === 1 ? 'query' : 'queries'} at the limit of rows ${notProven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing. A reference that Salesforce knows and the analysis missed may go unseen.`,
+          component: null,
+          details: { cutOff: 0, failed: 0, unproven: notProven, code: null, rows: all },
+        },
+      ]);
     });
 
     it('says that rows are missing when a part cannot be asked for in smaller parts, and compares what it has', async () => {
@@ -370,11 +403,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           stage: 'read',
           severity: 'warning',
           code: 'CROSS_CHECK_PARTIAL',
-          message: `${String(left)} ${left === 1 ? 'query' : 'queries'} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing: a reference that Salesforce knows and the analysis missed may go unseen.`,
+          message: `${String(left)} ${left === 1 ? 'query' : 'queries'} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing. A reference that Salesforce knows and the analysis missed may go unseen.`,
           component: null,
           details: {
             cutOff: report.crossCheck?.queriesCutOff,
             failed: report.crossCheck?.queriesFailed,
+            unproven: 0,
             code: 'MALFORMED_QUERY',
             rows: report.crossCheck?.rows,
           },
@@ -396,12 +430,59 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const events: SnapshotProgress[] = [];
       const report = await snap(dir, { onProgress: (event) => events.push(event) });
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
-      expect(events.slice(-2)).toEqual([
-        { step: 'cross-checking', snapshot: 1 },
+      // The step is told before the first request, and after every query with how far it is.
+      expect(events.slice(-3)).toEqual([
+        { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
+        { step: 'cross-checking', snapshot: 1, requests: 1, rows: rowsOf(metadata).length },
         { step: 'analysing', snapshot: 1 },
       ]);
       expect(dependencies.queries).toHaveLength(1);
       expect(report.crossCheck).toMatchObject({ state: 'whole', requests: 1, comparison: { missed: [] } });
+    });
+
+    it('replaces an earlier reading and its warning when a snapshot is continued, and keeps both without the cross-check', async () => {
+      // A snapshot that was interrupted after the API was asked and before it ended: it holds a reading that
+      // gave nothing, with the warning of that reading.
+      const interrupted = async (): Promise<string> => {
+        metadata.maxFiles = 1;
+        const dir = workspaceDir();
+        await expect(snap(dir, { tuning: { failuresInARow: 3 } })).rejects.toMatchObject({
+          code: 'SOURCE_READ_FAILED',
+        });
+        metadata.maxFiles = 10_000;
+        const store = openStore({ path: databaseOf(dir), driver });
+        store.write(() => {
+          writeDependencies(
+            store,
+            1,
+            { rows: [], state: 'none', requests: 3, cutOff: 0, failed: 2, unproven: 0, code: 'INVALID_TYPE' },
+            '2026-01-31T09:30:00.000Z',
+          );
+          addIssue(store, 1, {
+            severity: 'warning',
+            code: 'CROSS_CHECK_NOT_READ',
+            message: 'The Dependency API of the org gave no answer (INVALID_TYPE).',
+            componentKey: null,
+            details: { code: 'INVALID_TYPE', requests: 3 },
+          });
+        });
+        store.close();
+        return dir;
+      };
+
+      // Continued, the snapshot asks again. What it says is about the reading it holds now.
+      const again = await snap(await interrupted());
+      expect(again.crossCheck).toMatchObject({ state: 'whole', rows: rowsOf(metadata).length });
+      expect(ofReading(again).filter((issue) => issue.includes('CROSS_CHECK'))).toEqual([]);
+
+      // Continued without the cross-check, the org is not asked, and what the snapshot had read stays.
+      dependencies.queries.length = 0;
+      const kept = await snap(await interrupted(), { crossCheck: false });
+      expect(dependencies.queries).toEqual([]);
+      expect(kept.crossCheck).toMatchObject({ state: 'none', code: 'INVALID_TYPE', comparison: null });
+      expect(ofReading(kept).filter((issue) => issue.includes('CROSS_CHECK'))).toEqual([
+        'warning CROSS_CHECK_NOT_READ',
+      ]);
     });
   },
 );

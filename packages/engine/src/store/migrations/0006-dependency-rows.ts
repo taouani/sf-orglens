@@ -15,13 +15,16 @@ export const migration0006: Migration = {
 -- How the Dependency API was read for a snapshot. No row: it was not asked.
 CREATE TABLE snapshot_dependency_reading (
   snapshot_id INTEGER PRIMARY KEY REFERENCES snapshot (id) ON DELETE CASCADE,
-  -- whole: no query left a row out. partial: rows are missing. none: the org answered no query.
+  -- whole: no query left a row out. partial: rows are missing, or may be. none: the org answered no query.
   state       TEXT NOT NULL CHECK (state IN ('whole', 'partial', 'none')),
   read_at     TEXT NOT NULL CHECK (read_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
   requests    INTEGER NOT NULL CHECK (requests >= 0),
   -- Queries that reached the limit of rows and could not be asked in smaller parts, and queries that failed.
   cut_off     INTEGER NOT NULL CHECK (cut_off >= 0),
   failed      INTEGER NOT NULL CHECK (failed >= 0),
+  -- Queries at the limit that were asked again per component, for more components than one query can name: a
+  -- row of a component the org did not list would be missing.
+  unproven    INTEGER NOT NULL CHECK (unproven >= 0),
   -- The code of the first failure.
   code        TEXT
 ) STRICT;

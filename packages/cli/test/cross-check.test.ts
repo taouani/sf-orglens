@@ -75,6 +75,7 @@ const READ: Omit<Engine.CrossCheckReport, 'comparison'> = {
   rows: 40,
   queriesCutOff: 0,
   queriesFailed: 0,
+  queriesNotProven: 0,
   code: null,
 };
 
@@ -164,7 +165,8 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       'CustomField:invoice__c.total__c            CustomField:invoice__c.status__c',
       'ValidationRule:invoice__c.amount_positive  CustomField:invoice__c.amount__c',
       '',
-      'The analysis has 22 references of a kind Salesforce reports, without a row. Either the analysis is wrong there, or the API left them out:',
+      // One row names a component the org did not list, so a pair without a row can be the pair of that row.
+      'The analysis has 22 references of a kind Salesforce reports, without a row that was compared. Either the analysis is wrong there, or the API left them out, or their rows are among those that are missing or not compared:',
       'FROM                           TO',
       ...only.slice(0, 20).map(({ from, to }) => `${from}  ${to}`),
       '2 more pairs: --json has all of them.',
@@ -197,6 +199,36 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       'CustomField:a__c.b__c  CustomField:a__c.c__c',
       '',
     ]);
+
+    // Every row of a component the org listed is there. A component it did not list could have rows.
+    engineState.crossCheck = {
+      ...READ,
+      state: 'partial',
+      requests: 212,
+      queriesNotProven: 2,
+      comparison: { ...NOTHING, onlyOrgLens: [{ from: 'CustomField:a__c.b__c', to: 'CustomField:a__c.c__c' }] },
+    };
+    expect(await crossCheckLines(dir)).toEqual([
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows of a component the org did not list may be missing: 2 queries at the limit of the API were asked again component by component.',
+      '40 rows were compared. They are 38 pairs of components: the analysis has 38 of them, has 0 as a reference to a part of the object Salesforce names, and missed 0.',
+      '',
+      'The analysis has 1 reference of a kind Salesforce reports, without a row that was compared. Either the analysis is wrong there, or the API left it out, or its row is among those that are missing or not compared:',
+      'FROM                   TO',
+      'CustomField:a__c.b__c  CustomField:a__c.c__c',
+      '',
+    ]);
+    // Both at once.
+    engineState.crossCheck = {
+      ...READ,
+      state: 'partial',
+      queriesCutOff: 1,
+      queriesNotProven: 1,
+      code: null,
+      comparison: NOTHING,
+    };
+    expect((await crossCheckLines(dir))[0]).toBe(
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows are missing: 1 query was cut off at the limit of the API or failed. Rows of a component the org did not list may be missing: 1 query at the limit of the API was asked again component by component.',
+    );
   });
 
   it('says when nothing was compared: no answer of the API, no analysis, or a comparison it cannot show', async () => {

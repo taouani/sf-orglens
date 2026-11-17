@@ -191,7 +191,9 @@ describe('reading the Dependency API', () => {
       limits: { rowsPerQuery: 5, idsPerQuery: 4 },
       idsOfType: (type) => (type === 'ApexClass' ? ids : []),
     });
-    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
+    // Every row is there. The classes are more than one query names, so no query can ask for the rows of a class
+    // that is not among the ids, and the reading says that it cannot know of one.
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 0, failed: 0, unproven: 1, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
     const groups = mock.dependencies.queries
       .filter((soql) => soql.includes('MetadataComponentId IN'))
@@ -200,6 +202,54 @@ describe('reading the Dependency API', () => {
     expect(groups).toContain(4);
     expect(groups).toContain(2);
     expect(Math.max(...groups)).toBe(4);
+    expect(mock.dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN'))).toBe(false);
+
+    // Where one query names every class, a last query asks for the rows of every other class. It gives none
+    // here, and the reading is whole.
+    mock.dependencies.queries.length = 0;
+    const proven = await read({
+      limits: { rowsPerQuery: 5, idsPerQuery: 16 },
+      idsOfType: (type) => (type === 'ApexClass' ? ids : []),
+    });
+    expect(proven).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
+    expect(pairs(proven)).toEqual(pairsOf(rows));
+    expect(mock.dependencies.queries.filter((soql) => soql.includes('MetadataComponentId NOT IN'))).toHaveLength(1);
+  });
+
+  it('reads the rows of a component the org did not list, or says that they are missing', async () => {
+    // 12 classes with one row each. The listing knows 10 of them: two were made after it, say.
+    const rows = rowsOf('ApexClass', 'CustomField', 12);
+    mock.dependencies = mockDependencies(rows);
+    mock.dependencies.limit = 5;
+    const ids = idsIn(rows, 'ApexClass');
+    const most = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ids.slice(0, 10) });
+    expect(most).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
+    expect(pairs(most)).toEqual(pairsOf(rows));
+
+    // The listing knows 6. The other 6 are as many as a query gives: the query for them is cut off.
+    const half = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ids.slice(0, 6) });
+    expect(half).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    expect(half.rows.length).toBeLessThan(rows.length);
+
+    // More ids than one query names: the 6 other classes cannot be asked for, and the reading says so.
+    const unknown = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 3 }, idsOfType: () => ids.slice(0, 6) });
+    expect(unknown).toMatchObject({ state: 'partial', cutOff: 0, failed: 0, unproven: 1 });
+  });
+
+  it('does not trust the groups when a row the pair gave does not come again', async () => {
+    // An org that answers a condition on the id with no row: because it reads the id otherwise, say.
+    const rows = rowsOf('ApexClass', 'CustomField', 12);
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    mock.intercept = (request) =>
+      (request.query.get('q') ?? '').includes('MetadataComponentId IN')
+        ? { status: 200, body: JSON.stringify({ done: true, records: [] }) }
+        : undefined;
+    const reading = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => idsIn(rows, 'ApexClass') });
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    // The query for every other class is not asked: what the groups gave says nothing.
+    expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN'))).toBe(false);
   });
 
   it('says that rows are missing when one component alone is at the limit', async () => {
@@ -233,11 +283,14 @@ describe('reading the Dependency API', () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 12, 2), ...rowsOf('CustomField', 'CustomField', 7)];
     mock.dependencies = mockDependencies(rows);
     mock.dependencies.limit = 5;
-    await read({ limits: { rowsPerQuery: 5, idsPerQuery: 3 }, idsOfType: (type) => idsIn(rows, type) });
+    await read({ limits: { rowsPerQuery: 5, idsPerQuery: 8 }, idsOfType: (type) => idsIn(rows, type) });
     expect(mock.dependencies.queries.length).toBeGreaterThan(20);
     for (const soql of mock.dependencies.queries) {
       expect(soql).toMatch(new RegExp(`^SELECT [A-Za-z, ]+ FROM ${DEPENDENCY_OBJECT}( WHERE |$)`));
+      // No query inside the query: one SELECT, and one FROM.
+      expect(soql.match(/\b(?:SELECT|FROM)\b/gi)).toHaveLength(2);
     }
+    expect(mock.dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN'))).toBe(true);
     expect(DEPENDENCY_OBJECT).toBe('MetadataComponentDependency');
     expect(new Set(mock.requests.map((request) => `${request.method} ${request.path}`))).toEqual(
       new Set(['GET /services/data/v66.0/tooling/query']),
@@ -260,15 +313,37 @@ describe('reading the Dependency API', () => {
     expect(pairs(reading)).toEqual(pairsOf(rows));
   });
 
-  it('counts a query for a type that is refused, and keeps the rows of the others', async () => {
+  it('asks for a type whose query is refused in its parts, and counts what is refused there', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('CustomField', 'CustomField', 3)];
-    mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
-    mock.dependencies.refuse = (soql) =>
-      soql.endsWith("MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
-    expect(reading).toMatchObject({ state: 'partial', cutOff: 0, failed: 1, code: 'UNKNOWN_EXCEPTION' });
-    expect(reading.rows.filter((row) => row.from.type === 'CustomField')).toHaveLength(3);
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    // The org refuses the query for all rows of the type, as it does when that query takes it too long.
+    dependencies.refuse = (soql) =>
+      soql.endsWith("MetadataComponentType = 'ApexClass'") ? 'QUERY_TIMEOUT' : undefined;
+    const inParts = await read({ limits: { rowsPerQuery: 5 } });
+    expect(inParts).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
+    expect(pairs(inParts)).toEqual(pairsOf(rows));
+    expect(dependencies.queries).toContain(
+      `${dependencies.queries[0] ?? ''} WHERE MetadataComponentType = 'ApexClass' AND RefMetadataComponentType = 'CustomField'`,
+    );
+
+    // It refuses every query about the type: the pair and the rest are counted, and the other types are read.
+    dependencies.refuse = (soql) =>
+      soql.includes("MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined;
+    const refused = await read({ limits: { rowsPerQuery: 5 } });
+    expect(refused).toMatchObject({ state: 'partial', cutOff: 0, failed: 2, code: 'UNKNOWN_EXCEPTION' });
+    expect(refused.rows.filter((row) => row.from.type === 'CustomField')).toHaveLength(3);
+
+    // Without a row, no part of the type is known, and the query that failed is not asked a second time.
+    dependencies.queries.length = 0;
+    dependencies.refuse = (soql) =>
+      !soql.includes(' WHERE ') || soql.includes("MetadataComponentType = 'ApexClass'")
+        ? 'UNKNOWN_EXCEPTION'
+        : undefined;
+    const blind = await read({ limits: { rowsPerQuery: 5 } });
+    expect(blind).toMatchObject({ state: 'partial', failed: 1 });
+    expect(dependencies.queries.filter((soql) => soql.includes("MetadataComponentType = 'ApexClass'"))).toHaveLength(1);
   });
 
   it('stops without failing when the org no longer accepts the session', async () => {
@@ -296,8 +371,43 @@ describe('reading the Dependency API', () => {
         ? { status: 200, body: JSON.stringify({ done: true, records: [] }), halfway: 'stall' }
         : undefined;
     const reading = await read({ limits: { requestMs: 300, repeats: 1 } });
-    // The request is made once more, and then the reading stops.
-    expect(reading).toEqual({ rows: [], state: 'none', requests: 2, cutOff: 0, failed: 1, code: 'TIMEOUT' });
+    // A query that took too long is not asked again. After three of them in a row the reading stops: the
+    // query for everything, whose parts were to follow, and two queries for a type.
+    expect(reading).toEqual({
+      rows: [],
+      state: 'none',
+      requests: 3,
+      cutOff: 0,
+      failed: 2,
+      unproven: 0,
+      code: 'TIMEOUT',
+    });
+  });
+
+  it('goes on with the parts when the query for everything takes too long', async () => {
+    const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('CustomField', 'CustomField', 3)];
+    const dependencies = mockDependencies(rows);
+    mock.dependencies = dependencies;
+    mock.intercept = (request) =>
+      request.path.endsWith('/tooling/query') && !(request.query.get('q') ?? '').includes(' WHERE ')
+        ? { status: 200, body: JSON.stringify({ done: true, records: [] }), halfway: 'stall' }
+        : undefined;
+    const reading = await read({ limits: { requestMs: 300 } });
+    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
+    expect(pairs(reading)).toEqual(pairsOf(rows));
+    // The query that took too long was sent once.
+    expect(mock.requests.filter((request) => !(request.query.get('q') ?? '').includes(' WHERE '))).toHaveLength(1);
+  });
+
+  it('stops at its limit of requests, and says that rows are missing', async () => {
+    const rows = [...rowsOf('ApexClass', 'CustomField', 12, 2), ...rowsOf('CustomField', 'CustomField', 7)];
+    mock.dependencies = mockDependencies(rows);
+    mock.dependencies.limit = 5;
+    const reading = await read({ limits: { rowsPerQuery: 5, requestsInAll: 4 } });
+    expect(reading).toMatchObject({ state: 'partial', requests: 4, code: 'REQUESTS_USED_UP' });
+    expect(reading.failed).toBeGreaterThan(0);
+    expect(reading.rows.length).toBeLessThan(rows.length);
+    expect(mock.requests).toHaveLength(4);
   });
 
   it('follows an answer over its pages, and says so when it does not end', async () => {
@@ -323,7 +433,8 @@ describe('reading the Dependency API', () => {
         ? { status: 200, body: JSON.stringify({ done: false, records: rows.slice(0, 1) }) }
         : undefined;
     const open = await read();
-    expect(open).toMatchObject({ state: 'none', code: 'NOT_DONE' });
+    // The org gave a row and not the rest: that is something, and not all of it.
+    expect(open).toMatchObject({ state: 'partial', code: 'NOT_DONE' });
     expect(open.rows).toHaveLength(1);
 
     // An answer that never ends is given up after the pages the limits allow.
@@ -331,7 +442,21 @@ describe('reading the Dependency API', () => {
       request.path.includes('/tooling/query')
         ? page(rows.slice(0, 1), '/services/data/v66.0/tooling/query/again')
         : undefined;
-    expect(await read({ limits: { pages: 3 } })).toMatchObject({ state: 'none', code: 'PAGES_LEFT' });
+    expect(await read({ limits: { pages: 3 } })).toMatchObject({ state: 'partial', code: 'PAGES_LEFT' });
+
+    // An answer that goes on somewhere else is not followed there: only the same query of the Tooling API is.
+    for (const elsewhere of [
+      '/services/data/v66.0/query?q=SELECT+Id+FROM+Account',
+      '/services/data/v66.0/tooling/query?q=SELECT+Id+FROM+ApexClass',
+      '/services/data/v65.0/tooling/query/01gxx-2',
+      'https://elsewhere.example/services/data/v66.0/tooling/query/01gxx-2',
+    ]) {
+      mock.intercept = (request) =>
+        request.path.endsWith('/tooling/query') ? page(rows.slice(0, 1), elsewhere) : undefined;
+      mock.requests.length = 0;
+      expect(await read(), elsewhere).toMatchObject({ code: 'NOT_DONE' });
+      expect(new Set(mock.asked()), elsewhere).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
+    }
   });
 
   it('never follows a redirect', async () => {

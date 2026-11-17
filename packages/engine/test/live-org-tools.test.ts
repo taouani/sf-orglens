@@ -732,11 +732,13 @@ describe('reading the test org', () => {
       'References of the analysis of kinds the API does not report: 38 (standard-field (23), roll-up-summary (5), standard-object (4), lookup-filter (2), value-set (2), controlling-field (1), lookup (1)).',
       expect.stringMatching(
         new RegExp(
-          `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\.$`,
+          `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
         ),
       ) as string,
-      'The parts give the same rows as the one query.',
+      'The parts give the same rows as one query just before.',
     ]);
+    // The rows of a component the org did not list were asked for, where one query names every component.
+    expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
     // The second reading asked per type, per pair of types and per component, and for nothing but the one object.
     expect(
       dependencies.queries.some((soql) =>
@@ -802,12 +804,46 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toMatch(
-      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\.$/m,
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\.$/m,
     );
-    expect(output).toMatch(/^The parts lack [1-9]\d* rows? of the one query, and give 0 rows it does not have\.$/m);
+    expect(output).toMatch(
+      /^The parts lack [1-9]\d* rows? of the one query just before, and give 0 rows it does not have\.$/m,
+    );
     expect(output.split('\n').at(-1)).toBe(
       '::warning::The org refused a query the engine asks when a query is at the limit of rows.',
     );
+    expectNoSecret(output);
+  });
+
+  it('fails when the parts give a row that one query did not give', async () => {
+    // The org gets a row between the query for everything and the queries for the parts. For the step that is
+    // the same as an engine whose parts give something else than one query.
+    const later = dependencyRow(metadata, ['ApexClass', 'InvoiceSelector'], ['CustomField', 'Invoice__c.Region__c']);
+    const answer = dependencies.answer.bind(dependencies);
+    dependencies.answer = (soql) => {
+      if (soql.includes(' WHERE ') && !dependencies.rows.includes(later)) dependencies.rows.push(later);
+      return answer(soql);
+    };
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(true);
+    expect(output.split('\n').slice(-3)).toEqual([
+      'The parts lack 0 rows of the one query just before, and give 1 row it does not have.',
+      '',
+      '::error::Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
+    ]);
+    expectNoSecret(output);
+  });
+
+  it('does not read in parts an org that holds fewer rows than the parts are cut off at', async () => {
+    dependencies.rows.length = 20;
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output.split('\n').at(-1)).toBe('The org holds fewer than 30 rows, so reading them in parts was not tried.');
+    expect(dependencies.queries.every((soql) => !soql.includes(' WHERE '))).toBe(true);
     expectNoSecret(output);
   });
 
@@ -1407,20 +1443,21 @@ describe('asking the org what Salesforce knows about references', () => {
   });
 
   it('counts a query that failed where its rows can be missing', async () => {
-    // The first query is at the limit, and the org refuses the query for the rows of the classes.
+    // The first query is at the limit, and the org refuses every query for the rows of the classes: the one for
+    // all of them, and the ones for their parts, which the reader asks for then.
     const org = tables();
     org['MetadataComponentDependency'] = [
       ...many(1990, 'Flow', 'CustomField', id('00N', 9), 'Takeover_Date'),
       ...(org['MetadataComponentDependency'] ?? []),
     ];
     tooling(org, {
-      fault: (soql) => (soql.endsWith("WHERE MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined),
+      fault: (soql) => (soql.includes("MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined),
     });
     const first = collected();
     await probeOrg(first.log, { env: environment() });
     expect(first.log.failed).toBe(false);
-    expect(first.text()).toContain(
-      '1 query was cut off at the limit or failed (UNKNOWN_EXCEPTION), so rows are missing.',
+    expect(first.text()).toMatch(
+      /\d+ queries were cut off at the limit or failed \(UNKNOWN_EXCEPTION\), so rows are missing\./,
     );
     expect(first.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
     expectNothingForeign(first.text());

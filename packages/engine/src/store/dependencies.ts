@@ -15,6 +15,7 @@ export interface StoredDependencyReading {
   readonly requests: number;
   readonly cutOff: number;
   readonly failed: number;
+  readonly unproven: number;
   readonly code: string | null;
   /** How many rows the snapshot holds. */
   readonly rows: number;
@@ -27,14 +28,15 @@ export interface StoredDependencyReading {
 export function writeDependencies(store: Store, snapshotId: number, reading: DependencyReading, readAt: string): void {
   store.run('DELETE FROM snapshot_dependency_reading WHERE snapshot_id = ?', snapshotId);
   store.run(
-    `INSERT INTO snapshot_dependency_reading (snapshot_id, state, read_at, requests, cut_off, failed, code)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO snapshot_dependency_reading (snapshot_id, state, read_at, requests, cut_off, failed, unproven, code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     snapshotId,
     reading.state,
     readAt,
     reading.requests,
     reading.cutOff,
     reading.failed,
+    reading.unproven,
     reading.code,
   );
   reading.rows.forEach(({ from, to }, seq) => {
@@ -59,7 +61,7 @@ export function writeDependencies(store: Store, snapshotId: number, reading: Dep
 /** How the Dependency API was read for a snapshot, or `undefined` for a snapshot it was not asked for. */
 export function readDependencyReading(store: Store, snapshotId: number): StoredDependencyReading | undefined {
   const row = store.get(
-    `SELECT state, read_at, requests, cut_off, failed, code,
+    `SELECT state, read_at, requests, cut_off, failed, unproven, code,
             (SELECT COUNT(*) FROM snapshot_dependency held WHERE held.snapshot_id = reading.snapshot_id) AS held
        FROM snapshot_dependency_reading reading WHERE snapshot_id = ?`,
     snapshotId,
@@ -72,6 +74,7 @@ export function readDependencyReading(store: Store, snapshotId: number): StoredD
     requests: Number(row['requests']),
     cutOff: Number(row['cut_off']),
     failed: Number(row['failed']),
+    unproven: Number(row['unproven']),
     code: typeof row['code'] === 'string' ? row['code'] : null,
     rows: Number(row['held']),
   };

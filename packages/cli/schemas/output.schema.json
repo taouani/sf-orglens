@@ -880,11 +880,21 @@
     "crossCheck": {
       "description": "How the Dependency API of Salesforce was read for a snapshot of an org, and what the comparison of its rows with the analysis found. The rows are no references of OrgLens: no answer of `impact` is made from them.",
       "type": "object",
-      "required": ["state", "readAt", "requests", "rows", "queriesCutOff", "queriesFailed", "code", "comparison"],
+      "required": [
+        "state",
+        "readAt",
+        "requests",
+        "rows",
+        "queriesCutOff",
+        "queriesFailed",
+        "queriesNotProven",
+        "code",
+        "comparison"
+      ],
       "additionalProperties": false,
       "properties": {
         "state": {
-          "description": "`whole`: no query left a row out. `partial`: rows are missing, because a query was cut off at the limit of the API or failed, so a reference that Salesforce knows and the analysis missed can go unseen. `none`: the org answered no query, and nothing was compared.",
+          "description": "`whole`: no query left a row out. `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be missing, because rows were asked for component by component and nothing shows that the org listed every component. A reference that Salesforce knows and the analysis missed can then go unseen. `none`: the org answered no query, and nothing was compared.",
           "enum": ["whole", "partial", "none"]
         },
         "readAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
@@ -904,8 +914,13 @@
           "type": "integer",
           "minimum": 0
         },
+        "queriesNotProven": {
+          "description": "The queries at the limit of rows whose rows were asked for component by component, for more components than one query can name. Every row of a component the org listed was read. A row of a component it did not list would be missing, and nothing shows whether there is one.",
+          "type": "integer",
+          "minimum": 0
+        },
         "code": {
-          "description": "The code of the first failure, such as INVALID_TYPE for an org without the API. Null if the state is `whole`.",
+          "description": "The code of the first failure, such as INVALID_TYPE for an org without the API, TIMEOUT, or REQUESTS_USED_UP when the reading stopped at its limit of requests. Null if the state is `whole`.",
           "type": ["string", "null"]
         },
         "comparison": {
@@ -915,7 +930,7 @@
       }
     },
     "crossCheckComparison": {
-      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with, never by a guess from a name. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
+      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
       "type": "object",
       "required": [
         "rows",
@@ -977,7 +992,7 @@
           "items": { "$ref": "#/$defs/crossCheckPair" }
         },
         "onlyOrgLens": {
-          "description": "The pairs the analysis has, of a kind the API is known to report, for which the snapshot holds no row, sorted. Either the analysis found a reference that is none, or the API left one out. They are no issues.",
+          "description": "The pairs the analysis has, of a kind the API is known to report, for which no row was compared, sorted. Either the analysis found a reference that is none, or the API left one out, or the row is one that is missing (the state is `partial`) or could not be matched (`rowsNotMatched`). They are no issues.",
           "type": "array",
           "items": { "$ref": "#/$defs/crossCheckPair" }
         },

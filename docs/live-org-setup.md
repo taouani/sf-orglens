@@ -220,11 +220,14 @@ of the fixture project. Of the others the step gives the number. The step fails 
 when the analysis missed a pair that Salesforce reports.
 
 The test org holds fewer rows than the 2,000 at which Salesforce cuts a query off, so the engine never has to ask
-in parts there. The step therefore reads the rows a second time through a session that shortens every answer to
-30 rows and calls it ended. Every request still goes to the org as it is. The engine then asks per type, per pair
-of types and per group of components, and the step says whether the parts give the same rows as the one query. It
-fails when the engine calls that second reading whole and the rows differ. It ends with a warning when the org
-refuses one of those queries.
+in parts there. The step therefore reads the rows twice more: with one query, and just after it through a session
+that shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine
+then asks per type, per pair of types and per group of components, and the step says whether the parts give the
+same rows as the one query just before. It fails when the parts give a row that the one query did not give, and
+when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
+readings, so a second run tells whether a failure is one of the engine. The step ends with a warning when the
+org refuses one of those queries. It does not try the parts when the one query did not give every row, or when
+the org holds fewer than 30 rows, and says so.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
 the symbol tables. One query of the Dependency API gives at most 2,000 rows, so the reader of the engine asks per

@@ -31,10 +31,11 @@ Four things were known before the work began.
 - The walk of `impact` follows every origin alike (record [0044](0044-an-impact-answer.md)). References with the
   origin `dependency-api` in the tables of the graph would be followed like the ones OrgLens found.
 
-Two questions of this work package are with the maintainer and not answered yet. The build follows the answer
-that was recommended for each, and the section "Two questions that are open" says what changes with another
-answer. Everything else below is a choice of the author, and the maintainer's to strike. Three of the choices
-depart from a sentence of the plan and are marked.
+Two questions of this work package were put to the maintainer, who answered both on 16 November 2026. The
+section "Two questions the maintainer answered" has them. Everything else below is a choice of the author, and
+the maintainer's to strike. Three of the choices depart from a sentence of the plan and are marked. The code
+review of the pull request changed the reading and the matching in several points before the record was
+merged. The text below is the state after it.
 
 ## Decision
 
@@ -53,16 +54,33 @@ session of the snapshot and the API version the snapshot is read with.
   type of the target in the same way. A pair of types at the limit is asked for per group of 200 components
   that refer, and a group at the limit in two halves, down to one component.
 - **The third level is not in the plan**, which names the first two. It needs the ids of the components, and
-  takes them from what the org listed for the snapshot. It is used only if every row the pair gave so far is
-  from a component whose id is among them. Otherwise the pair counts as cut off: asking per id would leave
-  rows out without a trace.
-- **The reading says how far it came.** It is `whole` when no query left a row out, `partial` when a query was
-  cut off at the limit with no smaller part to ask for, or failed, and `none` when the org answered no query.
-  It carries the number of requests, of queries cut off and failed, and the code of the first failure.
-- **A failure of the org never throws.** A query the org refuses costs the rows of that query. After three
-  refusals from the start with no answer, or when the session or the network goes away, the reading stops with
-  what it has. A request gives up after 180 seconds and is made again twice when it got no answer.
+  takes them from what the org listed for the snapshot. It is trusted only as far as it can be checked.
+  - It is used only if every row the pair gave so far is from a component whose id is among them. Otherwise
+    the pair counts as cut off: asking per id would leave rows out without a trace.
+  - Every row the pair gave before it was cut off has to come again from the groups. Where one does not, the
+    org does not read the condition on the id as it is meant here, and the pair counts as cut off.
+  - The org may hold a component it did not list, or one that was made since. Where one query can name every
+    id of the type, which is up to 200, one more query asks for the rows of every other component. Where it
+    cannot, the pair is counted as not proven (`unproven`): every row of a component that was listed was read,
+    and nothing shows whether another component has a row.
+- **The reading says how far it came.** It is `whole` only when no query left a row out and none could have.
+  It is `partial` when a query was cut off at the limit with no smaller part to ask for, or failed, or was not
+  proven: rows are missing, or may be. It is `none` when the org answered no query and gave no row. It carries
+  the number of requests, of queries cut off, failed and not proven, and the code of the first failure.
+- **A failure of the org never throws.** A query the org refuses costs the rows of that query. A type whose
+  query was refused or got no answer is asked for in the parts of the next level: a part can be answered where
+  the whole is not. A request gives up after 180 seconds. One that broke off without an answer is made again
+  twice. One that ran out of time is not made again: it would take as long, and its parts may not.
+- **The reading stops with what it has** after three refusals from the start with no answer, after three
+  queries in a row that ran out of time, when the session or the network goes away, and after 2,000 requests.
+  The last number is a choice without a measurement. Requests count against the daily limit of the org, and
+  how many a large org needs is not known. A reading that stops is `partial`, or `none` without a row.
+- **An answer is followed only to its own next page.** The address of the next page has to be the query of
+  the Tooling API in the version that was asked. Any other address is not followed, and the query counts as
+  one that failed.
 - A type or an id is put into a query only if it is built like one. Nothing else of a row ever is.
+- The reader tells its caller the requests and the rows so far after every query. `snapshot` hands that on,
+  and the command line writes a line about it at most every five seconds.
 
 The shared part of the two readers of an org, the Metadata API and this one, is `sources/org-http.ts`.
 
@@ -91,12 +109,16 @@ type, the id, the name and the namespace of both ends, as the API gave them. Bot
 `engines/cross-check.ts` holds the rows against the references of one analysis. It reads no database and no
 org.
 
-- **An end is matched by the id the org listed the component with**, never by a guess from a name. The plan
-  says "with the names behind the ids", which the test tool reads from four objects of the Tooling API. The
-  engine does not query them: the listing of the snapshot already holds the id of every component, and the one
-  object stays the one object. A standard object, which has no id, is matched by its name. A record of a custom
-  metadata type is matched by id, or by the name of its type and its own name. A row with an end that is
-  matched to nothing is counted (`rowsNotMatched`) and not compared.
+- **An end is matched by the id the org listed the component with.** The plan says "with the names behind the
+  ids", which the test tool reads from four objects of the Tooling API. The engine does not query them: the
+  listing of the snapshot already holds the id of every component, and the one object stays the one object.
+- **A name is taken only where there is no id.** A standard object has none: the API writes its name in the
+  place of the id, so the name is what Salesforce identifies it by. A component the org listed without an id
+  is found by its type and full name. A component that was listed with an id is found by that id or not at
+  all, and a custom object is never taken by its name: the API names it without its ending, which can be the
+  name of a standard object. Should the org list one id under two types, the type of the row decides.
+- A row with an end that is matched to nothing is counted (`rowsNotMatched`) and not compared. If the ids of
+  the listing were not the ids of the rows, this number would show it.
 - **Only the types the analysis read are compared.** A row from a component of another type, such as a class,
   is counted per type (`notAnalysed`) and not compared. A row from a component of an analysed type that the
   snapshot does not hold, or whose analysis failed, is counted too (`rowsNotHeld`).
@@ -105,14 +127,15 @@ org.
 - **Agreed**: the analysis has a reference from the one to the other.
 - **Covered by a part** (`coveredByPart`): Salesforce names an object, and the analysis has a reference from
   the same component to something the object contains, such as a field or a record, and none to the object.
-  This is the first open question.
+  The maintainer decided this, as the first of the two questions below.
 - **Missed**: every other pair Salesforce reports. Each is an issue of the analysis with the severity `error`
   and the code `REFERENCE_MISSED`, which names both keys in its details. It makes the analysis incomplete, as
   every error of the analysis does: `snapshot` and `analyse` end with the exit code `5`, and an impact answer
   from the snapshot has `mayMiss: true`.
-- **Only OrgLens** (`onlyOrgLens`): a pair the analysis has, of a kind the API reports, without a row. It is
-  listed and is no issue: either the analysis found a reference that is none, or the API left one out, and
-  nothing here can tell which.
+- **Only OrgLens** (`onlyOrgLens`): a pair the analysis has, of a kind the API reports, without a row that was
+  compared. It is listed and is no issue: either the analysis found a reference that is none, or the API left
+  one out, and nothing here can tell which. Where rows are missing or were not matched, its row can be one of
+  those, and the report says so.
 - **Not reported** (`notReported`): a pair the analysis has, of a kind the API does not report, counted per
   reason. The reasons of record 0034 are a standard field, an inactive rule, a lookup and a roll-up summary.
   The probe of 15 November 2026 adds the filter of a lookup, the controlling field and the value set of a
@@ -129,13 +152,16 @@ shown as "not compared by this version", and `analyse` makes it anew.
 ### When the API is asked, and what a failure costs
 
 - `snapshot` of an org or a sandbox asks the API after the last chunk is stored and before the snapshot ends. A
-  snapshot that is interrupted there is continued there, and asks again. `--no-cross-check` leaves the API
-  unasked. A source of the kind `git` has no cross-check.
+  snapshot that is interrupted there is continued there, and asks again: the new reading takes the place of
+  the earlier one, and of its warning. `--no-cross-check` leaves the API unasked. A snapshot that is continued
+  with it keeps a reading it already has, with its warning. A source of the kind `git` has no cross-check.
 - **The reading never fails a snapshot and never makes it partial.** An org that gives no answer leaves the
-  warning `CROSS_CHECK_NOT_READ`, and missing rows leave the warning `CROSS_CHECK_PARTIAL`, both issues of the
-  reading. The plan says "optional and never fails a snapshot". That the API is asked by default is a choice.
+  warning `CROSS_CHECK_NOT_READ`, and rows that are missing or may be leave the warning `CROSS_CHECK_PARTIAL`,
+  both issues of the reading. The plan says "optional and never fails a snapshot". That the API is asked by
+  default is a choice.
 - With missing rows the comparison is still made. A pair that is missed is still an error. What changes is what
-  silence means: a reference the analysis missed can go unseen, and the report says that rows are missing.
+  silence means: a reference the analysis missed can go unseen, and the report says that rows are missing, or
+  that they may be.
 
 ### What the report shows
 
@@ -152,23 +178,30 @@ were missed and the first 20 that only OrgLens has, and says how many more there
   only if both of its components are of the fixture project. The step fails when nothing was compared or when
   a pair was missed.
 - The test org holds far fewer than 2,000 rows, so the parts are never asked for there. The step therefore
-  reads the rows a second time through a session that cuts every answer off at 30 rows, and holds the result
-  against the rows of the one query. It fails when the engine calls that reading whole and the rows differ.
+  reads the rows again with one query, and then through a session that cuts every answer off at 30 rows, and
+  holds the parts against the one query just before. It fails when the parts give a row the one query did not
+  give, and when the engine calls the reading in parts whole and a row is lacking. The org can change between
+  the two readings, and the line of the failure says that a second run tells. Where the one query is not
+  whole, or the org holds fewer than 30 rows, the parts are not tried, and the step says so.
 - The step "probe" reads the rows through the reader of the engine. It keeps its own queries for the names
   behind the ids and its comparison with the answer key, so the two tools find the components of a row in two
   ways.
 
-## Two questions that are open
+## Two questions the maintainer answered
 
-Both were put to the maintainer on 16 November 2026, with what each answer costs.
+Both were put to the maintainer on 16 November 2026, with what each answer costs, and answered on the same day.
+Both answers are the ones that were recommended, and the ones the build had followed.
 
-- **A row from a rule to an object.** Salesforce reports the object in `$ObjectType` inside `VLOOKUP` and the
-  custom metadata type behind `$CustomMetadata`. The answer key has the reference to the field or the record,
-  not to the object. As built, such a pair is `coveredByPart` and no error. With the other answer, the analysis
-  records a reference to the object as well, the key gets the entries, and `coveredByPart` goes away.
-- **A row from a record of a custom metadata type to its type.** Records are not analysed in this phase, so the
-  row is counted under `CustomMetadata` as not compared. Whether OrgLens records that reference at all, and
-  from which phase, is the question.
+- **A row from a rule to an object counts as covered.** Salesforce reports the object in `$ObjectType` inside
+  `VLOOKUP` and the custom metadata type behind `$CustomMetadata`. The answer key has the reference to the
+  field or the record, not to the object. OrgLens keeps only that reference. A row of Salesforce to the object
+  counts as found when the analysis has a reference from the same component into the object: the pair is
+  `coveredByPart` and no error. The other answer was to record the object as well, in the analysis and in the
+  key.
+- **A record of a custom metadata type refers to its type, from the phase that analyses records.** Records are
+  not analysed in this phase, so the row is counted under `CustomMetadata` as not compared, like a row from a
+  class. The phase that analyses records adds the reference. The other answers were to read records in this
+  phase for this one reference, and to have no such reference at all.
 
 ## Not done, against record 0034 and the plan
 
@@ -191,9 +224,12 @@ Both were put to the maintainer on 16 November 2026, with what each answer costs
   by the analysis, and a pair that is taken out on purpose is reported as missed. The mock org answers from
   the answer key. It is not Salesforce.
 - Not verified on a real org when this was written: that the ids of the listing are the ids of the rows, that
-  the org accepts a filter on `MetadataComponentId`, and what the comparison shows for the fixture project. The
-  read step of the live-org workflow shows all three: `rowsNotMatched`, the reading in parts, and the missed
-  pairs. Its result is recorded with the run.
+  the org accepts the two conditions on `MetadataComponentId`, `IN` and `NOT IN`, and what the comparison shows
+  for the fixture project. The read step of the live-org workflow shows all three: `rowsNotMatched`, the
+  reading in parts, and the missed pairs. Its result is recorded with the run.
+- An org with more than 200 components of a type whose pair of types is at the limit never gets a reading that
+  is `whole`: it is `partial`, with `unproven` above zero. That is the price of not claiming what cannot be
+  shown. Whether a real org of that size comes out so, and how often, was not measured.
 - The list of what the API does not report rests on one small Developer Edition org and, for three reasons, on
   nothing. A kind that is wrongly on the list hides nothing that Salesforce reports: a row is always compared.
   It only keeps a pair without a row out of the list `onlyOrgLens`. A kind that is wrongly missing puts pairs

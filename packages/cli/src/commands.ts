@@ -482,12 +482,20 @@ function crossCheckLines(report: CoverageReport): string[] {
     ];
   }
   const left = crossCheck.queriesCutOff + crossCheck.queriesFailed;
-  const read =
-    crossCheck.state === 'whole'
-      ? 'No query left a row out.'
-      : `Rows are missing: ${count(left, 'query was', 'queries were')} cut off at the limit of the API or failed${
-          crossCheck.code === null ? '' : ` (${crossCheck.code})`
-        }.`;
+  const lacks: string[] = [];
+  if (left > 0) {
+    lacks.push(
+      `Rows are missing: ${count(left, 'query was', 'queries were')} cut off at the limit of the API or failed${
+        crossCheck.code === null ? '' : ` (${crossCheck.code})`
+      }.`,
+    );
+  }
+  if (crossCheck.queriesNotProven > 0) {
+    lacks.push(
+      `Rows of a component the org did not list may be missing: ${count(crossCheck.queriesNotProven, 'query', 'queries')} at the limit of the API ${crossCheck.queriesNotProven === 1 ? 'was' : 'were'} asked again component by component.`,
+    );
+  }
+  const read = crossCheck.state === 'whole' ? 'No query left a row out.' : lacks.join(' ');
   const lines = [
     '',
     `Cross-check: the Dependency API of Salesforce reports ${count(crossCheck.rows, 'row', 'rows')}. ${read}`,
@@ -517,6 +525,9 @@ function crossCheckLines(report: CoverageReport): string[] {
     );
   }
   const missed = comparison.missed.length;
+  // A row that is missing, or that names a component the org did not list, can be the row of such a pair.
+  const unseen = crossCheck.state !== 'whole' || comparison.rowsNotMatched > 0;
+  const one = comparison.onlyOrgLens.length === 1;
   lines.push(
     comparison.rowsCompared === 0
       ? 'No row was compared.'
@@ -531,7 +542,7 @@ function crossCheckLines(report: CoverageReport): string[] {
     ),
     ...pairLines(
       comparison.onlyOrgLens,
-      `The analysis has ${count(comparison.onlyOrgLens.length, 'reference', 'references')} of a kind Salesforce reports, without a row. Either the analysis is wrong there, or the API left ${comparison.onlyOrgLens.length === 1 ? 'it' : 'them'} out:`,
+      `The analysis has ${count(comparison.onlyOrgLens.length, 'reference', 'references')} of a kind Salesforce reports, without a row${unseen ? ' that was compared' : ''}. Either the analysis is wrong there, or the API left ${one ? 'it' : 'them'} out${unseen ? `, or ${one ? 'its row is' : 'their rows are'} among those that are missing or not compared` : ''}:`,
     ),
   );
   const notReported = comparison.notReported.reduce((sum, { pairs }) => sum + pairs, 0);
@@ -555,17 +566,21 @@ const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (liste
   unlistable: () => 'not listed',
 };
 
-/** At most one line about the listing in this many milliseconds. An org is asked hundreds of times. */
-const LISTING_LINE_EVERY_MS = 5_000;
+/**
+ * At most one line about the listing in this many milliseconds, and one about the Dependency API. An org is
+ * asked hundreds of times.
+ */
+const PROGRESS_LINE_EVERY_MS = 5_000;
 
 /** Turns what the engine tells about a snapshot of an org into lines. */
 function progressLines(source: string, write: (line: string) => void): (event: SnapshotProgress) => void {
   let listingSaid = 0;
+  let crossCheckSaid = 0;
   return (event) => {
     if (event.step === 'connected') {
       write(`Logged in to the org of "${source}". It is read with API version ${event.apiVersion}.`);
     } else if (event.step === 'listing') {
-      if (Date.now() - listingSaid < LISTING_LINE_EVERY_MS) return;
+      if (Date.now() - listingSaid < PROGRESS_LINE_EVERY_MS) return;
       listingSaid = Date.now();
       write(
         `Asking the org what it holds: ${String(event.done)} of ${count(event.total, 'request', 'requests')} answered.`,
@@ -583,9 +598,18 @@ function progressLines(source: string, write: (line: string) => void): (event: S
         `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
       );
     } else if (event.step === 'cross-checking') {
-      write(
-        `Snapshot #${String(event.snapshot)}: every chunk is done. Asking the Dependency API of Salesforce which references it knows.`,
-      );
+      if (event.requests === 0) {
+        write(
+          `Snapshot #${String(event.snapshot)}: every chunk is done. Asking the Dependency API of Salesforce which references it knows.`,
+        );
+        // A small org is done with one request. The first line about how far it is comes after a while.
+        crossCheckSaid = Date.now();
+      } else if (Date.now() - crossCheckSaid >= PROGRESS_LINE_EVERY_MS) {
+        crossCheckSaid = Date.now();
+        write(
+          `Snapshot #${String(event.snapshot)}: the Dependency API gave ${count(event.rows, 'row', 'rows')} so far, in ${count(event.requests, 'request', 'requests')}.`,
+        );
+      }
     } else {
       write(`Snapshot #${String(event.snapshot)}: its files are stored. Analysing them.`);
     }
