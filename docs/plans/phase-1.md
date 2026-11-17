@@ -957,16 +957,20 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
   showed which: the queries that name `StandardEntity`, the type of a standard object, as the type of the target, by
   name or in the list of the rest. Salesforce documents that it does not answer the first. The 9 rows are from an
   Apex class to a standard object. Every other query was answered, the ones with `IN` and `NOT IN` on the id of a
-  component among them. The reader no longer names `StandardEntity`: the rows to standard objects come with the
-  rest, and a rest at the limit is asked for per group of components. That is not run against the org yet. The
-  documentation also lists `IN` and `NOT IN` as not supported, which the test org answers all the same. The reader
-  keeps them, and a query that an org refuses makes the reading `partial`. The record of the runs is section 7 of
+  component among them. The reader no longer names `StandardEntity`: the rows to standard objects are left to the
+  rest, and a rest at the limit is asked for per group of components. No run shows that the org answers a rest whose
+  list does not hold `StandardEntity`, or that such a rest holds the rows to standard objects: no such query was
+  asked. So the reader holds the rest against the rows it already has, and asks for the whole type per group of
+  components where the org refuses the list. None of this is run against the org yet. The documentation also lists
+  `IN` and `NOT IN` as not supported. The test org answered `NOT IN` on the type of the component that refers, and
+  both on its id. The reader keeps them, which is a choice of the author (decision record 0045), and a query that an
+  org refuses makes the reading `partial`. The record of the runs is section 7 of
   `docs/research/phase-1/real-org.md`.
 - **Not done or not verified.** Verified on the test org on 17 November 2026: the ids of the listing are the ids of
-  the rows for fields, rules and custom objects, and what the comparison shows. Verified there too: that the org accepts the
-  conditions `IN` and `NOT IN` on `MetadataComponentId`. Not verified: the corrected reader of the point above. An org with
-  more than 200 components of a type whose pair of types is at the limit gets a reading that is `partial`, and how
-  often that is so was not measured. Which permission the user needs for the query was not looked up. The command
+  the rows for fields, rules and custom objects, and what the comparison shows. Verified there too: that the org
+  accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`. Not verified: the corrected reader of the point
+  above. An org with more than 200 components of a type of which a part is at the limit, a pair of types or the
+  rest, gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs for the query was not looked up. The command
   `orglens snapshot` itself was not run against a real org, as before. The mock org reports the formula of a rule
   that is not active and of a default value, which Salesforce does not or may not.
 

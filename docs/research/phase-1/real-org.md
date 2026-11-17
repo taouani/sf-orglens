@@ -29,9 +29,10 @@ In short:
   field or a validation rule, the analysis has 54, has 2 through a part of the object, and missed none. Every
   end of those rows was matched to a component the org listed. Read in parts, as a large org has to be read,
   6 queries failed and 9 of 257 rows were lacking.
-- Added from run 11: the 6 queries are the ones that name a standard object as the type of the target, which
-  Salesforce does not answer and says so in its documentation. The 9 rows are from an Apex class to a standard
-  object. The reader no longer names that type in a condition. That is not run against the org yet.
+- Added from run 11: the 6 queries are the ones that name a standard object as the type of the target, by name or
+  in a list of types to leave out. The documentation of Salesforce says that the first is not supported. The 9 rows
+  are from an Apex class to a standard object. The reader no longer names that type in a condition. That is not run
+  against the org yet.
 
 ## Conditions
 
@@ -461,10 +462,10 @@ condition of every request that failed. The comparison and the reading in parts 
 - **Every query that failed names `StandardEntity` as a type of the target, and no query that names it was
   answered.** `StandardEntity` is what the API writes as the type of a standard object. The query for it by name
   failed, and so did the query for the rest, whose list of types to leave out holds it.
-- **The 9 rows the parts lack are all from an Apex class to a standard object.** They are the rows
-  that the query for an Apex class to `StandardEntity` would have given. The other five queries left no row out:
-  custom fields and layouts have no row to a standard object in this org, and no row of a type that was not asked
-  for by name.
+- **The 9 rows the parts lack are all from an Apex class to a standard object.** They are among the rows that the
+  query for an Apex class to `StandardEntity` would have given. The parts lack no row that one of the other five
+  queries would have given. That does not show that those queries had no row to give: a row that an earlier query
+  gave before it was cut off is not lacking.
 - **Salesforce documents the first of the two.** The page of the object in the Tooling API guide lists, among the
   queries that are not supported, a filter by `RefMetadataComponentType = 'StandardEntity'`
   ([MetadataComponentDependency](https://developer.salesforce.com/docs/atlas.en-us.api_tooling.meta/api_tooling/tooling_api_objects_metadatacomponentdependency.htm),
@@ -474,28 +475,37 @@ condition of every request that failed. The comparison and the reading in parts 
   none of them failed, so the engine asked for that pair per group of components and for every other component, and
   the org answered. That settles what the list above left `[unverified]`.
 - **The same page says something the org does not do.** It lists a condition with an operator other than `=`, `!=`,
-  `AND` and `OR` as not supported. The reader uses `IN` and `NOT IN`, on the two types and on the id of the
-  component, and the test org answered every such query that does not name `StandardEntity`. Whether another org or
-  another version of the API refuses them is `[unverified]`. A reading stays honest if one does: a query that is
+  `AND` and `OR` as not supported. The reader uses `NOT IN` on the two types, and `IN` and `NOT IN` on the id of the
+  component. The test org answered every such query that does not name `StandardEntity`: `NOT IN` on the type of
+  the component that refers, and both on the id. It was not asked `NOT IN` on the type of the target with a list
+  that does not hold `StandardEntity`. Whether another org or another version of the API refuses them is
+  `[unverified]`. A reading stays honest if one does: a query that is
   refused is counted, and the reading is `partial`. The same conditions can be written with `=`, `!=` and `OR`,
   which makes a query with 200 ids about twice as long. That is not done.
-- **What this meant.** Every org above 2,000 rows that has a type at the limit and a row to a standard object got a
-  reading that is `partial`, and lost the rows from that type to standard objects.
+- **What this meant.** An org above 2,000 rows that has a type at the limit was asked both queries for that type.
+  If it refuses them as the test org did, its reading is `partial`, and it lacks the rows from that type to a
+  standard object, and to a type that was not asked for by name, that no earlier query gave. Only the test org was
+  asked.
 
 **What was changed after run 11.** The reader never puts `StandardEntity` into a condition (`sources/dependency-
 api.ts`).
 
-- The rows to standard objects come with the rest: the query for whatever is of no type that a query named.
+- The rows to standard objects are left to the rest: the query for whatever is of no type that a query named.
   `StandardEntity` is never on that list.
-- Where the rest is at the limit and no type is left to ask for by name, it is asked for per group of components, as
-  a pair of types is. Before, such a rest was counted as cut off.
-- A type of target whose query by name the org does not answer is treated the same way: it is not put on the list,
-  so its rows come with the rest. It counts as failed only if the rest fails too.
+- Where the rest is at the limit and no type is left to ask for by name, or the last round is over, it is asked for
+  per group of components, as a pair of types is. Before, such a rest was counted as cut off.
+- A type of target whose query by name the org refuses as it is written, with no row and not for the time it took,
+  is treated the same way: it is not put on the list, so its rows are left to the rest. A query that broke off or
+  took too long is not treated so: it counts as failed, and its type is on the list.
+- The rest is checked. The first query of the type gave rows before it was cut off. One of them that is of the rest
+  and does not come with it counts as a query cut off, and the reading is `partial`.
+- Where the org refuses the list of types of the rest, the whole type is asked for per group of components.
 - Both mock orgs of the tests refuse a condition that names `StandardEntity`, alone or in a list, with the code the
   test org gave.
 - **Not verified:** the corrected reader against the test org. The workflow runs from `main` only, so the run is
-  after the merge. In particular it is not shown that the org answers `RefMetadataComponentType NOT IN` with a list
-  that does not hold `StandardEntity`: every such query of runs 10 and 11 held it.
+  after the merge. It is not shown that the org answers `RefMetadataComponentType NOT IN` with a list that does not
+  hold `StandardEntity`, or that the answer holds the rows to standard objects: every such query of runs 10 and 11
+  held it. The check of the rest and the whole type per group of components are for an org that does not.
 
 **The step "probe"** reads through the reader of the engine now: 1 request, 257 rows. Its comparison with the
 answer key gives the numbers of run 8: 129 of 189 pairs, the same tables by type, by way and by tier, and the

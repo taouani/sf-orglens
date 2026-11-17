@@ -196,16 +196,48 @@ describe('reading the Dependency API', () => {
     expect(dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '')).toContain(
       "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('CustomField')",
     );
-    // The mock org does refuse such a condition, alone and in a list.
+    // The mock org does refuse such a condition: alone, and first, last or in the middle of a list.
     for (const condition of [
       "RefMetadataComponentType = 'StandardEntity'",
       "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('CustomField', 'StandardEntity')",
       "RefMetadataComponentType NOT IN ('StandardEntity', 'CustomField')",
+      "RefMetadataComponentType NOT IN ('ApexClass', 'StandardEntity', 'CustomField')",
+      "RefMetadataComponentType NOT IN ('StandardEntity')",
     ]) {
       const answer = dependencies.answer(`${dependencies.queries[0] ?? ''} WHERE ${condition}`);
       expect(answer).toMatchObject({ status: 400 });
       expect(answer.body).toContain('INVALID_TYPE_FOR_OPERATION');
     }
+    // It answers a condition on the type of the component that refers, and a type with a name that is like it.
+    for (const condition of [
+      "MetadataComponentType = 'StandardEntity'",
+      "MetadataComponentType NOT IN ('ApexClass', 'StandardEntity')",
+      "RefMetadataComponentType = 'StandardEntityX'",
+    ]) {
+      expect(dependencies.answer(`${dependencies.queries[0] ?? ''} WHERE ${condition}`)).toMatchObject({ status: 200 });
+    }
+  });
+
+  it('says that rows are missing when the rest does not bring a row that is known to be of it', async () => {
+    // An org that answers the rest and leaves the rows to standard objects out of it. Nothing has shown that
+    // Salesforce puts them in, and the rest is the only query that asks for them.
+    const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomObject', 3)];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    const answer = dependencies.answer.bind(dependencies);
+    dependencies.answer = (soql) => {
+      const answered = answer(soql);
+      if (!soql.includes('RefMetadataComponentType NOT IN') || answered.status !== 200) return answered;
+      const body = JSON.parse(answered.body) as { records: MockDependencyRow[] };
+      const records = body.records.filter((row) => row['RefMetadataComponentType'] !== 'StandardEntity');
+      return { status: 200, body: JSON.stringify({ ...body, records, size: records.length }) };
+    };
+    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    // The query for all classes showed one row to a standard object before it was cut off, and the rest did
+    // not bring it again.
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0 });
+    expect(reading.rows.length).toBeLessThan(rows.length);
   });
 
   it('asks for the rows to standard objects per component where the rest is at the limit', async () => {
@@ -263,13 +295,71 @@ describe('reading the Dependency API', () => {
     expect(where.filter((one) => one.includes("RefMetadataComponentType = 'CustomLabel'"))).toHaveLength(1);
     expect(where).toContain("MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('CustomField')");
 
-    // The rest is refused too: the rows of the type are missing, and that is counted once.
+    // The type that is refused by name has more rows than a query gives: the rest is at the limit with no type
+    // left to name, and is asked for per group of classes.
+    const many = [...rowsOf('ApexClass', 'CustomField', 3), ...rowsOf('ApexClass', 'CustomLabel', 12)];
+    const large = mockDependencies(many);
+    large.limit = 5;
+    large.refuse = dependencies.refuse;
+    mock.dependencies = large;
+    const perClass = await read({
+      limits: { rowsPerQuery: 5, idsPerQuery: 16 },
+      idsOfType: () => idsIn(many, 'ApexClass'),
+    });
+    expect(perClass).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
+    expect(pairs(perClass)).toEqual(pairsOf(many));
+  });
+
+  it('asks for the whole type per component when the org refuses the list of types of the rest', async () => {
+    const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomObject', 3)];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    // The test org has not shown that it answers a list of types of the target. An org that does not:
     dependencies.refuse = (soql) =>
-      soql.includes("RefMetadataComponentType = 'CustomLabel'") || soql.includes('RefMetadataComponentType NOT IN')
-        ? 'INVALID_TYPE_FOR_OPERATION'
-        : undefined;
-    const lacking = await read({ limits: { rowsPerQuery: 5 } });
-    expect(lacking).toMatchObject({ state: 'partial', cutOff: 0, failed: 1, code: 'INVALID_TYPE_FOR_OPERATION' });
+      soql.includes('RefMetadataComponentType NOT IN') ? 'INVALID_TYPE_FOR_OPERATION' : undefined;
+    const ids = idsIn(rows, 'ApexClass');
+    const reading = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 16 }, idsOfType: () => ids });
+    // The conditions on the id of a component need no list of types, and give every row of the classes.
+    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
+    expect(pairs(reading)).toEqual(pairsOf(rows));
+    const where = dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
+    expect(where.filter((one) => one.includes('RefMetadataComponentType NOT IN'))).toHaveLength(1);
+    expect(
+      where.some((one) => one.startsWith("MetadataComponentType = 'ApexClass' AND MetadataComponentId IN (")),
+    ).toBe(true);
+
+    // Without the ids of the classes there is no other way to ask, and the reading says that rows are missing.
+    const blind = await read({ limits: { rowsPerQuery: 5 } });
+    expect(blind).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, code: 'INVALID_TYPE_FOR_OPERATION' });
+    expect(blind.rows.length).toBeLessThan(rows.length);
+  });
+
+  it('does not leave the rows of a type to the rest when its query took too long or broke off', async () => {
+    const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomLabel', 3)];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    dependencies.refuse = (soql) =>
+      soql.includes("RefMetadataComponentType = 'CustomLabel'") ? 'QUERY_TIMEOUT' : undefined;
+    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    // A rest with these rows in it would take longer still. The type is counted, and the rest leaves it out.
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 0, failed: 1, code: 'QUERY_TIMEOUT' });
+    expect(dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '')).toContain(
+      "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('CustomField', 'CustomLabel')",
+    );
+  });
+
+  it('asks for the rest per component after the last round, where a type is still left to name', async () => {
+    // Three types of target with more rows each than a query gives: every rest shows one more type.
+    const rows = ['CustomField', 'CustomLabel', 'CustomPermission'].flatMap((to) => rowsOf('ApexClass', to, 6));
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 5;
+    mock.dependencies = dependencies;
+    const ids = idsIn(rows, 'ApexClass');
+    const reading = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 32, rounds: 1 }, idsOfType: () => ids });
+    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
+    expect(pairs(reading)).toEqual(pairsOf(rows));
   });
 
   it('asks per group of components where a pair of types is at the limit, and halves a group that is', async () => {
