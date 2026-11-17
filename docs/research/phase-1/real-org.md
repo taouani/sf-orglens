@@ -28,7 +28,10 @@ In short:
   its analysis ([section 7](#7-the-cross-check-of-the-engine)). Of the 56 pairs Salesforce reports from a custom
   field or a validation rule, the analysis has 54, has 2 through a part of the object, and missed none. Every
   end of those rows was matched to a component the org listed. Read in parts, as a large org has to be read,
-  6 queries failed and 9 of 257 rows were lacking. Which queries is not known yet.
+  6 queries failed and 9 of 257 rows were lacking.
+- Added from run 11: the 6 queries are the ones that name a standard object as the type of the target, which
+  Salesforce does not answer and says so in its documentation. The 9 rows are from an Apex class to a standard
+  object. The reader no longer names that type in a condition. That is not run against the org yet.
 
 ## Conditions
 
@@ -47,9 +50,10 @@ In short:
 | [7](https://github.com/taouani/sf-orglens/actions/runs/43760218782) | probe | `74cadde` | green |
 | [8](https://github.com/taouani/sf-orglens/actions/runs/43763715996) | probe | `fdd34b6` | green |
 | [10](https://github.com/taouani/sf-orglens/actions/runs/43996393289) | read and probe | `9aadacb` | green, with a warning for the partial snapshot and one for a query the org refused |
+| [11](https://github.com/taouani/sf-orglens/actions/runs/44003600959) | read | `faae654` | green, with the same two warnings |
 
-Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Run 10 is of 17
-November 2026, after work package 8 was merged, and section 7 is about it.
+Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Runs 10 and 11
+are of 17 November 2026, after work package 8 was merged, and section 7 is about them.
 
 ## 1. The deploy of the larger fixture project
 
@@ -442,6 +446,56 @@ at 30 rows, so that the engine asks per type, per pair of types and per componen
   the number of ids in the place of the ids, and the rows the parts lack by the types of their two ends. The
   next run shows which queries they are, and the reader is corrected by what it shows.
 - The one query and the 63 requests took about 9 seconds together.
+
+**Run 11: which queries failed.** The step "read" was run again on 17 November 2026 from the commit that prints the
+condition of every request that failed. The comparison and the reading in parts gave the numbers of run 10. `[run
+11]`
+
+| The condition of the query that failed, for each of the types ApexClass, CustomField and Layout | Code |
+| --- | --- |
+| `MetadataComponentType = <the type> AND RefMetadataComponentType = StandardEntity` | `INVALID_TYPE_FOR_OPERATION` |
+| `MetadataComponentType = <the type> AND RefMetadataComponentType NOT IN (<the types asked for by name, StandardEntity among them>)` | `INVALID_TYPE_FOR_OPERATION` |
+
+- Six requests failed, one for each of six queries, and no request was sent again. The three types are the ones with
+  more than 30 rows, so they are the three that were asked for per type of the target.
+- **Every query that failed names `StandardEntity` as a type of the target, and no query that names it was
+  answered.** `StandardEntity` is what the API writes as the type of a standard object. The query for it by name
+  failed, and so did the query for the rest, whose list of types to leave out holds it.
+- **The 9 rows the parts lack are all from an Apex class to a standard object.** They are the rows
+  that the query for an Apex class to `StandardEntity` would have given. The other five queries left no row out:
+  custom fields and layouts have no row to a standard object in this org, and no row of a type that was not asked
+  for by name.
+- **Salesforce documents the first of the two.** The page of the object in the Tooling API guide lists, among the
+  queries that are not supported, a filter by `RefMetadataComponentType = 'StandardEntity'`
+  ([MetadataComponentDependency](https://developer.salesforce.com/docs/atlas.en-us.api_tooling.meta/api_tooling/tooling_api_objects_metadatacomponentdependency.htm),
+  read on 17 November 2026). It does not name the code, and says nothing of a list that holds the type.
+- **Every other request was answered**, 57 of 63. Among them are the conditions `IN` and `NOT IN` on
+  `MetadataComponentId`: the rows from a layout to a custom field were at the limit, no query stayed cut off and
+  none of them failed, so the engine asked for that pair per group of components and for every other component, and
+  the org answered. That settles what the list above left `[unverified]`.
+- **The same page says something the org does not do.** It lists a condition with an operator other than `=`, `!=`,
+  `AND` and `OR` as not supported. The reader uses `IN` and `NOT IN`, on the two types and on the id of the
+  component, and the test org answered every such query that does not name `StandardEntity`. Whether another org or
+  another version of the API refuses them is `[unverified]`. A reading stays honest if one does: a query that is
+  refused is counted, and the reading is `partial`. The same conditions can be written with `=`, `!=` and `OR`,
+  which makes a query with 200 ids about twice as long. That is not done.
+- **What this meant.** Every org above 2,000 rows that has a type at the limit and a row to a standard object got a
+  reading that is `partial`, and lost the rows from that type to standard objects.
+
+**What was changed after run 11.** The reader never puts `StandardEntity` into a condition (`sources/dependency-
+api.ts`).
+
+- The rows to standard objects come with the rest: the query for whatever is of no type that a query named.
+  `StandardEntity` is never on that list.
+- Where the rest is at the limit and no type is left to ask for by name, it is asked for per group of components, as
+  a pair of types is. Before, such a rest was counted as cut off.
+- A type of target whose query by name the org does not answer is treated the same way: it is not put on the list,
+  so its rows come with the rest. It counts as failed only if the rest fails too.
+- Both mock orgs of the tests refuse a condition that names `StandardEntity`, alone or in a list, with the code the
+  test org gave.
+- **Not verified:** the corrected reader against the test org. The workflow runs from `main` only, so the run is
+  after the merge. In particular it is not shown that the org answers `RefMetadataComponentType NOT IN` with a list
+  that does not hold `StandardEntity`: every such query of runs 10 and 11 held it.
 
 **The step "probe"** reads through the reader of the engine now: 1 request, 257 rows. Its comparison with the
 answer key gives the numbers of run 8: 129 of 189 pairs, the same tables by type, by way and by tier, and the

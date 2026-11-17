@@ -5,7 +5,9 @@
  * It answers the way the probe of the test org saw Salesforce answer (`docs/research/phase-1/real-org.md`):
  * a query gives at most `limit` rows and says that it is done, a field and a rule are named without their
  * object, a custom object without its ending, a standard object has the type `StandardEntity` and its name as
- * its id, and a record of a custom metadata type has the name of that type as its type.
+ * its id, and a record of a custom metadata type has the name of that type as its type. A query whose condition
+ * on the type of the target names `StandardEntity` is refused with `INVALID_TYPE_FOR_OPERATION`, as run 11 on
+ * the test org showed.
  *
  * It knows the few conditions the engine writes and refuses every other query, so that a test fails when the
  * engine asks for something else.
@@ -77,6 +79,8 @@ const refused = (errorCode: string, message: string): { status: number; body: st
 
 const SELECT =
   /^SELECT MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType FROM (\w+)(?: WHERE (.+))?$/;
+/** A condition on the type of the target that holds `StandardEntity`, alone or in a list. */
+const STANDARD_AS_TARGET = /\bRefMetadataComponentType (?:= |NOT IN \((?:'[A-Za-z0-9_]+', )*)'StandardEntity'/;
 const quotedList = (list: string): string[] => [...list.matchAll(/'([^']*)'/g)].map(([, value]) => value ?? '');
 
 /** The test one condition of a query stands for, or `null` for a condition the mock does not know. */
@@ -112,6 +116,11 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
       if (parsed === null) return refused('MALFORMED_QUERY', 'The mock org does not know this query.');
       if (parsed[1] !== 'MetadataComponentDependency') {
         return refused('INVALID_TYPE', `sObject type '${parsed[1] ?? ''}' is not supported.`);
+      }
+      // Salesforce does not answer a query that names a standard object as the type of the target, and the
+      // test org did not answer the one that leaves that type out by name either.
+      if (STANDARD_AS_TARGET.test(parsed[2] ?? '')) {
+        return refused('INVALID_TYPE_FOR_OPERATION', 'The mock org does not filter on a standard object.');
       }
       const tests = (parsed[2] ?? '') === '' ? [] : (parsed[2] ?? '').split(' AND ').map(condition);
       if (tests.includes(null)) return refused('MALFORMED_QUERY', 'The mock org does not know this condition.');

@@ -7,7 +7,9 @@
  *
  * One query gives at most 2,000 rows and cannot be continued. So the rows are asked for in parts where a query
  * reaches that number: per type of the component that refers, then per pair of types, then per group of
- * components that refer, whose ids the caller knows from what the org listed. A part that is still at the limit
+ * components that refer, whose ids the caller knows from what the org listed. A standard object as the target
+ * cannot be asked for by name, so its rows are asked for with the rest: whatever is of no type that a query
+ * named. A part that is still at the limit
  * is cut off: rows are missing, and the reading says so. Where rows were asked for per component, the reading
  * is only as whole as the list of components: it asks for the rows of every other component in one more query
  * where the list is short enough for that, and says so where it is not.
@@ -142,6 +144,13 @@ const REFERRING_TYPES = [
   'WorkflowFieldUpdate',
   'WorkflowRule',
 ];
+
+/**
+ * Types of target that no condition names. Salesforce does not answer a query that filters on a standard object
+ * as the type of the target: its documentation of the object says so, and the test org refused every such
+ * query, also the one that leaves the type out by name (`docs/research/phase-1/real-org.md`).
+ */
+const TARGETS_NOT_NAMED: readonly string[] = ['StandardEntity'];
 
 /** A type or an id that can stand between quotes in a query as it is. Anything else is never put into one. */
 const TYPE_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
@@ -350,14 +359,27 @@ export async function readDependencies(
     else if (others.failure !== null) failed += 1;
   };
 
-  /** The rows of one type of component, per type of the target where the type alone is at the limit. */
+  /**
+   * The rows of one type of component, per type of the target where the type alone is at the limit.
+   *
+   * A type of target that cannot be asked for by name is never left out of the rest, so its rows come with the
+   * rest. That holds for a standard object, and for a type whose query the org did not answer.
+   */
   const askType = async (type: string): Promise<void> => {
-    const ofType = await ask(`MetadataComponentType = '${type}'`);
+    const whole = `MetadataComponentType = '${type}'`;
+    const ofType = await ask(whole);
     if (!atLimit(ofType) && ofType.failure === null) return;
     // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
     // A type whose query failed is asked for in the same parts: a part can be answered where the whole is not.
+    /** The types of target whose rows a query of their own gave. */
     const done = new Set<string>();
-    let targets = seen((row) => row.to.type).sort();
+    /** The types of target that are not asked for by name, or were and got no answer. */
+    const unnamed = new Set(TARGETS_NOT_NAMED);
+    const left = (): string[] =>
+      seen((row) => row.to.type)
+        .filter((target) => !done.has(target) && !unnamed.has(target))
+        .sort();
+    let targets = left();
     if (!atLimit(ofType) && targets.length === 0) {
       // No part is known, and the query for the rest would be the one that failed.
       failed += 1;
@@ -365,24 +387,31 @@ export async function readDependencies(
     }
     for (let round = 0; round < limits.rounds; round += 1) {
       for (const target of targets) {
-        done.add(target);
-        const pair = `MetadataComponentType = '${type}' AND RefMetadataComponentType = '${target}'`;
+        const pair = `${whole} AND RefMetadataComponentType = '${target}'`;
         const asked = await ask(pair);
-        if (atLimit(asked)) await askPerComponent(pair, asked.rows, type);
-        else if (asked.failure !== null) failed += 1;
+        if (atLimit(asked)) {
+          done.add(target);
+          await askPerComponent(pair, asked.rows, type);
+        } else if (asked.failure === null) done.add(target);
+        // The rest gives the rows of a type that got no answer by its name, and counts as failed if it does not.
+        else unnamed.add(target);
       }
-      const others = await ask(
-        `MetadataComponentType = '${type}'${done.size === 0 ? '' : ` AND RefMetadataComponentType NOT IN (${quoted(done)})`}`,
-      );
-      targets = seen((row) => row.to.type)
-        .filter((target) => !done.has(target))
-        .sort();
+      const rest =
+        done.size === 0 ? whole : `${whole} AND RefMetadataComponentType NOT IN (${quoted([...done].sort())})`;
+      // With no type left out, the rest is the query for the whole type, which has been asked.
+      const others = done.size === 0 ? ofType : await ask(rest);
+      targets = left();
       if (!atLimit(others)) {
         if (others.failure !== null) failed += 1;
         return;
       }
-      // At the limit with no type left to ask for by name, or after the last round: rows are missing.
-      if (targets.length === 0 || round === limits.rounds - 1) {
+      // At the limit with no type left to ask for by name: the rest is asked for per component.
+      if (targets.length === 0) {
+        await askPerComponent(rest, others.rows, type);
+        return;
+      }
+      // At the limit after the last round: rows are missing.
+      if (round === limits.rounds - 1) {
         cutOff += 1;
         return;
       }
