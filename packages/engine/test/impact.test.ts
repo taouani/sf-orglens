@@ -12,6 +12,7 @@ import type { ImpactReport } from '../src/api/impact.ts';
 import { openWorkspace, type Workspace } from '../src/api/workspace.ts';
 import { buildKey, parentKey, type ComponentKey } from '../src/core/keys.ts';
 import { CONFIDENCE_TIERS, type ConfidenceTier } from '../src/core/references.ts';
+import { engineVersion } from '../src/core/version.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { addCoverage, addIssue, ensureSource, insertSnapshot, readCoverage } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
@@ -41,10 +42,14 @@ async function failure(run: () => Promise<unknown>): Promise<Failure> {
   throw new Error('did not throw');
 }
 
-/** A report without the moment its snapshot was taken, which is the one thing that differs from run to run. */
+/**
+ * A report without the two things that are not of the fixture project: the moment its snapshot was taken, which
+ * differs from run to run, and the version of the engine that analysed it, which differs from release to release.
+ * A test of its own holds the version against the engine.
+ */
 const timeless = (report: ImpactReport): unknown => ({
   ...report,
-  snapshot: { ...report.snapshot, finishedAt: 'TIME' },
+  snapshot: { ...report.snapshot, finishedAt: 'TIME', analysedBy: 'VERSION' },
 });
 
 /** What a test compares of an answer: each result with its depth and its confidence. */
@@ -107,6 +112,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await expect(`${JSON.stringify(timeless(report), null, 2)}\n`).toMatchFileSnapshot(
         `./golden/impact/${file}.json`,
       );
+    });
+
+    it('says which version of the engine analysed the snapshot', async () => {
+      const { workspace } = await setUp();
+      const report = await workspace.impact('fixture', 'Invoice__c.Amount__c');
+      expect(report.snapshot.analysedBy).toBe(engineVersion());
     });
 
     it('gives every component of the fixture the answer that the answer key implies', async () => {
