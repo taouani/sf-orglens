@@ -68,13 +68,21 @@ with a sentence that says it is outside the tier and does not make the snapshot 
 
 - `LISTING_FAILED` and `NOT_RETRIEVED` are about one type, and count by that type.
 - `RETRIEVE_FAILED` is about the components of one retrieve. It counts against the tier if one of them is of
-  the tier. Their types are in `details.types`.
+  the tier. Their types are in `details.types`. These are the types that are retrieved by name: a field that
+  fails with its object is not named.
 - `RESOLVE_FAILED` is about a component or a file. A component counts by its type. A file counts by the types
-  that keep their files in its top folder, as the registry of the Salesforce library says: a file under
-  `reports` can be a report or a report folder and is outside the tier, a file under `classes` counts against
-  it. The types are in `details.types`.
+  that keep their files in its top folder, as the registry of the Salesforce library says, and by the types of
+  their parts: a file under `reports` can be a report or a report folder and is outside the tier, a file under
+  `classes` or `objects` counts against it. The types are in `details.types`.
 - A file in a folder of no type the registry knows, a file beside the folders, and a file outside the package
   that was asked for have no type that can be told. `details.types` is empty, and they count against the tier.
+- **The file of custom labels is not missing when the org lists no label.** `CustomLabels` is the file,
+  `CustomLabel` a label in it. In Phase 0 the test org listed the file and handed out nothing. Since the fixture
+  project gave the org one label, the file comes back ([real-org.md](../research/phase-1/real-org.md)). So an
+  org without a label most likely lists a file it cannot hand out, and its snapshot would be partial for good.
+  `NOT_RETRIEVED` for `CustomLabels` is a warning when the org lists no `CustomLabel`, with
+  `details.holdsNothing`, and stays an error when it lists one. If the org refuses to say which labels it has,
+  that refusal is an error of its own.
 
 The status of a snapshot is decided as before: it is `partial` if the reading left an issue of the severity
 `error`. No status is added, and the database is not changed. A snapshot that an earlier version took keeps the
@@ -84,20 +92,25 @@ A snapshot of a Git source is not changed. Whatever its folders hold and cannot 
 
 ### What the commands show
 
-`snapshot`, `analyse` and `coverage` call a complete snapshot with such a warning "complete for the logic tier,
-and something of other types is missing", in the first line of the report. The warnings are in the table of
-issues below it, one per type for what did not come back, with the count. The exit code is that of a complete
-snapshot.
+`snapshot`, `analyse` and `coverage` call a complete snapshot with such a warning "complete for the logic tier"
+in the first line of the report, and say after the numbers of that line: "Something of other types is missing,
+and the warnings below say what." The warnings are in the table of issues below it, one per type for what did
+not come back, with the count. The exit code is that of a complete snapshot.
 
-### An impact answer still counts what it covers
+### What an impact answer counts
 
-`notCovered.readErrors` of an impact answer counted the errors of the reading (record
-[0044](0044-an-impact-answer.md)). A `RESOLVE_FAILED` or `RETRIEVE_FAILED` outside the tier is no error any more.
-It is counted all the same if one of its `details.types` is a type the answer covers: a type the analysis read,
-or a type the analysis found a component of. So an answer says that it may miss something when a list view could
-not be read, once list views are components, and says nothing of the kind for a report. `NOT_RETRIEVED` and
-`LISTING_FAILED` need no such rule: the counts of the type tell them, in `notCovered.partial`, whatever their
-severity.
+`notCovered.readErrors` of an impact answer counted every error of the reading (record
+[0044](0044-an-impact-answer.md)). A `RESOLVE_FAILED` or `RETRIEVE_FAILED` outside the tier is no error any
+more, so it is no longer counted: **`impact` now ends with `0` where it ended with `5`** for a snapshot with
+such a failure. The answer does not cover the type that failed, and names it in `notCovered.notAnalysed`.
+
+One rule is there for later and has no effect today. Such a warning is counted if one of its `details.types`
+is a type the answer covers: a type the analysis read, or one of which it analysed a component. Every analysed
+type is of the logic tier today, and a warning outside the tier names no type of the tier, so no snapshot the
+engine writes has a warning that is counted. Only tests with rows written by hand show the rule. It is there so
+that the first analyser for a type outside the tier does not make answers that call themselves whole while a
+file of that type could not be read. `NOT_RETRIEVED` and `LISTING_FAILED` need no such rule: the counts of the
+type tell them, in `notCovered.partial`, whatever their severity.
 
 ## What goes further than records 0004 and 0038
 
@@ -105,6 +118,8 @@ These are choices of the author of this record. The maintainer can strike any of
 
 1. **The 21 names.** Records 0004 and 0038 hold words. `Workflow` and `CustomLabels` are in the list because the
    org lists the file and its parts as types of their own. A custom metadata type is counted as a `CustomObject`.
+   Types that stand near the words and are not in the list: `FlowDefinition`, which says which version of a flow
+   is active, `MutingPermissionSet`, `ExternalCredential`, and `ApexPage` and `ApexComponent`.
 2. **A part of an object that the list does not name is outside the tier.** The other reading takes every part
    of an object with the object. The test org lists 224 list views and hands out 53 (record 0038). With that
    reading a snapshot of it could never be complete, and record 0004 puts list views in the presentation tier.
@@ -117,7 +132,10 @@ These are choices of the author of this record. The maintainer can strike any of
 5. **The warnings keep their codes.** The other way was a code of its own for what is missing outside the tier.
    One code with `details.tier` keeps a script that looks for `NOT_RETRIEVED` working.
 6. **The words of the first line**, and that it is said in the first line at all.
-7. **What an impact answer counts**, as the section above says.
+7. **What an impact answer counts**, as the section above says, and that a rule without an effect today is
+   built now and not with the first analyser that needs it.
+8. **The rule for the file of custom labels**, which rests on one org in two states. Whether an org lists the
+   file of workflow rules of an object without a rule in the same way is not known, and no rule is made for it.
 
 ## Not done
 
@@ -131,14 +149,26 @@ These are choices of the author of this record. The maintainer can strike any of
   tier can refer to a field.
 - An error of the reading still counts in `readErrors` whatever its type, also for a class, which no analyser
   reads yet.
+- The analysis is not judged by tier. If a file of a type outside the tier is in the snapshot and the analysis
+  cannot read it as metadata, that is an error of the analysis, and `snapshot` ends with `5` for a snapshot it
+  calls complete for the logic tier. No such case was built.
+- `FILES_NOT_METADATA` stays a warning in every tier. It names files of a retrieve that belong to no component,
+  also below `classes` or `objects`. A listed component that is lost with them is still `NOT_RETRIEVED`.
+- No test reaches three places that say which types a problem is of: a component whose content cannot be
+  walked, a file converted to a place where no metadata is expected, and a problem of the second reading of the
+  converted files. They were not reached by a test before this record either.
 
 ## Consequences
 
 - A snapshot of an org that was `partial` only for types outside the tier is now `complete`, and `snapshot` ends
   with `0` where it ended with `5`. A script that needs every type reads the issues and their `details.tier`.
-- Not verified on a real org when this was written. On the test org, thirteen components of types of the tier do
-  not come back and three files cannot be read as metadata (record 0038), so its snapshot is expected to stay
-  partial until those are explained. What the snapshot of the test org says is recorded with the run.
+- Not verified on a real org when this was written. On the test org, thirteen components of types of the tier
+  did not come back in the last run that counted them, and three files could not be read as metadata: seven
+  bundles of a package, two objects, two fields and two record types (record 0038). The file of custom labels,
+  the fourteenth in Phase 0, comes back since the org has a label. So the snapshot of the test org is expected
+  to stay partial until those are explained. What it says is recorded with the run.
+- A snapshot that an earlier build of the same version began and this one continues holds issues with and
+  without a tier. Those without are errors, so it can only come out partial where it need not.
 - Every snapshot of an org that lacks something outside the tier carries warnings, and a first line that says
   so. A user can learn to read past both (risk 13 of the [overall plan](../plans/re-architecture-plan.md)).
 - "Complete" says less than the word. It does not say that every component of the org is in the snapshot. It

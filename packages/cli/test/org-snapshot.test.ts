@@ -241,13 +241,13 @@ describe('orglens snapshot of an org', () => {
     expect(run.code).toBe(0);
     expect(run.stdout).toBe(
       [
-        'Snapshot #1 of "prod" is complete for the logic tier, and something of other types is missing: 2 components in 4 files (456 bytes).',
+        'Snapshot #1 of "prod" is complete for the logic tier: 2 components in 4 files (456 bytes). Something of other types is missing, and the warnings below say what.',
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
         'ApexClass  2       2          0',
         '',
         'SEVERITY  CODE            WHAT',
-        'warning   RESOLVE_FAILED  tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. This is outside the logic tier (CustomTab) and does not make the snapshot partial.',
+        'warning   RESOLVE_FAILED  tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
         '',
         ...classesAnalysed('2 components'),
         ...CROSS_CHECKED,
@@ -255,8 +255,15 @@ describe('orglens snapshot of an org', () => {
     );
     const coverage = await orglens(dir, ['coverage', 'prod'], env);
     expect(coverage.code).toBe(0);
-    expect(coverage.stdout.split('\n')[0]).toMatch(
-      /^Snapshot #1 of "prod", taken \S+, is complete for the logic tier, and something of other types is missing: /,
+    const LACKS =
+      'is complete for the logic tier: 2 components in 4 files (456 bytes). Something of other types is missing, and the warnings below say what.';
+    expect(coverage.stdout.split('\n')[0]?.replace(/taken \S+,/, 'taken TIME,')).toBe(
+      `Snapshot #1 of "prod", taken TIME, ${LACKS}`,
+    );
+    const analysed = await orglens(dir, ['analyse', 'prod'], env);
+    expect(analysed.code).toBe(0);
+    expect(analysed.stdout.split('\n')[0]).toBe(
+      `Snapshot #1 of "prod" was analysed from the files it holds. It ${LACKS}`,
     );
     const { data } = await orglensJson(dir, ['coverage', 'prod']);
     expect(data).toMatchObject({

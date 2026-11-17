@@ -399,7 +399,7 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   const lines = [
     `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
       snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
-    }.`,
+    }.${lacksOtherTypes(report) ? ' Something of other types is missing, and the warnings below say what.' : ''}`,
   ];
   // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
   // nothing in a table. A type it could not list always does, and so does one of which something came back.
@@ -624,18 +624,18 @@ const SNAPSHOT_VERDICT: Readonly<Record<CoverageReport['snapshot']['status'], st
 };
 
 /**
- * What a snapshot is called. A snapshot of an org is judged over the logic tier: one that is complete and lacks
- * something of another type says so, and the warnings below it say what.
+ * True for a snapshot of an org that is complete and lacks something of a type outside the logic tier, by which
+ * it is not judged. The warnings of its reading say what.
  */
-function verdictOf(report: CoverageReport): string {
-  const { status } = report.snapshot;
-  const gaps = report.issues.some(
+const lacksOtherTypes = (report: CoverageReport): boolean =>
+  report.snapshot.status === 'complete' &&
+  report.issues.some(
     (issue) => issue.stage === 'read' && issue.severity === 'warning' && issue.details['tier'] === 'other',
   );
-  return status === 'complete' && gaps
-    ? 'is complete for the logic tier, and something of other types is missing:'
-    : SNAPSHOT_VERDICT[status];
-}
+
+/** What a snapshot is called. One that lacks something outside the logic tier is called complete for that tier. */
+const verdictOf = (report: CoverageReport): string =>
+  lacksOtherTypes(report) ? 'is complete for the logic tier:' : SNAPSHOT_VERDICT[report.snapshot.status];
 
 export async function snapshot(
   context: Context,

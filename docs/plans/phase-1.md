@@ -1039,10 +1039,13 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
 - **Against the acceptance criteria:**
   - A snapshot of the test org is complete over the logic tier: **not shown yet.** Nothing of this pull request
     was run against a real org. Thirteen components of types of the tier and three files that cannot be read
-    are expected to keep it partial until they are looked at.
+    are expected to keep it partial until they are looked at. In Phase 0 the count was fourteen: the file of
+    custom labels was the fourteenth, and it comes back since the fixture project gave the org a label.
   - What is missing outside the tier is a warning in `snapshot` and `coverage`, per type and with a count, and
-    the exit code stays `0`: met against the mock org, for a component that does not come back, a listing that
-    is refused, a retrieve that fails and a file that cannot be read.
+    the exit code stays `0`: met against the mock org. The tests of the command line show the exit code and the
+    lines of `snapshot`, `analyse` and `coverage` for a file that cannot be read. The tests of the engine show
+    the status `complete` for a component that does not come back, a listing that is refused and a retrieve
+    that fails. No test of the command line runs those three.
   - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it.
   - A snapshot of a Git source is not changed: its code was not touched, and its tests pass as they were.
 - **Choices of mine, for you to strike.** Record 0046 has the reasons.
@@ -1055,13 +1058,21 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
   - A file that cannot be read counts by the types that keep their files in its top folder, and against the
     tier where no type is known.
   - The warnings keep their codes, and say the tier in `details.tier`.
-  - A complete snapshot that lacks something outside the tier says so in its first line: "is complete for the
-    logic tier, and something of other types is missing".
+  - A complete snapshot that lacks something outside the tier says so in its first line: it "is complete for
+    the logic tier", and after the numbers of the line: "Something of other types is missing, and the warnings
+    below say what."
+  - The file of custom labels is not missing when the org lists no label. The test org listed the file and
+    handed out nothing until it had a label, so an org without a label would be partial for good. The rule
+    rests on that one org in two states.
   - An impact answer counts a warning outside the tier in `readErrors` when it can be about a type the answer
-    covers. Without that, an answer would have stopped saying that it may miss something when a part of an
-    object outside the tier could not be read.
+    covers. **The rule has no effect today**: every analysed type is of the tier, so no warning the engine
+    writes is counted, and only tests with rows written by hand show it. What does change today: `impact` ends
+    with `0` where it ended with `5` for a snapshot in which a file or a retrieve outside the tier failed. The
+    answer names the type in `notCovered.notAnalysed`.
 - **Not done:** `notCovered.notAnalysed` of an impact answer is not narrowed, which record 0044 named as
-  something this work package could do. The tier does not say which type can refer to which.
+  something this work package could do. The tier does not say which type can refer to which. The analysis is
+  not judged by tier, and `FILES_NOT_METADATA` stays a warning in every tier. Record 0046 lists both, and three
+  places of the code that no test reaches.
 
 ### WP10 Proof on public codebases, and measurements
 

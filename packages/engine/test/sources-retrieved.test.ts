@@ -133,11 +133,17 @@ describe('the files of a retrieve', () => {
     zip.file('unpackaged/reports/Late/Thing.mystery', 'what is this');
     zip.file('unpackaged/classes/Thing.mystery', 'what is this');
     zip.file('unpackaged/Thing.mystery', 'what is this');
+    zip.file('unpackaged/sharingRules/Thing.mystery', 'what is this');
     const unpacked = await unpackRetrieve(await zip.generateAsync({ type: 'nodebuffer' }), workDir());
     expect(unpacked.problems.map(({ at, types }) => [at, types])).toEqual([
       ['Thing.mystery', []],
       ['classes/Thing.mystery', ['ApexClass']],
       ['reports/Late/Thing.mystery', ['Report', 'ReportFolder']],
+      // A type is named with the types of its parts: the file can be one of the rules.
+      [
+        'sharingRules/Thing.mystery',
+        ['SharingCriteriaRule', 'SharingGuestRule', 'SharingOwnerRule', 'SharingRules', 'SharingTerritoryRule'],
+      ],
     ]);
   });
 

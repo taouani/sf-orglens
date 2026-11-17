@@ -324,18 +324,27 @@ const named = (names: readonly string[]): Readonly<Record<string, JsonValue>> =>
   components: names.slice(0, NAMES_PER_ISSUE),
 });
 
+/**
+ * A file that holds nothing but parts of one type, by its type, with the type of the parts. An org lists the
+ * file of custom labels also when it has no label, and then hands out nothing: the test org did so until it got
+ * a label (`docs/research/phase-1/real-org.md`). Such a file is not missing when the org lists no part of it.
+ */
+const HOLDS_ONLY: Readonly<Record<string, string>> = { CustomLabels: 'CustomLabel' };
+
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
 const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
 
 /**
  * What the message of an issue says of something that is missing, with the tier it counts against. `of` names
- * the types it can be of, where the message does not.
+ * the types it is counted with, where the message does not name its type.
  */
 function missingIn(tier: Tier, message: string, of: readonly string[] = []): string {
   if (tier === 'logic') return message;
   const text = message.trimEnd();
-  const types = of.length === 0 ? '' : ` (${of.join(', ')})`;
-  return `${text}${/[.!?]$/.test(text) ? '' : '.'} This is outside the logic tier${types} and does not make the snapshot partial.`;
+  const sentence = `${text}${/[.!?]$/.test(text) ? '' : '.'}`;
+  if (of.length === 0) return `${sentence} This is outside the logic tier and does not make the snapshot partial.`;
+  const types = of.length === 1 ? `the type ${of[0] ?? ''}, which is` : `the types ${of.join(', ')}, which are`;
+  return `${sentence} It is counted with ${types} outside the logic tier, and does not make the snapshot partial.`;
 }
 
 /**
@@ -852,23 +861,33 @@ async function readCrossCheck(
 function finish(store: Store, snapshotId: number): void {
   store.write(() => {
     const coverage = new Map(readCoverage(store, snapshotId).map((row) => [row.type, row]));
-    for (const [type, count] of [...countInventory(store, snapshotId)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const counts = countInventory(store, snapshotId);
+    for (const [type, count] of [...counts].sort(([a], [b]) => (a < b ? -1 : 1))) {
       const row = coverage.get(type);
       const notes = [row?.note ?? null];
       if (count.listed > count.retrieved) {
         const missing = missingComponents(store, snapshotId, type);
         const tier = tierOf(type);
-        issue(
-          store,
-          snapshotId,
-          severityIn(tier),
-          'NOT_RETRIEVED',
-          missingIn(
+        const said = `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`;
+        // A file of parts that the org lists and has no part for. Whether its parts could be listed is told by
+        // the listing of their type, which is an error of its own if it failed.
+        const parts = HOLDS_ONLY[type];
+        if (parts !== undefined && (counts.get(parts)?.listed ?? 0) === 0) {
+          issue(
+            store,
+            snapshotId,
+            'warning',
+            'NOT_RETRIEVED',
+            `${said}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
+            { type, ...named(missing), tier, holdsNothing: true },
+          );
+        } else {
+          issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said), {
+            type,
+            ...named(missing),
             tier,
-            `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`,
-          ),
-          { type, ...named(missing), tier },
-        );
+          });
+        }
       }
       if (count.unlisted > 0) {
         const unlisted = unlistedComponents(store, snapshotId, type);

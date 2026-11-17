@@ -66,6 +66,8 @@ let wholeFiles: string[];
  * written here, because the fixture project holds only types of the logic tier.
  */
 let WITH_RESOURCE: string;
+/** The part with the file of custom labels, and no label in it. */
+let WITHOUT_LABEL: string;
 const RESOURCE_FILES = ['staticresources/Notice.resource-meta.xml', 'staticresources/Notice.txt'];
 
 beforeAll(async () => {
@@ -89,6 +91,13 @@ beforeAll(async () => {
 `,
   );
   writeFileSync(join(WITH_RESOURCE, 'main/default/staticresources/Notice.txt'), 'Invoices are due in 30 days.\n');
+  WITHOUT_LABEL = join(copies.next(), 'force-app');
+  cpSync(FIXTURE, WITHOUT_LABEL, { recursive: true });
+  mkdirSync(join(WITHOUT_LABEL, 'main/default/labels'));
+  writeFileSync(
+    join(WITHOUT_LABEL, 'main/default/labels/CustomLabels.labels-meta.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata"/>\n',
+  );
 });
 afterAll(async () => {
   await mock.close();
@@ -1074,6 +1083,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         code: 'RETRIEVE_FAILED',
         message:
           'Salesforce did not hand out 16 components. The retrieve was started 3 times and gave no result. Salesforce did not say how far the retrieve is. UNKNOWN_EXCEPTION: An unexpected error occurred. Please include this ErrorId: 123-456',
+        // A chunk that is given up is not narrowed to a component: it counts with every type in it.
+        details: { count: 16, types: ['ApexClass', 'ApexTrigger', 'CustomObject'], tier: 'logic' },
       });
     });
 
@@ -1263,6 +1274,69 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
     });
 
+    describe('with the file of custom labels, which the org lists and does not hand out', () => {
+      const notRetrieved = (report: CoverageReport): ReturnType<typeof ofReading> =>
+        ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED');
+
+      it('is complete when the org lists no label: the file holds nothing else', async () => {
+        metadata = await metadataFromSource(WITHOUT_LABEL);
+        mock.metadata = metadata;
+        metadata.withheld.add('CustomLabels:CustomLabels');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(typeOf(report, 'CustomLabels')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(typeOf(report, 'CustomLabel')?.listed ?? 0).toBe(0);
+        expect(report.snapshot.status).toBe('complete');
+        expect(notRetrieved(report)).toEqual([
+          {
+            severity: 'warning',
+            code: 'NOT_RETRIEVED',
+            message:
+              '1 component of the type CustomLabels that the org listed did not come back. The first: CustomLabels. The org lists no component of the type CustomLabel, and such a file holds nothing else, so the snapshot is not partial for it.',
+            details: {
+              type: 'CustomLabels',
+              count: 1,
+              components: ['CustomLabels'],
+              tier: 'logic',
+              holdsNothing: true,
+            },
+          },
+        ]);
+      });
+
+      it('is partial when the org lists a label', async () => {
+        metadata = await metadataFromSource(WHOLE);
+        mock.metadata = metadata;
+        metadata.withheld.add('CustomLabels:CustomLabels');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(typeOf(report, 'CustomLabel')).toMatchObject({ listed: 1 });
+        expect(report.snapshot.status).toBe('partial');
+        expect(notRetrieved(report).map((issue) => [issue.severity, issue.details])).toContainEqual([
+          'error',
+          { type: 'CustomLabels', count: 1, components: ['CustomLabels'], tier: 'logic' },
+        ]);
+      });
+
+      it('is partial when the org refuses to say which labels it has', async () => {
+        metadata = await metadataFromSource(WITHOUT_LABEL);
+        mock.metadata = metadata;
+        metadata.withheld.add('CustomLabels:CustomLabels');
+        metadata.failing.add('CustomLabel');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('partial');
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.severity === 'error')
+            .map((issue) => [issue.code, issue.details['type']]),
+        ).toEqual([['LISTING_FAILED', 'CustomLabel']]);
+      });
+    });
+
     describe('with a component of a type outside the logic tier', () => {
       beforeEach(async () => {
         metadata = await metadataFromSource(WITH_RESOURCE);
@@ -1346,6 +1420,34 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ]);
       });
 
+      it('is complete when the one retrieve that fails holds nothing of the logic tier', async () => {
+        // The org refuses every retrieve that asks for the static resource, down to the one that asks for it alone.
+        mock.intercept = (request) =>
+          request.body.includes('<retrieve>') && request.body.includes('<name>StaticResource</name>')
+            ? soapFault('INVALID_CROSS_REFERENCE_KEY', 'invalid cross reference id')
+            : undefined;
+        const dir = workspaceDir();
+        const report = await snap(dir, { tuning: { failuresInARow: 100, pollMaxMs: 5 } });
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(stored(dir, 1)).toEqual(expectedFiles());
+        const failed = ofReading(report).filter((issue) => issue.code === 'RETRIEVE_FAILED');
+        expect(failed).toHaveLength(1);
+        expect(failed[0]).toMatchObject({
+          severity: 'warning',
+          details: { count: 1, components: ['StaticResource Notice'], types: ['StaticResource'], tier: 'other' },
+        });
+        expect(failed[0]?.message.endsWith(OUTSIDE)).toBe(true);
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.severity !== 'info')
+            .map((issue) => [issue.severity, issue.code, issue.details['tier']]),
+        ).toEqual([
+          ['warning', 'RETRIEVE_FAILED', 'other'],
+          ['warning', 'NOT_RETRIEVED', 'other'],
+        ]);
+      });
+
       it('is not partial for a file it cannot read in the folder of a type outside the logic tier', async () => {
         metadata.extraFiles.set('tabs/Thing.mystery', 'what is this');
         const dir = workspaceDir();
@@ -1358,7 +1460,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             severity: 'warning',
             code: 'RESOLVE_FAILED',
             message:
-              'tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. This is outside the logic tier (CustomTab) and does not make the snapshot partial.',
+              'tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
             details: { at: 'tabs/Thing.mystery', types: ['CustomTab'], tier: 'other' },
           },
         ]);

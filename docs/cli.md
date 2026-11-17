@@ -144,10 +144,11 @@ they have below a package directory, such as `classes/Foo.cls`.
   and cannot be read as metadata (`RESOLVE_FAILED`). The other types and components are in the snapshot.
 - **A snapshot of an org is judged over the logic tier.** Every type the org lists is read. The snapshot is
   partial when one of the four things is missing of a type of the logic tier: the issue is an `error`. Of any
-  other type the same issue is a `warning`. Its message ends with "This is outside the logic tier and does not
-  make the snapshot partial.", the snapshot is `complete`, and the exit code is `0`. The first line of the
-  report then says "is complete for the logic tier, and something of other types is missing". A script that
-  needs every type reads the issues: each of the four carries `details.tier`, which is `logic` or `other`.
+  other type the same issue is a `warning`. Its message ends with a sentence that says it is outside the logic
+  tier and does not make the snapshot partial, the snapshot is `complete`, and the exit code is `0`. The first
+  line of the report then says "is complete for the logic tier", and after the numbers: "Something of other
+  types is missing, and the warnings below say what." A script that needs every type reads the issues: each of
+  the four carries `details.tier`, which is `logic` or `other`.
 
   The types of the logic tier are:
 
@@ -157,11 +158,14 @@ they have below a package directory, such as `classes/Foo.cls`.
   `ValidationRule`, `Workflow`, `WorkflowRule`.
 
   A type is of the tier by its own name. A part of an object that is not in the list, such as a list view, is
-  outside it although the object is in it. Three cases need a rule. A retrieve that fails counts against the
+  outside it although the object is in it. Four cases need a rule. A retrieve that fails counts against the
   tier if one of its components is of the tier. A file that cannot be read as metadata counts by the types that
-  keep their files in its top folder: a file under `reports` is outside the tier, one under `classes` is in it.
-  A file in a folder of no known type, or outside the package that was asked for, counts against the tier,
-  because nothing says what it is.
+  keep their files in its top folder: a file under `reports` is outside the tier, one under `classes` or
+  `objects` is in it. A file in a folder of no known type, or outside the package that was asked for, counts
+  against the tier, because nothing says what it is. And the file of custom labels, `CustomLabels`, is not
+  missing when the org lists no custom label: an org without a label lists the file and hands out nothing. The
+  issue `NOT_RETRIEVED` is then a warning with `details.holdsNothing` set to `true`, and the first line of the
+  report stays that of a complete snapshot.
 
   A snapshot that an earlier version took keeps the status that version gave it. A snapshot of a repository is
   not judged by tier: whatever its folders hold and cannot be read makes it partial.
@@ -444,9 +448,10 @@ the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries `det
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
 for an error, `other` for a warning. `RETRIEVE_FAILED` carries the types of its components in `details.types`,
-sorted. `RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
-component, or the types that keep their files in the top folder of the file. The list is empty when nothing
-tells the type. A snapshot taken before these fields existed has issues without them.
+sorted. Those are the types that are retrieved by name: a field that fails with its object is not named.
+`RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
+component, or the types that keep their files in the top folder of the file with the types of their parts. The
+list is empty when nothing tells the type. A snapshot taken before these fields existed has issues without them.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
@@ -549,7 +554,8 @@ the answer says whether it is complete, and if not, why. Below the results it na
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
-  about a type the answer covers: a type the analysis read, or one it found a component of;
+  about a type the answer covers: a type the analysis read, or one of which it analysed a component. No type
+  outside the tier is analysed in this pre-release, so no such warning is counted yet;
 - how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
   to its end, or a part of a file was not found. A reference may be missing for each;
 - for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a

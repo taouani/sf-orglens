@@ -150,7 +150,8 @@ export function impactOf(store: Store, source: string, component: string, query:
   const direction = query.outgoing === true ? 'outgoing' : 'incoming';
   const minConfidence = query.minConfidence ?? 'possible';
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
-  // What an answer claims to cover: the types the analysis read, and every type it found a component of.
+  // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
+  // component. Today these are types of the logic tier only, so no warning outside the tier is counted yet.
   const covered = [
     ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
   ];

@@ -37,7 +37,8 @@ export interface Unpacked {
    * What could not be read as metadata, with the file, the folder or the component it is about.
    *
    * `types`: the metadata types it can be of. For a component that is its type. For a file or a folder it is
-   * every type that keeps its files in the folder the path starts with, such as `Report` for `reports`. It is
+   * every type that keeps its files in the folder the path starts with, such as `Report` for `reports`, and
+   * every type that is a part of one of those, such as `CustomField` for `objects`. It is
    * empty where nothing tells the type: a folder no type is known for, a file outside every folder, something
    * beside what was asked for.
    */
@@ -107,13 +108,16 @@ export async function unpackRetrieve(zip: Uint8Array, workDir: string): Promise<
   };
   const resolver = new MetadataResolver(registry, container, false);
   const problems: Problem[] = [];
-  /** The types that keep their files in the folder a path starts with, or is. A file in no folder has none. */
+  /**
+   * The types that keep their files in the folder a path starts with, or is, each with the types of its parts:
+   * a file below `objects` can be an object, a field or a list view. A file in no folder has none.
+   */
   const typesAt = (path: string): string[] => {
     const [folder] = path.split('/');
-    return Object.values(registry.getRegistry().types)
+    const names = Object.values(registry.getRegistry().types)
       .filter((type) => type.directoryName === folder)
-      .map((type) => type.name)
-      .sort(byCodeUnit);
+      .flatMap((type) => [type.name, ...Object.values(type.children?.types ?? {}).map((part) => part.name)]);
+    return [...new Set(names)].sort(byCodeUnit);
   };
   const components: SourceComponent[] = [];
 

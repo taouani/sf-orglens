@@ -371,7 +371,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: false,
         notCovered: { readErrors: 0 },
       });
-      // A list view is outside the logic tier too. Once the analysis found one, an answer covers the type.
+      // A list view is outside the logic tier too. Once the analysis has analysed one, an answer covers the type.
       warn(['ListView', 'Report']);
       expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
         mayMiss: false,
