@@ -4,8 +4,8 @@ OrgLens tells you what a change to a Salesforce org will affect before you make 
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
 > **Pre-release.** The project is being built in the open. The first slice is built: the first impact answers
-> cover objects, fields and validation rules only. The first pre-release, version `0.1.0-next.0`, is on npm as
-> `sf-orglens`, under the tag `next` ([release notes](docs/releases/v0.1.0-next.0.md)). No version without a
+> cover objects, fields and validation rules only. The newest pre-release, version `0.1.0-next.1`, is on npm as
+> `sf-orglens`, under the tag `next` ([release notes](docs/releases/v0.1.0-next.1.md)). No version without a
 > pre-release part exists, and until there is one the names, the JSON output and the exit codes can change from
 > one pre-release to the next. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes
 > when.

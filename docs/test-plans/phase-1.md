@@ -40,10 +40,13 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 prints `$ tsc -b` and nothing else.
 
 The third line takes the repository to the commit this plan was written against: the last one of Phase 1 that
-changed what the engine or the command line does. What came after it are documents, four decision records from
-your answers of 17 November 2026 (0051 to 0054), the workflow and the script that make a pre-release, and the
-version `0.1.0-next.1`, which changes the number the two packages name and nothing else. They are on `main`. A
-build of `main` therefore prints `0.1.0-next.1` wherever this plan expects `0.1.0-next.0`. Git says that the
+changed what the engine or the command line does on every system. What came after it are documents, four
+decision records from your answers of 17 November 2026 (0051 to 0054), the workflow and the script that make a
+pre-release, the version `0.1.0-next.1`, which changes the number the two packages name and nothing else, and
+one correction for Windows that is in no published version yet: a command tries again when Windows refuses to
+create the lock of the configuration (pull request 48). They are on `main`. A build of `main` therefore prints
+`0.1.0-next.1` wherever this plan expects `0.1.0-next.0`, and `pnpm run check` counts seven tests more than
+step A1 says. Git says that the
 clone is in "detached HEAD" state, which is expected. In a clone you made earlier, run `git fetch origin` first.
 
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your
@@ -301,32 +304,36 @@ enough for me to build a case of it in the fixture project.
 
 ## I. The pre-release
 
-The pre-release `0.1.0-next.0` was published on npm and on GitHub on 17 November 2026, by
-[run 5 of the workflow "Pre-release"](https://github.com/taouani/sf-orglens/actions/runs/44164088211) (records 0050 and
-0053), after you approved its job.
+Two pre-releases were published on npm and on GitHub on 17 November 2026, each after you gave your word for the
+version and approved the job: `0.1.0-next.0` by
+[run 5 of the workflow "Pre-release"](https://github.com/taouani/sf-orglens/actions/runs/44164088211), with a token
+(records 0050 and 0053), and `0.1.0-next.1` by
+[run 7](https://github.com/taouani/sf-orglens/actions/runs/44194660408), without a token, through trusted publishing
+(record 0054). The second changes nothing in what OrgLens does. This part installs the first and lets npm move the
+install to the second.
 
-| #   | Do                                                                                    | Expect                                                                                                                                                                                                                                                |
-| --- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository | One release, `OrgLens 0.1.0-next.0 (pre-release)`, marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. GitHub adds two archives of the source.                                                                                    |
-| I2  | Open `https://www.npmjs.com/package/sf-orglens`                                       | Version `0.1.0-next.0`, under the tags `next` and `latest`, with a mark that it has provenance and a link to the run that built it. The tab "Versions" lists a second version, `0.0.0-stage`, without that mark. `@sf-orglens/engine` shows the same. |
-| I3  | In a terminal without the shell function of this plan, run the install line of I1     | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                                                                                                 |
-| I4  | `orglens doctor` in any folder that is no workspace                                   | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`: `No orglens.toml in this folder or above it.` The last line is `OrgLens can run here.`                                                                            |
-| I5  | `npm update --global`, then `orglens --version`                                       | The version is still `0.1.0-next.0`: it is the newest one under `latest`.                                                                                                                                                                             |
-| I6  | `npm uninstall --global sf-orglens`                                                   | It is removed with the engine, and `orglens` is no longer found.                                                                                                                                                                                      |
+| #   | Do                                                                                                                     | Expect                                                                                                                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository                                  | Two releases, `OrgLens 0.1.0-next.1 (pre-release)` above `OrgLens 0.1.0-next.0 (pre-release)`, each marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. GitHub adds two archives of the source to each.                                                |
+| I2  | Open `https://www.npmjs.com/package/sf-orglens`                                                                        | Version `0.1.0-next.1`, under the tags `next` and `latest`, with a mark that it has provenance and a link to the run that built it. The tab "Versions" lists two more: `0.1.0-next.0`, with that mark, and `0.0.0-stage`, without it. `@sf-orglens/engine` shows the same. |
+| I3  | In a terminal without the shell function of this plan, run the install line of the first release of I1, `0.1.0-next.0` | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                                                                                                                      |
+| I4  | `orglens doctor` in any folder that is no workspace                                                                    | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`: `No orglens.toml in this folder or above it.` The last line is `OrgLens can run here.`                                                                                                 |
+| I5  | `npm update --global`, then `orglens --version`                                                                        | `orglens --version` prints `sf-orglens/0.1.0-next.1 engine/0.1.0-next.1`: the update moved the install to the version under `latest`.                                                                                                                                      |
+| I6  | `npm uninstall --global sf-orglens`                                                                                    | It is removed with the engine, and `orglens` is no longer found.                                                                                                                                                                                                           |
 
-The run that published also installed from npm on Linux, Windows and macOS. All six installs passed, one of
-them when it was run again. I3
-is the first install by a person. I2 is written from the pages of npm, and I did not look at npm: what the page
-of a package shows is npm's to decide. The version `0.0.0-stage` is not a version of OrgLens: npm made it by
-itself when it received the first publish, as you saw on 17 November 2026
-([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried
-against a registry on my machine, not against npm. I5 updates
-every global package of your machine. Leave it out if you do not want that.
+Each run that published also installed its version from npm on Linux, Windows and macOS. All six installs
+passed both times, one of the first run when it was run again. I3 is the first install by a person. It installs
+the older version on purpose, so that I5 shows what `npm update --global` does: it follows the tag `latest`,
+which the second run moved. I2 is written from the pages of npm, and I did not look at npm: what the page of a
+package shows is npm's to decide. The version `0.0.0-stage` is not a version of OrgLens: npm made it by itself
+when it received the first publish, as you saw on 17 November 2026
+([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried with
+npm 11.19.1 against a registry on my machine that held both versions, not against npm. I5 updates every global
+package of your machine. To leave it out, install the newer version in I3 instead, with the line of its release.
 
-This part is written for the time in which `0.1.0-next.0` is the only pre-release. Once `0.1.0-next.1` is
-published, three steps read differently: I1 shows two releases, the tags of I2 are on `0.1.0-next.1`, and I5
-moves the install to `0.1.0-next.1`. The part is brought up to date in the pull request that follows that
-publish.
+One more thing to look at on npmjs.com, in the settings of each of the two packages, under "Trusted
+publishing": the publisher should no longer show "Pending validation"
+([`docs/releases/publishing.md`](../releases/publishing.md#what-the-second-publish-showed)).
 
 **Do not run `npx orglens`.** The name `orglens` is the command, not a package of this project, and npx fetches
 whatever package has that name.
@@ -346,9 +353,7 @@ whatever package has that name.
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. Your word for the run that publishes the second pre-release, `0.1.0-next.1`. You chose on 17 November 2026
-   to publish it soon, to try trusted publishing (record 0054). It changes nothing in what OrgLens does. Its
-   version is set and its [release notes](../releases/v0.1.0-next.1.md) are written.
+2. Nothing about the second pre-release: `0.1.0-next.1` is published, on your word (record 0054).
 3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
 4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 

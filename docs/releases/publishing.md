@@ -11,12 +11,18 @@ one into the repository, a pull request or an issue.**
 
 **The first pre-release, `0.1.0-next.0`, was published this way on 17 November 2026,** with a token
 ([run 5 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44164088211)).
-[What the first publish showed](#what-the-first-publish-showed) is at the end of this page. The steps before the second
-pre-release, with trusted publishing, have been tried by nobody. They follow the pages of npm as I read them on 17
-November 2026 and the workflow of your other project. Where a page of npm or GitHub reads differently today, the page is
-right. **The second pre-release, `0.1.0-next.1`, is prepared and not published.** It changes nothing in what OrgLens
-does and is the first try of trusted publishing (decision record
+**The second, `0.1.0-next.1`, was published on the same day without a token,** through the trusted publishing of npm
+([run 7](https://github.com/taouani/sf-orglens/actions/runs/44194660408)). It changes nothing in what OrgLens does and
+was the first try of trusted publishing (decision record
 [0054](../adr/0054-a-pre-release-without-a-change-is-published.md)).
+[What the first publish showed](#what-the-first-publish-showed) and
+[what the second publish showed](#what-the-second-publish-showed) are at the end of this page. The steps follow the
+pages of npm as I read them on 17 November 2026 and the workflow of your other project. Where a page of npm or GitHub
+reads differently today, the page is right.
+
+**For the next pre-release** nothing has to be set up, as long as the two trusted publishers and the environment stay
+as they are: I prepare the version in a pull request and rehearse it, you give your word for that version, I start the
+run, and you approve its job "Publish on npm" ([steps 5 to 8](#the-first-pre-release) below).
 
 ## Once, before the first pre-release
 
@@ -111,20 +117,21 @@ prefer this one. It leaves the same placeholder version `0.0.0-stage` that the f
 
 ## Before the second pre-release
 
+These steps are done, and the publish of step 5 went through on 17 November 2026. They stay here for a
+publisher that has to be made anew, and for a package that is added later.
+
 By the [page of npm](https://docs.npmjs.com/trusted-publishers), a new trusted publisher "must complete its
 first successful publish within 2 days". After that "it expires and can no longer be used or edited", and the
 page says to delete it and to create a new one. So a publisher is set up shortly before the publish that uses
 it.
 
-You set the two up on 17 November 2026, half an hour after the first publish. The page of each package shows
+You set the two up on 17 November 2026, half an hour after the first publish. The page of each package showed
 the publisher with the permissions `npm publish`, `npm stage publish` and `npm dist-tag`, and the status
-"Pending validation". npm asks for a publish through it before 19 November 2026, 20:56 UTC for `sf-orglens`
+"Pending validation". npm asked for a publish through it before 19 November 2026, 20:56 UTC for `sf-orglens`
 and 21:00 UTC for `@sf-orglens/engine`. You chose on the same day to publish a second pre-release,
 `0.1.0-next.1`, within that time, to try the way without a token (decision record
-[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). The version is set, and its
-[release notes](v0.1.0-next.1.md) are written. Steps 1 to 3 below are done, and you said on that day that the
-secret of step 4 is deleted. What is left: a rehearsal, your word for the version, and step 5. If the two days
-pass without a publish, you delete the two publishers and make them anew before the next try.
+[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). It was published two hours after the
+publishers were made.
 
 1. On npmjs.com, in the settings of `sf-orglens`, under "Trusted publishing", add a publisher for GitHub
    Actions: the owner and the name of this repository, the workflow file `pre-release.yml` (the file name
@@ -141,7 +148,8 @@ pass without a publish, you delete the two publishers and make them anew before 
    npm recommends to require the second factor and to forbid tokens in the settings of each package.
 
 When a publish is refused, the job says in its own words what to look at: the allowed actions of the publisher
-or its fields. Two of its sentences rest on texts I could not confirm. That npm answers "OIDC permission
+or its fields. No publish through a trusted publisher has been refused so far, so none of these sentences has
+been seen in a run. Two of them rest on texts I could not confirm. That npm answers "OIDC permission
 denied" when `npm publish` is not ticked is from my reading of its page, and the reviewer found the words
 neither on the page nor in the code of npm. That a repository that does not match is refused with the code
 E422 is not on the page either. npm writes why it did not accept the identity of a workflow only to its log
@@ -241,20 +249,47 @@ pages of npm and of the times npm gives is what you saw and sent me on the same 
   while. It rests on the words "cannot publish over" in the answer of npm, which I know from npm and did not
   see in this run.
 
+## What the second publish showed
+
+[Run 7 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44194660408) published `0.1.0-next.1` on 17
+November 2026, from `main`, after you gave your word for the version and approved its job. It went through on its
+first attempt, in seventeen minutes, of which five were the wait for your approval. I read its log. I did not look at
+npm.
+
+- **npm took both packages without a token.** The log of both steps shows the token of the job empty. npm took
+  `@sf-orglens/engine` at 23:05:09 UTC and `sf-orglens` at 23:05:18 UTC, each with its provenance, signed and
+  written to the public log of Sigstore. So npm accepts the identity of this workflow in the environment
+  `npm-next`, for a publisher that showed "Pending validation" two hours before, and the address of the
+  repository as the packages name it passes there too.
+- **The job moved the tag `latest` the same way,** for both packages, from `0.1.0-next.0` to `0.1.0-next.1`.
+  Of the two pages of npm that disagreed on this, the page on trusted publishers is right: a workflow whose
+  publisher allows `npm dist-tag` can move a tag without a token.
+- **npm still printed its warning about tokens that bypass the second factor,** at each publish and at each
+  move of a tag, although the job had no token. The warning says nothing about this job.
+- **An install found the version between three and a half and five and a half minutes after the publish.** On
+  Linux the fourth try failed 3 minutes and 20 seconds after the publish of the command line, and the fifth
+  passed two minutes later. On Windows it was the fifth try as well. That is as long as at the first publish,
+  so a second version of a package that exists takes as long as the first. Five tries were all the jobs had at
+  the first publish. They have eight now and used five.
+- **The tags were right at the first look,** seven minutes after they were moved. The four further looks of
+  that step have not run on GitHub.
+- **Every job got a machine within seconds,** the macOS jobs too. The pre-release on GitHub was created seven
+  minutes after the two packages were on npm.
+- **Not seen in this run:** a publish that npm refuses, what the job then shows of the log file of npm, a tag
+  that cannot be moved, and a version that npm says exists and does not show. Those parts of the workflow have
+  run against a registry on my machine only.
+- **Not seen by me:** the pages of npm. Whether the two publishers still show "Pending validation" is for you
+  to look at. The page of npm recommends, once trusted publishing works, to require the second factor and to
+  forbid tokens in the settings of each package ("Require two-factor authentication and disallow tokens").
+  That is yours to set, and the workflow needs no token any more.
+
 ## Not known
 
-- Anything of trusted publishing: whether npm accepts the identity of the workflow, whether the address of the
-  repository passes there too, and whether the job can move a tag that way. The page says that the repository
-  "must exactly match" and gives no example. The reviewer found a package of npm's own that is published with
-  trusted publishing and names its repository in the same form, so I expect it to pass. On moving a tag two
-  pages of npm disagree: the page on trusted publishers has the allowed action `npm dist-tag`, and the page of
-  the command `npm stage` says that such a token "can only be used with `npm stage publish` and `npm publish`".
-  The workflow follows the first, and the steps by hand are above. A reviewer read the code of npm 11.21.2:
-  `npm dist-tag add` asks for the identity of the workflow before it moves a tag, so the program is on the side
-  of the first page. What the registry answers is not known.
+- What npm answers when it refuses a workflow: which code and which words. The sentences of the job for that
+  case rest on the pages of npm and on a registry on one machine.
 - What the version `0.0.0-stage` holds, whether npm makes one for every new package or only for one that is
   published with such a token, and whether it can be removed. The job moves `latest` whether a first version
   has it or not.
-- How long npm takes to show a new version to an install on another day, and whether a second version of a
-  package that exists takes as long as the first. It was seen once.
+- How long npm takes to show a new version to an install on another day. It was seen twice, on one evening,
+  and took between three and a half and five and a half minutes both times.
 - Staged publishing, the other way for a first publish. Nobody tried it.
