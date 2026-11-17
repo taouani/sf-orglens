@@ -24,7 +24,10 @@
  * where they are words of the source format (`placeForm`). Of a symbol
  * table of a class of the fixture project, a tool may show the names of
  * its fields, and a text whose every word is one of the fixture project
- * or of Apex (`probe-org.ts`). On top of the forms,
+ * or of Apex (`probe-org.ts`). Of a query of the Dependency API that
+ * failed, a tool may show the condition: its three fields, the names of
+ * metadata types, and the number of ids in the place of the ids
+ * (`conditionForm` in `read-org.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */

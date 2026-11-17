@@ -881,9 +881,12 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
     84 are from Apex and from the record of the custom metadata type and are not compared. The other 57 are
     57 pairs: the analysis has 55, has 2 as a reference to a part of the object, and missed none. The mock org
     answers from the answer key. It is not Salesforce.
-  - **On the test org: not measured when this was written.** The step is built and can only run from `main`.
-    I start it after the merge, and its result goes into [real-org.md](../research/phase-1/real-org.md) and
-    into this block with a pull request of its own.
+  - **On the test org: met**, by the run of 17 November 2026 after the merge
+    ([real-org.md](../research/phase-1/real-org.md), section 7). Salesforce reports 257 rows. 201 are from
+    types this phase does not analyse, 94 of them from Apex. The other 56 are 56 pairs from a custom field or
+    a validation rule: the analysis has 54, has 2 as a reference to a part of the object, and missed none.
+    Every end of those rows was matched to a component the org listed, and no pair the analysis has is
+    without a row where the API reports the kind.
   - Only metadata is read. The engine queries one object, `MetadataComponentDependency`. A test of the reader
     and a test of the snapshot hold every query the mock org received against it.
 - **Three departures from this plan**, for you to strike. Record 0045 has the reasons.
@@ -949,13 +952,20 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
   measured. The public codebases have no org, so WP10 cannot measure it either. It needs an org of yours.
 - **For Phase 2.** With every type that is analysed, its rows move from "not compared" to "compared" without a
   change to the comparison: the analysis says which types it read.
-- **Not done or not verified.** Not verified on a real org: that the ids of the listing are the ids of the rows,
-  that Salesforce accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, and what the comparison shows
-  there. The read step shows all three. An org with more than 200 components of a type whose pair of types is at the
-  limit gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs
-  for the query was not looked up. The command `orglens snapshot` itself was not run against a real org, as before.
-  The mock org reports the formula of a rule that is not active and of a default value, which Salesforce does not or
-  may not.
+- **Open after the run of 17 November 2026: the reading in parts.** Read with every answer cut off at 30 rows,
+  as an org above 2,000 rows has to be read, 6 queries failed on the test org and 9 of the 257 rows were
+  lacking. The first failure had the code `INVALID_TYPE_FOR_OPERATION`. The engine called that reading
+  `partial`, which is right, and the step does not fail for it. The log does not say which queries failed. If
+  they are queries the engine always asks, the cross-check of every large org is `partial`. The step now
+  prints the condition of the query of every request that failed, the next run shows which they are, and the
+  reader is corrected by what it shows, in a pull request of its own.
+- **Not done or not verified.** Verified on the test org on 17 November 2026: the ids of the listing are the ids of
+  the rows for fields, rules and custom objects, and what the comparison shows. Not verified: that Salesforce
+  accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, which the point above is about. An org with
+  more than 200 components of a type whose pair of types is at the limit gets a reading that is `partial`, and how
+  often that is so was not measured. Which permission the user needs for the query was not looked up. The command
+  `orglens snapshot` itself was not run against a real org, as before. The mock org reports the formula of a rule
+  that is not active and of a default value, which Salesforce does not or may not.
 
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 

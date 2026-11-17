@@ -22,7 +22,9 @@
  *   components is named only if both are of the fixture project,
  * - the rows read twice more, with one query and then with every answer
  *   cut off at a few rows, to see that the parts the engine asks for then
- *   give every row, and that the org answers each way of asking.
+ *   give every row, and that the org answers each way of asking. Of a
+ *   request that failed, the condition of its query is shown: the names of
+ *   the types, and the number of ids in the place of the ids.
  *
  * The step fails when the snapshot does not end, when the fixture project
  * is not whole in it, when the Dependency API gave nothing to compare, when
@@ -47,6 +49,7 @@ import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
 import { readListedIds } from '../../src/store/dependencies.ts';
@@ -73,6 +76,8 @@ const MISSING_SHOWN = 20;
 const CHUNKS_SHOWN = 120;
 /** At most this many pairs of one list of the cross-check are named. */
 const PAIRS_SHOWN = 60;
+/** How many forms of a condition are listed for the requests that failed. */
+const CONDITIONS_SHOWN = 40;
 /**
  * The rows of the Dependency API are read a second time with every answer cut off at this many rows. The test
  * org holds fewer rows than the 2,000 a query really gives, so the parts the engine asks for at that limit are
@@ -744,16 +749,126 @@ const rowIdentity = ({ from, to }: DependencyRow): string =>
 
 /**
  * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
- * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened.
+ * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened. A
+ * request that fails is told to `failed` and fails as it did.
  */
-function cutOffAt(session: OrgSession, limit: number): OrgSession {
+function cutOffAt(session: OrgSession, limit: number, failed: (url: string, error: unknown) => void): OrgSession {
   const request = async (url: string, options: unknown): Promise<unknown> => {
-    const page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+    let page: { records?: unknown } | null;
+    try {
+      page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+    } catch (error) {
+      try {
+        failed(url, error);
+      } catch {
+        // What the log is told must not change what the reader sees: the request fails as it did.
+      }
+      throw error;
+    }
     return page !== null && Array.isArray(page.records) && page.records.length > limit
       ? { ...page, records: page.records.slice(0, limit), done: true }
       : page;
   };
   return { ...session, connection: { request } as never };
+}
+
+/** A query of the reader: what it selects, the one object, and a condition or none. */
+const QUERY = /^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency(?: WHERE (.+))?$/;
+/**
+ * A part of a condition as the reader of the engine writes it: one of three fields, and one value in quotes
+ * or a list of them in brackets.
+ */
+const CONDITION =
+  /^(MetadataComponentType|RefMetadataComponentType|MetadataComponentId) (?:(=) ('[^']*')|(IN|NOT IN) \(('[^']*'(?:, '[^']*')*)\))$/;
+/** The request for the next page of an answer. It holds no query. */
+const NEXT_PAGE = /^\/services\/data\/v\d{1,3}\.\d\/tooling\/query\/[A-Za-z0-9_-]+$/;
+
+/**
+ * The condition of a query of the reader, as the log may show it. The name of a type is shown where it has the
+ * form of a word of the Metadata API. In the place of the ids stands their number. Nothing else of a request
+ * is shown: a request that is no query of the reader, or a part of a condition in another form, is only said
+ * to be there.
+ */
+export function conditionForm(log: PublicLog, url: string): string {
+  let soql: string | null;
+  let path: string;
+  try {
+    const address = new URL(url, 'https://org.invalid');
+    soql = address.searchParams.get('q');
+    path = address.pathname;
+  } catch {
+    return '(a request that is not shown)';
+  }
+  if (soql === null) return NEXT_PAGE.test(path) ? '(the next page of an answer)' : '(a request that is not shown)';
+  const query = QUERY.exec(soql);
+  if (query === null) return '(a request that is not shown)';
+  const where = query[1];
+  if (where === undefined) return 'no condition';
+  return where
+    .split(' AND ')
+    .map((condition) => {
+      const [, field, equals, value, operator, values] = CONDITION.exec(condition) ?? [];
+      if (field === undefined) return '(a condition that is not shown)';
+      const quoted = [...(value ?? values ?? '').matchAll(/'([^']*)'/g)].map((one) => one[1] ?? '');
+      const sign = equals ?? operator ?? '';
+      if (field === 'MetadataComponentId') return `${field} ${sign} (${plural(quoted.length, 'id', 'ids')})`;
+      const names = quoted.map((one) => log.name(one) ?? '(a type that is not shown)');
+      return equals === undefined ? `${field} ${sign} (${names.join(', ')})` : `${field} = ${names.join(', ')}`;
+    })
+    .join(' AND ');
+}
+
+/** A request that failed: its address, and what was thrown. */
+export interface FailedRequest {
+  readonly url: string;
+  readonly error: unknown;
+}
+
+/**
+ * The lines about the requests of a reading that failed, or none: by the form of the condition and the code of
+ * the failure, how many different queries had it and how often they were sent. The reader sends a request
+ * again when it got no answer, so one query can be several requests.
+ */
+export function failedRequestLines(log: PublicLog, failures: readonly FailedRequest[]): string[] {
+  const byForm = new Map<string, { readonly queries: Set<string>; requests: number }>();
+  for (const { url, error } of failures) {
+    const code = log.code(requestFailure(error).code) ?? 'a code that is not shown';
+    const form = `${conditionForm(log, url)}: ${code}`;
+    const ofForm = byForm.get(form) ?? { queries: new Set<string>(), requests: 0 };
+    ofForm.queries.add(url);
+    ofForm.requests += 1;
+    byForm.set(form, ofForm);
+  }
+  if (byForm.size === 0) return [];
+  const forms = [...byForm].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const queries = forms.reduce((sum, [, ofForm]) => sum + ofForm.queries.size, 0);
+  // This is not the number of queries that failed in the line before: a request that is answered when it is
+  // sent again is counted here, and a query whose rows other queries gave is not counted there.
+  const lines = [
+    `Requests of this reading that failed: ${String(failures.length)}, for ${plural(queries, 'different query', 'different queries')}. A request that was answered when it was sent again is among them. ` +
+      'By the condition of the query, with the number of ids in the place of the ids, and the code of the failure:',
+  ];
+  for (const [form, ofForm] of forms.slice(0, CONDITIONS_SHOWN)) {
+    lines.push(`- ${form}. Queries: ${String(ofForm.queries.size)}. Requests: ${String(ofForm.requests)}.`);
+  }
+  if (forms.length > CONDITIONS_SHOWN) {
+    lines.push(`- and ${String(forms.length - CONDITIONS_SHOWN)} more forms of a condition.`);
+  }
+  return lines;
+}
+
+/** Rows counted by the types of their two ends, as the log may show them. */
+export function rowsByTypes(log: PublicLog, rows: readonly DependencyRow[]): string {
+  const shown = (type: string): string => log.name(type) ?? '(a type that is not shown)';
+  const pairs = new Map<string, number>();
+  for (const { from, to } of rows) {
+    const pair = `${shown(from.type)} to ${shown(to.type)}`;
+    pairs.set(pair, (pairs.get(pair) ?? 0) + 1);
+  }
+  return [...pairs]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([pair, count]) => `${pair} ${String(count)}`)
+    .join(', ');
 }
 
 /**
@@ -790,26 +905,37 @@ export async function readInParts(
     if (ofType === undefined) ids.set(item.type, [item.id]);
     else ofType.push(item.id);
   }
-  const again = await readDependencies(cutOffAt(session, limit), {
-    ...version,
-    limits: { rowsPerQuery: limit },
-    idsOfType: (type) => ids.get(type) ?? [],
-  });
+  const failures: FailedRequest[] = [];
+  const again = await readDependencies(
+    cutOffAt(session, limit, (url, error) => {
+      failures.push({ url, error });
+    }),
+    { ...version, limits: { rowsPerQuery: limit }, idsOfType: (type) => ids.get(type) ?? [] },
+  );
   const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
-  const lacking = [...whole].filter((row) => !parts.has(row)).length;
-  const more = [...parts].filter((row) => !whole.has(row)).length;
+  const lackingRows = one.rows.filter((row) => !parts.has(rowIdentity(row)));
+  const moreRows = again.rows.filter((row) => !whole.has(rowIdentity(row)));
+  const lacking = lackingRows.length;
+  const more = moreRows.length;
   log.say(
     `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
       `Queries still at that number for a single component, or with no smaller part to ask for: ${String(again.cutOff)}. ` +
       `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
       `Queries asked again per component, for more components than one query names: ${String(again.unproven)}.`,
   );
+  for (const line of failedRequestLines(log, failures)) log.say(line);
+  if (failures.length === 0 && again.failed > 0) {
+    log.say('No request of this reading failed. The queries that failed ended for another reason.');
+  }
   log.say(
     lacking === 0 && more === 0
       ? 'The parts give the same rows as one query just before.'
       : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
   );
+  if (lacking > 0)
+    log.say(`The rows the parts lack, by the types of their two ends: ${rowsByTypes(log, lackingRows)}.`);
+  if (more > 0) log.say(`The rows only the parts give, by the types of their two ends: ${rowsByTypes(log, moreRows)}.`);
   if (again.failed > 0) {
     log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
   }

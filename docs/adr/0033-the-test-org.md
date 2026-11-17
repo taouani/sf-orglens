@@ -48,7 +48,9 @@ place (`packages/engine/test/live/public-log.ts`):
 - of a file that could not be read as metadata, its first folder and the ending of its name where they are
   words of the source format, and how deep it lies,
 - of a symbol table of a class of the fixture project, the names of its fields, and a method or a type whose
-  every word is a word of the fixture project or of Apex.
+  every word is a word of the fixture project or of Apex,
+- of a query of the Dependency API that failed, its condition: the three fields the engine asks by, the names
+  of metadata types, and the number of ids in the place of the ids.
 
 Never: a name of a component that is not of the fixture project, the address or the id of the org, a user name,
 a token, a key, or any other message of Salesforce, of a library or of OrgLens.
@@ -104,3 +106,8 @@ same day.
   forms). A problem of a known form that holds a name and is about something that is not a component of the
   fixture project is not searched for everyday words: the name itself could be one. The rule above is not
   changed by this.
+- The first reading of the Dependency API in parts, on 17 November 2026, failed for 6 queries, and the run could
+  not say which. The step that reads the org now shows the condition of a query that failed. A type is shown
+  where its name has the form of a name of a metadata type, letters and digits, as the step already does for
+  the types of rows. The name of a custom metadata type, which is a name of the org, has an underscore and is
+  not shown. An id is never shown.

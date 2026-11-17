@@ -10,6 +10,7 @@ import { cpSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MetadataRequestError } from '../src/sources/org-http.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { fixtureDependencyRows } from './helpers/fixture-dependencies.ts';
 import { dependencyRow, mockDependencies, type MockDependencies } from './helpers/mock-dependencies.ts';
@@ -19,7 +20,18 @@ import { tempDirs } from './helpers/store.ts';
 import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
 import { everydayWords, publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
-import { fileDifference, missingLines, nameForm, placeForm, readOrg, remarkForm } from './live/read-org.ts';
+import {
+  conditionForm,
+  failedRequestLines,
+  fileDifference,
+  missingLines,
+  nameForm,
+  placeForm,
+  readOrg,
+  remarkForm,
+  rowsByTypes,
+} from './live/read-org.ts';
+import type { DependencyRow } from '../src/sources/dependency-api.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -392,6 +404,158 @@ describe('the form of a name', () => {
     expect(nameForm('a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z')).toBe(
       'a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…',
     );
+  });
+});
+
+describe('the condition of a query of the Dependency API, as it is printed', () => {
+  const address = (where: string, object = 'MetadataComponentDependency'): string => {
+    const soql = `SELECT MetadataComponentId, RefMetadataComponentId FROM ${object}${where === '' ? '' : ` WHERE ${where}`}`;
+    return `/services/data/v66.0/tooling/query?q=${encodeURIComponent(soql)}`;
+  };
+  const form = (where: string, log: PublicLog = publicLog(() => undefined)): string =>
+    conditionForm(log, address(where));
+
+  it('shows the names of metadata types, and the number of ids in the place of the ids', () => {
+    expect(form('')).toBe('no condition');
+    expect(form("MetadataComponentType = 'Layout'")).toBe('MetadataComponentType = Layout');
+    expect(form("MetadataComponentType NOT IN ('ApexClass', 'Flow')")).toBe(
+      'MetadataComponentType NOT IN (ApexClass, Flow)',
+    );
+    expect(
+      form(
+        "MetadataComponentType = 'Layout' AND RefMetadataComponentType = 'CustomField' AND MetadataComponentId NOT IN ('00h000000000001AAA', '00h000000000002AAA')",
+      ),
+    ).toBe(
+      'MetadataComponentType = Layout AND RefMetadataComponentType = CustomField AND MetadataComponentId NOT IN (2 ids)',
+    );
+    expect(form("MetadataComponentType = 'ApexClass' AND MetadataComponentId IN ('01p000000000001AAA')")).toBe(
+      'MetadataComponentType = ApexClass AND MetadataComponentId IN (1 id)',
+    );
+  });
+
+  it('shows a type only where its name has the form of a metadata type and is no word of the login', () => {
+    // The type of a row about a record of a custom metadata type is the name of that type, a name of the org.
+    expect(form("MetadataComponentType = 'Acme_Rule__mdt'")).toBe('MetadataComponentType = (a type that is not shown)');
+    expect(form("RefMetadataComponentType IN ('CustomField', 'Acme_Rule__mdt')")).toBe(
+      'RefMetadataComponentType IN (CustomField, (a type that is not shown))',
+    );
+    // The form is all that is checked: a name of letters and digits is shown, as it is for the types of rows.
+    expect(form("MetadataComponentType = 'AcmeRule'")).toBe('MetadataComponentType = AcmeRule');
+    const log = publicLog(() => undefined);
+    log.forbid('https://acmerule.my.salesforce.example');
+    expect(form("MetadataComponentType = 'AcmeRule'", log)).toBe('MetadataComponentType = (a type that is not shown)');
+  });
+
+  it('shows nothing of a condition in another form', () => {
+    expect(form("MetadataComponentName = 'Acme_Secret'")).toBe('(a condition that is not shown)');
+    expect(form("MetadataComponentType = 'Layout' AND MetadataComponentName LIKE 'Acme%'")).toBe(
+      'MetadataComponentType = Layout AND (a condition that is not shown)',
+    );
+    // A value in quotes after a list is no type of the list.
+    expect(form("RefMetadataComponentType IN ('CustomField') OR MetadataComponentName IN ('AcmeSecret')")).toBe(
+      '(a condition that is not shown)',
+    );
+    expect(form("MetadataComponentType = 'Layout' OR MetadataComponentName = 'AcmeSecret'")).toBe(
+      '(a condition that is not shown)',
+    );
+    expect(form("MetadataComponentId IN ('00h000000000001AAA') LIMIT 5")).toBe('(a condition that is not shown)');
+  });
+
+  it('shows nothing of a request that is no query of the reader', () => {
+    const log = publicLog(() => undefined);
+    // The next page of an answer has an address without a query.
+    expect(conditionForm(log, '/services/data/v66.0/tooling/query/01gAcme00000001AAA-2000')).toBe(
+      '(the next page of an answer)',
+    );
+    expect(conditionForm(log, '/services/data/v66.0/tooling/sobjects/AcmeSecret')).toBe(
+      '(a request that is not shown)',
+    );
+    expect(conditionForm(log, address("Name = 'AcmeSecret'", 'ApexClass'))).toBe('(a request that is not shown)');
+    expect(conditionForm(log, '/services/data/v66.0/tooling/query?q=AcmeSecret')).toBe('(a request that is not shown)');
+    expect(conditionForm(log, 'http://[')).toBe('(a request that is not shown)');
+  });
+
+  describe('the lines about requests that failed', () => {
+    const refusedWith = (code: string | null): MetadataRequestError =>
+      new MetadataRequestError('refused', code, 'A message of Salesforce about AcmeSecret.');
+    const perComponent = (ids: readonly string[]): string =>
+      address(
+        `MetadataComponentType = 'Layout' AND RefMetadataComponentType = 'CustomField' AND MetadataComponentId IN (${ids.map((id) => `'${id}'`).join(', ')})`,
+      );
+
+    it('says nothing when no request failed', () => {
+      expect(
+        failedRequestLines(
+          publicLog(() => undefined),
+          [],
+        ),
+      ).toEqual([]);
+    });
+
+    it('counts the different queries of a form and the requests they were, in a fixed order', () => {
+      const again = address("MetadataComponentType = 'WorkflowRule'");
+      const lines = failedRequestLines(
+        publicLog(() => undefined),
+        [
+          // One query that was sent three times.
+          { url: again, error: new MetadataRequestError('unreachable', 'HTTP_503', 'The org could not be reached.') },
+          { url: again, error: new MetadataRequestError('unreachable', 'HTTP_503', 'The org could not be reached.') },
+          { url: again, error: new MetadataRequestError('unreachable', 'HTTP_503', 'The org could not be reached.') },
+          // Two queries of one form: other ids, as many of them.
+          { url: perComponent(['00h000000000001AAA', '00h000000000002AAA']), error: refusedWith('MALFORMED_QUERY') },
+          { url: perComponent(['00h000000000003AAA', '00h000000000004AAA']), error: refusedWith('MALFORMED_QUERY') },
+          // The same form with another code is a line of its own, and so is a failure without a code.
+          { url: perComponent(['00h000000000005AAA', '00h000000000006AAA']), error: refusedWith('INVALID_TYPE') },
+          { url: address(''), error: refusedWith(null) },
+          { url: address(''), error: new Error('A message of a library about AcmeSecret.') },
+        ],
+      );
+      expect(lines).toEqual([
+        'Requests of this reading that failed: 8, for 5 different queries. A request that was answered when it was sent again is among them. By the condition of the query, with the number of ids in the place of the ids, and the code of the failure:',
+        '- MetadataComponentType = Layout AND RefMetadataComponentType = CustomField AND MetadataComponentId IN (2 ids): INVALID_TYPE. Queries: 1. Requests: 1.',
+        '- MetadataComponentType = Layout AND RefMetadataComponentType = CustomField AND MetadataComponentId IN (2 ids): MALFORMED_QUERY. Queries: 2. Requests: 2.',
+        '- MetadataComponentType = WorkflowRule: HTTP_503. Queries: 1. Requests: 3.',
+        '- no condition: a code that is not shown. Queries: 1. Requests: 2.',
+      ]);
+      // No id, and no word of a message.
+      expect(lines.join('\n')).not.toMatch(/00h0|AcmeSecret|message/);
+    });
+
+    it('counts rows by the types of their two ends, and shows no type that is a name of the org', () => {
+      const end = (type: string): DependencyRow['from'] => ({
+        type,
+        id: '00h000000000001AAA',
+        name: 'Acme',
+        namespace: null,
+      });
+      const row = (from: string, to: string): DependencyRow => ({ from: end(from), to: end(to) });
+      expect(
+        rowsByTypes(
+          publicLog(() => undefined),
+          [
+            row('Layout', 'CustomField'),
+            row('CustomApplication', 'FlexiPage'),
+            row('Layout', 'CustomField'),
+            row('Acme_Rule__mdt', 'CustomObject'),
+            row('Other_Rule__mdt', 'CustomObject'),
+          ],
+        ),
+      ).toBe('(a type that is not shown) to CustomObject 2, CustomApplication to FlexiPage 1, Layout to CustomField 2');
+    });
+
+    it('lists at most 40 forms and says how many more there are', () => {
+      const failures = Array.from({ length: 43 }, (_, index) => ({
+        url: perComponent(Array.from({ length: index + 1 }, (_ignored, id) => `00h${String(id).padStart(12, '0')}AAA`)),
+        error: refusedWith('MALFORMED_QUERY'),
+      }));
+      const lines = failedRequestLines(
+        publicLog(() => undefined),
+        failures,
+      );
+      expect(lines).toHaveLength(42);
+      expect(lines[0]).toMatch(/^Requests of this reading that failed: 43, for 43 different queries\. /);
+      expect(lines.at(-1)).toBe('- and 3 more forms of a condition.');
+    });
   });
 });
 
@@ -806,8 +970,41 @@ describe('reading the test org', () => {
     expect(output).toMatch(
       /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\.$/m,
     );
+    // The step says which requests failed: the types, and how many ids, never an id. Every line between the
+    // line of the reading and the line about the parts is one of them.
+    const lines = output.split('\n');
+    const head = lines.findIndex((line) => line.startsWith('Requests of this reading that failed: '));
+    const end = lines.findIndex((line) => line.startsWith('The parts lack '));
+    expect(lines[head - 1]).toMatch(/^Read once more with every answer cut off at 30 rows: /);
+    const counts =
+      /^Requests of this reading that failed: (\d+), for (\d+) different quer(?:y|ies)\. A request that was answered when it was sent again is among them\. By the condition of the query, with the number of ids in the place of the ids, and the code of the failure:$/.exec(
+        lines[head] ?? '',
+      );
+    expect(counts).not.toBeNull();
+    const listed = lines.slice(head + 1, end);
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed).toEqual([...listed].sort());
+    let queries = 0;
+    let requests = 0;
+    for (const line of listed) {
+      const numbers =
+        /^- MetadataComponentType = [A-Za-z]+ AND RefMetadataComponentType = [A-Za-z]+ AND MetadataComponentId IN \([1-9]\d* ids?\): MALFORMED_QUERY\. Queries: ([1-9]\d*)\. Requests: ([1-9]\d*)\.$/.exec(
+          line,
+        );
+      expect(numbers, line).not.toBeNull();
+      queries += Number(numbers?.[1]);
+      requests += Number(numbers?.[2]);
+    }
+    // The numbers are those of the queries the mock org refused: a refusal is not asked again.
+    const refused = dependencies.queries.filter((soql) => soql.includes('MetadataComponentId IN ('));
+    expect(new Set(refused).size).toBe(refused.length);
+    expect([Number(counts?.[1]), Number(counts?.[2])]).toEqual([refused.length, refused.length]);
+    expect([requests, queries]).toEqual([refused.length, refused.length]);
     expect(output).toMatch(
       /^The parts lack [1-9]\d* rows? of the one query just before, and give 0 rows it does not have\.$/m,
+    );
+    expect(output).toMatch(
+      /^The rows the parts lack, by the types of their two ends: (?:[A-Za-z]+ to [A-Za-z]+ [1-9]\d*(?:, )?)+\.$/m,
     );
     expect(output.split('\n').at(-1)).toBe(
       '::warning::The org refused a query the engine asks when a query is at the limit of rows.',
@@ -828,8 +1025,9 @@ describe('reading the test org', () => {
     await readOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(true);
-    expect(output.split('\n').slice(-3)).toEqual([
+    expect(output.split('\n').slice(-4)).toEqual([
       'The parts lack 0 rows of the one query just before, and give 1 row it does not have.',
+      'The rows only the parts give, by the types of their two ends: ApexClass to CustomField 1.',
       '',
       '::error::Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
     ]);
