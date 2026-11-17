@@ -952,27 +952,32 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
   measured. The public codebases have no org, so WP10 cannot measure it either. It needs an org of yours.
 - **For Phase 2.** With every type that is analysed, its rows move from "not compared" to "compared" without a
   change to the comparison: the analysis says which types it read.
-- **The reading in parts, after the two runs of 17 November 2026.** Read with every answer cut off at 30 rows, as an
+- **The reading in parts, after the three runs of 17 November 2026.** Read with every answer cut off at 30 rows, as an
   org above 2,000 rows has to be read, 6 queries failed on the test org and 9 of the 257 rows were lacking. Run 11
   showed which: the queries that name `StandardEntity`, the type of a standard object, as the type of the target, by
   name or in the list of the rest. Salesforce documents that it does not answer the first. The 9 rows are from an
   Apex class to a standard object. Every other query was answered, the ones with `IN` and `NOT IN` on the id of a
   component among them. The reader no longer names `StandardEntity`: the rows to standard objects are left to the
-  rest, and a rest at the limit is asked for per group of components. No run shows that the org answers a rest whose
-  list does not hold `StandardEntity`, or that such a rest holds the rows to standard objects: no such query was
-  asked. So the reader holds the rest against the rows it already has, and asks for the whole type per group of
-  components where the org refuses the list. None of this is run against the org yet. The documentation also lists
-  `IN` and `NOT IN` as not supported. The test org answered `NOT IN` on the type of the component that refers, and
-  both on its id. The reader keeps them, which is a choice of the author (decision record 0045), and a query that an
-  org refuses makes the reading `partial`. The record of the runs is section 7 of
-  `docs/research/phase-1/real-org.md`.
+  rest, and a rest at the limit is asked for per group of components. Runs 10 and 11 did not show that the org
+  answers a rest whose list does not hold `StandardEntity`, or that such a rest holds the rows to standard objects:
+  no such query was asked. So the reader holds the rest against the rows it already has, and asks for the whole type
+  per group of components where the org refuses the list. Run 12, from the commit with the corrected reader, gave 60
+  requests, none failed, the same 257 rows as the one query, and a reading the engine calls whole. So the test org
+  answers such a rest. That the rows to standard objects came with it is most likely and not shown: the step does
+  not print which query gave a row. The two ways for an org that does not answer so were not needed there, and only
+  tests cover them. The documentation also lists `IN` and `NOT IN` as not supported. The test org answered `NOT IN`
+  on the two types, and both on the id of a component. The reader keeps them, which is a choice of the author
+  (decision record 0045), and a query that an org refuses makes the reading `partial`. The record of the runs is
+  section 7 of `docs/research/phase-1/real-org.md`.
 - **Not done or not verified.** Verified on the test org on 17 November 2026: the ids of the listing are the ids of
   the rows for fields, rules and custom objects, and what the comparison shows. Verified there too: that the org
-  accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`. Not verified: the corrected reader of the point
-  above. An org with more than 200 components of a type of which a part is at the limit, a pair of types or the
-  rest, gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs for the query was not looked up. The command
-  `orglens snapshot` itself was not run against a real org, as before. The mock org reports the formula of a rule
-  that is not active and of a default value, which Salesforce does not or may not.
+  accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, and that the corrected reader of the point
+  above reads the org whole in parts. Not verified: an org above 2,000 rows, where the parts are asked for in
+  earnest. An org with more than 200 components of a type of which a part is at the limit, a pair of types or the
+  rest, gets a reading that is `partial`, and how often that is so was not measured. Which permission the user needs
+  for the query was not looked up. The command `orglens snapshot` itself was not run against a real org, as before.
+  The mock org reports the formula of a rule that is not active and of a default value, which Salesforce does not or
+  may not.
 
 ### WP9 What a snapshot reads, and when it is complete (follows Q2)
 
