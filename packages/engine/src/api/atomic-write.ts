@@ -44,7 +44,8 @@ const SYSTEM: AtomicWriteSystem = { platform: process.platform, rename: renameSy
  * A write happens while the lock of the configuration is held, and another command waits for that lock
  * (`config-lock.ts`). A refusal that passes costs a few milliseconds. One that does not pass, such as a file
  * that is read-only, costs each command the whole third of a second while it holds the lock. Each command of a
- * queue then ends with the real cause, a little later.
+ * queue then ends with the real cause, a little later. The creation of the lock itself uses the same pauses
+ * before the lock is held, where a refusal that stays delays no other command.
  */
 export const BUSY_PAUSES_MS: readonly number[] = [5, 10, 20, 40, 80, 160];
 
