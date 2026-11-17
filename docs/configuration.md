@@ -278,7 +278,10 @@ and the layout of every other line stay exactly as they were.
 - The new file is written next to the old one and then moved over it, so a crash never leaves half a file. It
   keeps the permissions of the old one. If `orglens.toml` is a link, the file it points at is replaced and the link
   stays.
-- While one command changes a file, a second one waits for it, for up to two seconds.
+- While one command changes a file, a second one waits for it. It gives up when the command in front has held
+  the lock for ten seconds, or when it has waited thirty seconds in all while several commands took their turn.
+  A lock that is older than thirty seconds was left behind by a command that did not end properly, and the next
+  command takes it over.
 - On Windows a file cannot be replaced while a program has it open. OrgLens then tries the move again for up to
   a third of a second, and does the same when it reads a file at the moment another command replaces it.
 - The file has to be UTF-8. A file in another encoding is refused, not converted.

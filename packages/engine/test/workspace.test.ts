@@ -529,6 +529,9 @@ describe('workspace sources', () => {
     const before = read(dir, 'orglens.toml');
     const lock = join(dir, '.orglens', 'config.lock');
     writeFileSync(lock, '1\n');
+    // A command waits while the lock is younger than ten seconds (`config-lock.test.ts`). This one is older.
+    const held = new Date(Date.now() - 15_000);
+    utimesSync(lock, held, held);
     const error = await failure(() => workspace.sources.add({ name: 'prod', kind: 'org' }));
     expect(error).toMatchObject({
       code: 'WORKSPACE_IO',
