@@ -114,10 +114,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       );
     });
 
-    it('says which version of the engine analysed the snapshot', async () => {
-      const { workspace } = await setUp();
+    it('says which version of the engine analysed the snapshot, not which one answers', async () => {
+      const { database, workspace } = await setUp();
       const report = await workspace.impact('fixture', 'Invoice__c.Amount__c');
       expect(report.snapshot.analysedBy).toBe(engineVersion());
+
+      inStore(database, (store) => store.run("UPDATE snapshot_analysis SET engine_version = '0.0.0-older'"));
+      const later = await workspace.impact('fixture', 'Invoice__c.Amount__c');
+      expect(later.snapshot.analysedBy).toBe('0.0.0-older');
     });
 
     it('gives every component of the fixture the answer that the answer key implies', async () => {

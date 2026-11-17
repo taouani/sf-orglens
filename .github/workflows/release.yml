@@ -4,6 +4,11 @@ name: Release (dry run)
 # token in this repository, and every publish step runs with --dry-run. The
 # real workflow for npm is written when the first release there is planned.
 # A pre-release on GitHub is made by pre-release.yml.
+#
+# This workflow has never run. Its last step asks the public registry of npm
+# for the names of both packages, also with --dry-run. The project has not
+# looked whether the names are free (decision record 0050), so do not start
+# it before the maintainer has decided about the names.
 
 on:
   workflow_dispatch:

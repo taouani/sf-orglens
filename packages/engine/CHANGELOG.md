@@ -5,9 +5,9 @@
 The first pre-release, on GitHub only. What this version does as a whole, what it does not do and what is not
 verified is in its [release notes](https://github.com/taouani/sf-orglens/blob/main/docs/releases/v0.1.0-next.0.md).
 
-The entries are in the order in which their pull requests were merged, and each says what was true on that day.
-Where one says that something is not available yet, or was not run against a real org, a later one may say
-otherwise.
+The entries are in the order in which their pull requests were merged, under each heading, and each says what
+was true on that day. Where one says that something is not available yet, or was not run against a real org, a
+later one may say otherwise.
 
 ### Minor Changes
 

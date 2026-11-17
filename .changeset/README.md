@@ -24,5 +24,9 @@ To make one, in a pull request:
 3. Write `docs/releases/v<version>.md`: what the version does, what it does not do, what is not verified, and
    the line that installs it. `node scripts/pre-release.mjs check <version> false -` says what is missing.
 
-After the merge, the workflow "Pre-release" is started on `main` with that version. With "publish" off it only
-checks and packs.
+After the merge, the workflow "Pre-release" is started on `main` with that version. With "publish" off it
+checks, packs and tries the install line on Linux, Windows and macOS, and publishes nothing. A run with
+"publish" on is started only after the maintainer has said so for that version.
+
+A pull request that adds a changeset after the version was set needs the three steps again before the next
+pre-release: the workflow refuses to release while a changeset waits here.
