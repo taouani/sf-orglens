@@ -161,8 +161,9 @@ they have below a package directory, such as `classes/Foo.cls`.
   outside it although the object is in it. Four cases need a rule. A retrieve that fails counts against the
   tier if one of its components is of the tier. A file that cannot be read as metadata counts by the types that
   keep their files in its top folder: a file under `reports` is outside the tier, one under `classes` or
-  `objects` is in it. A file in a folder of no known type, or outside the package that was asked for, counts
-  against the tier, because nothing says what it is. And the file of custom labels, `CustomLabels`, is not
+  `objects` is in it. Where the Salesforce library knows no type for the folder, the types the org itself
+  describes with that folder decide. A file in a folder of no known type, or outside the package that was asked
+  for, counts against the tier, because nothing says what it is. And the file of custom labels, `CustomLabels`, is not
   missing when the org lists no custom label: an org without a label lists the file and hands out nothing. The
   issue `NOT_RETRIEVED` is then a warning with `details.holdsNothing` set to `true`, and the first line of the
   report stays that of a complete snapshot.
@@ -180,6 +181,11 @@ they have below a package directory, such as `classes/Foo.cls`.
 - Notes: a chunk that was split (`CHUNK_SPLIT`), components that came back although the org had not listed them,
   such as an object that came for the sake of its fields (`UNLISTED_COMPONENTS`), a snapshot that was continued
   (`SNAPSHOT_RESUMED`) or given up (`SNAPSHOT_GIVEN_UP`).
+- **A component of a package can come back without the prefix of the package.** An org lists a Lightning web
+  component of a package as `pkg__thing` and hands out the folder `thing`. When the org lists exactly one
+  component of a package with that name behind its prefix, and none under the short name, it counts as
+  retrieved. The files of the snapshot keep the short name, and the note `RETRIEVED_WITHOUT_PREFIX` says how
+  many components of a type came back that way.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
@@ -435,11 +441,12 @@ The issue codes of the reading (`stage` is `read`):
 | --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                           |
 | `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                                                                                                                                       |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`                                                                                                                                                           |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
-names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED` and `UNLISTED_COMPONENTS` name
-the type in `details.type`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
+names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS` and
+`RETRIEVED_WITHOUT_PREFIX` name the type in `details.type`. The names of `RETRIEVED_WITHOUT_PREFIX` are the ones
+the org lists, with the prefix. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
@@ -451,7 +458,9 @@ for an error, `other` for a warning. `RETRIEVE_FAILED` carries the types of its 
 sorted. Those are the types that are retrieved by name: a field that fails with its object is not named.
 `RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
 component, or the types that keep their files in the top folder of the file with the types of their parts. The
-list is empty when nothing tells the type. A snapshot taken before these fields existed has issues without them.
+types are those the Salesforce library knows for the folder. Where it knows none, they are the types the org
+describes with that folder, and `details.describedByOrg` is `true`. The list is empty when nothing tells the
+type. A snapshot taken before these fields existed has issues without them.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each

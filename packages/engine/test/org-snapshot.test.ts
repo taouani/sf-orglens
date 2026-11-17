@@ -1272,6 +1272,32 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           details: { at: 'mysteries/Thing.mystery', types: [], tier: 'logic' },
         },
       ]);
+      // The org was asked what it has when the snapshot began, and once more for the file.
+      expect(metadata.calls.filter((call) => call.operation === 'describeMetadata')).toHaveLength(2);
+    });
+
+    it('counts such a file by the type the org describes with its folder, which the library does not know', async () => {
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      metadata.extraFiles.set('mysteries/Other.mystery', 'and this');
+      metadata.unknownTypes.set('Mystery', 'mysteries');
+      const dir = workspaceDir();
+      const report = await snap(dir);
+      expect(report.snapshot.status).toBe('complete');
+      expect(stored(dir, 1)).toEqual(expectedFiles());
+      expect(typeOf(report, 'Mystery')).toMatchObject({ listed: 0, retrieved: 0, listing: 'ok' });
+      expect(ofReading(report)).toEqual(
+        ['Other', 'Thing'].map((name) => ({
+          severity: 'warning',
+          code: 'RESOLVE_FAILED',
+          message:
+            `mysteries/${name}.mystery could not be read as metadata: The file belongs to no metadata type that is known. ` +
+            'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it. ' +
+            'It is counted with the type Mystery, which is outside the logic tier, and does not make the snapshot partial.',
+          details: { at: `mysteries/${name}.mystery`, types: ['Mystery'], tier: 'other', describedByOrg: true },
+        })),
+      );
+      // The org was asked what it has when the snapshot began, and once for the two files.
+      expect(metadata.calls.filter((call) => call.operation === 'describeMetadata')).toHaveLength(2);
     });
 
     describe('with the file of custom labels, which the org lists and does not hand out', () => {
@@ -1352,6 +1378,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         expect(stored(dir, 1)).toEqual(withResource());
         expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 1, retrieved: 1, listing: 'ok' });
         expect(ofReading(report)).toEqual([]);
+      });
+
+      it('takes a component of a package that comes back without the prefix for the one the org listed', async () => {
+        metadata.packaged.set('StaticResource:Notice', 'pkg');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        expect(report.snapshot.status).toBe('complete');
+        expect(metadata.retrieves.flat()).toContain('StaticResource:pkg__Notice');
+        expect(stored(dir, 1)).toEqual(withResource());
+        expect(typeOf(report, 'StaticResource')).toEqual({
+          type: 'StaticResource',
+          listed: 1,
+          retrieved: 1,
+          analysed: 0,
+          listing: 'ok',
+          note: null,
+        });
+        expect(ofReading(report)).toEqual([
+          {
+            severity: 'info',
+            code: 'RETRIEVED_WITHOUT_PREFIX',
+            message:
+              '1 component of the type StaticResource came back under its name without the prefix of its package. The org lists it with the prefix, and the files of the snapshot are named without it. The first: pkg__Notice',
+            details: { type: 'StaticResource', count: 1, components: ['pkg__Notice'] },
+          },
+        ]);
       });
 
       it('calls the snapshot complete when the org does not hand it out, and names it in a warning', async () => {

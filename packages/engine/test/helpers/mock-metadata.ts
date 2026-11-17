@@ -91,6 +91,13 @@ export interface MockMetadata {
   readonly withheld: Set<string>;
   /** Parents the org does not list although it lists their parts, as `Type:FullName`. */
   readonly unlistedParents: Set<string>;
+  /**
+   * Components of a package, as `Type:FullName`, with the prefix of the package. The org lists such a component
+   * as `prefix__FullName` and hands it out under the name it has in the project, without the prefix.
+   */
+  readonly packaged: Map<string, string>;
+  /** Types the org describes and the Salesforce library does not know: the name, and the folder of its files. */
+  readonly unknownTypes: Map<string, string>;
   /** A retrieve of more files than this fails. */
   maxFiles: number;
   /** How often a retrieve answers "in progress" before it is done. */
@@ -179,13 +186,24 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const deployJobs = new Map<string, { readonly files: string[]; polls: number }>();
 
   const idOf = (index: number): string => `0Axxx${String(index).padStart(10, '0')}AAA`;
-  const properties = (tag: string, item: Listed, index: number): string =>
-    `<${tag}><createdById>005xx000000001AAAA</createdById><createdByName>Mock User</createdByName>` +
-    `<createdDate>2026-01-15T10:00:00.000Z</createdDate><fileName>${escapeXml(item.fileName)}</fileName>` +
-    `<fullName>${escapeXml(item.fullName)}</fullName><id>${idOf(index)}</id>` +
-    `<lastModifiedById>005xx000000001AAAA</lastModifiedById><lastModifiedByName>Mock User</lastModifiedByName>` +
-    `<lastModifiedDate>2026-02-0${String(1 + (index % 9))}T08:30:00.000Z</lastModifiedDate>` +
-    `<manageableState>unmanaged</manageableState><type>${item.type}</type></${tag}>`;
+  /** The name the org lists a component with: that of the project, or with the prefix of its package. */
+  const listedAs = (item: { readonly type: string; readonly fullName: string }): string => {
+    const prefix = metadata.packaged.get(key(item.type, item.fullName));
+    return prefix === undefined ? item.fullName : `${prefix}__${item.fullName}`;
+  };
+  const properties = (tag: string, item: Listed, index: number): string => {
+    const prefix = metadata.packaged.get(key(item.type, item.fullName));
+    return (
+      `<${tag}><createdById>005xx000000001AAAA</createdById><createdByName>Mock User</createdByName>` +
+      `<createdDate>2026-01-15T10:00:00.000Z</createdDate><fileName>${escapeXml(item.fileName)}</fileName>` +
+      `<fullName>${escapeXml(listedAs(item))}</fullName><id>${idOf(index)}</id>` +
+      `<lastModifiedById>005xx000000001AAAA</lastModifiedById><lastModifiedByName>Mock User</lastModifiedByName>` +
+      `<lastModifiedDate>2026-02-0${String(1 + (index % 9))}T08:30:00.000Z</lastModifiedDate>` +
+      `<manageableState>${prefix === undefined ? 'unmanaged' : 'installed'}</manageableState>` +
+      (prefix === undefined ? '' : `<namespacePrefix>${prefix}</namespacePrefix>`) +
+      `<type>${item.type}</type></${tag}>`
+    );
+  };
 
   /** The zip file of a retrieve, and what the org says about members it does not have. */
   const zipOf = async (
@@ -194,14 +212,19 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const problems: string[] = [];
     const components: SourceComponent[] = [];
     const found: Listed[] = [];
-    for (const member of job.members) {
+    for (const asked of job.members) {
+      // A component of a package is asked for by the name the org lists it with.
+      const inProject = listed.find((item) => item.type === asked.type && listedAs(item) === asked.fullName);
+      const member = { type: asked.type, fullName: inProject?.fullName ?? asked.fullName };
       const id = key(member.type, member.fullName);
       // A folder is asked for under the type of what it holds.
       const folderType = folderTypeOf(member.type);
       const asFolder = folderType === null ? id : key(folderType, member.fullName);
       const owned = owners.get(id) ?? owners.get(asFolder);
-      if (owned === undefined || metadata.withheld.has(id)) {
-        problems.push(`Entity of type '${member.type}' named '${member.fullName}' cannot be found`);
+      // The org knows a component of a package by its name with the prefix only.
+      const shortName = inProject === undefined && metadata.packaged.has(id);
+      if (owned === undefined || metadata.withheld.has(id) || shortName) {
+        problems.push(`Entity of type '${asked.type}' named '${asked.fullName}' cannot be found`);
         continue;
       }
       components.push(...owned);
@@ -238,6 +261,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     failing: new Set(),
     withheld: new Set(),
     unlistedParents: new Set(),
+    packaged: new Map(),
+    unknownTypes: new Map(),
     maxFiles: 10_000,
     pollsBeforeDone: 1,
     hold: false,
@@ -261,7 +286,14 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       if (operation === 'describeMetadata') {
         metadata.calls.push({ operation, about: '', job: null });
         for (const name of metadata.emptyTypes) describe(name);
-        const objects = [...described.values()]
+        const unknown = [...metadata.unknownTypes].map(([name, directoryName]): DescribedType => ({
+          name,
+          directoryName,
+          suffix: null,
+          inFolder: false,
+          children: [],
+        }));
+        const objects = [...described.values(), ...unknown]
           .map(
             (type) =>
               `<metadataObjects>${type.children.map((child) => `<childXmlNames>${child}</childXmlNames>`).join('')}` +

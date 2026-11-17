@@ -30,6 +30,8 @@ export interface DescribedType {
   readonly inFolder: boolean;
   /** The types of the parts of a component of this type, such as `CustomField`. */
   readonly children: readonly string[];
+  /** The folder a retrieve puts the files of the type in, such as `objects`, or `null` if the org names none. */
+  readonly directory: string | null;
 }
 
 /** One component, as the org lists it. */
@@ -157,13 +159,14 @@ export async function metadataApi(
         metadataObjects?: unknown;
       } | null;
       return list(result?.metadataObjects).flatMap((one) => {
-        const { xmlName, inFolder, childXmlNames } = one as Record<string, unknown>;
+        const { xmlName, inFolder, childXmlNames, directoryName } = one as Record<string, unknown>;
         if (typeof xmlName !== 'string' || xmlName === '') return [];
         return [
           {
             name: xmlName,
             inFolder: flag(inFolder),
             children: list(childXmlNames).filter((child): child is string => typeof child === 'string' && child !== ''),
+            directory: typeof directoryName === 'string' && directoryName !== '' ? directoryName : null,
           },
         ];
       });

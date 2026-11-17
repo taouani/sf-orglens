@@ -331,6 +331,37 @@ const named = (names: readonly string[]): Readonly<Record<string, JsonValue>> =>
  */
 const HOLDS_ONLY: Readonly<Record<string, string>> = { CustomLabels: 'CustomLabel' };
 
+/**
+ * The types the org describes, by the folder a retrieve puts their files in, each with its parts. The org is
+ * asked once per run, and only when a file came back in a folder the Salesforce library knows no type for: the
+ * library can be older than the org.
+ */
+const foldersOfOrg = new WeakMap<MetadataApi, Promise<ReadonlyMap<string, readonly string[]>>>();
+function typesOfFolder(api: MetadataApi, folder: string): Promise<readonly string[]> {
+  let folders = foldersOfOrg.get(api);
+  if (folders === undefined) {
+    folders = api.describe().then(
+      (described) => {
+        const found = new Map<string, Set<string>>();
+        for (const type of described) {
+          if (type.directory === null) continue;
+          const names = found.get(type.directory) ?? new Set<string>();
+          found.set(type.directory, names);
+          for (const name of [type.name, ...type.children]) names.add(name);
+        }
+        return new Map([...found].map(([directory, names]) => [directory, [...names].sort(byCodeUnit)]));
+      },
+      (error: unknown) => {
+        // An org that does not say what it has leaves the file without a type, which counts against the tier.
+        if (isRefusal(error)) return new Map<string, readonly string[]>();
+        throw error;
+      },
+    );
+    foldersOfOrg.set(api, folders);
+  }
+  return folders.then((known) => known.get(folder) ?? []);
+}
+
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
 const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
 
@@ -632,13 +663,31 @@ async function retrieveChunk(
   }
   const owned = new Set(unpacked.components.flatMap((component) => component.files));
   const messages = state.problems.map((problem) => saidBy(problem));
+  // A file in a folder the library knows no type for is placed by what the org says about its types.
+  const problems: { at: string; message: string; types: readonly string[]; byOrg: boolean }[] = [];
+  for (const problem of unpacked.problems) {
+    const slash = problem.at.indexOf('/');
+    const byOrg = problem.types.length === 0 && slash > 0 ? await typesOfFolder(api, problem.at.slice(0, slash)) : [];
+    problems.push(byOrg.length > 0 ? { ...problem, types: byOrg, byOrg: true } : { ...problem, byOrg: false });
+  }
   store.write(() => {
     const twice: string[] = [];
     for (const path of unpacked.tree.files) {
       if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
     }
-    markRetrieved(store, snapshotId, unpacked.components);
-    for (const problem of unpacked.problems) {
+    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components);
+    for (const type of [...new Set(withoutPrefix.map((component) => component.type))].sort(byCodeUnit)) {
+      const names = withoutPrefix.filter((component) => component.type === type).map((one) => one.fullName);
+      issue(
+        store,
+        snapshotId,
+        'info',
+        'RETRIEVED_WITHOUT_PREFIX',
+        `${plural(names.length, 'component', 'components')} of the type ${type} came back under ${names.length === 1 ? 'its' : 'their'} name without the prefix of ${names.length === 1 ? 'its' : 'their'} package. The org lists ${names.length === 1 ? 'it' : 'them'} with the prefix, and the files of the snapshot are named without it. The first: ${names[0] ?? ''}`,
+        { type, ...named(names) },
+      );
+    }
+    for (const problem of problems) {
       // What nothing tells the type of counts against the logic tier.
       const tier = tierOfAny(problem.types);
       issue(
@@ -646,8 +695,12 @@ async function retrieveChunk(
         snapshotId,
         severityIn(tier),
         'RESOLVE_FAILED',
-        missingIn(tier, `${problem.at} could not be read as metadata: ${problem.message}`, problem.types),
-        { at: problem.at, types: [...problem.types], tier },
+        missingIn(
+          tier,
+          `${problem.at} could not be read as metadata: ${problem.message}${problem.byOrg ? ' The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it.' : ''}`,
+          problem.types,
+        ),
+        { at: problem.at, types: [...problem.types], tier, ...(problem.byOrg ? { describedByOrg: true } : {}) },
       );
     }
     const other = unpacked.tree.files.filter((path) => !owned.has(path));

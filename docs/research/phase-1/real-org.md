@@ -34,6 +34,10 @@ In short:
   are from an Apex class to a standard object. The reader no longer names that type in a condition.
 - Added from run 12: read in parts by the corrected reader, the org answered every one of 60 requests, and the
   parts gave the same 257 rows as the one query. The engine calls that reading whole.
+- Added from run 13: judged over the logic tier, the snapshot of the test org is still partial. Of the 222
+  components that do not come back, 209 are now warnings. Thirteen components of four types of the tier and
+  three files without a known type keep it partial
+  ([section 8](#8-the-snapshot-judged-over-the-logic-tier)).
 
 ## Conditions
 
@@ -553,6 +557,66 @@ same 20 pairs the key does not hold. The symbol tables are as before.
 **Not verified by runs 10 to 12.** The command `orglens snapshot` itself, which the step does not start: it calls
 the engine as the command does. An org above 2,000 rows, where the parts are asked for in earnest. Another
 edition, a sandbox, an org with a namespace. How many requests a large org needs.
+
+## 8. The snapshot judged over the logic tier
+
+One read, in run 13 on 17 November 2026, the first with the judgement of record
+[0046](../../adr/0046-complete-over-the-logic-tier.md). Nothing was deployed.
+
+| Measurement | Run 13 |
+| --- | --- |
+| Time in all | 118.7 s: 0.3 s to log in, 4.7 s to ask what the org holds, 113.7 s to retrieve it |
+| Requests to the Metadata API | 372 |
+| Components the org listed | 1,710, of them 1,488 retrieved |
+| Retrieved without being listed | 3,526 |
+| Files | 5,072, together 14.8 MB |
+| Status of the snapshot | partial |
+| Observations of the reading | 26 |
+
+`[run 13]`
+
+- **What keeps the snapshot partial: 13 components and 3 files.** `[run 13]`
+
+  | What | Count | What the run says about it |
+  | --- | --- | --- |
+  | `LightningComponentBundle` | 7 of 7 | Of a package, state installed. Seven bundles came back that the org had not listed. For five the tool found the one that differs only in the prefix. |
+  | `CustomObject` | 2 of 398 | Nothing but the form of the name. |
+  | `CustomField` | 2 of 79 | Unmanaged. The object before the dot is not among the objects the org lists. |
+  | `RecordType` | 2 of 2 | Unmanaged. The object before the dot is not among the objects the org lists. |
+  | Files that cannot be read as metadata | 3 | One level deep, in a folder the library knows no type for, with an ending it does not know. |
+
+- **What no longer does: 209 components of 10 types, and one listing.** They are warnings now:
+  `ContentWorkspacePermission` (3), `Dashboard` (2), `EmailFolder` (1), `InstalledPackage` (1), `ListView` (171),
+  `MatchingRule` (3), `Report` (24), `ReportFolder` (1), `StandardValueSetTranslation` (2) and
+  `WorkflowFlowAutomation` (1). The org refuses to list `ContentWorkspace`, with the code `INVALID_FIELD`. The
+  counts per type are those of run 6. `[run 13]`
+- **The file of custom labels came back**, as in run 6, so the rule for an org without a label did not come
+  into play. `[run 13]`
+- **The nine remarks of Salesforce are the same in number and form**: two say that an object cannot be found,
+  one that the installed package cannot be found, and six have a form the tool does not know. `[run 13]`
+- **A reading of the three files.** The run names 81 types of which the org lists a component or refuses the
+  listing. The Salesforce library of this version, 13.12.0, knows 79 of them. The two it does not know are
+  `ContentWorkspace`, whose listing the org refuses, and `ContentWorkspacePermission`, of which the org lists
+  three and none came back. The other 253 types the org describes were not held against the library. Three components
+  that do not come back and three files in a folder of no known type fit each other. The log shows neither the
+  folder nor the ending, because they are no words of the source format. `[unverified]`
+- **A reading of the seven bundles.** The rule of the tool that looks for a name without its prefix takes a
+  name of up to seven letters after a prefix for the ending of a custom object, as in `Thing__c`. Two bundles
+  with short names would be missed by it. That all seven came back without their prefix fits the counts, seven
+  listed and seven not listed, and is not shown. `[unverified]`
+- **The two objects, the two fields and the two record types are not explained.** Whether the two remarks about
+  an object that cannot be found are about the two objects that did not come back, or about the objects of the
+  fields and record types, which the engine asks for by name, the run does not say. `[run 13]`
+- **The cross-check is as in run 12**: 257 rows, read whole with one request, 56 pairs compared, none missed.
+  Read once more in parts, the org answered all 60 requests with the same rows. `[run 13]`
+- **The fixture project is whole in the snapshot**: 87 components listed and retrieved, 99 files. `[run 13]`
+
+What followed, in decision record [0047](../../adr/0047-what-the-org-says-where-the-library-falls-short.md): a
+file in a folder the library does not know is counted by the type the org describes with that folder, and a
+component of a package that comes back without its prefix counts as the one the org listed. The tool of the run
+now says, without a name, how the name of an object ends, how many objects the fields and record types belong
+to, and of which missing components Salesforce remarked that it cannot find them. None of this was run against
+the org when this section was written.
 
 ## The 23 new pairs the Dependency API does not report
 

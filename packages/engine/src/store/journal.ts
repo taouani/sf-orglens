@@ -43,9 +43,46 @@ export function addInventory(store: Store, snapshotId: number, items: readonly I
 /**
  * Notes the components that came back in a retrieve. One that the org had
  * not listed gets a row of its own, marked as not listed.
+ *
+ * A component of a package can come back under its name without the prefix of the package: the org lists a
+ * bundle as `pkg__thing` and hands out the folder `thing`. Such a component is the one the org listed, if the
+ * org lists none under the short name. The row of the listed name is marked, and no row is made for the short
+ * one. Returned: the listed names that were found this way for the first time, with their type.
  */
-export function markRetrieved(store: Store, snapshotId: number, components: readonly ChunkMember[]): void {
+export function markRetrieved(store: Store, snapshotId: number, components: readonly ChunkMember[]): ChunkMember[] {
+  const withoutPrefix: ChunkMember[] = [];
   for (const component of components) {
+    const known = store.get(
+      'SELECT 1 AS found FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+      snapshotId,
+      component.type,
+      component.fullName,
+    );
+    const listedAs =
+      known === undefined
+        ? store.all(
+            `SELECT full_name, retrieved FROM inventory_item
+              WHERE snapshot_id = ? AND type = ? AND listed = 1 AND namespace_prefix IS NOT NULL
+                AND namespace_prefix <> '' AND full_name = namespace_prefix || '__' || ?
+              ORDER BY full_name`,
+            snapshotId,
+            component.type,
+            component.fullName,
+          )
+        : [];
+    // Two packages with a component of the same short name: nothing says which one came back.
+    const [only] = listedAs.length === 1 ? listedAs : [];
+    if (only !== undefined) {
+      const fullName = String(only['full_name']);
+      store.run(
+        'UPDATE inventory_item SET retrieved = 1 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+        snapshotId,
+        component.type,
+        fullName,
+      );
+      if (Number(only['retrieved']) === 0) withoutPrefix.push({ type: component.type, fullName });
+      continue;
+    }
     store.run(
       `INSERT INTO inventory_item (snapshot_id, type, full_name, listed, retrieved) VALUES (?, ?, ?, 0, 1)
        ON CONFLICT (snapshot_id, type, full_name) DO UPDATE SET retrieved = 1`,
@@ -54,6 +91,7 @@ export function markRetrieved(store: Store, snapshotId: number, components: read
       component.fullName,
     );
   }
+  return withoutPrefix;
 }
 
 /** Per type: how many components the org listed, how many of those came back, and how many came back unlisted. */

@@ -125,6 +125,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
   org listed and did not hand out, a listing it refused, a retrieve that failed and a file that cannot be read
   as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning` outside it, which
   does not. Each such issue says which in `details.tier`. What nothing tells the type of counts against the tier.
+  Where the Salesforce library falls short, the word of the org is taken (decision record 0047): a file in a
+  folder the library knows no type for is counted by the type the org describes with that folder, and a
+  component of a package that comes back without the prefix of the package is the one the org listed.
   The file of custom labels is not missing when the org lists no label. A snapshot of a Git source is not judged
   by tier. An impact answer counts such a warning when it can be about a type it covers, which no warning is
   while every analysed type is of the tier.

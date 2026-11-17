@@ -98,6 +98,55 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     store.close();
   });
 
+  it('takes a component that came back without the prefix of its package for the one the org listed', () => {
+    const store = open();
+    const id = begin(store);
+    const of = (prefix: string, row: InventoryRow): InventoryRow => ({ ...row, namespacePrefix: prefix });
+    addInventory(store, id, [
+      of('pkg', listed('LightningComponentBundle', 'pkg__tile')),
+      // The org lists the short name as well: what comes back under it is that one.
+      of('pkg', listed('LightningComponentBundle', 'pkg__card')),
+      listed('LightningComponentBundle', 'card'),
+      // Two packages with the same short name: nothing says which of them came back.
+      of('one', listed('LightningComponentBundle', 'one__grid')),
+      of('two', listed('LightningComponentBundle', 'two__grid')),
+      // A name that only looks like one with a prefix: the org states no package for it.
+      listed('LightningComponentBundle', 'pkg__lone'),
+      // The prefix of another package than the name starts with.
+      of('other', listed('LightningComponentBundle', 'pkg__odd')),
+      // The same short name in another type.
+      of('pkg', listed('AuraDefinitionBundle', 'pkg__tile')),
+    ]);
+    const bundle = (name: string): { type: string; fullName: string } => member('LightningComponentBundle', name);
+    expect(markRetrieved(store, id, ['tile', 'card', 'grid', 'lone', 'odd', 'pkg__card'].map(bundle))).toEqual([
+      bundle('pkg__tile'),
+    ]);
+    // A second retrieve with the same component says nothing new.
+    expect(markRetrieved(store, id, [bundle('tile')])).toEqual([]);
+    expect(
+      store
+        .all(
+          `SELECT full_name, listed, retrieved FROM inventory_item
+            WHERE snapshot_id = ? AND type = 'LightningComponentBundle' ORDER BY full_name`,
+          id,
+        )
+        .map((row) => [row['full_name'], row['listed'], row['retrieved']]),
+    ).toEqual([
+      ['card', 1, 1],
+      ['grid', 0, 1],
+      ['lone', 0, 1],
+      ['odd', 0, 1],
+      ['one__grid', 1, 0],
+      ['pkg__card', 1, 1],
+      ['pkg__lone', 1, 0],
+      ['pkg__odd', 1, 0],
+      ['pkg__tile', 1, 1],
+      ['two__grid', 1, 0],
+    ]);
+    expect(missingComponents(store, id, 'AuraDefinitionBundle')).toEqual(['pkg__tile']);
+    store.close();
+  });
+
   it('sets the retrieved components of every type from the inventory, and counts no unlisted one', () => {
     const store = open();
     const id = begin(store);
