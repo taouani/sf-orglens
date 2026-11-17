@@ -1464,6 +1464,13 @@ describe('asking the org what Salesforce knows about references', () => {
         const notTypes = /(?<!Ref)MetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
         const target = /RefMetadataComponentType = '(\w+)'/.exec(soql)?.[1];
         const notTargets = /RefMetadataComponentType NOT IN \(([^)]*)\)/.exec(soql)?.[1];
+        // Salesforce does not filter on a standard object as the type of a target, by name or in a list.
+        if (target === 'StandardEntity' || (notTargets?.includes("'StandardEntity'") ?? false)) {
+          return {
+            status: 400,
+            body: JSON.stringify([{ message: 'Refused.', errorCode: 'INVALID_TYPE_FOR_OPERATION' }]),
+          };
+        }
         const names = /\bName IN \(([^)]*)\)/.exec(soql)?.[1];
         const without = (list: string | undefined, value: unknown): boolean =>
           !(list?.includes(`'${String(value)}'`) ?? false);
@@ -1642,7 +1649,8 @@ describe('asking the org what Salesforce knows about references', () => {
 
   it('counts a query that failed where its rows can be missing', async () => {
     // The first query is at the limit, and the org refuses every query for the rows of the classes: the one for
-    // all of them, and the ones for their parts, which the reader asks for then.
+    // all of them, and the ones for their parts, which the reader asks for then. With no part answered, what is
+    // left is the query for all of them, and that one is counted.
     const org = tables();
     org['MetadataComponentDependency'] = [
       ...many(1990, 'Flow', 'CustomField', id('00N', 9), 'Takeover_Date'),
@@ -1654,8 +1662,8 @@ describe('asking the org what Salesforce knows about references', () => {
     const first = collected();
     await probeOrg(first.log, { env: environment() });
     expect(first.log.failed).toBe(false);
-    expect(first.text()).toMatch(
-      /\d+ queries were cut off at the limit or failed \(UNKNOWN_EXCEPTION\), so rows are missing\./,
+    expect(first.text()).toContain(
+      '1 query was cut off at the limit or failed (UNKNOWN_EXCEPTION), so rows are missing.',
     );
     expect(first.text().split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
     expectNothingForeign(first.text());

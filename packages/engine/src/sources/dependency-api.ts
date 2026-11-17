@@ -7,7 +7,9 @@
  *
  * One query gives at most 2,000 rows and cannot be continued. So the rows are asked for in parts where a query
  * reaches that number: per type of the component that refers, then per pair of types, then per group of
- * components that refer, whose ids the caller knows from what the org listed. A part that is still at the limit
+ * components that refer, whose ids the caller knows from what the org listed. A standard object as the target
+ * cannot be asked for by name, so its rows are asked for with the rest: whatever is of no type that a query
+ * named. A part that is still at the limit
  * is cut off: rows are missing, and the reading says so. Where rows were asked for per component, the reading
  * is only as whole as the list of components: it asks for the rows of every other component in one more query
  * where the list is short enough for that, and says so where it is not.
@@ -75,7 +77,7 @@ export interface DependencyLimits extends RequestLimits {
   readonly pages: number;
   /** How often the types that are left are asked for, where the types that are known do not give every row. */
   readonly rounds: number;
-  /** How many components a query names at most, where a pair of types is asked for per component. */
+  /** How many components a query names at most, where a part of a type is asked for per component. */
   readonly idsPerQuery: number;
   /** After this many queries in a row from the start that the org refused, the reading stops. */
   readonly refusalsAtStart: number;
@@ -105,7 +107,8 @@ export interface DependencyOptions {
   readonly apiVersion?: string | undefined;
   /**
    * The ids of the components of a type that the org listed, where the type is given as the Dependency API
-   * writes it. With them, a pair of types that is at the limit is asked for per group of components.
+   * writes it. With them, a part of a type that is at the limit is asked for per group of components: a pair
+   * of types, or the rest of a type.
    */
   readonly idsOfType?: ((type: string) => readonly string[]) | undefined;
   /** Called after every query, with the number of requests and of different rows so far. */
@@ -142,6 +145,13 @@ const REFERRING_TYPES = [
   'WorkflowFieldUpdate',
   'WorkflowRule',
 ];
+
+/**
+ * Types of target that no condition names. Salesforce does not answer a query that filters on a standard object
+ * as the type of the target: its documentation of the object says so, and the test org refused every such
+ * query, also the one that leaves the type out by name (`docs/research/phase-1/real-org.md`).
+ */
+const TARGETS_NOT_NAMED: readonly string[] = ['StandardEntity'];
 
 /** A type or an id that can stand between quotes in a query as it is. Anything else is never put into one. */
 const TYPE_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
@@ -296,14 +306,15 @@ export async function readDependencies(
     [...new Set([...rows.values()].map(pick))].filter((type) => TYPE_NAME.test(type));
 
   /**
-   * The rows of one pair of types that is at the limit, per group of the components that refer. A group at the
-   * limit is asked for in two halves, down to one component.
+   * The rows of one part of a type that is at the limit, per group of the components that refer. A part is a
+   * pair of types, the rest of a type, or the whole type. A group at the limit is asked for in two halves, down
+   * to one component. `sample`: rows that are known to be of the part.
    */
-  const askPerComponent = async (pair: string, sample: readonly DependencyRow[], type: string): Promise<void> => {
+  const askPerComponent = async (part: string, sample: readonly DependencyRow[], type: string): Promise<void> => {
     const ids = [...new Set((options.idsOfType?.(type) ?? []).filter((id) => ID.test(id)))].sort();
     // The ids of the org have 15 characters, or 18 with three more that repeat the case of the first 15.
     const known = new Set(ids.map((id) => id.slice(0, 15)));
-    // The rows the pair gave before it was cut off show whether the ids are the ones the API uses. If a row is
+    // The rows the part gave before it was cut off show whether the ids are the ones the API uses. If a row is
     // from a component whose id is not among them, asking per id would leave its rows out without a trace.
     if (ids.length === 0 || sample.some((row) => !known.has(row.from.id.slice(0, 15)))) {
       cutOff += 1;
@@ -316,7 +327,7 @@ export async function readDependencies(
     /** Whether a group left rows out, which is counted where it happens. */
     let lacking = false;
     for (let group = groups.shift(); group !== undefined; group = groups.shift()) {
-      const asked = await ask(`${pair} AND MetadataComponentId IN (${quoted(group)})`);
+      const asked = await ask(`${part} AND MetadataComponentId IN (${quoted(group)})`);
       for (const row of asked.rows) came.add(identity(row));
       if (atLimit(asked)) {
         if (group.length === 1) {
@@ -333,8 +344,8 @@ export async function readDependencies(
       }
       if (asked.failure === null) groupsAnswered += 1;
     }
-    // The rows the pair gave before it was cut off have to come again. Where one does not, the org does not
-    // read the condition on the id the way it is meant here, and the groups say nothing about what is there.
+    // The rows that are known to be of the part have to come again. Where one does not, the org does not read
+    // a condition the way it is meant here, and the groups say nothing about what is there.
     if (!lacking && sample.some((row) => !came.has(identity(row)))) {
       cutOff += 1;
       return;
@@ -345,45 +356,80 @@ export async function readDependencies(
       unproven += 1;
       return;
     }
-    const others = await ask(`${pair} AND MetadataComponentId NOT IN (${quoted(ids)})`);
+    const others = await ask(`${part} AND MetadataComponentId NOT IN (${quoted(ids)})`);
     if (atLimit(others)) cutOff += 1;
     else if (others.failure !== null) failed += 1;
   };
 
-  /** The rows of one type of component, per type of the target where the type alone is at the limit. */
+  /**
+   * Whether the org refused a query as it is written: it gave no row and no page, and not because it took too
+   * long. Asking for the same rows in another way can be answered. A query that ran out of time is not one:
+   * a query for more rows would take longer still.
+   */
+  const refusedAsWritten = (asked: Asked): boolean =>
+    asked.failure?.kind === 'refused' && asked.rows.length === 0 && !(asked.failure.code ?? '').includes('TIMEOUT');
+
+  /**
+   * The rows of one type of component, per type of the target where the type alone is at the limit.
+   *
+   * A type of target that cannot be asked for by name is never left out of the rest, so its rows come with the
+   * rest. That holds for a standard object, and for a type whose query the org refused as it is written.
+   */
   const askType = async (type: string): Promise<void> => {
-    const ofType = await ask(`MetadataComponentType = '${type}'`);
+    const whole = `MetadataComponentType = '${type}'`;
+    const ofType = await ask(whole);
     if (!atLimit(ofType) && ofType.failure === null) return;
     // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
     // A type whose query failed is asked for in the same parts: a part can be answered where the whole is not.
+    /** The types of target that a query of their own was asked for and that the rest leaves out. */
     const done = new Set<string>();
-    let targets = seen((row) => row.to.type).sort();
-    if (!atLimit(ofType) && targets.length === 0) {
-      // No part is known, and the query for the rest would be the one that failed.
-      failed += 1;
-      return;
-    }
+    /** The types of target that are not asked for by name, or were and were refused. */
+    const unnamed = new Set(TARGETS_NOT_NAMED);
+    const left = (): string[] =>
+      seen((row) => row.to.type)
+        .filter((target) => !done.has(target) && !unnamed.has(target))
+        .sort();
+    let targets = left();
     for (let round = 0; round < limits.rounds; round += 1) {
       for (const target of targets) {
-        done.add(target);
-        const pair = `MetadataComponentType = '${type}' AND RefMetadataComponentType = '${target}'`;
+        const pair = `${whole} AND RefMetadataComponentType = '${target}'`;
         const asked = await ask(pair);
-        if (atLimit(asked)) await askPerComponent(pair, asked.rows, type);
-        else if (asked.failure !== null) failed += 1;
+        if (atLimit(asked)) {
+          done.add(target);
+          await askPerComponent(pair, asked.rows, type);
+        } else if (asked.failure === null) done.add(target);
+        // The rest gives the rows of a type the org refuses by its name, and counts as failed if it does not.
+        else if (refusedAsWritten(asked)) unnamed.add(target);
+        else {
+          // A query that broke off or took too long. The rest would take longer with these rows in it.
+          done.add(target);
+          failed += 1;
+        }
       }
-      const others = await ask(
-        `MetadataComponentType = '${type}'${done.size === 0 ? '' : ` AND RefMetadataComponentType NOT IN (${quoted(done)})`}`,
-      );
-      targets = seen((row) => row.to.type)
-        .filter((target) => !done.has(target))
-        .sort();
+      const rest =
+        done.size === 0 ? whole : `${whole} AND RefMetadataComponentType NOT IN (${quoted([...done].sort())})`;
+      // With no type left out, the rest is the query for the whole type, which has been asked.
+      const others = done.size === 0 ? ofType : await ask(rest);
+      // The rows the query for the whole type gave that are of the rest. The rest is the only query that brings
+      // the rows to a standard object, and nothing else shows that the org puts them into its answer.
+      const known = ofType.rows.filter((row) => !done.has(row.to.type));
+      targets = left();
       if (!atLimit(others)) {
-        if (others.failure !== null) failed += 1;
+        if (others.failure === null) {
+          const came = new Set(others.rows.map(identity));
+          // A row that is of the rest and did not come with it: the org does not read the list of types the
+          // way it is meant here, and the rest says nothing about what is there.
+          if (known.some((row) => !came.has(identity(row)))) cutOff += 1;
+        } else if (others !== ofType && refusedAsWritten(others)) {
+          // The org does not take the list of types. The conditions on the id of a component need none.
+          await askPerComponent(whole, ofType.rows, type);
+        } else failed += 1;
         return;
       }
-      // At the limit with no type left to ask for by name, or after the last round: rows are missing.
+      // At the limit with no type left to ask for by name, or after the last round: the rest is asked for per
+      // component, which leaves no type out.
       if (targets.length === 0 || round === limits.rounds - 1) {
-        cutOff += 1;
+        await askPerComponent(rest, [...others.rows, ...known], type);
         return;
       }
     }
