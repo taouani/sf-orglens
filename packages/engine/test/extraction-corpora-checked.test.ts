@@ -2,12 +2,16 @@
  * Holds the analysis of the public codebases to what was checked by hand.
  *
  * Every formula field, default value, validation rule, lookup filter and roll-up summary of the codebases of
- * `fixtures/corpora.toml` was read together with the references the analysis reports for it. The author of the
- * analyser read them, and no second reader (`docs/research/phase-1/public-codebases.md`). The listing that was
- * read is not stored, because it holds the text of the codebases. Its SHA-256 is: when the analysis reports
- * another reference, another place or another issue for one of these entries, the digest moves and this test
- * fails. Then print the listing (`pnpm run corpora:listing`), check by hand what moved, and record the new
- * digest here and in a note.
+ * `fixtures/corpora.toml` was held against the references the analysis reports for it
+ * (`docs/research/phase-1/public-codebases.md`). The author of the analyser read the 133 entries that can hold
+ * a name one by one, and the 235 default values that are a literal as a list of values. A sub-agent that
+ * reviewed the pull request read the 133 again. No person did.
+ *
+ * The listing that was read is not stored, because it holds the text of the codebases. Its SHA-256 is. When the
+ * analysis reports another reference, another place, another tier or another issue for one of these entries,
+ * the digest moves and this test fails. Then print the listing at the commit that recorded the digest and at
+ * the new one (`pnpm run corpora:listing`), compare the two, check by hand what moved, and record the new
+ * digest here and in a note. The listing does not print the origin of a reference.
  *
  * The codebases are not part of this repository. A codebase that was not downloaded (`pnpm run corpora:fetch`)
  * is skipped, so the test needs no network. CI does not download them.
@@ -16,7 +20,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
-import { digestOf, isLiteral, listCodebase, type EntryKind } from './corpora/listing.ts';
+import { digestOf, isLiteral, listCodebase, viaOf, type EntryKind } from './corpora/listing.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const corpora = join(root, '.corpora');
@@ -99,6 +103,16 @@ describe('the entries of the public codebases that were checked by hand', () => 
           // Of the whole codebase. Every such warning of these codebases is about an entry.
           notFollowed: listing.analysis.issues.filter((issue) => issue.code === 'PATH_NOT_FOLLOWED').length,
         }).toEqual(counts);
+        // The listing shows a reference under an entry of its file by its `via`. So it shows every reference
+        // once only while a file has one entry, and it hides none only while every reference with one of
+        // these `via` is of a file with an entry.
+        expect(new Set(listing.entries.map((entry) => entry.file)).size).toBe(listing.entries.length);
+        expect(
+          listing.analysis.components
+            .flatMap((one) => one.references)
+            .filter((one) => ['formula', 'filter', 'summary'].includes(viaOf(one))).length,
+        ).toBe(counts.references);
+        // An entry shows every issue of its component. Each component with an issue has one entry here.
         expect(listing.entries.flatMap((entry) => entry.issues).length).toBe(counts.notFollowed);
         // Every file with an entry belongs to a component of the analysis.
         expect(listing.entries.filter((entry) => entry.key === null)).toEqual([]);

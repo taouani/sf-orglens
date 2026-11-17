@@ -6,8 +6,9 @@
  *
  *   name      the codebases to time. Default: every one that was downloaded (pnpm run corpora:fetch)
  *   --runs    how often each command is run, default 5. The smallest and the largest time are printed
- *   --copies  also time a made-up source: the first named codebase, with every object of it copied n times
- *             under another name. It stands for an org with many objects and fields. Nothing of it is real
+ *   --copies  also time a made-up source: the first named codebase, or the first of the manifest when none is
+ *             named, with every object of it copied n times under another name. It stands for a repository
+ *             with very many objects and fields. Nothing of it is real, and it is no org
  *
  * It needs a build (pnpm run build) and no network. Every run of a codebase gets a workspace of its own in a
  * temporary folder, so that every snapshot is a first snapshot. The folders are removed at the end, also when
@@ -57,8 +58,14 @@ for (const name of args) {
 const remove = (folder) => fs.rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'orglens-corpora-'));
 process.on('exit', () => remove(temporary));
-// A run that is interrupted removes its folder too: without this, Ctrl+C ends the process before 'exit'.
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130));
+// A run that is interrupted removes its folder too: without this, a signal ends the process before 'exit'.
+for (const [signal, code] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGHUP', 129],
+]) {
+  process.on(signal, () => process.exit(code));
+}
 
 const now = () => Number(process.hrtime.bigint()) / 1e6;
 const seconds = (milliseconds) => +(milliseconds / 1000).toFixed(2);
@@ -192,14 +199,31 @@ function copyName(object, n) {
   return `${object.slice(0, object.length - ending.length)}_${String(n)}${ending === '' ? '__c' : ending}`;
 }
 
+/** Runs Git in a folder, without the settings of the machine. A failure ends the script. */
+function git(folder, ...command) {
+  const result = spawnSync('git', command, {
+    cwd: folder,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' },
+  });
+  if (result.status !== 0) throw new Error(`git ${command[0]} ended with ${String(result.status)}: ${result.stderr}`);
+}
+
 /**
  * A copy of a codebase with every folder of an object copied `count` times under another name, in a package
  * folder of its own. A copy keeps its files as they are, so a lookup of it leads to the object it led to.
+ *
+ * The copy is a Git repository with one commit, and it has the project file and the `.forceignore` of the
+ * codebase, so that it is read the way the codebase is: with a commit to name, and with the same files left out.
  */
 function withCopies(corpus, count) {
   const repository = path.join(temporary, `${corpus.name}-copies`);
+  const original = path.join(root, '.corpora', corpus.name);
   for (const one of corpus.paths) {
-    fs.cpSync(path.join(root, '.corpora', corpus.name, one), path.join(repository, one), { recursive: true });
+    fs.cpSync(path.join(original, one), path.join(repository, one), { recursive: true });
+  }
+  for (const file of ['sfdx-project.json', '.forceignore']) {
+    if (fs.existsSync(path.join(original, file))) fs.cpSync(path.join(original, file), path.join(repository, file));
   }
   const objects = [];
   const find = (folder) => {
@@ -220,6 +244,19 @@ function withCopies(corpus, count) {
       if (fs.existsSync(file)) fs.renameSync(file, path.join(target, `${copyName(object, n)}.object-meta.xml`));
     }
   }
+  git(repository, 'init', '--quiet');
+  git(repository, 'add', '--all');
+  git(
+    repository,
+    '-c',
+    'user.name=bench',
+    '-c',
+    'user.email=bench@example.invalid',
+    'commit',
+    '--quiet',
+    '-m',
+    'copies',
+  );
   return { repository, paths: [...corpus.paths, 'copies'], objects: objects.length };
 }
 
@@ -236,6 +273,10 @@ for (const corpus of asked) {
 }
 const first = args.length === 0 ? asked[0] : manifest.find((corpus) => corpus.name === args[0]);
 const base = results.find((result) => result.name === first?.name);
+if (copies > 0 && (first === undefined || base === undefined)) {
+  console.error(`--copies needs the codebase "${first?.name ?? '?'}", which is not downloaded.`);
+  process.exitCode = 1;
+}
 if (copies > 0 && first !== undefined && base !== undefined) {
   console.error(`${first.name} with ${String(copies)} copies of every object: ${String(runs)} runs`);
   const made = withCopies(first, copies);

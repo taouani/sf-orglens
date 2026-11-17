@@ -32,7 +32,11 @@ export interface ListingEntry {
   readonly key: string | null;
   /** The text to check: a formula with its entities undone, or the elements of a filter or a summary. */
   readonly text: string;
-  /** The references of the component that belong to this entry, as lines. */
+  /**
+   * The references of the component that belong to this entry, as lines. They are chosen by `via`, so a file
+   * with two entries of one `via` would show the references of both under each. No file of the codebases has
+   * two entries, and the test that holds the check says so.
+   */
   readonly references: readonly string[];
   /** The issues of the analysis about the component, as lines. */
   readonly issues: readonly string[];
@@ -124,15 +128,16 @@ export async function listCodebase(root: string, paths: readonly string[]): Prom
   for (const file of tree.files) {
     if (!/\.(?:field|validationRule|object)(?:-meta\.xml)?$/.test(file)) continue;
     const component = byFile.get(file);
+    // An issue without a component is of no entry, and neither is one of a file without a component.
+    const issues =
+      component === undefined ? [] : analysis.issues.filter((issue) => issue.componentKey === component.key);
     for (const entry of entriesOfFile(Buffer.from(tree.read(file)).toString('utf8'))) {
       entries.push({
         ...entry,
         file,
         key: component?.key ?? null,
         references: (component?.references ?? []).filter((one) => VIA[entry.kind].includes(viaOf(one))).map(lineOf),
-        issues: analysis.issues
-          .filter((issue) => issue.componentKey === component?.key)
-          .map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`),
+        issues: issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`),
       });
     }
   }
@@ -140,7 +145,7 @@ export async function listCodebase(root: string, paths: readonly string[]): Prom
 }
 
 /** The listing as text: what was read by hand. `withLiterals` false leaves out the default values that are literals. */
-export function printed(name: string, listing: Listing, withLiterals = true): string {
+function printed(name: string, listing: Listing, withLiterals = true): string {
   const lines: string[] = [`# ${name}`];
   for (const entry of listing.entries) {
     if (!withLiterals && entry.kind === 'default' && isLiteral(entry.text) && entry.references.length === 0) continue;

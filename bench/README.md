@@ -91,9 +91,13 @@ printing:
   one component refers to. It finds the two by asking `impact` for every field, up to 1,000.
 
 It prints the least and the most of the runs, the count of files, components and references, and the size of
-the database. With `--copies n` it also builds a source that is not real: the first named codebase with every
-folder of an object copied `n` times under another name. It stands for a repository with very many objects and
-fields, and it is asked the same two questions as the codebase it is made of.
+the database. With `--copies n` it also builds a source that is not real: the first named codebase, or the
+first of the manifest when none is named, with every folder of an object copied `n` times under another name.
+The copy is a Git repository with one commit, with the project file and the `.forceignore` of the codebase, so
+that it is read the way the codebase is. It stands for a repository with very many objects and fields, and it
+is asked the same two questions as the codebase it is made of. It is no org: its files are small, most of its
+components are of the few types Phase 1 analyses, and the copy of a standard object keeps formulas that name
+fields the copy cannot have.
 
 ## Limits
 

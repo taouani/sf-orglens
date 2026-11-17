@@ -148,7 +148,7 @@ describe('the analysis of the public codebases', () => {
         for (const path of tree.files) {
           if (!/\.(?:field|validationRule|object)(?:-meta\.xml)?$/.test(path)) continue;
           const text = Buffer.from(tree.read(path)).toString('utf8');
-          // The files are searched as text here, not read as XML. None of the three writes a formula in CDATA.
+          // The files are searched as text here, not read as XML. None of the four writes a formula in CDATA.
           for (const [, , body = ''] of text.matchAll(
             /<(formula|errorConditionFormula|defaultValue)>([\s\S]*?)<\/\1>/g,
           )) {
@@ -161,7 +161,7 @@ describe('the analysis of the public codebases', () => {
           }
         }
         expect(differ).toEqual([]);
-        // Texts are counted here and components above. The numbers are the same in these three codebases,
+        // Texts are counted here and components above. The numbers are the same in these four codebases,
         // because no field of them has a formula and a default value.
         expect(formulas).toBe(EXPECTED[name]?.withFormula);
       },
