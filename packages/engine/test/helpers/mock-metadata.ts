@@ -96,8 +96,11 @@ export interface MockMetadata {
    * as `prefix__FullName` and hands it out under the name it has in the project, without the prefix.
    */
   readonly packaged: Map<string, string>;
-  /** Types the org describes and the Salesforce library does not know: the name, and the folder of its files. */
-  readonly unknownTypes: Map<string, string>;
+  /**
+   * Types the org describes beside the ones of the project, such as a type the Salesforce library does not know:
+   * the name, the folder of its files, and the types of its parts.
+   */
+  readonly unknownTypes: Map<string, { readonly directory: string; readonly children?: readonly string[] }>;
   /** A retrieve of more files than this fails. */
   maxFiles: number;
   /** How often a retrieve answers "in progress" before it is done. */
@@ -286,12 +289,12 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       if (operation === 'describeMetadata') {
         metadata.calls.push({ operation, about: '', job: null });
         for (const name of metadata.emptyTypes) describe(name);
-        const unknown = [...metadata.unknownTypes].map(([name, directoryName]): DescribedType => ({
+        const unknown = [...metadata.unknownTypes].map(([name, { directory, children }]): DescribedType => ({
           name,
-          directoryName,
+          directoryName: directory,
           suffix: null,
           inFolder: false,
-          children: [],
+          children: [...(children ?? [])],
         }));
         const objects = [...described.values(), ...unknown]
           .map(

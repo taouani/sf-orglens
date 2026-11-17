@@ -613,7 +613,8 @@ One read, in run 13 on 17 November 2026, the first with the judgement of record
 
 What followed, in decision record [0047](../../adr/0047-what-the-org-says-where-the-library-falls-short.md): a
 file in a folder the library does not know is counted by the type the org describes with that folder, and a
-component of a package that comes back without its prefix counts as the one the org listed. The tool of the run
+component of a package that comes back without its prefix counts as the one the org listed, when the retrieve
+asked for the listed name and not for the short one. The tool of the run
 now says, without a name, how the name of an object ends, how many objects the fields and record types belong
 to, and of which missing components Salesforce remarked that it cannot find them. None of this was run against
 the org when this section was written.

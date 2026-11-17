@@ -118,11 +118,12 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       of('pkg', listed('AuraDefinitionBundle', 'pkg__tile')),
     ]);
     const bundle = (name: string): { type: string; fullName: string } => member('LightningComponentBundle', name);
-    expect(markRetrieved(store, id, ['tile', 'card', 'grid', 'lone', 'odd', 'pkg__card'].map(bundle))).toEqual([
-      bundle('pkg__tile'),
-    ]);
+    // The retrieve asked for every name the org lists, as a retrieve does.
+    const asked = ['pkg__tile', 'pkg__card', 'card', 'one__grid', 'two__grid', 'pkg__lone', 'pkg__odd'].map(bundle);
+    const cameBack = ['tile', 'card', 'grid', 'lone', 'odd', 'pkg__card'].map(bundle);
+    expect(markRetrieved(store, id, cameBack, { asked, notFound: [] })).toEqual([bundle('pkg__tile')]);
     // A second retrieve with the same component says nothing new.
-    expect(markRetrieved(store, id, [bundle('tile')])).toEqual([]);
+    expect(markRetrieved(store, id, [bundle('tile')], { asked, notFound: [] })).toEqual([]);
     expect(
       store
         .all(
@@ -144,6 +145,43 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       ['two__grid', 1, 0],
     ]);
     expect(missingComponents(store, id, 'AuraDefinitionBundle')).toEqual(['pkg__tile']);
+    store.close();
+  });
+
+  it('takes a component for a listed one with a prefix only when the retrieve leaves no other reading', () => {
+    const store = open();
+    const id = begin(store);
+    const of = (prefix: string, row: InventoryRow): InventoryRow => ({ ...row, namespacePrefix: prefix });
+    const object = (name: string): { type: string; fullName: string } => member('CustomObject', name);
+    addInventory(store, id, [
+      of('pkg', listed('CustomObject', 'pkg__Asked__c')),
+      of('pkg', listed('CustomObject', 'pkg__Elsewhere__c')),
+      of('pkg', listed('CustomObject', 'pkg__Gone__c')),
+      of('pkg', listed('CustomObject', 'pkg__Plain__c')),
+      // The org lists a field of an object it does not list. The object is asked for by its name for the field.
+      listed('CustomField', 'Asked__c.Total__c'),
+    ]);
+    const asked = ['pkg__Asked__c', 'Asked__c', 'pkg__Gone__c', 'pkg__Plain__c'].map(object);
+    const cameBack = ['Asked__c', 'Elsewhere__c', 'Gone__c', 'Plain__c'].map(object);
+
+    // Nothing is known of the retrieve: every component is what its name says.
+    const other = begin(store, 'uat');
+    addInventory(store, other, [of('pkg', listed('CustomObject', 'pkg__Plain__c'))]);
+    expect(markRetrieved(store, other, [object('Plain__c')])).toEqual([]);
+    expect(missingComponents(store, other, 'CustomObject')).toEqual(['pkg__Plain__c']);
+
+    expect(
+      markRetrieved(store, id, cameBack, { asked, notFound: [object('pkg__Gone__c'), object('Other__c')] }),
+    ).toEqual([object('pkg__Plain__c')]);
+    expect(missingComponents(store, id, 'CustomObject')).toEqual([
+      // The retrieve asked for the short name too, and that is what came back.
+      'pkg__Asked__c',
+      // This retrieve did not ask for the listed name.
+      'pkg__Elsewhere__c',
+      // Salesforce remarked that it cannot find the listed name.
+      'pkg__Gone__c',
+    ]);
+    expect(unlistedComponents(store, id, 'CustomObject')).toEqual(['Asked__c', 'Elsewhere__c', 'Gone__c']);
     store.close();
   });
 

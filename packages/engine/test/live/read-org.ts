@@ -49,6 +49,7 @@ import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { notFoundIn } from '../../src/sources/metadata-api.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
@@ -296,15 +297,22 @@ const OBJECT_ENDINGS: ReadonlySet<string> = new Set([
   '__dlm',
   '__dll',
   '__chn',
-  '__Share',
-  '__History',
-  '__Feed',
-  '__Tag',
 ]);
+
+/** The types whose components are parts of an object, so that an object stands before the dot of their name. */
+let partsOfObject: ReadonlySet<string> | undefined;
+function isPartOfObject(type: string): boolean {
+  partsOfObject ??= new Set(
+    Object.values(registry.types['customobject']?.children?.types ?? {}).map((part) => part.name),
+  );
+  return partsOfObject.has(type);
+}
 
 /**
  * How the name of an object ends: with an ending Salesforce gives a kind of custom object, or with none, as the
- * name of a standard object does. It says what kind of object it is and nothing of its name.
+ * name of a standard object does. It says what kind of object it is and nothing of its name. It is asked only
+ * of the name of an object: of a component of the type `CustomObject`, and of what stands before the dot in the
+ * name of a part of one.
  */
 export function objectKind(name: string): string {
   const ending = /__[A-Za-z]{1,8}$/.exec(name)?.[0];
@@ -315,10 +323,8 @@ export function objectKind(name: string): string {
 /** The names Salesforce said it cannot find in a retrieve, by type. The names are compared and never shown. */
 function notFoundNames(remarks: readonly string[]): Map<string, Set<string>> {
   const found = new Map<string, Set<string>>();
-  for (const remark of remarks) {
-    const [, type, name] = /^Entity of type '([^']*)' named '([^']*)' cannot be found$/.exec(remark.trim()) ?? [];
-    if (type === undefined || name === undefined) continue;
-    found.set(type, (found.get(type) ?? new Set<string>()).add(name));
+  for (const { type, fullName } of notFoundIn(remarks)) {
+    found.set(type, (found.get(type) ?? new Set<string>()).add(fullName));
   }
   return found;
 }
@@ -346,12 +352,15 @@ export interface InventoryRow {
  * object or the folder they belong to came back, whether they came back under a name that is nearly the same,
  * and of how many Salesforce remarked that it cannot find them.
  *
- * `remarks`: what Salesforce remarked about the retrieves, as the engine kept it.
+ * `remarks`: what Salesforce remarked about the retrieves, as the engine kept it. `remarksMade`: how many
+ * remarks Salesforce made. The engine keeps the first of each retrieve, so the lines say when a count of what
+ * Salesforce cannot find can be too low.
  */
 export function missingLines(
   log: PublicLog,
   items: readonly InventoryRow[],
   remarks: readonly string[] = [],
+  remarksMade = remarks.length,
 ): string[] {
   interface Item {
     readonly name: string;
@@ -391,7 +400,7 @@ export function missingLines(
     return counts;
   };
   /** Whether what a name belongs to, an object or a folder, is in the snapshot. */
-  const owners = (names: readonly Item[], mark: string, ownerType: string): string | null => {
+  const owners = (type: string, names: readonly Item[], mark: string, ownerType: string): string | null => {
     // A name in a folder can hold a dot of its own. It belongs to the folder, not to an object.
     const owned = names.filter((item) => item.name.includes(mark) && (mark === '/' || !item.name.includes('/')));
     if (owned.length === 0) return null;
@@ -412,7 +421,8 @@ export function missingLines(
           .filter((owner) => owner !== 'unfiled$public' && !states.has(`${ownerType}\u0000${owner}`)),
       ),
     ];
-    if (mark !== '.' || strangers.length === 0) return said;
+    // What stands before the dot is the name of an object only for a part of an object.
+    if (mark !== '.' || strangers.length === 0 || !isPartOfObject(type)) return said;
     const cannot = remarked(ownerType, strangers);
     return (
       `${said}. Not in the list: ${plural(strangers.length, 'object', 'different objects')}, by how the name ends: ${tallied(tally(strangers.map(objectKind)))}` +
@@ -428,9 +438,9 @@ export function missingLines(
     parts.push(`Forms of the names: ${tallied(tally(names.map((item) => nameForm(item.name))), FORMS_SHOWN)}`);
     if (type === 'CustomObject')
       parts.push(`By how the name ends: ${tallied(tally(names.map((item) => objectKind(item.name))))}`);
-    const object = owners(names, '.', 'CustomObject');
+    const object = owners(type, names, '.', 'CustomObject');
     if (object !== null) parts.push(object);
-    const folder = owners(names, '/', type === 'EmailTemplate' ? 'EmailFolder' : `${type}Folder`);
+    const folder = owners(type, names, '/', type === 'EmailTemplate' ? 'EmailFolder' : `${type}Folder`);
     if (folder !== null) parts.push(folder);
     return parts;
   };
@@ -495,6 +505,12 @@ export function missingLines(
   }
   if (rest.size > 0) {
     lines.push('', `Other names Salesforce remarked it cannot find, by type: ${tallied(rest)}.`);
+  }
+  if (lines.length > 0 && remarksMade > remarks.length) {
+    lines.push(
+      '',
+      `Salesforce made ${String(remarksMade)} remarks about the retrieves, and the snapshot keeps ${String(remarks.length)} of them. The counts above of what Salesforce cannot find can be too low.`,
+    );
   }
   return lines;
 }
@@ -688,6 +704,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
       manageableState: text(row['manageable_state']) || null,
     })),
     allRemarks,
+    remarksInAll,
   )) {
     log.say(line);
   }

@@ -51,6 +51,17 @@ export interface Member {
   readonly fullName: string;
 }
 
+/**
+ * The members of which Salesforce remarked that it cannot find them, among the remarks of a retrieve
+ * (`RetrieveState.problems`). A remark in another form names no member here.
+ */
+export function notFoundIn(problems: readonly string[]): Member[] {
+  return problems.flatMap((problem) => {
+    const [, type, fullName] = /^Entity of type '([^']*)' named '([^']*)' cannot be found$/.exec(problem.trim()) ?? [];
+    return type === undefined || fullName === undefined ? [] : [{ type, fullName }];
+  });
+}
+
 /** How far a retrieve is. */
 export interface RetrieveState {
   readonly done: boolean;

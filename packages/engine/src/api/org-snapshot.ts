@@ -29,6 +29,7 @@ import {
   isAboutTheOrg,
   metadataApi,
   MetadataRequestError,
+  notFoundIn,
   type MetadataApi,
   type MetadataApiLimits,
   type RetrieveState,
@@ -334,14 +335,22 @@ const HOLDS_ONLY: Readonly<Record<string, string>> = { CustomLabels: 'CustomLabe
 /**
  * The types the org describes, by the folder a retrieve puts their files in, each with its parts. The org is
  * asked once per run, and only when a file came back in a folder the Salesforce library knows no type for: the
- * library can be older than the org.
+ * library can be older than the org. `refused` holds what the org said if it did not answer: then no folder has
+ * a type, and a file in it counts against the logic tier.
  */
-const foldersOfOrg = new WeakMap<MetadataApi, Promise<ReadonlyMap<string, readonly string[]>>>();
-function typesOfFolder(api: MetadataApi, folder: string): Promise<readonly string[]> {
+interface FoldersOfOrg {
+  readonly types: ReadonlyMap<string, readonly string[]>;
+  readonly refused: string | null;
+}
+const foldersOfOrg = new WeakMap<MetadataApi, Promise<FoldersOfOrg>>();
+function typesOfFolder(
+  api: MetadataApi,
+  folder: string,
+): Promise<{ readonly types: readonly string[]; readonly refused: string | null }> {
   let folders = foldersOfOrg.get(api);
   if (folders === undefined) {
     folders = api.describe().then(
-      (described) => {
+      (described): FoldersOfOrg => {
         const found = new Map<string, Set<string>>();
         for (const type of described) {
           if (type.directory === null) continue;
@@ -349,18 +358,24 @@ function typesOfFolder(api: MetadataApi, folder: string): Promise<readonly strin
           found.set(type.directory, names);
           for (const name of [type.name, ...type.children]) names.add(name);
         }
-        return new Map([...found].map(([directory, names]) => [directory, [...names].sort(byCodeUnit)]));
+        return {
+          types: new Map([...found].map(([directory, names]) => [directory, [...names].sort(byCodeUnit)])),
+          refused: null,
+        };
       },
-      (error: unknown) => {
-        // An org that does not say what it has leaves the file without a type, which counts against the tier.
-        if (isRefusal(error)) return new Map<string, readonly string[]>();
+      (error: unknown): FoldersOfOrg => {
+        if (isRefusal(error)) return { types: new Map(), refused: saidIn(error) };
         throw error;
       },
     );
     foldersOfOrg.set(api, folders);
   }
-  return folders.then((known) => known.get(folder) ?? []);
+  return folders.then((known) => ({ types: known.types.get(folder) ?? [], refused: known.refused }));
 }
+
+/** What the message of a file says that is counted by the word of the org. */
+const DESCRIBED_BY_ORG =
+  'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it.';
 
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
 const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
@@ -666,16 +681,27 @@ async function retrieveChunk(
   // A file in a folder the library knows no type for is placed by what the org says about its types.
   const problems: { at: string; message: string; types: readonly string[]; byOrg: boolean }[] = [];
   for (const problem of unpacked.problems) {
-    const slash = problem.at.indexOf('/');
-    const byOrg = problem.types.length === 0 && slash > 0 ? await typesOfFolder(api, problem.at.slice(0, slash)) : [];
-    problems.push(byOrg.length > 0 ? { ...problem, types: byOrg, byOrg: true } : { ...problem, byOrg: false });
+    if (problem.types.length > 0 || problem.folder === null) {
+      problems.push({ ...problem, byOrg: false });
+      continue;
+    }
+    const org = await typesOfFolder(api, problem.folder);
+    if (org.types.length > 0) {
+      problems.push({ ...problem, message: `${problem.message} ${DESCRIBED_BY_ORG}`, types: org.types, byOrg: true });
+    } else if (org.refused !== null) {
+      const message = `${problem.message} The org was asked which type keeps its files in this folder, and did not say: ${org.refused}`;
+      problems.push({ ...problem, message, byOrg: false });
+    } else problems.push({ ...problem, byOrg: false });
   }
   store.write(() => {
     const twice: string[] = [];
     for (const path of unpacked.tree.files) {
       if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
     }
-    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components);
+    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components, {
+      asked: members,
+      notFound: notFoundIn(state.problems),
+    });
     for (const type of [...new Set(withoutPrefix.map((component) => component.type))].sort(byCodeUnit)) {
       const names = withoutPrefix.filter((component) => component.type === type).map((one) => one.fullName);
       issue(
@@ -695,11 +721,7 @@ async function retrieveChunk(
         snapshotId,
         severityIn(tier),
         'RESOLVE_FAILED',
-        missingIn(
-          tier,
-          `${problem.at} could not be read as metadata: ${problem.message}${problem.byOrg ? ' The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it.' : ''}`,
-          problem.types,
-        ),
+        missingIn(tier, `${problem.at} could not be read as metadata: ${problem.message}`, problem.types),
         { at: problem.at, types: [...problem.types], tier, ...(problem.byOrg ? { describedByOrg: true } : {}) },
       );
     }

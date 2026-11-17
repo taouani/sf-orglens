@@ -1095,11 +1095,14 @@ in a pull request of its own, which waits for your answer and is not merged befo
   - A file in a folder the library knows no type for is counted by the type the org describes with that folder.
     If the reading above holds, the three files become warnings.
   - A component of a package that comes back under its name without the prefix of the package counts as the
-    one the org listed. If the seven bundles are what they look like, they count as retrieved.
+    one the org listed, when the retrieve asked for the listed name and not for the short one, and Salesforce
+    did not remark that it cannot find it. If the seven bundles are what they look like, they count as
+    retrieved.
   - The step that reads the test org says more about the objects, fields and record types, without a name.
 - **Choices of mine, for you to strike.** Record 0047 has the reasons: that the word of the org decides the tier
-  of a file the library cannot place, that the rule for the prefix holds for every type although it was seen
-  for one, and that the name a component came back with is not kept in the database.
+  of a file the library cannot place, that the rule for the prefix holds for every type that is retrieved by
+  its own name although it was seen for one, that the rule leaves a component missing rather than count one for
+  another, and that the name a component came back with is not kept in the database.
 - **Not done, and not verified:** neither correction was run against the org when this was written. The two
   objects, two fields and two record types are not explained, so the snapshot of the test org is expected to
   stay partial for six components after the next run. That run is recorded here when it is made.

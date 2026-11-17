@@ -669,10 +669,35 @@ describe('what is said about components that are missing', () => {
       'no ending of a custom object',
       'ends in __c',
       'ends in __mdt',
-      'ends in __Share',
+      // An ending no kind of custom object has is part of a name the org chose.
+      'an ending that is not shown',
       'an ending that is not shown',
       'ends in __c',
     ]);
+  });
+
+  it('takes what stands before a dot for an object only in the name of a part of an object', () => {
+    // A record of custom metadata is named by its type, which is no object of the list and ends as a name does.
+    const lines = missingLines(log, [item('CustomMetadata', 'sp__Tag.Secret', true, false)]);
+    expect(lines).toEqual([
+      '',
+      'Components the org listed and did not hand out, by type. A name is shown as its form only: "a" stands for letters, digits and underscores.',
+      '- CustomMetadata: 1 of 1 did not come back. Forms of the names: a.a (1). What stands before the dot, as CustomObject: is not in the list (1).',
+    ]);
+  });
+
+  it('says when the snapshot kept fewer remarks than Salesforce made', () => {
+    const remark = "Entity of type 'CustomObject' named 'SecretPlan' cannot be found";
+    const items = [item('CustomObject', 'SecretPlan', true, false)];
+    expect(missingLines(log, items, [remark], 1).at(-1)).toBe(
+      '- CustomObject: 1 of 1 did not come back. Forms of the names: a (1). By how the name ends: no ending of a custom object (1). Salesforce remarked of 1 that it cannot be found.',
+    );
+    expect(missingLines(log, items, [remark], 70).slice(-2)).toEqual([
+      '',
+      'Salesforce made 70 remarks about the retrieves, and the snapshot keeps 1 of them. The counts above of what Salesforce cannot find can be too low.',
+    ]);
+    // Nothing is missing: there is no count that could be too low.
+    expect(missingLines(log, [item('CustomObject', 'SecretPlan', true, true)], [], 70)).toEqual([]);
   });
 });
 

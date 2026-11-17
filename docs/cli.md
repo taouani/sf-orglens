@@ -182,10 +182,14 @@ they have below a package directory, such as `classes/Foo.cls`.
   such as an object that came for the sake of its fields (`UNLISTED_COMPONENTS`), a snapshot that was continued
   (`SNAPSHOT_RESUMED`) or given up (`SNAPSHOT_GIVEN_UP`).
 - **A component of a package can come back without the prefix of the package.** An org lists a Lightning web
-  component of a package as `pkg__thing` and hands out the folder `thing`. When the org lists exactly one
-  component of a package with that name behind its prefix, and none under the short name, it counts as
-  retrieved. The files of the snapshot keep the short name, and the note `RETRIEVED_WITHOUT_PREFIX` says how
-  many components of a type came back that way.
+  component of a package as `pkg__thing` and hands out the folder `thing`. What comes back under the short name
+  counts as the listed component when the retrieve asked for the listed name and not for the short one, the org
+  states the prefix as the package of the listed component, the org lists nothing under the short name,
+  Salesforce did not remark that it cannot find the listed name, and no second component of the retrieve has
+  the same short name. Otherwise the listed component stays missing. Only a prefix at the very start of a name
+  is seen, so a part of a component and a component in a folder are never taken this way. The files of the
+  snapshot keep the short name. The note `RETRIEVED_WITHOUT_PREFIX` says how many components of a type came
+  back that way in one retrieve, so a snapshot of many retrieves can hold several for a type.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
@@ -460,7 +464,8 @@ sorted. Those are the types that are retrieved by name: a field that fails with 
 component, or the types that keep their files in the top folder of the file with the types of their parts. The
 types are those the Salesforce library knows for the folder. Where it knows none, they are the types the org
 describes with that folder, and `details.describedByOrg` is `true`. The list is empty when nothing tells the
-type. A snapshot taken before these fields existed has issues without them.
+type. When the org was asked for its types and refused, the message says so and what the org answered. A
+snapshot taken before these fields existed has issues without them.
 
 An issue about several files carries their number in `details.count` and at most the first 50 paths in
 `details.paths`. `COMPONENT_DEFINED_TWICE` carries at most the first 50 components in `details.components`, each
