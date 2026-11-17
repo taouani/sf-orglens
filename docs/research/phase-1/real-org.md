@@ -24,6 +24,11 @@ In short:
 - The tool that asks the org named a custom metadata type wrongly, and counted two pairs as missing that
   Salesforce reports. The first probe gave 127. The engine will meet the same trap in work package 8.
 - The symbol tables are as in Phase 0: no reference in any of them.
+- Added on 17 November 2026, from run 10: the engine now reads the Dependency API itself and holds it against
+  its analysis ([section 7](#7-the-cross-check-of-the-engine)). Of the 56 pairs Salesforce reports from a formula
+  field or a validation rule, the analysis has 54, has 2 through a part of the object, and missed none. Every
+  end of those rows was matched to a component the org listed. Read in parts, as a large org has to be read,
+  the org refused 6 queries and 9 of 257 rows were lacking. Which queries is not known yet.
 
 ## Conditions
 
@@ -41,8 +46,10 @@ In short:
 | [6](https://github.com/taouani/sf-orglens/actions/runs/43759793416) | deploy and read | `74cadde` | green, with a warning for the partial snapshot |
 | [7](https://github.com/taouani/sf-orglens/actions/runs/43760218782) | probe | `74cadde` | green |
 | [8](https://github.com/taouani/sf-orglens/actions/runs/43763715996) | probe | `fdd34b6` | green |
+| [10](https://github.com/taouani/sf-orglens/actions/runs/43996393289) | read and probe | `9aadacb` | green, with a warning for the partial snapshot and one for a query the org refused |
 
-Runs 1 to 4 are those of Phase 0.
+Runs 1 to 4 are those of Phase 0. Run 9 is the login the workflow makes once a week by itself. Run 10 is of 17
+November 2026, after work package 8 was merged, and section 7 is about it.
 
 ## 1. The deploy of the larger fixture project
 
@@ -341,6 +348,97 @@ for with a symbol table. `[run 7]` `[run 8]`
   day of the runs. The list of the 189 pairs is not copied here. It can be made again by a run of the step
   `probe`. The 23 new pairs that the API does not report are listed below, so that this part does not rest on
   a log.
+
+## 7. The cross-check of the engine
+
+Work package 8 moved the reading of the Dependency API into the engine (decision record
+[0045](../../adr/0045-the-cross-check-of-a-snapshot.md)). Run 10 is its first run against a real org. The step
+"read" takes a snapshot with the cross-check, as `orglens snapshot` does, and the step "probe" reads through the
+same reader. The org and the fixture project in it are as on 15 November: nothing was deployed. `[run 10]`
+
+**The reading.** One request gave 257 rows, and the engine calls the reading whole. These are the 257 rows of
+runs 7 and 8, by the counts per type.
+
+**The comparison.**
+
+| What                                                                           | Rows or pairs |
+| ------------------------------------------------------------------------------ | ------------- |
+| Rows of the API                                                                | 257           |
+| Rows from a component of a type this phase does not analyse, not compared      | 201           |
+| Rows with an end that is no component the org listed                           | 0             |
+| Rows from a component the snapshot does not hold or that was not analysed      | 0             |
+| Rows compared                                                                  | 56            |
+| Pairs of components these are                                                  | 56            |
+| Pairs the analysis has as well                                                 | 54            |
+| Pairs to an object that the analysis has as a reference to a part of the object | 2             |
+| Pairs the analysis missed                                                      | 0             |
+| Pairs only the analysis has, of a kind the API reports                         | 0             |
+| Pairs only the analysis has, of a kind the API does not report                 | 39            |
+
+- The 201 rows that are not compared: Layout 93, ApexClass 92, CustomApplication 9, ApexTrigger 2, LookupFilter 2,
+  the record of the custom metadata type 1, PromptVersion 1, WebLink 1.
+- The 56 rows that are compared are the 35 from a custom field and the 21 from a validation rule of section 4.
+- The 2 pairs through a part are the two from a rule to an object that section 6 names: the object in
+  `$ObjectType` inside `VLOOKUP` and the custom metadata type behind `$CustomMetadata`. The maintainer decided on
+  16 November 2026 that such a row counts as covered.
+- The 39 pairs of kinds the API does not report, by reason: a standard field 23, a roll-up summary 5, a standard
+  object 4, the filter of a lookup 2, a value set 2, a controlling field 1, a rule that is not active 1, a
+  lookup 1. With the 54 they are the 93 pairs the answer key holds from a custom field or a validation rule.
+
+**What this verifies.**
+
+- **The third pass mark of the phase is met on this org**: no pair the API reports for a formula field or a
+  validation rule is missing in what the analysis found, and the report says how many rows it cannot compare
+  yet, 94 of them from Apex.
+- **The ends of the rows are found in the listing**, for the types that were compared. All 112 ends of the 56
+  rows were matched to a component the org listed: custom fields and validation rules as sources, and custom
+  fields, a custom label, a custom permission, a record of a custom metadata type and two custom objects as
+  targets. A field, a rule and a custom object can only be matched by their id, so for them the ids of the
+  listing are the ids of the rows. For the label, the permission and the record the log does not say whether
+  the id matched or, for a component the org listed without an id, the type and the full name. No compared row
+  of this org has a standard object as an end, so the match of a standard object by its name was not
+  exercised.
+- **Nothing the analysis found is contradicted.** No pair of a kind the API reports is without a row. So on
+  this org the list of kinds the API does not report puts no pair on the wrong side. The three entries of that
+  list that rest on no measurement stay unmeasured: the fixture project has no pair of those kinds.
+- The mock org of the tests reports 57 rows for these types and the real org 56. The one more is the formula of
+  the rule that is not active, which the mock org reports and Salesforce does not. The comparison counts that
+  pair under "a rule that is not active", as it should.
+
+**The reading in parts.** The org holds fewer rows than the 2,000 at which Salesforce cuts a query off. The step
+therefore read the rows again with one query, and just after it through a session that cuts every answer off
+at 30 rows, so that the engine asks per type, per pair of types and per component.
+
+| What                                                                  | Number |
+| --------------------------------------------------------------------- | ------ |
+| Requests                                                              | 63     |
+| Rows                                                                  | 248    |
+| Queries still at the limit with no smaller part to ask for            | 0      |
+| Queries that failed and whose rows no other query gave                | 6      |
+| Queries asked again per component, for more components than one names | 0      |
+| Rows of the one query that the parts lack                             | 9      |
+| Rows the parts give that the one query does not have                  | 0      |
+
+- The engine calls this reading `partial`, which is right: it lacks 9 rows and says that rows are missing. The
+  step does not fail for a reading that says so. It ended with a warning.
+- **The org refused 6 queries with the code `INVALID_TYPE_FOR_OPERATION`. Which ones is not known.** The log of
+  run 10 gives the number and the code only. So it is not known either whether the org accepts the conditions
+  `IN` and `NOT IN` on `MetadataComponentId`, which the record of work package 8 lists as not verified.
+- **This matters for every org above 2,000 rows.** If the queries are ones the engine always asks, such as a
+  query for a type that this API does not take in a condition, the cross-check of a large org is always
+  `partial`. That is `[unverified]`: it is a reading of the two numbers, not of the queries.
+- The step now prints the condition of every query the org did not answer, with the names of the types and the
+  number of ids in the place of the ids, and the rows the parts lack by the types of their two ends. The next
+  run shows which queries they are, and the reader is corrected by what it shows.
+- The one query and the 63 requests took about 9 seconds together.
+
+**The step "probe"** reads through the reader of the engine now: 1 request, 257 rows. Its comparison with the
+answer key gives the numbers of run 8: 129 of 189 pairs, the same tables by type, by way and by tier, and the
+same 20 pairs the key does not hold. The symbol tables are as before.
+
+**Not verified by this run.** The command `orglens snapshot` itself, which the step does not start: it calls
+the engine as the command does. An org above 2,000 rows, where the parts are asked for in earnest. Another
+edition, a sandbox, an org with a namespace. How many requests a large org needs.
 
 ## The 23 new pairs the Dependency API does not report
 

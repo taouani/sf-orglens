@@ -47,6 +47,7 @@ import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
 import { readListedIds } from '../../src/store/dependencies.ts';
@@ -744,16 +745,69 @@ const rowIdentity = ({ from, to }: DependencyRow): string =>
 
 /**
  * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
- * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened.
+ * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened. A
+ * request that fails is told to `failed` and fails as it did.
  */
-function cutOffAt(session: OrgSession, limit: number): OrgSession {
+function cutOffAt(session: OrgSession, limit: number, failed: (url: string, error: unknown) => void): OrgSession {
   const request = async (url: string, options: unknown): Promise<unknown> => {
-    const page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+    let page: { records?: unknown } | null;
+    try {
+      page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+    } catch (error) {
+      failed(url, error);
+      throw error;
+    }
     return page !== null && Array.isArray(page.records) && page.records.length > limit
       ? { ...page, records: page.records.slice(0, limit), done: true }
       : page;
   };
   return { ...session, connection: { request } as never };
+}
+
+/** The three fields the reader of the engine puts into the condition of a query. */
+const CONDITION = /^(MetadataComponentType|RefMetadataComponentType|MetadataComponentId) (=|IN|NOT IN) (.+)$/;
+
+/**
+ * The condition of a query of the reader, as the log may show it. The name of a type is shown where it is a
+ * word of the Metadata API. In the place of the ids stands their number. Nothing else of a query is shown.
+ */
+export function conditionForm(log: PublicLog, url: string): string {
+  let soql: string;
+  try {
+    soql = new URL(url, 'https://org.invalid').searchParams.get('q') ?? '';
+  } catch {
+    return '(a request that is not shown)';
+  }
+  const at = soql.indexOf(' WHERE ');
+  if (at < 0) return 'no condition';
+  return soql
+    .slice(at + ' WHERE '.length)
+    .split(' AND ')
+    .map((condition) => {
+      const [, field, operator, values] = CONDITION.exec(condition) ?? [];
+      if (field === undefined || operator === undefined || values === undefined) {
+        return '(a condition that is not shown)';
+      }
+      const quoted = [...values.matchAll(/'([^']*)'/g)].map((value) => value[1] ?? '');
+      if (field === 'MetadataComponentId') return `${field} ${operator} (${plural(quoted.length, 'id', 'ids')})`;
+      const names = quoted.map((value) => log.name(value) ?? '(a type that is not shown)');
+      return operator === '=' ? `${field} = ${names[0] ?? '(nothing)'}` : `${field} ${operator} (${names.join(', ')})`;
+    })
+    .join(' AND ');
+}
+
+/** Rows counted by the types of their two ends, as the log may show them. */
+function byTypes(log: PublicLog, rows: readonly DependencyRow[]): string {
+  const shown = (type: string): string => log.name(type) ?? '(a type that is not shown)';
+  const pairs = new Map<string, number>();
+  for (const { from, to } of rows) {
+    const pair = `${shown(from.type)} to ${shown(to.type)}`;
+    pairs.set(pair, (pairs.get(pair) ?? 0) + 1);
+  }
+  return [...pairs]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([pair, count]) => `${pair} ${String(count)}`)
+    .join(', ');
 }
 
 /**
@@ -790,26 +844,44 @@ export async function readInParts(
     if (ofType === undefined) ids.set(item.type, [item.id]);
     else ofType.push(item.id);
   }
-  const again = await readDependencies(cutOffAt(session, limit), {
-    ...version,
-    limits: { rowsPerQuery: limit },
-    idsOfType: (type) => ids.get(type) ?? [],
-  });
+  /** The requests the org did not answer, by the form of their query and the code of the failure. */
+  const refused = new Map<string, number>();
+  const again = await readDependencies(
+    cutOffAt(session, limit, (url, error) => {
+      const code = log.code(requestFailure(error).code) ?? 'a code that is not shown';
+      const form = `${conditionForm(log, url)}: ${code}`;
+      refused.set(form, (refused.get(form) ?? 0) + 1);
+    }),
+    { ...version, limits: { rowsPerQuery: limit }, idsOfType: (type) => ids.get(type) ?? [] },
+  );
   const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
-  const lacking = [...whole].filter((row) => !parts.has(row)).length;
-  const more = [...parts].filter((row) => !whole.has(row)).length;
+  const lackingRows = one.rows.filter((row) => !parts.has(rowIdentity(row)));
+  const moreRows = again.rows.filter((row) => !whole.has(rowIdentity(row)));
+  const lacking = lackingRows.length;
+  const more = moreRows.length;
   log.say(
     `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
       `Queries still at that number for a single component, or with no smaller part to ask for: ${String(again.cutOff)}. ` +
       `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
       `Queries asked again per component, for more components than one query names: ${String(again.unproven)}.`,
   );
+  if (refused.size > 0) {
+    const requests = [...refused.values()].reduce((sum, count) => sum + count, 0);
+    log.say(
+      `The org did not answer ${plural(requests, 'request', 'requests')} of this reading. By the condition of the query, with the number of ids in the place of the ids:`,
+    );
+    for (const [form, count] of [...refused].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      log.say(`- ${form}${count > 1 ? `, ${String(count)} times` : ''}`);
+    }
+  }
   log.say(
     lacking === 0 && more === 0
       ? 'The parts give the same rows as one query just before.'
       : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
   );
+  if (lacking > 0) log.say(`The rows the parts lack, by the types of their two ends: ${byTypes(log, lackingRows)}.`);
+  if (more > 0) log.say(`The rows only the parts give, by the types of their two ends: ${byTypes(log, moreRows)}.`);
   if (again.failed > 0) {
     log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
   }

@@ -19,7 +19,15 @@ import { tempDirs } from './helpers/store.ts';
 import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
 import { everydayWords, publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
-import { fileDifference, missingLines, nameForm, placeForm, readOrg, remarkForm } from './live/read-org.ts';
+import {
+  conditionForm,
+  fileDifference,
+  missingLines,
+  nameForm,
+  placeForm,
+  readOrg,
+  remarkForm,
+} from './live/read-org.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
@@ -391,6 +399,46 @@ describe('the form of a name', () => {
     expect(nameForm('Übernahme-Plan (alt)')).toBe('?a-a (a)');
     expect(nameForm('a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z')).toBe(
       'a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…',
+    );
+  });
+});
+
+describe('the condition of a query of the Dependency API, as it is printed', () => {
+  const form = (where: string): string => {
+    const soql = `SELECT MetadataComponentId FROM MetadataComponentDependency${where === '' ? '' : ` WHERE ${where}`}`;
+    return conditionForm(
+      publicLog(() => undefined),
+      `/services/data/v66.0/tooling/query?q=${encodeURIComponent(soql)}`,
+    );
+  };
+
+  it('shows the names of metadata types, and the number of ids in the place of the ids', () => {
+    expect(form('')).toBe('no condition');
+    expect(form("MetadataComponentType = 'Layout'")).toBe('MetadataComponentType = Layout');
+    expect(form("MetadataComponentType NOT IN ('ApexClass', 'Flow')")).toBe(
+      'MetadataComponentType NOT IN (ApexClass, Flow)',
+    );
+    expect(
+      form(
+        "MetadataComponentType = 'Layout' AND RefMetadataComponentType = 'CustomField' AND MetadataComponentId NOT IN ('00h000000000001AAA', '00h000000000002AAA')",
+      ),
+    ).toBe(
+      'MetadataComponentType = Layout AND RefMetadataComponentType = CustomField AND MetadataComponentId NOT IN (2 ids)',
+    );
+    expect(form("MetadataComponentType = 'ApexClass' AND MetadataComponentId IN ('01p000000000001AAA')")).toBe(
+      'MetadataComponentType = ApexClass AND MetadataComponentId IN (1 id)',
+    );
+  });
+
+  it('shows no name that is not a word of the Metadata API, and nothing of a condition it does not know', () => {
+    // The type of a row about a record of a custom metadata type is the name of that type, a name of the org.
+    expect(form("MetadataComponentType = 'Acme_Rule__mdt'")).toBe('MetadataComponentType = (a type that is not shown)');
+    expect(form("RefMetadataComponentType IN ('CustomField', 'Acme_Rule__mdt')")).toBe(
+      'RefMetadataComponentType IN (CustomField, (a type that is not shown))',
+    );
+    expect(form("MetadataComponentName = 'Acme_Secret'")).toBe('(a condition that is not shown)');
+    expect(form("MetadataComponentType = 'Layout' AND MetadataComponentName LIKE 'Acme%'")).toBe(
+      'MetadataComponentType = Layout AND (a condition that is not shown)',
     );
   });
 });
@@ -806,8 +854,22 @@ describe('reading the test org', () => {
     expect(output).toMatch(
       /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\.$/m,
     );
+    // The step says which queries the org did not answer: the types, and how many ids, never an id.
+    expect(output).toMatch(
+      /^The org did not answer [1-9]\d* requests? of this reading\. By the condition of the query, with the number of ids in the place of the ids:$/m,
+    );
+    const refused = output.split('\n').filter((line) => line.startsWith('- MetadataComponentType = '));
+    expect(refused.length).toBeGreaterThan(0);
+    for (const line of refused) {
+      expect(line).toMatch(
+        /^- MetadataComponentType = [A-Za-z]+ AND RefMetadataComponentType = [A-Za-z]+ AND MetadataComponentId IN \([1-9]\d* ids?\): MALFORMED_QUERY(?:, [1-9]\d* times)?$/,
+      );
+    }
     expect(output).toMatch(
       /^The parts lack [1-9]\d* rows? of the one query just before, and give 0 rows it does not have\.$/m,
+    );
+    expect(output).toMatch(
+      /^The rows the parts lack, by the types of their two ends: (?:[A-Za-z]+ to [A-Za-z]+ [1-9]\d*(?:, )?)+\.$/m,
     );
     expect(output.split('\n').at(-1)).toBe(
       '::warning::The org refused a query the engine asks when a query is at the limit of rows.',
@@ -828,8 +890,9 @@ describe('reading the test org', () => {
     await readOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(true);
-    expect(output.split('\n').slice(-3)).toEqual([
+    expect(output.split('\n').slice(-4)).toEqual([
       'The parts lack 0 rows of the one query just before, and give 1 row it does not have.',
+      'The rows only the parts give, by the types of their two ends: ApexClass to CustomField 1.',
       '',
       '::error::Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
     ]);
