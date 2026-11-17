@@ -1,10 +1,10 @@
 /**
  * The steps of the workflow "Pre-release" that need no network (`scripts/pre-release.mjs`): what `check`
- * accepts and refuses, and the form `page` gives release notes for the page of a release. The steps `pack` and
- * `try` are run by the workflow only.
+ * accepts and refuses, the form `page` gives release notes for the page of a release, and the empty packages
+ * `names` writes. The steps `pack` and `try` are run by the workflow only.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,5 +154,51 @@ describe('release notes on the page of a release', () => {
     const { status, out } = page('accepted.md', '# The title\n\nText.\n\n---\n\n```\n\n    code  \n```\n');
     expect(status).toBe(0);
     expect(out).toBe('Text.\n\n---\n\n```\n\n    code  \n```\n');
+  });
+});
+
+describe('the empty packages that hold the names on npm', () => {
+  it('writes three packages at version 0.0.0 that depend on nothing and run nothing on install', () => {
+    const folder = join(scratch, 'names');
+    expect(run('names', folder).status).toBe(0);
+    expect(readdirSync(folder).sort()).toEqual(['orglens', 'sf-orglens', 'sf-orglens-engine']);
+
+    const held = (name: string): Record<string, unknown> =>
+      JSON.parse(readFileSync(join(folder, name, 'package.json'), 'utf8')) as Record<string, unknown>;
+    expect(held('sf-orglens')).toMatchObject({ name: 'sf-orglens', version: '0.0.0' });
+    expect(held('sf-orglens-engine')).toMatchObject({ name: '@sf-orglens/engine', version: '0.0.0' });
+    expect(held('orglens')).toMatchObject({ name: 'orglens', version: '0.0.0' });
+    for (const name of ['sf-orglens', 'sf-orglens-engine', 'orglens']) {
+      const keys = Object.keys(held(name));
+      for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'scripts', 'main', 'exports']) {
+        expect(keys).not.toContain(key);
+      }
+    }
+    expect(readdirSync(join(folder, 'sf-orglens-engine')).sort()).toEqual(['README.md', 'package.json']);
+    expect(held('sf-orglens-engine')).not.toHaveProperty('bin');
+  });
+
+  it('gives the command of such a package one thing to say: that it is not OrgLens', () => {
+    const folder = join(scratch, 'names-run');
+    expect(run('names', folder).status).toBe(0);
+    for (const name of ['sf-orglens', 'orglens']) {
+      const manifest = JSON.parse(readFileSync(join(folder, name, 'package.json'), 'utf8')) as {
+        bin: Record<string, string>;
+      };
+      expect(Object.keys(manifest.bin)).toEqual(['orglens']);
+      const result = spawnSync(process.execPath, [join(folder, name, manifest.bin['orglens'] ?? ''), '--version'], {
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain(`This is not OrgLens. It is the empty package that holds the name "${name}"`);
+      expect(result.stderr).toContain('https://github.com/taouani/sf-orglens/releases');
+    }
+  });
+
+  it('refuses a folder that is not empty', () => {
+    const { status, failures } = run('names', scratch);
+    expect(status).toBe(1);
+    expect(failures.some((line) => line.endsWith('is not empty.'))).toBe(true);
   });
 });

@@ -3,8 +3,10 @@
 OrgLens tells you what a change to a Salesforce org will affect before you make it. It reads a live org, a sandbox
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
-> **Pre-release.** The project is being built in the open and is not usable yet. There is no published package.
-> The first impact answers cover objects, fields and validation rules only. Follow the
+> **Pre-release.** The project is being built in the open. The first slice is built: the first impact answers
+> cover objects, fields and validation rules only. There is no published package yet. The first pre-release,
+> version `0.1.0-next.0`, is prepared ([release notes](docs/releases/v0.1.0-next.0.md)) and is published once the
+> project holds its names on npm. Until then OrgLens runs from a clone of this repository. Follow the
 > [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
@@ -31,7 +33,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | Phase                | Delivers                                                                                                                                | State          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, in test |
-| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Being built    |
+| 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Built, in test |
 | 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started    |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started    |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started    |

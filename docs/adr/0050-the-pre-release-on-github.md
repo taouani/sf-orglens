@@ -86,7 +86,9 @@ fixed. That is a question to the maintainer, and the index lists it among the pl
 decided: whether the project holds the two names on npm before the first pre-release is published, which the
 second consequence below is about. Both were put to the maintainer on 2026-11-17, and no pre-release is
 published before both are answered: the release notes of the first one hold the mark `[open]` at each of the
-two, and the workflow does not publish notes with the mark.
+two, and the workflow does not publish notes with the mark. The maintainer answered both on the same day: records
+[0051](0051-the-first-release-is-the-first-on-npm.md) and [0052](0052-the-project-holds-its-names-on-npm.md)
+hold the answers.
 
 ## Consequences
 

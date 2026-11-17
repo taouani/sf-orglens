@@ -6,8 +6,9 @@ This folder holds the release notes that have not been published yet. The projec
 A pull request that changes what users see adds one file here with `pnpm changeset`. Pull requests that only
 touch documentation, tests or tooling do not need one.
 
-Nothing is published to npm during the pre-release phases. The workflow "Release (dry run)" only rehearses such
-a release.
+No version of OrgLens is published to npm during the pre-release phases. The workflow "Release (dry run)" only
+rehearses such a release. The maintainer holds the names of the project on npm with empty packages at version
+`0.0.0`, which no workflow publishes ([decision record 0052](../docs/adr/0052-the-project-holds-its-names-on-npm.md)).
 
 ## Pre-releases
 
