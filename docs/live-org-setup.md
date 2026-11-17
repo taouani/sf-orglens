@@ -226,9 +226,10 @@ then asks per type, per pair of types and per group of components, and the step 
 same rows as the one query just before. It fails when the parts give a row that the one query did not give, and
 when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
 readings, so a second run tells whether a failure is one of the engine. The step ends with a warning when the
-org refuses one of those queries. It then prints the condition of every query the org did not answer, with the
-names of the metadata types and the number of ids in the place of the ids, and counts the rows the parts lack by
-the types of their two ends. It does not try the parts when the one query did not give every row, or when
+org refuses one of those queries. Whenever a request of that reading failed, the step prints the condition of
+its query, with the names of the metadata types and the number of ids in the place of the ids, and how many
+queries and requests had that condition. Whenever the parts lack a row or give one too many, it counts those
+rows by the types of their two ends. It does not try the parts when the one query did not give every row, or when
 the org holds fewer than 30 rows, and says so.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for

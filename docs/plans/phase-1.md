@@ -883,7 +883,7 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
     answers from the answer key. It is not Salesforce.
   - **On the test org: met**, by the run of 17 November 2026 after the merge
     ([real-org.md](../research/phase-1/real-org.md), section 7). Salesforce reports 257 rows. 201 are from
-    types this phase does not analyse, 94 of them from Apex. The other 56 are 56 pairs from a formula field or
+    types this phase does not analyse, 94 of them from Apex. The other 56 are 56 pairs from a custom field or
     a validation rule: the analysis has 54, has 2 as a reference to a part of the object, and missed none.
     Every end of those rows was matched to a component the org listed, and no pair the analysis has is
     without a row where the API reports the kind.
@@ -953,12 +953,12 @@ the comparison of an analysis), `store/dependencies.ts`, `engines/cross-check.ts
 - **For Phase 2.** With every type that is analysed, its rows move from "not compared" to "compared" without a
   change to the comparison: the analysis says which types it read.
 - **Open after the run of 17 November 2026: the reading in parts.** Read with every answer cut off at 30 rows,
-  as an org above 2,000 rows has to be read, the test org refused 6 queries with `INVALID_TYPE_FOR_OPERATION`,
-  and 9 of the 257 rows were lacking. The engine called that reading `partial`, which is right, and the step
-  does not fail for it. The log does not say which queries were refused. If they are queries the engine always
-  asks, the cross-check of every large org is `partial`. The step now prints the condition of every query the
-  org did not answer, the next run shows which they are, and the reader is corrected by what it shows, in a
-  pull request of its own.
+  as an org above 2,000 rows has to be read, 6 queries failed on the test org and 9 of the 257 rows were
+  lacking. The first failure had the code `INVALID_TYPE_FOR_OPERATION`. The engine called that reading
+  `partial`, which is right, and the step does not fail for it. The log does not say which queries failed. If
+  they are queries the engine always asks, the cross-check of every large org is `partial`. The step now
+  prints the condition of the query of every request that failed, the next run shows which they are, and the
+  reader is corrected by what it shows, in a pull request of its own.
 - **Not done or not verified.** Verified on the test org on 17 November 2026: the ids of the listing are the ids of
   the rows for fields, rules and custom objects, and what the comparison shows. Not verified: that Salesforce
   accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, which the point above is about. An org with

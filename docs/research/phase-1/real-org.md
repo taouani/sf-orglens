@@ -25,10 +25,10 @@ In short:
   Salesforce reports. The first probe gave 127. The engine will meet the same trap in work package 8.
 - The symbol tables are as in Phase 0: no reference in any of them.
 - Added on 17 November 2026, from run 10: the engine now reads the Dependency API itself and holds it against
-  its analysis ([section 7](#7-the-cross-check-of-the-engine)). Of the 56 pairs Salesforce reports from a formula
+  its analysis ([section 7](#7-the-cross-check-of-the-engine)). Of the 56 pairs Salesforce reports from a custom
   field or a validation rule, the analysis has 54, has 2 through a part of the object, and missed none. Every
   end of those rows was matched to a component the org listed. Read in parts, as a large org has to be read,
-  the org refused 6 queries and 9 of 257 rows were lacking. Which queries is not known yet.
+  6 queries failed and 9 of 257 rows were lacking. Which queries is not known yet.
 
 ## Conditions
 
@@ -356,8 +356,9 @@ Work package 8 moved the reading of the Dependency API into the engine (decision
 "read" takes a snapshot with the cross-check, as `orglens snapshot` does, and the step "probe" reads through the
 same reader. The org and the fixture project in it are as on 15 November: nothing was deployed. `[run 10]`
 
-**The reading.** One request gave 257 rows, and the engine calls the reading whole. These are the 257 rows of
-runs 7 and 8, by the counts per type.
+**The reading.** One request gave 257 rows, and the engine calls the reading whole. It is the number of runs 7
+and 8. The counts per type are those of section 4 as far as this log gives them: for the 201 rows that are not
+compared by type, and for custom fields and validation rules by their sum.
 
 **The comparison.**
 
@@ -383,7 +384,10 @@ runs 7 and 8, by the counts per type.
   16 November 2026 that such a row counts as covered.
 - The 39 pairs of kinds the API does not report, by reason: a standard field 23, a roll-up summary 5, a standard
   object 4, the filter of a lookup 2, a value set 2, a controlling field 1, a rule that is not active 1, a
-  lookup 1. With the 54 they are the 93 pairs the answer key holds from a custom field or a validation rule.
+  lookup 1. With the 54 they are 93, as many as the answer key holds from a custom field or a validation rule,
+  and the counts by reason are those of section 4. The run does not hold the analysis against the key pair by
+  pair: the tests do that for the files of the repository.
+- Of the 54, 51 are from a formula and 3 from the filter of a roll-up summary, by the counts of section 4.
 
 **What this verifies.**
 
@@ -421,15 +425,22 @@ at 30 rows, so that the engine asks per type, per pair of types and per componen
 
 - The engine calls this reading `partial`, which is right: it lacks 9 rows and says that rows are missing. The
   step does not fail for a reading that says so. It ended with a warning.
-- **The org refused 6 queries with the code `INVALID_TYPE_FOR_OPERATION`. Which ones is not known.** The log of
-  run 10 gives the number and the code only. So it is not known either whether the org accepts the conditions
-  `IN` and `NOT IN` on `MetadataComponentId`, which the record of work package 8 lists as not verified.
+- **6 queries failed, and their rows came from no other query. Which ones is not known.** The first failure of
+  the reading had the code `INVALID_TYPE_FOR_OPERATION`. The log gives that one code and the number, not the
+  code of each, and not the queries. The number is not the number of requests the org refused: a query that
+  failed and whose rows other queries gave is not counted.
+- So it is not shown whether the org accepts the conditions `IN` and `NOT IN` on `MetadataComponentId`, which
+  the record of work package 8 lists as not verified. The numbers bound it for `IN`. The rows from a layout to
+  a custom field are 82 or more by the probe of the same run, so that pair of types was at the limit of 30, and
+  no query stayed cut off, so the engine asked for it per component. Had the org refused that way of asking,
+  the pair would hold only what three answers of 30 rows gave, and most likely more than 9 rows would be
+  lacking. So `IN` was probably answered there. `[unverified]`
 - **This matters for every org above 2,000 rows.** If the queries are ones the engine always asks, such as a
   query for a type that this API does not take in a condition, the cross-check of a large org is always
   `partial`. That is `[unverified]`: it is a reading of the two numbers, not of the queries.
-- The step now prints the condition of every query the org did not answer, with the names of the types and the
-  number of ids in the place of the ids, and the rows the parts lack by the types of their two ends. The next
-  run shows which queries they are, and the reader is corrected by what it shows.
+- The step now prints the condition of the query of every request that failed, with the names of the types and
+  the number of ids in the place of the ids, and the rows the parts lack by the types of their two ends. The
+  next run shows which queries they are, and the reader is corrected by what it shows.
 - The one query and the 63 requests took about 9 seconds together.
 
 **The step "probe"** reads through the reader of the engine now: 1 request, 257 rows. Its comparison with the
