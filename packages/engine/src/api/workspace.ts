@@ -434,7 +434,8 @@ function declaration(input: SourceInput): SourceDeclaration {
       tracks: orNull(input.tracks),
     };
   }
-  const org = { ...common, orgId: orNull(input.orgId), loginUrl: orNull(input.loginUrl) };
+  // The types a snapshot leaves out are written into the file by hand.
+  const org = { ...common, orgId: orNull(input.orgId), loginUrl: orNull(input.loginUrl), excludeTypes: [] };
   if (input.kind === 'org') return { ...org, kind: 'org' };
   return { ...org, kind: 'sandbox', sandboxOf: orNull(input.sandboxOf), sandboxName: orNull(input.sandboxName) };
 }

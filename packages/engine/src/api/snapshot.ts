@@ -79,8 +79,10 @@ export interface TypeCoverage {
    * - `failed`: an org refused to say. `listed` counts what it had said before it refused, and the true number
    *   is not known.
    * - `unlistable`: Salesforce never lists components of this type, and they are not read yet.
+   * - `excluded`: the configuration of the source leaves the type out (`exclude_types`). The org was not asked
+   *   which components of it there are, and none was read. `note` says which type the configuration names.
    */
-  readonly listing: 'ok' | 'failed' | 'unlistable';
+  readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
   readonly note: string | null;
 }
 

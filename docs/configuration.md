@@ -92,20 +92,34 @@ A source name starts with a lower-case letter and has up to 32 lower-case letter
 
 ### A source of kind `org` or `sandbox`
 
-| Key            | Kinds        | Value                                                                                                                                           |
-| -------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `org_id`       | org, sandbox | The org id: `00D` followed by 12 or 15 letters and digits. It identifies the org and is not a credential. Two sources cannot name the same org. |
-| `login_url`    | org, sandbox | The address of the login page, if it is not the default. It starts with `https://` and has no user name, no query and no fragment.              |
-| `sandbox_of`   | sandbox      | The name of the source of kind `org` that this is a sandbox of.                                                                                 |
-| `sandbox_name` | sandbox      | The name of the sandbox: 1 to 10 letters and digits.                                                                                            |
+| Key             | Kinds        | Value                                                                                                                                                            |
+| --------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `org_id`        | org, sandbox | The org id: `00D` followed by 12 or 15 letters and digits. It identifies the org and is not a credential. Two sources cannot name the same org.                  |
+| `login_url`     | org, sandbox | The address of the login page, if it is not the default. It starts with `https://` and has no user name, no query and no fragment.                               |
+| `exclude_types` | org, sandbox | A list of metadata types that a snapshot leaves out, by their names in the Metadata API, such as `["Report", "Dashboard"]`. A type of the logic tier is refused. |
+| `sandbox_of`    | sandbox      | The name of the source of kind `org` that this is a sandbox of.                                                                                                  |
+| `sandbox_name`  | sandbox      | The name of the sandbox: 1 to 10 letters and digits.                                                                                                             |
 
-All four are optional.
+All five are optional.
 
 - `org_id` is what keeps a login from pointing at the wrong org. With it, OrgLens finds the Salesforce CLI login
   of that org by itself, and refuses a login of another org (`ORG_MISMATCH`). Without it, a login has to be
   linked with `orglens source link`, and any org is accepted. `orglens source check` prints the id to add.
 - `login_url` is read for a login with a key from the environment, when the variable for the login URL is not set
   (see [Environment variables](#environment-variables)). A Salesforce CLI login carries its own address.
+- `exclude_types` is for an org that holds very many components of a type that nobody asks about, such as tens
+  of thousands of reports. A snapshot does not ask the org for the components of such a type and reads none.
+  The report of the snapshot names the type as left out, and an impact answer names it among the types it does
+  not cover. A name is written as the Metadata API writes it, with letters and digits only, and once.
+  - A type of the logic tier cannot be left out, because a snapshot is judged by it. The file is refused, and the
+    message names the type. [cli.md](cli.md#a-source-of-the-kind-org-or-sandbox) lists the types of the tier.
+  - Only a type that is retrieved by its own name can be left out. Its parts and its folders are left out with
+    it: with `Report` the folders of reports, with `SharingRules` the rules in it.
+  - Whether an org has a type of a name is known only once the org is asked. A name the org does not describe,
+    the name of a part of another type (a list view is a part of an object) and the name of a folder type are
+    not errors of the file. The snapshot reads on and says so with the warning `TYPE_NOT_EXCLUDED`.
+  - The list is read when a snapshot starts. A snapshot that is continued keeps what it started with.
+  - `orglens source add` has no option for it. The key is written into the file by hand.
 - `sandbox_of` and `sandbox_name` are checked and not used by a command yet.
 
 ### A source of kind `git`
@@ -251,8 +265,8 @@ in upper case, with `_` for `-`. For a source `prod` the prefix is `ORGLENS_JWT_
 - **A value that looks like a credential is refused**: a key or certificate block, a Salesforce access token or
   refresh token, a Salesforce CLI auth URL, a JSON Web Token, a bearer or basic credential, and a URL with a user
   name in it.
-- **A key exists only once a feature reads it.** Keys for later features (which metadata to retrieve, how long to
-  keep snapshots, limits) are added with those features. Until then they are unknown keys.
+- **A key exists only once a feature reads it.** Keys for later features (how long to keep snapshots, limits)
+  are added with those features. Until then they are unknown keys.
 
 With `--json`, the problems are in `error.details.diagnostics` of the output, one object per problem with `file`,
 `line`, `column`, `path`, `message` and `text` (the line a person would read). See [cli.md](cli.md).

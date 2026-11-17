@@ -32,6 +32,7 @@ describe('readConfig', () => {
             description: 'EMEA production',
             orgId: '00D000000000001EAA',
             loginUrl: 'https://login.salesforce.com',
+            excludeTypes: [],
           },
           {
             name: 'uat',
@@ -39,6 +40,7 @@ describe('readConfig', () => {
             description: 'UAT full-copy sandbox',
             orgId: '00D000000000002EAA',
             loginUrl: null,
+            excludeTypes: [],
             sandboxOf: 'prod',
             sandboxName: 'uat',
           },
@@ -66,6 +68,19 @@ describe('readConfig', () => {
         unusedLogins: [],
       },
     });
+  });
+
+  it('reads the types a snapshot of an org or a sandbox leaves out, sorted', () => {
+    const result = readConfig({
+      shared: changed(
+        'description = "EMEA production"',
+        'exclude_types = ["Report", "Dashboard", "EmailTemplate"]',
+      ).replace('sandbox_name = "uat"', 'exclude_types = ["Report"]'),
+    });
+    expect(result.ok && result.config.sources.slice(0, 2)).toMatchObject([
+      { name: 'prod', excludeTypes: ['Dashboard', 'EmailTemplate', 'Report'] },
+      { name: 'uat', excludeTypes: ['Report'] },
+    ]);
   });
 
   it('reads the smallest file there is', () => {
@@ -261,13 +276,55 @@ describe('readConfig', () => {
       'a sandbox key on an org',
       changed('description = "EMEA production"', 'sandbox_of = "uat"'),
       '14:1: sources.prod.sandbox_of',
-      /Unknown key "sandbox_of"\. Known keys: kind, description, org_id, login_url\./,
+      /Unknown key "sandbox_of"\. Known keys: kind, description, org_id, login_url, exclude_types\./,
     ],
     [
       'a sandbox name with punctuation',
       changed('sandbox_name = "uat"', 'sandbox_name = "uat-2"'),
       '23:1: sources.uat.sandbox_name',
       /1 to 10 letters and digits/,
+    ],
+    [
+      'a list of types to leave out on a repository',
+      changed('ref = "main"', 'exclude_types = ["Report"]'),
+      '29:1: sources.emea-repo.exclude_types',
+      /Unknown key "exclude_types"\. Known keys: kind, description, repo, ref, paths, tracks\./,
+    ],
+    [
+      'types to leave out that are not a list',
+      changed('description = "EMEA production"', 'exclude_types = "Report"'),
+      '14:1: sources.prod.exclude_types',
+      /must be a list of names of metadata types/,
+    ],
+    [
+      'a type of the logic tier among the types to leave out',
+      changed('description = "EMEA production"', 'exclude_types = ["Report", "ApexClass"]'),
+      '14:1: sources.prod.exclude_types[1]',
+      /"ApexClass" is a type of the logic tier, which a snapshot is judged by\. It cannot be left out\./,
+    ],
+    [
+      'a part of an object of the logic tier among the types to leave out',
+      changed('sandbox_name = "uat"', 'exclude_types = ["CustomField"]'),
+      '23:1: sources.uat.exclude_types[0]',
+      /"CustomField" is a type of the logic tier/,
+    ],
+    [
+      'a type to leave out that is no name of a type',
+      changed('description = "EMEA production"', 'exclude_types = ["Report", "Email Template"]'),
+      '14:1: sources.prod.exclude_types[1]',
+      /letters and digits only/,
+    ],
+    [
+      'a type to leave out that is no text',
+      changed('description = "EMEA production"', 'exclude_types = [7]'),
+      '14:1: sources.prod.exclude_types[0]',
+      /letters and digits only/,
+    ],
+    [
+      'a type to leave out twice',
+      changed('description = "EMEA production"', 'exclude_types = ["Report", "Dashboard", "Report"]'),
+      '14:1: sources.prod.exclude_types[2]',
+      /"Report" is in the list twice/,
     ],
     [
       'an org key on a repository',

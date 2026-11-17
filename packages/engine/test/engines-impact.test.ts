@@ -592,6 +592,19 @@ describe('what an answer does not cover', () => {
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, true]);
   });
 
+  it('names a type the configuration leaves out: as not analysed, or as missing if the analysis reads it', () => {
+    const leftOut = type('EmailTemplate', { listed: 0, retrieved: 0, analysed: 0, listing: 'excluded' });
+    const notRead = impactGaps([type('CustomField'), leftOut], none, READ);
+    expect(notRead.notAnalysed).toEqual([{ type: 'EmailTemplate', listed: 0, retrieved: 0, listing: 'excluded' }]);
+    expect(notRead.partial).toEqual([]);
+    expect([coversEverything(notRead), mayMissSomething(notRead)]).toEqual([false, false]);
+    // Once an analyser reads the type, an answer claims to cover it, and the snapshot holds nothing of it.
+    const read = impactGaps([type('CustomField'), leftOut], none, [...READ, 'EmailTemplate']);
+    expect(read.notAnalysed).toEqual([]);
+    expect(read.partial).toEqual([{ type: 'EmailTemplate', listed: 0, retrieved: 0, listing: 'excluded' }]);
+    expect([coversEverything(read), mayMissSomething(read)]).toEqual([false, true]);
+  });
+
   it('takes a type the analysis reads as analysed also when the snapshot holds nothing of it', () => {
     const types = [
       type('CustomField'),

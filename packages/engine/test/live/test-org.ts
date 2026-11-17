@@ -22,7 +22,14 @@ const ANSWER_KEY = join(ROOT, 'fixtures/expected/answer-key.v1.yaml');
 
 /** The name of the source the test org is declared as. It gives the variables of the login their names. */
 export const SOURCE_NAME = 'test-org';
-export const SOURCE: OrgSource = { name: SOURCE_NAME, kind: 'org', description: null, orgId: null, loginUrl: null };
+export const SOURCE: OrgSource = {
+  name: SOURCE_NAME,
+  kind: 'org',
+  description: null,
+  orgId: null,
+  loginUrl: null,
+  excludeTypes: [],
+};
 
 /** The variables of the login with a key, and the secret of the environment `live-org` each one comes from. */
 const SETTINGS = [

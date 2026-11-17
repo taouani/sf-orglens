@@ -564,6 +564,7 @@ const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (liste
   ok: (listed) => String(listed),
   failed: (listed) => `${String(listed)} (listing failed)`,
   unlistable: () => 'not listed',
+  excluded: () => 'left out',
 };
 
 /**

@@ -379,7 +379,7 @@ export interface TypeCount {
   readonly listed: number;
   readonly retrieved: number;
   readonly analysed: number;
-  readonly listing: 'ok' | 'failed' | 'unlistable';
+  readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
 }
 
 /** A type that an answer does not cover, or covers in part. */
@@ -388,8 +388,11 @@ export interface ImpactGap {
   /** How many components of the type the source says it has, and how many of them the snapshot holds. */
   readonly listed: number;
   readonly retrieved: number;
-  /** `failed`: the source refused to list the type. `unlistable`: Salesforce never lists it. */
-  readonly listing: 'ok' | 'failed' | 'unlistable';
+  /**
+   * `failed`: the source refused to list the type. `unlistable`: Salesforce never lists it. `excluded`: the
+   * configuration of the source leaves it out.
+   */
+  readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
 }
 
 /** What an answer does not cover. */
@@ -445,7 +448,10 @@ export function impactGaps(
       .filter((type) => !analysed(type) && (type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok'))
       .map(gap),
     partial: sorted
-      .filter((type) => analysed(type) && (type.retrieved < type.listed || type.listing === 'failed'))
+      .filter(
+        (type) =>
+          analysed(type) && (type.retrieved < type.listed || type.listing === 'failed' || type.listing === 'excluded'),
+      )
       .map(gap),
     readErrors: issues.read,
     analysisErrors: issues.analysis,

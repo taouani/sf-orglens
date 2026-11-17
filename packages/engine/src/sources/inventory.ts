@@ -8,7 +8,11 @@
  *
  * One request lists one type. Salesforce takes three types per request,
  * and then one type it refuses loses the answer for the other two.
+ *
+ * A type the configuration leaves out is not asked for at all. It is in
+ * the inventory as `excluded`, without components.
  */
+import { tierOf } from '../core/tiers.ts';
 import { isAboutTheOrg, MetadataRequestError, type ListedComponent, type MetadataApi } from './metadata-api.ts';
 import { byCodeUnit } from './tree.ts';
 
@@ -30,16 +34,36 @@ interface InventoryType {
    * - `failed`: the org refused, for the type or for one of its folders. `reason` says what it said. Components
    *   that were listed before are kept.
    * - `unlistable`: Salesforce does not list components of this type at all.
+   * - `excluded`: the configuration leaves the type out, or the type it is a part of or holds the folders of.
+   *   The org was not asked, and `reason` says which type the configuration names.
    */
-  readonly listing: 'ok' | 'failed' | 'unlistable';
+  readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
   readonly reason: string | null;
   /** The code of Salesforce for the refusal `reason` tells of, if it gave one. */
   readonly code: string | null;
 }
 
+/**
+ * A type the configuration asks to leave out, and that is read all the same.
+ *
+ * - `unknown`: the org describes no type of the name.
+ * - `part`: its components are parts of a component of the type `of` and come with it.
+ * - `folder`: its components are the folders of the type `of`, which are needed to list that type.
+ * - `logic-part`: a part of it, the type `of`, is of the logic tier, which a snapshot is judged by.
+ * - `logic`: it is of the logic tier itself. The configuration refuses such a name, so a snapshot never has
+ *   this reason. It is here so that the rule does not rest on the reader of the file alone.
+ */
+export interface NotExcluded {
+  readonly type: string;
+  readonly reason: 'unknown' | 'part' | 'folder' | 'logic-part' | 'logic';
+  readonly of: string | null;
+}
+
 export interface Inventory {
   /** Sorted by type. */
   readonly types: readonly InventoryType[];
+  /** What the configuration asks to leave out and cannot be left out, sorted by type. */
+  readonly notExcluded: readonly NotExcluded[];
   /** Sorted by type, then by full name. No component is in it twice. */
   readonly items: readonly ListedComponent[];
   /** How many requests it took. */
@@ -103,6 +127,12 @@ export async function takeInventory(
   api: MetadataApi,
   options: {
     readonly concurrency?: number;
+    /**
+     * The types to leave out, by name. Only a type that is retrieved by its own name can be left out. Its parts
+     * and its folders are left out with it. Any other name is returned in `notExcluded`, and nothing is left
+     * out for it.
+     */
+    readonly exclude?: readonly string[];
     /** Called after every listing, with the number of listings that are done and that are known to be needed. */
     readonly onProgress?: (done: number, total: number) => void;
   } = {},
@@ -131,6 +161,33 @@ export async function takeInventory(
     for (const child of type.children) add(child, 'part', type.name);
   }
   const inFolders = new Set(described.filter((type) => type.inFolder).map((type) => type.name));
+
+  // What is left out: the type the configuration names, with its parts and its folders. The value is the name
+  // the configuration gave.
+  const excluded = new Map<string, string>();
+  const notExcluded: NotExcluded[] = [];
+  const asked = [...new Set(options.exclude ?? [])].sort(byCodeUnit);
+  // The types that are retrieved by their own name come first, whatever the order of the names: a part or a
+  // folder type that is named beside its owner goes with the owner, and is not said to be read.
+  for (const name of asked) {
+    if (types.get(name)?.role !== 'top') continue;
+    if (tierOf(name) === 'logic') {
+      notExcluded.push({ type: name, reason: 'logic', of: null });
+      continue;
+    }
+    const withIt = [...types].filter(([, other]) => other.role !== 'top' && other.of === name).map(([type]) => type);
+    const logic = withIt.sort(byCodeUnit).find((type) => tierOf(type) === 'logic');
+    if (logic === undefined) for (const type of [name, ...withIt]) excluded.set(type, name);
+    else notExcluded.push({ type: name, reason: 'logic-part', of: logic });
+  }
+  for (const name of asked) {
+    const entry = types.get(name);
+    if (entry === undefined) notExcluded.push({ type: name, reason: 'unknown', of: null });
+    else if (entry.role !== 'top' && !excluded.has(name)) {
+      notExcluded.push({ type: name, reason: entry.role, of: entry.of });
+    }
+  }
+  notExcluded.sort((a, b) => byCodeUnit(a.type, b.type));
 
   const items = new Map<string, ListedComponent>();
   let done = 0;
@@ -161,7 +218,9 @@ export async function takeInventory(
   };
 
   // First everything that is listed by its type alone: the types, the parts, and the folders.
-  const direct = [...types.keys()].filter((type) => !inFolders.has(type) && !(type in UNLISTABLE)).sort(byCodeUnit);
+  const direct = [...types.keys()]
+    .filter((type) => !inFolders.has(type) && !(type in UNLISTABLE) && !excluded.has(type))
+    .sort(byCodeUnit);
   total = direct.length;
   const folders = new Map<string, string[]>();
   await pool(direct, concurrency, async (type) => {
@@ -173,10 +232,13 @@ export async function takeInventory(
   });
 
   // Then what lies in folders, one listing per folder.
-  const inFolder = [...inFolders].sort(byCodeUnit).flatMap((type) => {
-    const names = new Set([...(folders.get(type) ?? []), ...(HAS_UNFILED.has(type) ? [UNFILED] : [])]);
-    return [...names].sort(byCodeUnit).map((folder) => ({ type, folder }));
-  });
+  const inFolder = [...inFolders]
+    .filter((type) => !excluded.has(type))
+    .sort(byCodeUnit)
+    .flatMap((type) => {
+      const names = new Set([...(folders.get(type) ?? []), ...(HAS_UNFILED.has(type) ? [UNFILED] : [])]);
+      return [...names].sort(byCodeUnit).map((folder) => ({ type, folder }));
+    });
   total += inFolder.length;
   await pool(inFolder, concurrency, async ({ type, folder }) => {
     await list(type, folder);
@@ -201,6 +263,14 @@ export async function takeInventory(
           ...failures,
           ...foldersFailed.map(({ said, code }) => ({ said: `Its folders could not be listed: ${said}`, code })),
         ];
+        const by = excluded.get(type);
+        if (by !== undefined) {
+          const reason =
+            by === type
+              ? 'The configuration leaves this type out (exclude_types).'
+              : `The configuration leaves the type ${by} out (exclude_types), and this type with it.`;
+          return { type, role, of, listing: 'excluded', reason, code: null };
+        }
         if (type in UNLISTABLE) {
           return { type, role, of, listing: 'unlistable', reason: UNLISTABLE[type] ?? null, code: null };
         }
@@ -215,6 +285,7 @@ export async function takeInventory(
         };
       })
       .sort((a, b) => byCodeUnit(a.type, b.type)),
+    notExcluded,
     items: [...items.values()].sort((a, b) => byCodeUnit(a.type, b.type) || byCodeUnit(a.fullName, b.fullName)),
     requests,
   };

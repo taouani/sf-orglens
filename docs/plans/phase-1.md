@@ -1046,7 +1046,8 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
     lines of `snapshot`, `analyse` and `coverage` for a file that cannot be read. The tests of the engine show
     the status `complete` for a component that does not come back, a listing that is refused and a retrieve
     that fails. No test of the command line runs those three.
-  - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it.
+  - The key: not built in this pull request. You were asked on 17 November 2026 whether to keep it. The second
+    status below has it.
   - A snapshot of a Git source is not changed: its code was not touched, and its tests pass as they were.
 - **Choices of mine, for you to strike.** Record 0046 has the reasons.
   - The 21 names. Records 0004 and 0038 hold words, and `Workflow` and `CustomLabels` are in the list because
@@ -1075,7 +1076,7 @@ logic tier. The key in `orglens.toml` and the look at the test org follow, each 
   places of the code that no test reaches.
 
 Status on 17 November 2026, with the pull request that looks at the test org. The key in `orglens.toml` is built
-in a pull request of its own, which waits for your answer and is not merged before it.
+in a pull request of its own, whose status follows this one.
 
 - **Run 13 of the test org**, the first with the judgement over the logic tier
   ([real-org.md](../research/phase-1/real-org.md#8-the-snapshot-judged-over-the-logic-tier)): **the snapshot is
@@ -1106,6 +1107,36 @@ in a pull request of its own, which waits for your answer and is not merged befo
 - **Not done, and not verified:** neither correction was run against the org when this was written. The two
   objects, two fields and two record types are not explained, so the snapshot of the test org is expected to
   stay partial for six components after the next run. That run is recorded here when it is made.
+
+Status on 17 November 2026, with the pull request that holds the key. It was the second to be opened and the
+last of the three to be merged.
+
+- **What it rests on.** You were asked on 17 November 2026 whether to keep the key, with my recommendation to
+  keep it, and chose "Keep the key" on the same day. I had built it as proposed while the question was open, and
+  merged the pull request after your answer. Record [0048](../adr/0048-types-a-snapshot-leaves-out.md) is
+  `Accepted`.
+- **Built:** the key `exclude_types` of a source of the kind `org` or `sandbox` in `orglens.toml`, the listing
+  `excluded` in the coverage of a snapshot with migration 7 of the database, the note `TYPES_EXCLUDED` and the
+  warning `TYPE_NOT_EXCLUDED`, `left out` in the text of `coverage`, `excludeTypes` in the JSON output of
+  `status` and the `source` commands, `docs/configuration.md`, `docs/cli.md`, the JSON Schema and record 0048.
+- **Against the acceptance criterion** "a type it leaves out is not retrieved and is named in `coverage` as not
+  read. A type of the logic tier in the key is an error": met against the mock org, which is asked neither for
+  the components of such a type nor for its folders, and whose snapshot and `coverage` name the type as left
+  out. A test against a stand-in for the Metadata API counts the requests. The file is refused for a type of
+  the tier before anything is read. Not run against a real org, and how much time the key saves on an org with
+  many reports is not measured. No test runs `impact` of the command line on such a snapshot, and no snapshot
+  of a source of the kind `sandbox` is taken with the key.
+- **Choices of mine, for you to strike.** Record 0048 has the reasons.
+  - The name `exclude_types`, and that it is a key of the source and not of the workspace.
+  - A type that is left out is not listed at all, so `coverage` shows no count for it.
+  - The parts and the folders of a type go with it, and a part or a folder type cannot be named alone.
+  - A name the org does not know, or one that cannot be left out, is a warning and the type is read. It is not
+    an error of the file, because only the org says which types it has.
+  - A value of its own for the listing, with a migration, so that an impact answer can name the type.
+  - No option of the command line for the key. It is written by hand.
+- **Not done:** leaving out the components of managed packages, single components, folders or name patterns. The
+  cross-check with the Dependency API is not narrowed by the key, and can come out `partial` for a type that was
+  left out and has more rows than one answer holds. Record 0048 says how.
 
 ### WP10 Proof on public codebases, and measurements
 

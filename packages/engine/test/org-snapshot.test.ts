@@ -1628,6 +1628,117 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           },
         ]);
       });
+
+      describe('that the configuration leaves out', () => {
+        const leavingOut = (types: string): string => `${CONFIG}exclude_types = [${types}]\n`;
+        const asked = (): string[] =>
+          metadata.calls.filter((call) => call.operation === 'listMetadata').map((call) => call.about);
+
+        it('neither lists nor retrieves it, and says in the coverage that it was not read', async () => {
+          // If the org were asked, the snapshot would say so: it refuses to list the type.
+          metadata.failing.add('StaticResource');
+          const dir = workspaceDir(leavingOut('"StaticResource"'));
+          const report = await snap(dir);
+
+          expect(report.snapshot.status).toBe('complete');
+          expect(asked()).not.toContain('StaticResource');
+          expect(asked()).toContain('ApexClass');
+          expect(stored(dir, 1)).toEqual(expectedFiles());
+          expect(typeOf(report, 'StaticResource')).toEqual({
+            type: 'StaticResource',
+            listed: 0,
+            retrieved: 0,
+            analysed: 0,
+            listing: 'excluded',
+            note: 'The configuration leaves this type out (exclude_types).',
+          });
+          expect(ofReading(report)).toEqual([
+            {
+              severity: 'info',
+              code: 'TYPES_EXCLUDED',
+              message:
+                '1 type is left out of the snapshot, as exclude_types of the source says: StaticResource. The org was not asked for its components.',
+              details: { count: 1, types: ['StaticResource'] },
+            },
+          ]);
+        });
+
+        it('leaves a type that lies in folders out with its folders, also when both are named', async () => {
+          // The org describes reports and has none. Asked or not, it would be asked for their folders first.
+          metadata.emptyTypes.push('Report');
+          const dir = workspaceDir(leavingOut('"StaticResource", "ReportFolder", "Report"'));
+          const report = await snap(dir);
+
+          expect(report.snapshot.status).toBe('complete');
+          expect(asked().filter((about) => /Report|StaticResource/.test(about))).toEqual([]);
+          expect(typeOf(report, 'Report')).toMatchObject({ listing: 'excluded' });
+          expect(typeOf(report, 'ReportFolder')).toMatchObject({
+            listing: 'excluded',
+            note: 'The configuration leaves the type Report out (exclude_types), and this type with it.',
+          });
+          expect(ofReading(report)).toEqual([
+            {
+              severity: 'info',
+              code: 'TYPES_EXCLUDED',
+              message:
+                '3 types are left out of the snapshot, as exclude_types of the source says: Report, ReportFolder, StaticResource. The org was not asked for their components.',
+              details: { count: 3, types: ['Report', 'ReportFolder', 'StaticResource'] },
+            },
+          ]);
+        });
+
+        it('keeps what a snapshot started with when it is continued under another configuration', async () => {
+          const dir = workspaceDir(leavingOut('"StaticResource", "Reprot"'));
+          metadata.hold = true;
+          await failure(() => snap(dir, { tuning: { jobMs: 20 } }));
+          metadata.hold = false;
+          // The key is taken out, and the org would now be asked for the type.
+          writeFileSync(join(dir, 'orglens.toml'), CONFIG);
+          const report = await snap(dir);
+          expect(asked()).not.toContain('StaticResource');
+          expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
+          expect(typeOf(report, 'StaticResource')).toMatchObject({ listed: 0, retrieved: 0, listing: 'excluded' });
+          expect(stored(dir, 1)).toEqual(expectedFiles());
+          // What the start said about the key is said once, not again by the run that continues.
+          const codes = ofReading(report).map((issue) => issue.code);
+          expect(codes.filter((code) => code === 'TYPES_EXCLUDED')).toHaveLength(1);
+          expect(codes.filter((code) => code === 'TYPE_NOT_EXCLUDED')).toHaveLength(1);
+        });
+
+        it('reads a type it cannot leave out, and says why', async () => {
+          metadata.emptyTypes.push('Report');
+          const dir = workspaceDir(leavingOut('"Reprot", "ListView", "StaticResource", "ReportFolder"'));
+          const report = await snap(dir);
+
+          expect(report.snapshot.status).toBe('complete');
+          expect(typeOf(report, 'ListView')).toMatchObject({ listing: 'ok' });
+          expect(typeOf(report, 'ReportFolder')).toMatchObject({ listing: 'ok' });
+          expect(asked()).toContain('ReportFolder');
+          expect(ofReading(report).filter((issue) => issue.code !== 'TYPES_EXCLUDED')).toEqual([
+            {
+              severity: 'warning',
+              code: 'TYPE_NOT_EXCLUDED',
+              message:
+                'exclude_types of the source names ListView. Its components are parts of a component of the type CustomObject and come with it, so it cannot be left out alone. It was read.',
+              details: { type: 'ListView', reason: 'part', of: 'CustomObject' },
+            },
+            {
+              severity: 'warning',
+              code: 'TYPE_NOT_EXCLUDED',
+              message:
+                'exclude_types of the source names ReportFolder. Its components are the folders of the type Report, so it cannot be left out alone. It was read.',
+              details: { type: 'ReportFolder', reason: 'folder', of: 'Report' },
+            },
+            {
+              severity: 'warning',
+              code: 'TYPE_NOT_EXCLUDED',
+              message:
+                'exclude_types of the source names Reprot, and the org describes no metadata type of that name. Nothing was left out for it.',
+              details: { type: 'Reprot', reason: 'unknown', of: null },
+            },
+          ]);
+        });
+      });
     });
 
     it('leaves the work folder of a snapshot that runs alone when it is refused the lock', async () => {

@@ -131,7 +131,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
   retrieve asked for the listed name and not for the short one.
   The file of custom labels is not missing when the org lists no label. A snapshot of a Git source is not judged
   by tier. An impact answer counts such a warning when it can be about a type it covers, which no warning is
-  while every analysed type is of the tier.
+  while every analysed type is of the tier. `exclude_types` of an org source in `orglens.toml` leaves types
+  outside the tier out of its snapshots (decision record 0048): the org is not asked for them, and the coverage
+  keeps each with the listing `excluded`, so that a report and an answer can say that it was not read.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

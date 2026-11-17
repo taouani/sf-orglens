@@ -29,6 +29,7 @@ const org = (fields: Partial<OrgSource> = {}): OrgSource => ({
   description: null,
   orgId: ORG_ID,
   loginUrl: null,
+  excludeTypes: [],
   ...fields,
 });
 
@@ -38,6 +39,7 @@ const sandbox: SandboxSource = {
   description: null,
   orgId: null,
   loginUrl: null,
+  excludeTypes: [],
   sandboxOf: null,
   sandboxName: null,
 };

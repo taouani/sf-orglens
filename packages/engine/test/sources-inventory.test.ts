@@ -104,6 +104,116 @@ describe('the inventory of an org', () => {
     expect(names(inventory)).toEqual(['ApexClass:A']);
   });
 
+  it('does not ask for a type that is left out, nor for its parts and its folders', async () => {
+    const api = fakeApi(
+      [
+        type('ApexClass'),
+        type('Report', { inFolder: true }),
+        type('SharingRules', { children: ['SharingCriteriaRule', 'SharingOwnerRule'] }),
+        type('StandardValueSet'),
+        type('StaticResource'),
+      ],
+      {
+        ApexClass: ['A'],
+        ReportFolder: ['Sales'],
+        'Report/Sales': ['Sales/Pipeline'],
+        SharingRules: ['Account'],
+        SharingCriteriaRule: ['Account.Big'],
+        StaticResource: ['Logo'],
+      },
+    );
+    const exclude = ['StandardValueSet', 'SharingRules', 'Report', 'Report'];
+    const inventory = await takeInventory(api, { exclude });
+    const reason = 'The configuration leaves this type out (exclude_types).';
+    const withIt = (by: string): string =>
+      `The configuration leaves the type ${by} out (exclude_types), and this type with it.`;
+    expect(inventory.types).toEqual([
+      { type: 'ApexClass', role: 'top', of: null, listing: 'ok', reason: null, code: null },
+      { type: 'Report', role: 'top', of: null, listing: 'excluded', reason, code: null },
+      { type: 'ReportFolder', role: 'folder', of: 'Report', listing: 'excluded', reason: withIt('Report'), code: null },
+      {
+        type: 'SharingCriteriaRule',
+        role: 'part',
+        of: 'SharingRules',
+        listing: 'excluded',
+        reason: withIt('SharingRules'),
+        code: null,
+      },
+      {
+        type: 'SharingOwnerRule',
+        role: 'part',
+        of: 'SharingRules',
+        listing: 'excluded',
+        reason: withIt('SharingRules'),
+        code: null,
+      },
+      { type: 'SharingRules', role: 'top', of: null, listing: 'excluded', reason, code: null },
+      // Left out by the configuration, which says more than that Salesforce never lists it.
+      { type: 'StandardValueSet', role: 'top', of: null, listing: 'excluded', reason, code: null },
+      { type: 'StaticResource', role: 'top', of: null, listing: 'ok', reason: null, code: null },
+    ]);
+    expect(inventory.notExcluded).toEqual([]);
+    expect(names(inventory)).toEqual(['ApexClass:A', 'StaticResource:Logo']);
+    // The org was asked for the two types that are read, and for nothing else.
+    expect(api.asked.sort()).toEqual(['ApexClass', 'StaticResource']);
+    expect(inventory.requests).toBe(3);
+    expect(planChunks(inventory).flat()).toEqual([
+      { type: 'ApexClass', fullName: 'A' },
+      { type: 'StaticResource', fullName: 'Logo' },
+    ]);
+
+    // A part or a folder type that is named beside its owner goes with it, and is not said to be read. The part
+    // comes before its owner in the order of the names.
+    const beside = await takeInventory(api, { exclude: [...exclude, 'ReportFolder', 'SharingOwnerRule'] });
+    expect(beside.notExcluded).toEqual([]);
+    expect(beside.types).toEqual(inventory.types);
+  });
+
+  it('reads a type it is asked to leave out and cannot: one the org does not have, a part, a folder type', async () => {
+    const api = fakeApi(
+      [
+        type('CustomObject', { children: ['CustomField', 'ListView'] }),
+        type('Report', { inFolder: true }),
+        type('Bundle', { children: ['CustomLabel'] }),
+      ],
+      {
+        CustomObject: ['Invoice__c'],
+        ListView: ['Invoice__c.All'],
+        ReportFolder: ['Sales'],
+        'Report/Sales': ['Sales/Pipeline'],
+        Bundle: ['One'],
+      },
+    );
+    const inventory = await takeInventory(api, { exclude: ['Reprot', 'ReportFolder', 'ListView', 'Bundle'] });
+    expect(inventory.notExcluded).toEqual([
+      // A type that holds a part of the logic tier is not left out. No type of Salesforce is known to be one.
+      { type: 'Bundle', reason: 'logic-part', of: 'CustomLabel' },
+      { type: 'ListView', reason: 'part', of: 'CustomObject' },
+      { type: 'ReportFolder', reason: 'folder', of: 'Report' },
+      { type: 'Reprot', reason: 'unknown', of: null },
+    ]);
+    expect(inventory.types.filter((one) => one.listing !== 'ok')).toEqual([]);
+    expect(names(inventory)).toEqual([
+      'Bundle:One',
+      'CustomObject:Invoice__c',
+      'ListView:Invoice__c.All',
+      'Report:Sales/Pipeline',
+      'ReportFolder:Sales',
+    ]);
+    expect((await takeInventory(api)).notExcluded).toEqual([]);
+  });
+
+  it('does not leave a type of the logic tier out, also when the reader of the configuration did not refuse it', async () => {
+    const api = fakeApi([type('ApexClass'), type('StaticResource')], { ApexClass: ['A'], StaticResource: ['Logo'] });
+    const inventory = await takeInventory(api, { exclude: ['ApexClass', 'StaticResource'] });
+    expect(inventory.notExcluded).toEqual([{ type: 'ApexClass', reason: 'logic', of: null }]);
+    expect(inventory.types.map((one) => [one.type, one.listing])).toEqual([
+      ['ApexClass', 'ok'],
+      ['StaticResource', 'excluded'],
+    ]);
+    expect(names(inventory)).toEqual(['ApexClass:A']);
+  });
+
   it('lists the folders of a folder type, then each folder, and the folder for what is in none', async () => {
     const api = fakeApi([type('Report', { inFolder: true }), type('EmailTemplate', { inFolder: true })], {
       ReportFolder: ['Sales', 'Finance'],
@@ -330,7 +440,14 @@ describe('the plan of a retrieve', () => {
 
 describe('the inventory of the mock org', () => {
   const ORG_ID = '00Dxx0000000001EAA';
-  const source: OrgSource = { name: 'prod', kind: 'org', description: null, orgId: ORG_ID, loginUrl: null };
+  const source: OrgSource = {
+    name: 'prod',
+    kind: 'org',
+    description: null,
+    orgId: ORG_ID,
+    loginUrl: null,
+    excludeTypes: [],
+  };
   let mock: MockOrg;
 
   beforeAll(async () => {

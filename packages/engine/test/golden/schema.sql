@@ -65,16 +65,6 @@ CREATE TABLE retrieve_chunk (
   PRIMARY KEY (snapshot_id, seq)
 ) STRICT, WITHOUT ROWID;
 
-CREATE TABLE snapshot_type_coverage (
-  snapshot_id INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
-  type        TEXT NOT NULL CHECK (type <> ''),
-  listed      INTEGER NOT NULL DEFAULT 0 CHECK (listed >= 0),
-  retrieved   INTEGER NOT NULL DEFAULT 0 CHECK (retrieved >= 0),
-  analysed    INTEGER NOT NULL DEFAULT 0 CHECK (analysed >= 0),
-  note        TEXT, listing TEXT NOT NULL DEFAULT 'ok' CHECK (listing IN ('ok', 'failed', 'unlistable')),
-  PRIMARY KEY (snapshot_id, type)
-) STRICT, WITHOUT ROWID;
-
 CREATE TABLE snapshot_issue (
   id            INTEGER PRIMARY KEY,
   snapshot_id   INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
@@ -221,4 +211,15 @@ CREATE TABLE snapshot_dependency (
   to_name        TEXT NOT NULL,
   to_namespace   TEXT,
   PRIMARY KEY (snapshot_id, seq)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE "snapshot_type_coverage" (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshot (id) ON DELETE CASCADE,
+  type        TEXT NOT NULL CHECK (type <> ''),
+  listed      INTEGER NOT NULL DEFAULT 0 CHECK (listed >= 0),
+  retrieved   INTEGER NOT NULL DEFAULT 0 CHECK (retrieved >= 0),
+  analysed    INTEGER NOT NULL DEFAULT 0 CHECK (analysed >= 0),
+  note        TEXT,
+  listing     TEXT NOT NULL DEFAULT 'ok' CHECK (listing IN ('ok', 'failed', 'unlistable', 'excluded')),
+  PRIMARY KEY (snapshot_id, type)
 ) STRICT, WITHOUT ROWID;

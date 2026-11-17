@@ -69,6 +69,10 @@ export interface MockOrg {
   withheld: string[];
   /** Classes the org does not list and hands out with every retrieve. */
   unlisted: string[];
+  /** Types the org describes besides Apex classes, by name. It has no component of them. */
+  extraTypes: string[];
+  /** The types the org was asked to list, in the order of the requests. */
+  readonly listed: string[];
   /** Files the org hands out with every retrieve besides the classes, by their path in the package. */
   extraFiles: Record<string, string>;
   /** If set, a retrieve is refused with this code. */
@@ -98,6 +102,8 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     classes: null,
     withheld: [],
     unlisted: [],
+    extraTypes: [],
+    listed: [],
     extraFiles: {},
     retrieveFault: null,
     operations: [],
@@ -125,12 +131,22 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
         body: soap(
           '<describeMetadataResponse><result><metadataObjects><directoryName>classes</directoryName><inFolder>false</inFolder>' +
             '<metaFile>true</metaFile><suffix>cls</suffix><xmlName>ApexClass</xmlName></metadataObjects>' +
+            org.extraTypes
+              .map(
+                (name) =>
+                  `<metadataObjects><directoryName>${name.toLowerCase()}</directoryName><inFolder>false</inFolder>` +
+                  `<metaFile>false</metaFile><suffix>${name.toLowerCase()}</suffix><xmlName>${name}</xmlName></metadataObjects>`,
+              )
+              .join('') +
             '<organizationNamespace></organizationNamespace><partialSaveAllowed>true</partialSaveAllowed>' +
             '<testRequired>false</testRequired></result></describeMetadataResponse>',
         ),
       };
     }
     if (operation === 'listMetadata') {
+      const asked = /<type>([^<]+)<\/type>/.exec(body)?.[1] ?? '';
+      org.listed.push(asked);
+      if (asked !== 'ApexClass') return { status: 200, body: soap('<listMetadataResponse></listMetadataResponse>') };
       const results = names
         .filter((name) => !org.unlisted.includes(name))
         .map(

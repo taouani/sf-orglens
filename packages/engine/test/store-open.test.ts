@@ -765,6 +765,38 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       store.close();
     });
 
+    it('keeps the coverage of every type when the seventh migration builds its table again', () => {
+      const path = newFile();
+      const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 6) });
+      old.run(source);
+      old.run(snapshot('partial'));
+      const insert =
+        'INSERT INTO snapshot_type_coverage (snapshot_id, type, listed, retrieved, analysed, note, listing) VALUES ';
+      old.run(`${insert}(1, 'ApexClass', 3, 2, 0, NULL, 'ok')`);
+      old.run(`${insert}(1, 'CustomField', 9, 9, 8, 'A note.', 'ok')`);
+      old.run(`${insert}(1, 'Report', 4, 0, 0, 'The org refused.', 'failed')`);
+      old.run(`${insert}(1, 'StandardValueSet', 0, 0, 0, 'Never listed.', 'unlistable')`);
+      // The sixth version does not know a type that is left out.
+      expect(() => old.run(`${insert}(1, 'Dashboard', 0, 0, 0, NULL, 'excluded')`)).toThrow(/CHECK/i);
+      const before = old.all('SELECT * FROM snapshot_type_coverage ORDER BY type');
+      expect(before).toHaveLength(4);
+      old.close();
+
+      const store = openStore({ path, driver });
+      expect(store.migrated).toEqual({ from: 6, to: MIGRATIONS.length });
+      expect(store.all('SELECT * FROM snapshot_type_coverage ORDER BY type')).toEqual(before);
+      store.run(`${insert}(1, 'Dashboard', 0, 0, 0, NULL, 'excluded')`);
+      expect(() => store.run(`${insert}(1, 'Document', 0, 0, 0, NULL, 'skipped')`)).toThrow(/CHECK/i);
+      expect(() => store.run(`${insert}(1, 'Report', 0, 0, 0, NULL, 'ok')`)).toThrow(/UNIQUE|PRIMARY/i);
+      // The rows still go with their snapshot.
+      store.run('DELETE FROM snapshot WHERE id = 1');
+      expect(store.all('SELECT * FROM snapshot_type_coverage')).toEqual([]);
+      expect(store.all("SELECT name FROM sqlite_schema WHERE name LIKE 'snapshot_type_coverage%'")).toEqual([
+        { name: 'snapshot_type_coverage' },
+      ]);
+      store.close();
+    });
+
     it('allows one snapshot of a source to be under way, and no second one', () => {
       const store = openStore({ path: newFile(), driver });
       store.run(source);
