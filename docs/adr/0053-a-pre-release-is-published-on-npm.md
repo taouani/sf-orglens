@@ -221,6 +221,10 @@ so in its release notes.
   which is the time the package was created. The installs from npm found the version after about five minutes. Still not
   tried: the OIDC token and trusted publishing, and moving a tag with it.
   [`docs/releases/publishing.md`](../releases/publishing.md) has the whole of it.
+- Added after the second publish, on 2026-11-17: the OIDC token, trusted publishing and moving a tag with it are tried.
+  [Run 7 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44194660408) published version
+  `0.1.0-next.1` of both packages without a token and moved the tag `latest` of both the same way (record
+  [0054](0054-a-pre-release-without-a-change-is-published.md)). A publish that npm refuses is still not seen.
 - **Read by the reviewer, and so no longer open:** a package of npm's own that is published with trusted
   publishing names its repository in the form `git+https://github.com/<owner>/<name>.git`, which is the form of
   the two packages here. The documentation of `npm trust` that comes with npm 12.2 says of a trusted publisher:

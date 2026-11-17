@@ -354,9 +354,9 @@ Accepted when:
   your approval.
 - The next pre-release, made by the workflow of records 0050 and 0053, under the next number that is free then.
   That is `0.1.0-next.2`, unless another one is made before it: `0.1.0-next.1` is a version without a change,
-  which you chose on 17 November 2026 to publish within two days, to try trusted publishing (record 0054). If
-  that publish has not gone through, you set up the trusted publishers of the two packages shortly before this
-  one (`docs/releases/publishing.md`).
+  which was published on 17 November 2026 to try trusted publishing (record 0054). It went through, so nothing
+  should have to be set up on npm for this one: by the page of npm the first publish validates a publisher, and
+  nobody has looked yet whether the two still show "Pending validation" (`docs/releases/publishing.md`).
 
 Accepted when:
 

@@ -96,3 +96,14 @@ and it changes nothing in what OrgLens does.**
   publish have run only against a registry on the machine of the author and of the reviewers: the wait when npm
   says that a version exists, the step that reads the tags before the page on GitHub is created, and what the
   job shows when npm refuses an identity.
+- Added after the publish, on 2026-11-17: **it worked.** The maintainer gave the word for the version and
+  approved the job, and [run 7 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44194660408)
+  published both packages without a token, each with its provenance, and moved the tag `latest` of both the
+  same way, two hours after the publishers were made. The six installs from npm passed, and the pre-release on
+  GitHub was created seven minutes after the packages were on npm. So npm accepts the identity of the workflow
+  for a publish and for the move of a tag. No publish was refused, so what the job says and shows in that case
+  has still run against a stand-in only. The author did not look at npm: whether the two publishers still show
+  "Pending validation" is the maintainer's to look at.
+  [`docs/releases/publishing.md`](../releases/publishing.md#what-the-second-publish-showed) has what the run
+  showed. The three things the context above names as not known are answered there, and the section "Not
+  known" of that page no longer lists them.

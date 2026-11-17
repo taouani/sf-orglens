@@ -1295,8 +1295,8 @@ and the note [public-codebases.md](../research/phase-1/public-codebases.md). No 
 - The release of Q6: a pre-release on GitHub with the packed command line attached, installed with one
   `npm install` line. Nothing goes to npm.
 
-Status on 17 November 2026, after the first publish. The documents are written. **The pre-release
-`0.1.0-next.0` is published on npm and on GitHub.**
+Status on 17 November 2026, after the second publish. The documents are written. **The pre-releases
+`0.1.0-next.0` and `0.1.0-next.1` are published on npm and on GitHub.**
 
 - **The documents.** The [phase report](../reports/phase-1.md), the [test plan](../test-plans/phase-1.md), the
   overall plan with a section "At the close of Phase 1", and the draft of the [Phase 2 plan](phase-2.md) with six
@@ -1365,15 +1365,23 @@ Status on 17 November 2026, after the first publish. The documents are written. 
   `0.0.0-stage` of each package by itself when it received the first publish, and put `latest` on it: the job moved the
   tag. An install found the new version only after four to five and a half minutes, and the install jobs passed with the
   last of their five tries: they now try eight times.
-- **Not done, and not verified.** Trusted publishing, which every later pre-release is published with, is not
-  tried, and neither is moving a tag with it. Staged publishing is not tried. I have no account on npm and did
-  not look there: what I know of the publish is the log of the run and what you saw on npm and sent me.
 - **A second pre-release, to try trusted publishing.** You set up the trusted publishers on the day of the
   first publish, and npm keeps a new one only when a version is published through it within two days. You chose
   on 17 November 2026 to publish `0.1.0-next.1` within that time (record
   [0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). It changes nothing in what OrgLens does.
-  The version is set and its release notes are written. It is not published: that needs a rehearsal, your word
-  for the version and your approval of the job.
+  After a rehearsal you gave your word for the version and approved the job, and
+  [run 7 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44194660408) published both packages on the
+  same day without a token, moved the tag `latest` the same way, installed from npm on the three systems and
+  created the pre-release on GitHub, all on its first attempt
+  ([what it showed](../releases/publishing.md#what-the-second-publish-showed)). Since pull request 47 the job
+  that publishes gives npm no token.
+- **A correction after the last work package.** A test of eight processes failed once on Windows: one of them
+  could not create the lock of the configuration. The creation is tried again since pull request 48. It is on
+  `main` and in no published version.
+- **Not done, and not verified.** A publish that npm refuses was not seen, so what the job says and shows then
+  has run against stand-in registries only. Staged publishing is not tried. I have no account on npm and
+  did not look there: what I know of the two publishes is the logs of the runs and what you saw on npm and sent
+  me after the first.
 
 ## 6. How the results are proven
 
