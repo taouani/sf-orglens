@@ -40,10 +40,11 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 prints `$ tsc -b` and nothing else.
 
 The third line takes the repository to the commit this plan was written against: the last one of Phase 1 that
-changed the engine or the command line. What came after it are documents, three decision records from your
-answers of 17 November 2026 (0051 to 0053), and the workflow and the script that make a pre-release. They are on
-`main`. Git says that the clone is in "detached HEAD" state, which is
-expected. In a clone you made earlier, run `git fetch origin` first.
+changed what the engine or the command line does. What came after it are documents, four decision records from
+your answers of 17 November 2026 (0051 to 0054), the workflow and the script that make a pre-release, and the
+version `0.1.0-next.1`, which changes the number the two packages name and nothing else. They are on `main`. A
+build of `main` therefore prints `0.1.0-next.1` wherever this plan expects `0.1.0-next.0`. Git says that the
+clone is in "detached HEAD" state, which is expected. In a clone you made earlier, run `git fetch origin` first.
 
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your
 shell, in the root of the clone:
@@ -75,7 +76,7 @@ by me. The folder `orglens-phase1` in your home folder must not exist yet.
 | A1  | `pnpm run check`                                           | It ends with a table of coverage and the exit code `0`. Of 2,099 tests, 2,064 pass and 35 are skipped where I ran it, as the root user, without the public codebases. With them (part F): 2,088 and 11. As another user or on another system the split differs. No test fails. About ten minutes. |
 | A2  | `pnpm run check:adr`                                       | `50 decision records checked: 27 plan decisions covered once each.`                                                                                                                                                                                                                               |
 | A3  | Open the page **Actions** of the repository, workflow `CI` | The latest run on `main` is green, with jobs for Linux, macOS and Windows on Node.js 24 and 26.                                                                                                                                                                                                   |
-| A4  | Open `docs/adr/README.md`                                  | Records 0035 to 0050 are of this phase. 0036 is superseded by 0038. Records 0039 to 0050 each list choices of mine that are yours to strike. On `main` the file has three more, 0051 to 0053, from your answers of 17 November 2026. 0052 is superseded.                                          |
+| A4  | Open `docs/adr/README.md`                                  | Records 0035 to 0050 are of this phase. 0036 is superseded by 0038. Records 0039 to 0050 each list choices of mine that are yours to strike. On `main` the file has four more, 0051 to 0054, from your answers of 17 November 2026. 0052 is superseded.                                           |
 
 ## B. A snapshot is analysed
 
@@ -321,6 +322,11 @@ itself when it received the first publish, as you saw on 17 November 2026
 ([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried
 against a registry on my machine, not against npm. I5 updates
 every global package of your machine. Leave it out if you do not want that.
+
+This part is written for the time in which `0.1.0-next.0` is the only pre-release. Once `0.1.0-next.1` is
+published, three steps read differently: I1 shows two releases, the tags of I2 are on `0.1.0-next.1`, and I5
+moves the install to `0.1.0-next.1`. The part is brought up to date in the pull request that follows that
+publish.
 
 **Do not run `npx orglens`.** The name `orglens` is the command, not a package of this project, and npx fetches
 whatever package has that name.

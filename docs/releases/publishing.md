@@ -57,8 +57,10 @@ barrier, GitHub must know me by another account than yours, and that is yours to
 
 These steps were done once, for `0.1.0-next.0`, all eleven: you said on 17 November 2026 that the token and
 the secret are deleted, you looked at the two packages, and step 11 is the pull request that added this
-sentence. They are needed again only for a package that is not on npm yet, and npm takes this way away in
-January 2027.
+sentence. They would be needed again only for a package that is not on npm yet, and npm takes this way away in
+January 2027. The workflow no longer reads the secret: since the first publish its job gives npm no token, so
+that a run cannot pass with a token where trusted publishing was to be tried. For a new package the workflow
+would have to be changed back, or changed for the other way below.
 
 1. I start the workflow on `main` with "publish" off. It checks, packs and tries the install on three systems.
    Its first job also says what it found of the environment.
@@ -109,18 +111,20 @@ prefer this one. It leaves the same placeholder version `0.0.0-stage` that the f
 
 ## Before the second pre-release
 
-By the page of npm, a new trusted publisher that has not published within two days expires. So set the two up
-shortly before the second pre-release, not after the first.
+By the [page of npm](https://docs.npmjs.com/trusted-publishers), a new trusted publisher "must complete its
+first successful publish within 2 days". After that "it expires and can no longer be used or edited", and the
+page says to delete it and to create a new one. So a publisher is set up shortly before the publish that uses
+it.
 
 You set the two up on 17 November 2026, half an hour after the first publish. The page of each package shows
 the publisher with the permissions `npm publish`, `npm stage publish` and `npm dist-tag`, and the status
-"Pending validation": npm asks for a publish through it before 19 November 2026, about 21:00 UTC. You chose on
-the same day to publish a second pre-release, `0.1.0-next.1`, within that time, to try the way without a
-token (decision record [0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). The version is set,
-and its [release notes](v0.1.0-next.1.md) are written. Steps 1 to 3 below are done, and you said on that day
-that the secret of step 4 is deleted. What is left is step 5: a rehearsal, your word for the version, the run
-with "publish" on, and your approval of its job. If the two days pass without a publish, the publishers
-expire, and steps 1 to 3 are done again before the next try.
+"Pending validation". npm asks for a publish through it before 19 November 2026, 20:56 UTC for `sf-orglens`
+and 21:00 UTC for `@sf-orglens/engine`. You chose on the same day to publish a second pre-release,
+`0.1.0-next.1`, within that time, to try the way without a token (decision record
+[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). The version is set, and its
+[release notes](v0.1.0-next.1.md) are written. Steps 1 to 3 below are done, and you said on that day that the
+secret of step 4 is deleted. What is left: a rehearsal, your word for the version, and step 5. If the two days
+pass without a publish, you delete the two publishers and make them anew before the next try.
 
 1. On npmjs.com, in the settings of `sf-orglens`, under "Trusted publishing", add a publisher for GitHub
    Actions: the owner and the name of this repository, the workflow file `pre-release.yml` (the file name
@@ -129,18 +133,30 @@ expire, and steps 1 to 3 are done again before the next try.
 2. Under "Allowed actions" tick `npm publish` and `npm dist-tag`. A new publisher allows only
    `npm stage publish` unless they are ticked.
 3. Do the same in the settings of `@sf-orglens/engine`.
-4. The secret `NPM_TOKEN` must be gone. npm tries trusted publishing first and falls back to a token, so a run
-   that works while the secret exists proves nothing.
+4. The secret `NPM_TOKEN` must be gone. By the page of npm, npm uses trusted publishing "before falling back
+   to traditional tokens", so a run that works with a token proves nothing. The job no longer reads the secret
+   and gives npm an empty token. A secret that is still there, or that is put back, is therefore not used.
 5. The publish then goes as steps 5 to 8 above, without a token. The job then also moves the tag `latest`
    through the trusted publisher, which the first publish did with the token. When it has worked, the page of
    npm recommends to require the second factor and to forbid tokens in the settings of each package.
 
-When a publish is refused, the job says in its own words what to look at: the allowed actions of the publisher,
-its fields, or the token. Two of its sentences rest on texts I could not confirm. That npm answers "OIDC
-permission denied" when `npm publish` is not ticked is from my reading of its page, and the reviewer found the
-words neither on the page nor in the code of npm. That a repository that does not match is refused with the
-code E422 is not on the page either. npm writes why it did not accept the identity of a workflow only at a
-log level the job does not use, so the log may show no more than the code ENEEDAUTH.
+When a publish is refused, the job says in its own words what to look at: the allowed actions of the publisher
+or its fields. Two of its sentences rest on texts I could not confirm. That npm answers "OIDC permission
+denied" when `npm publish` is not ticked is from my reading of its page, and the reviewer found the words
+neither on the page nor in the code of npm. That a repository that does not match is refused with the code
+E422 is not on the page either. npm writes why it did not accept the identity of a workflow only to its log
+file, and its error may show no more than the code ENEEDAUTH. So the job shows the lines of that file that
+speak of the identity, with anything in the form of a token taken out. A reviewer saw such a line on a
+registry on the reviewer's machine: "Failed token exchange request with body message", followed by the words
+of the registry.
+
+Each package has a trusted publisher of its own, and the job publishes the engine first. When npm takes the
+engine and refuses the command line, the engine is on npm under `next` and the command line is not. Nothing
+is broken by that: `sf-orglens@next` is still the pre-release before, which names its own engine. Correct the
+publisher of `sf-orglens` and use "Re-run failed jobs". The job asks for your approval again, leaves the
+engine as it is and publishes the command line. A reviewer found that `npm publish --dry-run` asks npm for
+the identity and sends no package, so a dry run of both files could stop the job before the engine is sent.
+That is not built: it was seen on a stand-in only, and the state it would avoid is repaired by a re-run.
 
 ## What the workflow does with the tags
 
@@ -161,6 +177,12 @@ npm dist-tag add @sf-orglens/engine@<version> latest
 
 Then use "Re-run failed jobs". The job leaves what is published as it is, finds the tag in place or moves it,
 and the run goes on.
+
+Before the pre-release on GitHub is created, the last job reads the tags of both packages once more. After
+each move of a tag npm printed in the first publish: "This change is being processed and may take a few
+minutes to take effect." So a read that is not right yet is repeated, five looks a minute apart. When the tags
+are still not right, the job fails. Use "Re-run failed jobs" first, which looks again, and move a tag by hand
+only when it is still wrong then.
 
 ## What the first publish showed
 
@@ -202,12 +224,14 @@ pages of npm and of the times npm gives is what you saw and sent me on the same 
   the install, which passed, and the pre-release on GitHub was created eighteen minutes after the two packages
   were on npm. The job on npm did not run a second time.
 
-  An hour later the same happened to the three macOS jobs of a run of the workflow "CI": each was cancelled
-  fifteen minutes to the second after it was queued, without a machine, and two of them have a limit of twenty
-  minutes. So the limit of a job did not end them, and the longer limit of the install jobs does not help
-  against a wait for a machine. What helped both times is "Re-run failed jobs", after which the jobs got a
-  machine within seconds to minutes. A publishing run can meet this again, between the publish on npm and the
-  pre-release on GitHub.
+  Fifty minutes later the same happened to the three macOS jobs of a run of the workflow "CI": each was
+  cancelled fifteen minutes to the second after it was queued, without a machine, and two of them have a limit
+  of twenty minutes. So the limit of a job did not end them, and the longer limit of the install jobs does not
+  help against a wait for a machine. What helped both times is "Re-run failed jobs", after which the jobs got a
+  machine within seconds to minutes. A publishing run can meet this at any macOS job. Before the publish it
+  costs a re-run and time: in the run that published, the two macOS jobs that try the install line waited five
+  and ten minutes for a machine. After the publish it leaves the packages on npm without a page on GitHub until
+  the re-run. A run that publishes is therefore started with hours to spare before a limit of npm, not minutes.
 
 - **A read does not see a new version for minutes, which the publish step did not expect.** It asks npm for
   the version before it publishes and after an error. Had a publish gone through and been answered with an
@@ -225,7 +249,9 @@ pages of npm and of the times npm gives is what you saw and sent me on the same 
   trusted publishing and names its repository in the same form, so I expect it to pass. On moving a tag two
   pages of npm disagree: the page on trusted publishers has the allowed action `npm dist-tag`, and the page of
   the command `npm stage` says that such a token "can only be used with `npm stage publish` and `npm publish`".
-  The workflow follows the first, and the steps by hand are above.
+  The workflow follows the first, and the steps by hand are above. A reviewer read the code of npm 11.21.2:
+  `npm dist-tag add` asks for the identity of the workflow before it moves a tag, so the program is on the side
+  of the first page. What the registry answers is not known.
 - What the version `0.0.0-stage` holds, whether npm makes one for every new package or only for one that is
   published with such a token, and whether it can be removed. The job moves `latest` whether a first version
   has it or not.

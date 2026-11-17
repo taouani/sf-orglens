@@ -237,6 +237,6 @@ them was not read. Only one org was read, so how common this is in other orgs is
    before you approve it.
 6. **From Phase 0, still open:** part G of its test plan, your reading of ten entries of the answer key, and
    whether private vulnerability reporting is switched on in the settings of the repository.
-7. **Choices of mine that are yours to strike.** Records 0039 to 0050 and record 0053 each list the choices
-   their author made.
+7. **Choices of mine that are yours to strike.** Records 0039 to 0050 and records 0053 and 0054 each list the
+   choices their author made.
    The ones with the most weight are named in the status of each work package in the plan.
