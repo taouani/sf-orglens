@@ -68,10 +68,11 @@ reader of the same kind as I am. No person read an entry.
 
 In numbers: about 18,400 lines of TypeScript in the engine and the command line, and about 35,700 lines of
 tests. 2,102 tests are defined. On my machine, with the four public codebases downloaded, 2,091 pass and 11 are
-skipped. Without them, 35 are skipped: CI does not download the codebases and skips the tests on them. Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from
-version 2 at the end of Phase 0, and every earlier version is migrated. 18 decision records are new, 0035 to
-0052, of which 0036 is superseded by 0038. 25 pull requests, 20 to 44, each with a code review by a separate
-agent before it was merged. The workflow "Live org" ran ten times against the test org.
+skipped. Without them, 35 are skipped: CI does not download the codebases and skips the tests on them.
+Statement coverage of the two packages is 97.5 percent. The database is at schema version 7, from version 2 at
+the end of Phase 0, and every earlier version is migrated. 18 decision records are new, 0035 to 0052, of which
+0036 is superseded by 0038. 25 pull requests, 20 to 44, each with a code review by a separate agent before it
+was merged. The workflow "Live org" ran ten times against the test org.
 
 ## What was measured
 
