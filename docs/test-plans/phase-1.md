@@ -16,7 +16,8 @@ and "you" is the maintainer.
 - **Part H is the main part, and only you can do it:** `orglens snapshot`, `coverage` and `impact` on an org
   you know. None of the three commands has ever run against Salesforce. It takes as long as the org takes to
   hand out its metadata: minutes for a small org, and I do not know how long for a large one.
-- Part I installs the pre-release, which was published on 17 November 2026.
+- Part I installs the first of the two pre-releases that were published on 17 November 2026, and lets npm move
+  the install to the second.
 
 Every expected output of parts B to D was produced on Linux x64 with Node.js 24.22.3 on 17 November 2026, as
 the root user, with the code of the engine and the command line of the commit named below. Times and sizes on
@@ -39,15 +40,14 @@ pnpm run build
 Expected: `pnpm install` ends without an error and runs no install script of a dependency. `pnpm run build`
 prints `$ tsc -b` and nothing else.
 
-The third line takes the repository to the commit this plan was written against: the last one of Phase 1 that
-changed what the engine or the command line does on every system. What came after it are documents, four
-decision records from your answers of 17 November 2026 (0051 to 0054), the workflow and the script that make a
-pre-release, the version `0.1.0-next.1`, which changes the number the two packages name and nothing else, and
-one correction for Windows that is in no published version yet: a command tries again when Windows refuses to
-create the lock of the configuration (pull request 48). They are on `main`. A build of `main` therefore prints
-`0.1.0-next.1` wherever this plan expects `0.1.0-next.0`, and `pnpm run check` counts seven tests more than
-step A1 says. Git says that the
-clone is in "detached HEAD" state, which is expected. In a clone you made earlier, run `git fetch origin` first.
+The third line takes the repository to the commit this plan was written against: the last one of Phase 1 that changed
+what the engine or the command line does on every system. What came after it are documents, four decision records from
+your answers of 17 November 2026 (0051 to 0054), changes to the workflow and the script that make a pre-release, the
+version `0.1.0-next.1`, which changes the number the two packages name and nothing else, and one correction for Windows
+that is in no published version yet: a command tries again when Windows refuses to create the lock of the configuration
+(pull request 48). They are on `main`. A build of `main` therefore prints `0.1.0-next.1` wherever this plan expects
+`0.1.0-next.0`, and `pnpm run check` counts seven tests more than step A1 says. Git says that the clone is in "detached
+HEAD" state, which is expected. In a clone you made earlier, run `git fetch origin` first.
 
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your
 shell, in the root of the clone:
@@ -316,20 +316,21 @@ install to the second.
 | --- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository                                  | Two releases, `OrgLens 0.1.0-next.1 (pre-release)` above `OrgLens 0.1.0-next.0 (pre-release)`, each marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. GitHub adds two archives of the source to each.                                                |
 | I2  | Open `https://www.npmjs.com/package/sf-orglens`                                                                        | Version `0.1.0-next.1`, under the tags `next` and `latest`, with a mark that it has provenance and a link to the run that built it. The tab "Versions" lists two more: `0.1.0-next.0`, with that mark, and `0.0.0-stage`, without it. `@sf-orglens/engine` shows the same. |
-| I3  | In a terminal without the shell function of this plan, run the install line of the first release of I1, `0.1.0-next.0` | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                                                                                                                      |
+| I3  | In a terminal without the shell function of this plan, run the install line of the older release of I1, `0.1.0-next.0` | The line is `npm install --global sf-orglens@0.1.0-next.0`. `orglens --version` prints `sf-orglens/0.1.0-next.0 engine/0.1.0-next.0`.                                                                                                                                      |
 | I4  | `orglens doctor` in any folder that is no workspace                                                                    | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`: `No orglens.toml in this folder or above it.` The last line is `OrgLens can run here.`                                                                                                 |
-| I5  | `npm update --global`, then `orglens --version`                                                                        | `orglens --version` prints `sf-orglens/0.1.0-next.1 engine/0.1.0-next.1`: the update moved the install to the version under `latest`.                                                                                                                                      |
+| I5  | `npm update --global`, then `orglens --version`                                                                        | `orglens --version` prints `sf-orglens/0.1.0-next.1 engine/0.1.0-next.1`: the update moved the install to the version under `latest`. Tried against a stand-in registry only, see below.                                                                                   |
 | I6  | `npm uninstall --global sf-orglens`                                                                                    | It is removed with the engine, and `orglens` is no longer found.                                                                                                                                                                                                           |
 
-Each run that published also installed its version from npm on Linux, Windows and macOS. All six installs
-passed both times, one of the first run when it was run again. I3 is the first install by a person. It installs
-the older version on purpose, so that I5 shows what `npm update --global` does: it follows the tag `latest`,
-which the second run moved. I2 is written from the pages of npm, and I did not look at npm: what the page of a
-package shows is npm's to decide. The version `0.0.0-stage` is not a version of OrgLens: npm made it by itself
-when it received the first publish, as you saw on 17 November 2026
-([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried with
-npm 11.19.1 against a registry on my machine that held both versions, not against npm. I5 updates every global
-package of your machine. To leave it out, install the newer version in I3 instead, with the line of its release.
+Each run that published also installed its version from npm on Linux, Windows and macOS. All six installs passed both
+times, one of the first run when it was run again. I3 is the first install by a person. It installs the older version on
+purpose, so that I5 shows what `npm update --global` does: it follows the tag `latest`, which the second run moved. I2
+is an expectation: nobody has looked at the page of a package since the second publish, and I do not look at npm. It is
+written from what you saw there after the first publish and from the log of the second run, and what the page of a
+package shows is npm's to decide. The version `0.0.0-stage` is not a version of OrgLens: npm made it by itself when it
+received the first publish, as you saw on 17 November 2026
+([`docs/releases/publishing.md`](../releases/publishing.md#what-the-first-publish-showed)). I5 was tried with npm
+11.19.1 against a registry on my machine that held both versions, not against npm. I5 updates every global package of
+your machine. To leave it out, install the newer version in I3 instead, with the line of its release.
 
 One more thing to look at on npmjs.com, in the settings of each of the two packages, under "Trusted
 publishing": the publisher should no longer show "Pending validation"
@@ -353,10 +354,10 @@ whatever package has that name.
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. Nothing about the second pre-release: `0.1.0-next.1` is published, on your word (record 0054).
-3. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
-4. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
+2. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
+3. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
 
-Two questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does not
-hand out stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027,
-on GitHub or on npm (records 0051 and 0053).
+Two questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does not hand out
+stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027, on GitHub or on
+npm (records 0051 and 0053). Nothing is asked about the second pre-release: `0.1.0-next.1` is published, on your word
+(record 0054).

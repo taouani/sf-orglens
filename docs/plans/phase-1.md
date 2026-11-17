@@ -1379,7 +1379,7 @@ Status on 17 November 2026, after the second publish. The documents are written.
   could not create the lock of the configuration. The creation is tried again since pull request 48. It is on
   `main` and in no published version.
 - **Not done, and not verified.** A publish that npm refuses was not seen, so what the job says and shows then
-  has run against a registry on my machine only. Staged publishing is not tried. I have no account on npm and
+  has run against stand-in registries only. Staged publishing is not tried. I have no account on npm and
   did not look there: what I know of the two publishes is the logs of the runs and what you saw on npm and sent
   me after the first.
 

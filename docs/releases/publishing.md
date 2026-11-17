@@ -20,9 +20,12 @@ was the first try of trusted publishing (decision record
 pages of npm as I read them on 17 November 2026 and the workflow of your other project. Where a page of npm or GitHub
 reads differently today, the page is right.
 
-**For the next pre-release** nothing has to be set up, as long as the two trusted publishers and the environment stay
-as they are: I prepare the version in a pull request and rehearse it, you give your word for that version, I start the
-run, and you approve its job "Publish on npm" ([steps 5 to 8](#the-first-pre-release) below).
+**For the next pre-release** nothing should have to be set up, as long as the two trusted publishers and the environment
+stay as they are: I prepare the version in a pull request and rehearse it, you give your word for that version, I start
+the run, and you approve its job "Publish on npm". Those are steps 1, 2 and 5 to 8 of
+[the first pre-release](#the-first-pre-release) below. That nothing has to be set up rests on the page of npm, which
+says that the first publish through a publisher validates it. Nobody has looked yet whether the two publishers left
+"Pending validation".
 
 ## Once, before the first pre-release
 
@@ -61,12 +64,13 @@ barrier, GitHub must know me by another account than yours, and that is yours to
 
 ## The first pre-release
 
-These steps were done once, for `0.1.0-next.0`, all eleven: you said on 17 November 2026 that the token and
-the secret are deleted, you looked at the two packages, and step 11 is the pull request that added this
-sentence. They would be needed again only for a package that is not on npm yet, and npm takes this way away in
-January 2027. The workflow no longer reads the secret: since the first publish its job gives npm no token, so
-that a run cannot pass with a token where trusted publishing was to be tried. For a new package the workflow
-would have to be changed back, or changed for the other way below.
+These steps were done once, for `0.1.0-next.0`, all eleven: you said on 17 November 2026 that the token and the secret
+are deleted, you looked at the two packages, and step 11 is the pull request that added this sentence. Steps 1, 2 and 5
+to 8 are the steps of every pre-release, with the number of that version. Steps 3, 4 and 9 are about the token. They
+would be needed again only for a package that is not on npm yet, and npm takes this way away in January 2027. The
+workflow no longer reads the secret: since the first publish its job gives npm no token, so that a run cannot pass with
+a token where trusted publishing was to be tried. For a new package the workflow would have to be changed back, or
+changed for the other way below.
 
 1. I start the workflow on `main` with "publish" off. It checks, packs and tries the install on three systems.
    Its first job also says what it found of the environment.
@@ -252,32 +256,37 @@ pages of npm and of the times npm gives is what you saw and sent me on the same 
 ## What the second publish showed
 
 [Run 7 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/44194660408) published `0.1.0-next.1` on 17
-November 2026, from `main`, after you gave your word for the version and approved its job. It went through on its
-first attempt, in seventeen minutes, of which five were the wait for your approval. I read its log. I did not look at
-npm.
+November 2026, from `main`, after you gave your word for the version and approved its job. It went through on its first
+attempt, in seventeen minutes, of which five were the wait for your approval. I read its log. I did not look at npm. The
+date and the times are in UTC.
 
-- **npm took both packages without a token.** The log of both steps shows the token of the job empty. npm took
-  `@sf-orglens/engine` at 23:05:09 UTC and `sf-orglens` at 23:05:18 UTC, each with its provenance, signed and
-  written to the public log of Sigstore. So npm accepts the identity of this workflow in the environment
-  `npm-next`, for a publisher that showed "Pending validation" two hours before, and the address of the
+- **npm took both packages without a token.** The log of the step that publishes and of the step that moves the tag
+  shows the token of the job empty. npm took `@sf-orglens/engine` at 23:05:09 and `sf-orglens` at 23:05:18, each with
+  its provenance, signed and written to the public log of Sigstore. So npm accepts the identity of this workflow in the
+  environment `npm-next`, for a publisher that showed "Pending validation" two hours before, and the address of the
   repository as the packages name it passes there too.
-- **The job moved the tag `latest` the same way,** for both packages, from `0.1.0-next.0` to `0.1.0-next.1`.
-  Of the two pages of npm that disagreed on this, the page on trusted publishers is right: a workflow whose
-  publisher allows `npm dist-tag` can move a tag without a token.
+- **The job moved the tag `latest` the same way,** for both packages, from `0.1.0-next.0` to `0.1.0-next.1`. Two pages
+  of npm disagreed on this: the page on trusted publishers has the allowed action `npm dist-tag`, and the page of the
+  command `npm stage` says that such a token "can only be used with `npm stage publish` and `npm publish`". The first is
+  right: a workflow whose publisher allows `npm dist-tag` can move a tag without a token. With the bullet above, that
+  answers the three things this page listed as not known before the run and that decision record 0054 names: whether npm
+  accepts the identity of the workflow, whether the address of the repository passes, and whether the job can move a
+  tag.
 - **npm still printed its warning about tokens that bypass the second factor,** at each publish and at each
   move of a tag, although the job had no token. The warning says nothing about this job.
-- **An install found the version between three and a half and five and a half minutes after the publish.** On
-  Linux the fourth try failed 3 minutes and 20 seconds after the publish of the command line, and the fifth
-  passed two minutes later. On Windows it was the fifth try as well. That is as long as at the first publish,
-  so a second version of a package that exists takes as long as the first. Five tries were all the jobs had at
-  the first publish. They have eight now and used five.
+- **An install found the version between three and a half and five and a half minutes after the publish.** On Linux the
+  fourth try failed 3 minutes and 20 seconds after the publish of the command line, and the fifth passed two minutes
+  later. On Windows it was the fifth try as well. At the first publish the fourth try failed and the fifth passed too,
+  with the same waits, so this second version of a package that exists took about as long as the first. The two tries
+  are two minutes apart, and the runs cannot say more exactly than that. Five tries were all the jobs had at the first
+  publish. They have eight now and used five.
 - **The tags were right at the first look,** seven minutes after they were moved. The four further looks of
   that step have not run on GitHub.
 - **Every job got a machine within seconds,** the macOS jobs too. The pre-release on GitHub was created seven
   minutes after the two packages were on npm.
 - **Not seen in this run:** a publish that npm refuses, what the job then shows of the log file of npm, a tag
   that cannot be moved, and a version that npm says exists and does not show. Those parts of the workflow have
-  run against a registry on my machine only.
+  run against stand-in registries only, on my machine and on the reviewers'.
 - **Not seen by me:** the pages of npm. Whether the two publishers still show "Pending validation" is for you
   to look at. The page of npm recommends, once trusted publishing works, to require the second factor and to
   forbid tokens in the settings of each package ("Require two-factor authentication and disallow tokens").
@@ -286,10 +295,11 @@ npm.
 ## Not known
 
 - What npm answers when it refuses a workflow: which code and which words. The sentences of the job for that
-  case rest on the pages of npm and on a registry on one machine.
+  case rest on the pages of npm and on stand-in registries.
 - What the version `0.0.0-stage` holds, whether npm makes one for every new package or only for one that is
   published with such a token, and whether it can be removed. The job moves `latest` whether a first version
   has it or not.
-- How long npm takes to show a new version to an install on another day. It was seen twice, on one evening,
-  and took between three and a half and five and a half minutes both times.
+- How long npm takes to show a new version to an install on another day. It was seen twice, on one evening:
+  both times the fourth try of an install failed, up to four minutes after the publish, and the fifth passed,
+  five and a half minutes after it.
 - Staged publishing, the other way for a first publish. Nobody tried it.

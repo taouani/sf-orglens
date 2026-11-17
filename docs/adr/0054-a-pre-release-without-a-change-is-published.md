@@ -105,4 +105,5 @@ and it changes nothing in what OrgLens does.**
   has still run against a stand-in only. The author did not look at npm: whether the two publishers still show
   "Pending validation" is the maintainer's to look at.
   [`docs/releases/publishing.md`](../releases/publishing.md#what-the-second-publish-showed) has what the run
-  showed.
+  showed. The three things the context above names as not known are answered there, and the section "Not
+  known" of that page no longer lists them.
