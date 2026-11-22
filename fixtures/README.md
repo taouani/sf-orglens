@@ -228,8 +228,8 @@ what a reference is: `'... FROM Invoice__c ORDER BY ' + fieldName` holds a `prob
 - Every reference to an Apex class or to a member of one, except `extends`: calls between methods, the use of a
   constant of another class, `new` of a class. System classes and interfaces.
 - Picklist values and named credentials.
-- The object behind a global variable or in `$ObjectType`, and the custom metadata type of a record: the reference
-  goes to the field, as it does for `Invoice__c.Amount__c` in Apex.
+- The object behind a global variable or in `$ObjectType`, and the custom metadata type in `$CustomMetadata`: the
+  reference goes to the field, as it does for `Invoice__c.Amount__c` in Apex.
 - The hierarchy field of the user names no object in its file, so it has no entry of its own. A formula that goes
   through it reads it.
 - The global variables that name nothing that can change: `$Api`, `$System`, `$Flow`.
@@ -332,9 +332,9 @@ The check reads the files only as text. It cannot tell which of two objects a fi
 which object a DML statement writes, whether an entry deserves its stretch mark, or whether an entry is missing.
 That is what the second reading of the key and the code review are for. Of 20 defects planted in version 0 of the
 key one at a time, the check found 17. The three it let pass are of these kinds. No defect was planted in the
-entries that version 1 added. Seven were planted in the entries of version 2, one for each new rule of the check,
-and each was refused. That says the new rules work, and not that the 196 entries are right: nobody but me has
-read them yet.
+entries that version 1 added. Seven were planted in the entries of version 2, one at a time, and the check
+refused each. That says the new rules of the check work, and not that the 196 entries are right: nobody but me
+has read them yet.
 
 ## Formula probes
 

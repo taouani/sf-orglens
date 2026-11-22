@@ -4,7 +4,7 @@
  * The rows are made from the answer key of the project, which is written by hand: every reference the key has
  * for a formula or for the filter of a roll-up summary, and every reference it has for Apex, where the target
  * is something the project defines. To these come the three rows to an object that the probe of the test org
- * saw and the key leaves out (`docs/research/phase-1/real-org.md`, section 4). The rows are written the way
+ * saw and that are not made from the key (`docs/research/phase-1/real-org.md`, section 4). The rows are written the way
  * Salesforce writes them (`mock-dependencies.ts`).
  *
  * The mock reports nothing yet for what Phase 2 reads: flows, workflow rules, record types, field sets, records
@@ -57,7 +57,10 @@ export function keyedPairs(): KeyedPair[] {
   return [...pairs.values()];
 }
 
-/** The three rows to an object that Salesforce reports and the answer key does not hold. */
+/**
+ * The three rows to an object that Salesforce reports and that are not made from the key. The key has no entry
+ * for the first two. It has one for the third, as a reference of Phase 2, which is left out above.
+ */
 const TO_AN_OBJECT: readonly (readonly [MockEnd, MockEnd])[] = [
   // The object behind $ObjectType in VLOOKUP, and the custom metadata type behind $CustomMetadata.
   [
