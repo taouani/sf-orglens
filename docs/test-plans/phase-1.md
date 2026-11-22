@@ -355,7 +355,9 @@ whatever package has that name.
 
 1. Whether the phase is accepted, after this plan.
 2. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
-3. The questions of the [Phase 2 plan](../plans/phase-2.md), and its approval.
+
+Nothing more is asked about the [Phase 2 plan](../plans/phase-2.md): you answered its questions and approved it on
+22 November 2026.
 
 Two questions of the close you answered on 17 November 2026: a component the org lists and Salesforce does not hand out
 stays an error of a snapshot, and the pre-release is not "the first release" of records 0022 and 0027, on GitHub or on

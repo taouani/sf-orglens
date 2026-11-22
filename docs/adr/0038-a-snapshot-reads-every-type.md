@@ -4,6 +4,7 @@
 - Date: 2026-11-15
 - Decisions: none (a change the maintainer made when approving the Phase 1 plan)
 - Changed by: [0048](0048-types-a-snapshot-leaves-out.md), in the one point this record leaves undecided: `orglens.toml` gets a key that leaves types outside the logic tier out of a snapshot. A type that is left out is not listed
+- Changed by: [0055](0055-email-templates-report-types-and-quick-actions-in-phase-2.md), [0056](0056-components-of-a-managed-package.md) and [0058](0058-a-type-counts-for-complete-once-it-is-analysed.md), which hold the answers of the maintainer to three points this record leaves open: email templates and report types are analysed in Phase 2 and reports stay in Phase 6, the components of a managed package are kept, marked and left out of an answer as the thing that refers, and a type counts for a complete snapshot once it is analysed
 
 ## Context
 
