@@ -96,6 +96,25 @@
       }
     },
     {
+      "key": "ValidationRule:invoice__c.credit_note_is_negative",
+      "type": "ValidationRule",
+      "name": "Invoice__c.Credit_Note_Is_Negative",
+      "file": "force-app/main/default/objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ValidationRule:invoice__c.credit_note_is_negative",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml",
+        "line": 8,
+        "column": 3
+      }
+    },
+    {
       "key": "ValidationRule:invoice__c.large_amount_needs_permission",
       "type": "ValidationRule",
       "name": "Invoice__c.Large_Amount_Needs_Permission",
@@ -159,8 +178,8 @@
     "notAnalysed": [
       {
         "type": "ApexClass",
-        "listed": 12,
-        "retrieved": 12,
+        "listed": 13,
+        "retrieved": 13,
         "listing": "ok"
       },
       {
@@ -183,8 +202,8 @@
       },
       {
         "type": "CustomMetadata",
-        "listed": 1,
-        "retrieved": 1,
+        "listed": 4,
+        "retrieved": 4,
         "listing": "ok"
       },
       {
@@ -194,7 +213,73 @@
         "listing": "ok"
       },
       {
+        "type": "EmailFolder",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailTemplate",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "FieldSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "Flow",
+        "listed": 6,
+        "retrieved": 6,
+        "listing": "ok"
+      },
+      {
         "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "RecordType",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "Workflow",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowAlert",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowFieldUpdate",
+        "listed": 3,
+        "retrieved": 3,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowOutboundMessage",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowRule",
+        "listed": 4,
+        "retrieved": 4,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowTask",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

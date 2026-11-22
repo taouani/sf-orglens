@@ -6,10 +6,12 @@ org, and nothing is copied from another project.
 | Path                          | What it is                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
 | `billing-sfdx/`               | A small Salesforce project in source format: invoices, their lines, and Apex.       |
-| `expected/answer-key.v1.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v2.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v1.yaml` | The key of Phase 1, kept so that the check can say what version 2 changed.          |
 | `expected/answer-key.v0.yaml` | The key of Phase 0, kept as the key the Apex trial was scored with.                 |
 | `formula-probes.yaml`         | One small formula for every operator, literal and function, to test a parser with.  |
 | `formula-negative/`           | Fields and a rule whose formulas cannot be deployed, and what is expected of them.  |
+| `flow-negative/`              | Three flows that cannot be deployed, and what is expected of them.                  |
 | `parser-negative/`            | Apex files that do not compile, for tests of error recovery. Not part of a project. |
 | `corpora.toml`                | Public codebases, pinned by commit, that are downloaded on demand.                  |
 
@@ -17,11 +19,13 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 87 components: 5 custom objects, 54 custom fields on them, on `Account` and on `User`, 10
-validation rules, 12 Apex classes and 1 trigger, and five components that are only there to be referred to: the
-file of custom labels with one label, a record of a custom metadata type, a custom permission and a global value
-set. Three of the objects are targets too: a custom setting, a custom metadata type and `Tax_Code__c`. It is small
-on purpose. Each file is there for a case that an analyser can get wrong:
+`billing-sfdx` has 118 components: 5 custom objects, 57 custom fields on them, on `Account` and on `User`, 11
+validation rules, 13 Apex classes and 1 trigger, 6 flows, the workflow rules of two objects (2 files with 4 rules
+and the 6 actions they start), 2 record types, a field set, an email template with its folder, 4 records of a
+custom metadata type, and four components that are only there to be referred to: the file of custom labels with
+one label, a custom permission and a global value set. Three of the objects are targets too: a custom setting, a
+custom metadata type and `Tax_Code__c`. It is small on purpose. Each file is there for a case that an analyser can
+get wrong:
 
 - formulas on formulas, across a lookup, through the owner, with a comment and with a field name inside text;
 - two roll-up summaries and a lookup filter;
@@ -74,6 +78,44 @@ words of such a message.
 What the runs showed, and which pairs of the key the Dependency API reports (129 of 189), is in
 [`real-org.md` of Phase 1](../docs/research/phase-1/real-org.md).
 
+Phase 2 added 31 components, and changed no file that was there. Two fields that nothing referred to are referred
+to now. The new files are these cases:
+
+- a flow that runs before an invoice is saved (`Invoice_Before_Save`): an entry condition that is a formula, a
+  decision on `$Record`, a path through two relationships, a global variable in a condition and one in a formula,
+  assignments to fields of `$Record`, and a custom error whose message holds a merge field and, beside it, the
+  name of a field as plain text;
+- a flow that runs after the save and three days after a date field (`Invoice_After_Save`): a scheduled path, a
+  condition on `$Record__Prior`, a query for lines with filters, a sort field and a list of queried fields, a
+  loop, an update of a collection, an update of the record behind a relationship, an email alert, and a subflow
+  whose output a later condition reads. Which object that output is of stands in the other flow, so the place is
+  an unknown;
+- the subflow (`Invoice_Recalculate`): a record variable, formulas over it and over a loop variable, an assignment
+  that adds to a field, and a condition logic that is written out;
+- a screen flow (`Invoice_Review_Screen`): a field of a record on a screen, a display text with merge fields
+  (`Owner:User` among them), a validation of an input, a choice set that is filled from records, a text template,
+  an Apex action, and an element each that creates, updates by filter and deletes records;
+- a flow that runs on a schedule and was never activated (`Invoice_Purge_Void`), and a process of the Process
+  Builder (`Invoice_Sent_Process`), which Salesforce stores as a flow of its own shape;
+- workflow rules with criteria lines and with a formula, an inactive rule, a time trigger from a date field, a
+  field update with a literal and one with a formula, a field update on the parent of the record, an email alert
+  with a user field, a contact field and the owner as recipients, an outbound message and a task;
+- a record type that turns picklist values off, and a second one whose name a validation rule and a flow compare
+  `RecordType.DeveloperName` with;
+- a field set with a field across a relationship;
+- records of a custom metadata type that name a field and an object in four ways: through a field of the kind
+  that points at a field definition, through one that points at an object definition, as text that is exactly the
+  name of a field, and inside a sentence;
+- an email template with merge fields of the record, of the recipient, of the user and of the organisation, and
+  with the name of a field as plain text.
+
+**None of the 31 components was ever sent to Salesforce.** The Salesforce source library resolves every file to a
+component, and that is all that is checked. What Salesforce may refuse, as far as I can tell: the process of the
+Process Builder, the time trigger of a workflow rule in an org without a default workflow user, and the outbound
+message, whose `integrationUser` is a made-up user name (`integration.user@billing-fixture.invalid`) that the
+tool that deploys the project has to replace with the user it logs in as. The deploy and what it showed come with
+the next pull request.
+
 ## The answer key
 
 The key was written by hand, by reading the files, before any analyser existed. It is the measure analysers are
@@ -103,24 +145,43 @@ One reference looks like this:
         - { line: 27, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
 ```
 
-| Field              | Meaning                                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------- |
-| `from`             | The component key of the member the reference starts from: a method, a property, a field, a rule.       |
-| `line`, `match`    | Where it stands: the whole word `match` on that line. The column is worked out from the file.           |
-| `nth`              | Which occurrence of the word on the line, when there are several. Default `1`.                          |
-| `kind`             | `reads`, `writes`, `references`, `extends` or `triggers-on`.                                            |
-| `to`               | The component key of the target.                                                                        |
-| `via`              | How the source names the target, see below.                                                             |
-| `tier`             | `confirmed` (default), `probable` or `possible`.                                                        |
-| `op`               | For a DML statement: `insert`, `update`, `upsert`, `delete`, `undelete`, `merge`.                       |
-| `stretch`          | `true` for a reference that is hard to find. Missing it costs no recall, finding it costs no precision. |
-| `note`             | Why the entry is there, for the reader.                                                                 |
-| `phase` (per file) | The roadmap phase whose analyser must find it: `1` for fields and rules, `3` for Apex.                  |
+| Field              | Meaning                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `from`             | The component key of the member the reference starts from: a method, a property, a field, a rule.                                                         |
+| `line`, `match`    | Where it stands: the whole word `match` on that line. The column is worked out from the file.                                                             |
+| `nth`              | Which occurrence of the word on the line, when there are several. Default `1`.                                                                            |
+| `kind`             | `reads`, `writes`, `references`, `extends`, `triggers-on` or `calls`.                                                                                     |
+| `to`               | The component key of the target.                                                                                                                          |
+| `via`              | How the source names the target, see below.                                                                                                               |
+| `tier`             | `confirmed` (default), `probable` or `possible`.                                                                                                          |
+| `op`               | For a DML statement: `insert`, `update`, `upsert`, `delete`, `undelete`, `merge`. For a record element of a flow: `lookup`, `create`, `update`, `delete`. |
+| `stretch`          | `true` for a reference that is hard to find. Missing it costs no recall, finding it costs no precision.                                                   |
+| `note`             | Why the entry is there, for the reader.                                                                                                                   |
+| `phase` (per file) | The roadmap phase whose analyser must find it: `1` for fields and rules, `2` for flows, workflow rules and the other metadata of Phase 2, `3` for Apex.   |
 
 Values of `via`: `formula`, `filter`, `summary`, `lookup`, `display-field`, `controlling-field` and `value-set` in
-metadata files; `field` (plain field
-access), `soql`, `sosl`, `dml`, `token` (a field or object token, or a describe call), `text` (a name that stands in
-text: a query built as a string, or `get` and `put` by name) and `declaration` in Apex.
+the files of fields and rules; `field` (plain field access), `soql`, `sosl`, `dml`, `token` (a field or object token,
+or a describe call), `text` (a name that stands in text: a query built as a string, or `get` and `put` by name) and
+`declaration` in Apex. The files of Phase 2 have these more:
+
+| `via`          | Where the name stands                                                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `object`       | The object of a record element, of a start block or of a choice set.                                                                                                              |
+| `record`       | The resource a record element writes or deletes (`inputReference`): the reference is to its object.                                                                               |
+| `path`         | A reference of a flow that is no merge field: `$Record.Account__r.Tier__c` in a condition.                                                                                        |
+| `merge-field`  | `{!...}` in a text: a message, a display text, a text template, the body of an email template.                                                                                    |
+| `assignment`   | The field an element of a flow or a field update writes.                                                                                                                          |
+| `output`       | A field a query of a flow asks for or stores.                                                                                                                                     |
+| `sort`         | The field a query or a choice set is sorted by.                                                                                                                                   |
+| `time`         | The date field a scheduled path or a time trigger counts from.                                                                                                                    |
+| `action`       | What a flow or a workflow rule starts: an Apex class, a subflow, an alert, a field update, a task.                                                                                |
+| `template`     | The email template of an alert.                                                                                                                                                   |
+| `listed-field` | A field in a list: of a field set, of an outbound message, of the recipients of an alert, of the picklists of a record type, of the values of a record of a custom metadata type. |
+| `value`        | A value of such a record that points at a field or at an object by its definition.                                                                                                |
+| `record-of`    | The type a record of a custom metadata type is of.                                                                                                                                |
+
+`formula` is also the formula of a flow and of a workflow rule, `filter` also a line of a filter of a flow and a
+criteria line of a workflow rule, and `text` also a value in a metadata file that is exactly the name of a field.
 
 ### What is keyed
 
@@ -171,15 +232,42 @@ what a reference is: `'... FROM Invoice__c ORDER BY ' + fieldName` holds a `prob
   goes to the field, as it does for `Invoice__c.Amount__c` in Apex.
 - The hierarchy field of the user names no object in its file, so it has no entry of its own. A formula that goes
   through it reads it.
-- The values a record of a custom metadata type holds. They are read with flows, in Phase 2.
-- The global variables that name nothing that can change: `$Api`, `$System`.
+- The global variables that name nothing that can change: `$Api`, `$System`, `$Flow`.
+- In a flow: the object a variable is declared with, and the name of an action beside the name that is keyed.
+- The name of a record type in the text of a formula of a field or of a rule (`RecordType.DeveloperName =
+"Credit_Note"`). No phase reads a text of such a formula for a name yet.
 
 Version 0 of the key did not key global variables. Version 1 does, also in the rule of Phase 0 that names
-`$Profile.Name`. Everything else of version 0 is in version 1 unchanged, and the Apex part is the same entry for
-entry: the check compares the two files.
+`$Profile.Name`. Version 2 adds what Phase 2 reads. Everything of an older version is in the next one unchanged,
+and the Apex part is the same entry for entry in all three: the check compares the files.
 
-Later versions of the fixture add flows, components and permissions with the phases that read them, and references
+Later versions of the fixture add components and permissions with the phases that read them, and references
 between Apex classes with the Apex phase.
+
+### What is keyed in the files of Phase 2
+
+- A reference of a flow starts from the element or the resource it stands in: `Flow:invoice_before_save#element:
+check_amount`. The start block with its scheduled paths is `#element:flow-start`. What stands outside every
+  element starts from the flow. A reference of a file of workflow rules starts from the rule or the action it
+  stands in, each of which is a component of its own.
+- The object of a record-triggered flow or of a process is `triggers-on`. The object of an element that reads,
+  creates, updates or deletes records is `references` with the `op` of the element. So is the object of a flow
+  that runs on a schedule, with `op: lookup`: it reads the records it runs for.
+- A subflow and an Apex action are `calls`, from the flow to the flow or to the class. An email alert is a
+  `references` to the alert.
+- A field a flow or a field update sets is `writes`. A field an assignment adds to or subtracts from is one of
+  each, and so is a field of a record that a screen shows for input.
+- A step through a relationship is a read of the lookup field, as in a formula. `$Record.Account__r` as the record
+  an element updates is a read of the lookup field and a `references` to the object behind it.
+- The field of a field set, of a recipient of an alert and of an outbound message is `reads`. The picklist of a
+  record type and the field a record of a custom metadata type gives a value for are `references`.
+- A record of a custom metadata type is a `references` to its type. No element of its file names the type, so
+  the place is the root element of the file.
+- A value of such a record that is exactly the name of a field, or `Object.Field`, is `probable` when it is plain
+  text, and `confirmed` when the field of the type points at a field definition. A name inside a sentence is not
+  keyed, and has a negative.
+- A value that a condition compares with `RecordType.DeveloperName` is a `probable` reference to the record type
+  of that name.
 
 ### What is marked as stretch
 
@@ -194,6 +282,8 @@ An entry is `stretch` when finding it needs one of three things, and for no othe
 
 Where a file of the project or the formula itself says where a relationship points, the entry is not stretch: a
 hierarchy field points at a user, and `Owner:User` takes the owner as a user.
+
+Fewer than 3 in 100 entries may be stretch. The check counts them.
 
 A name held in a constant of another class is not stretch: following a constant is a requirement. Nine of the 181
 Apex entries that are not stretch need it. That is just under 5 percent, so an analyser that cannot follow a constant
@@ -224,10 +314,16 @@ analyser. It checks that:
 - the list of unreferenced fields is the list of fields no entry points at;
 - no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
   the tiers and operations follow the rules above;
-- the numbers this page quotes are the numbers of the key: 290 references (106 in fields and rules, 184 in Apex), 7
-  of them stretch, 31 negatives and 5 unknowns;
-- version 0 of the key still names places that exist, has nothing that version 1 has not, and has the same Apex
-  part.
+- every reference of a flow or of a file of workflow rules starts from the element, the rule or the action its line
+  stands in, and stands in an element of the kind its `via` says. A merge field stands between `{!` and `}`;
+- the operation of an entry for a record element is the one of the element, and `calls` and `triggers-on` point at
+  what they can point at;
+- the numbers this page quotes are the numbers of the key: 492 references (112 in fields and rules, 196 in the
+  files of Phase 2, 184 in Apex), 9 of them stretch, 63 negatives and 6 unknowns;
+- versions 0 and 1 of the key still name places that exist, have nothing that version 2 has not, and have the same
+  Apex part. Version 2 says nothing else about a file of fields or rules than version 1 does;
+- the three flows of `flow-negative/` are what their `expected.yaml` says, as far as text can tell: the places
+  exist, and the file that must not be read is no XML.
 
 When a line of the project moves, the check fails and names the entry. The files of the project are stored with LF
 line endings on every system and are not formatted by Prettier, because the key records their lines.
@@ -236,7 +332,9 @@ The check reads the files only as text. It cannot tell which of two objects a fi
 which object a DML statement writes, whether an entry deserves its stretch mark, or whether an entry is missing.
 That is what the second reading of the key and the code review are for. Of 20 defects planted in version 0 of the
 key one at a time, the check found 17. The three it let pass are of these kinds. No defect was planted in the
-entries that version 1 added.
+entries that version 1 added. Seven were planted in the entries of version 2, one for each new rule of the check,
+and each was refused. That says the new rules work, and not that the 196 entries are right: nobody but me has
+read them yet.
 
 ## Formula probes
 
@@ -264,6 +362,15 @@ formulas do not parse. Five name something that is not there: a field, a relatio
 label, and two fields of a package. No file has the name of a file of the project, so a test lays the folder over a
 copy of the project (`extraction-analyse-formula.test.ts`). They are written so that Salesforce refuses them, which
 is not verified: none was sent to Salesforce.
+
+## Flows that cannot be deployed
+
+`flow-negative/` holds three flows in the layout of the project, and `expected.yaml`, which says what is expected
+of each. One names fields, a relationship, an object and a resource that do not exist, beside names that do. One
+holds an element of a kind that no flow has, with merge fields in it. One ends in the middle of an element. No file
+has the name of a file of the project, so a test lays the folder over a copy of the project. They are written so
+that Salesforce refuses them, which is not verified: none was sent to Salesforce. No test reads them with an
+analyser yet. The analyser of flows comes with a later work package of Phase 2.
 
 ## Public codebases
 

@@ -56,15 +56,26 @@ const timeless = (report: ImpactReport): unknown => ({
 const outline = (report: ImpactReport): unknown[] =>
   report.results.map((result) => [result.key, result.depth, result.confidence]);
 
-/** The types of the fixture project that no analyser reads in this phase. */
-const NOT_ANALYSED = [
-  'ApexClass',
-  'ApexTrigger',
-  'CustomLabel',
-  'CustomLabels',
-  'CustomMetadata',
-  'CustomPermission',
-  'GlobalValueSet',
+/** The types of the fixture project that no analyser reads yet, with the number of components of each. */
+const NOT_ANALYSED: readonly (readonly [string, number])[] = [
+  ['ApexClass', 13],
+  ['ApexTrigger', 1],
+  ['CustomLabel', 1],
+  ['CustomLabels', 1],
+  ['CustomMetadata', 4],
+  ['CustomPermission', 1],
+  ['EmailFolder', 1],
+  ['EmailTemplate', 1],
+  ['FieldSet', 1],
+  ['Flow', 6],
+  ['GlobalValueSet', 1],
+  ['RecordType', 2],
+  ['Workflow', 2],
+  ['WorkflowAlert', 1],
+  ['WorkflowFieldUpdate', 3],
+  ['WorkflowOutboundMessage', 1],
+  ['WorkflowRule', 4],
+  ['WorkflowTask', 1],
 ];
 
 /** The questions whose answers are golden files, as the plan of the phase lists them. */
@@ -72,7 +83,8 @@ const GOLDEN: readonly (readonly [string, string, string])[] = [
   ['a field that formulas and rules read', 'Invoice__c.Amount__c', 'amount'],
   ['a field of a standard object', 'Account.Tier__c', 'account-tier'],
   ['a standard field', 'User.Department', 'standard-field'],
-  ['an object', 'Invoice__c', 'object'],
+  // The file of workflow rules of the object has the name of the object, so the object is asked for by its key.
+  ['an object', 'CustomObject:Invoice__c', 'object'],
   ['a field that nothing refers to', 'Invoice__c.Unused_Field__c', 'unreferenced'],
   ['a field that is reached through a chain of formulas', 'Invoice_Line__c.Quantity__c', 'chain'],
 ];
@@ -197,8 +209,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(96);
-      expect(results).toBe(141);
+      expect(asked.size).toBe(104);
+      expect(results).toBe(148);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -223,12 +235,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: false,
       });
       expect(report.notCovered).toEqual({
-        notAnalysed: NOT_ANALYSED.map((type) => ({
-          type,
-          listed: type === 'ApexClass' ? 12 : 1,
-          retrieved: type === 'ApexClass' ? 12 : 1,
-          listing: 'ok',
-        })),
+        notAnalysed: NOT_ANALYSED.map(([type, held]) => ({ type, listed: held, retrieved: held, listing: 'ok' })),
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
@@ -343,7 +350,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect((await again.snapshot('fixture')).snapshot.status).toBe('partial');
       const report = await again.impact('fixture', AMOUNT);
       expect(report.snapshot.status).toBe('partial');
-      expect(report.results).toHaveLength(7);
+      expect(report.results).toHaveLength(8);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -359,7 +366,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(5);
+      expect(report.results).toHaveLength(6);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -413,7 +420,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       const report = await workspace.impact('fixture', AMOUNT);
       expect(report).toMatchObject({ complete: false, mayMiss: true });
-      expect(report.notCovered.partial).toEqual([{ type: 'CustomField', listed: 60, retrieved: 54, listing: 'ok' }]);
+      expect(report.notCovered.partial).toEqual([{ type: 'CustomField', listed: 63, retrieved: 57, listing: 'ok' }]);
       // A type that is not analysed is named, in part or not. It is not something the answer claims to cover.
       expect(report.notCovered.notAnalysed).toContainEqual({
         type: 'Report',
@@ -436,13 +443,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(total).toMatchObject({ complete: true, mayMiss: false, notCovered: { notAnalysed: [] } });
 
       // What an object contains counts too: the record of a custom metadata type is of a type that is not
-      // analysed, so what the type with its records refers to is not known.
+      // analysed, so what the type with its records refers to is not known. Two of its fields point at the
+      // objects of Salesforce that describe objects and fields, which no repository holds. A field that points
+      // at another field of the type gives no result: both are of what was asked about.
       const settings = await workspace.impact('fixture', 'Billing_Rule__mdt', { outgoing: true });
-      expect(settings.parts).toBe(2);
+      expect(settings.parts).toBe(8);
+      expect(outline(settings)).toEqual([
+        ['CustomObject:entitydefinition', 1, 'confirmed'],
+        ['CustomObject:fielddefinition', 1, 'confirmed'],
+      ]);
       expect(settings).toMatchObject({
-        results: [],
         complete: false,
-        notCovered: { notAnalysed: [{ type: 'CustomMetadata' }], notHeld: 0 },
+        notCovered: { notAnalysed: [{ type: 'CustomMetadata' }], notHeld: 2 },
       });
 
       // A standard field has no file in a repository. What it refers to is not known, and neither is what a
@@ -509,8 +521,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 6]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 7]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 7]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 8]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -572,7 +584,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(7);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(8);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {
@@ -626,7 +638,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           ),
         );
       const before = rows();
-      await workspace.impact('fixture', 'Invoice__c');
+      await workspace.impact('fixture', 'CustomObject:Invoice__c');
       await failure(() => workspace.impact('fixture', 'Invoice__c.Nope__c'));
       expect(rows()).toEqual(before);
     });

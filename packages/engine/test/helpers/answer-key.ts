@@ -1,8 +1,9 @@
 /**
- * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v1.yaml`).
+ * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v2.yaml`).
  *
- * Version 0 of the key (`answer-key.v0.yaml`) is kept: it is the key the Apex trial of Phase 0 was scored with.
- * It can still be read here, and `fixture-key.test.ts` holds its Apex part equal to that of version 1.
+ * The older versions are kept. Version 0 (`answer-key.v0.yaml`) is the key the Apex trial of Phase 0 was scored
+ * with, and version 1 the key Phase 1 was scored with. They can still be read here, and `fixture-key.test.ts`
+ * holds everything in them equal to what version 2 has.
  *
  * The key is written by hand, so it is read strictly: an unknown field, a wrong value or a place that the text of the
  * project does not contain is a problem, and all problems are reported together. A place is written as a line and a
@@ -23,11 +24,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = join(here, '../../../../fixtures');
 
 /** The versions of the key that exist. The newest one describes the whole project. */
-type KeyVersion = 0 | 1;
+type KeyVersion = 0 | 1 | 2;
 const keyFile = (version: KeyVersion): string => join(FIXTURES_DIR, `expected/answer-key.v${String(version)}.yaml`);
 
-/** The kinds of reference the key uses. Calls and uses of a type are not keyed. */
-const KEY_KINDS = ['reads', 'writes', 'references', 'extends', 'triggers-on'] as const;
+/**
+ * The kinds of reference the key uses. A call is keyed where a flow starts another flow or an Apex class. Calls
+ * between Apex methods and uses of a type are not keyed.
+ */
+const KEY_KINDS = ['reads', 'writes', 'references', 'extends', 'triggers-on', 'calls'] as const;
 type KeyKind = (typeof KEY_KINDS)[number];
 
 /** How the source names the target. */
@@ -39,6 +43,19 @@ const KEY_VIAS = [
   'display-field',
   'controlling-field',
   'value-set',
+  'object',
+  'record',
+  'sort',
+  'output',
+  'assignment',
+  'path',
+  'merge-field',
+  'time',
+  'action',
+  'template',
+  'listed-field',
+  'value',
+  'record-of',
   'field',
   'soql',
   'sosl',
@@ -49,7 +66,8 @@ const KEY_VIAS = [
 ] as const;
 type KeyVia = (typeof KEY_VIAS)[number];
 
-const DML_OPS = ['insert', 'update', 'upsert', 'delete', 'undelete', 'merge'] as const;
+/** What a DML statement does to an object, and what a record element of a flow does: `lookup`, `create`. */
+const DML_OPS = ['insert', 'update', 'upsert', 'delete', 'undelete', 'merge', 'lookup', 'create'] as const;
 type DmlOp = (typeof DML_OPS)[number];
 
 /** A place in a file of the project: the word, and where it starts. Lines and columns start at 1. */
@@ -130,9 +148,10 @@ export function columnOf(line: string, match: string, nth: number): number | und
 /**
  * Reads and checks the answer key. Throws one error that lists every problem.
  *
- * Without a version it reads the newest key. Version 0 lists only the components the project had in Phase 0.
+ * Without a version it reads the newest key. An older version lists only the components the project had in its
+ * phase.
  */
-export function loadAnswerKey(wanted: KeyVersion = 1): AnswerKey {
+export function loadAnswerKey(wanted: KeyVersion = 2): AnswerKey {
   const problems: string[] = [];
   const root: unknown = parse(readFileSync(keyFile(wanted), 'utf8'));
   if (!isDict(root)) throw new Error('The answer key is not a mapping.');
@@ -268,7 +287,7 @@ export function loadAnswerKey(wanted: KeyVersion = 1): AnswerKey {
         if (!isConfidenceTier(tier)) problems.push(`${where}: ${JSON.stringify(tier)} is not a confidence tier.`);
         const op = entry['op'];
         if (op !== undefined && !isOneOf(DML_OPS, op))
-          problems.push(`${where}: ${JSON.stringify(op)} is not a DML operation.`);
+          problems.push(`${where}: ${JSON.stringify(op)} is not an operation.`);
         const stretch = entry['stretch'] ?? false;
         if (typeof stretch !== 'boolean') problems.push(`${where}: stretch must be true or false.`);
         const note = entry['note'] === undefined ? undefined : text(`${where}.note`, entry['note']);

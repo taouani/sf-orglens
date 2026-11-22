@@ -492,7 +492,10 @@ describe('the inventory of the mock org', () => {
       'CustomMetadata',
       'CustomObject',
       'CustomPermission',
+      'EmailTemplate',
+      'Flow',
       'GlobalValueSet',
+      'Workflow',
     ]);
     const counts = new Map<string, number>();
     for (const one of inventory.items) counts.set(one.type, (counts.get(one.type) ?? 0) + 1);
@@ -502,10 +505,13 @@ describe('the inventory of the mock org', () => {
       ApexTrigger: 1,
       CustomLabel: 1,
       CustomLabels: 1,
-      CustomMetadata: 1,
+      CustomMetadata: 4,
       CustomObject: 6,
       CustomPermission: 1,
+      EmailTemplate: 1,
+      Flow: 6,
       GlobalValueSet: 1,
+      Workflow: 2,
     });
     expect(counts.get('CustomField')).toBeGreaterThan(10);
     const objects = planChunks(inventory)

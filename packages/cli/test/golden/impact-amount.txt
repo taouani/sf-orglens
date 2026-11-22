@@ -1,23 +1,35 @@
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "fixture".
-The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+The answer is not complete: 18 types are not analysed yet. The details are below the answer.
 
-7 components refer to it, 6 of them directly.
+8 components refer to it, 7 of them directly.
 
 DEPTH  COMPONENT                                                CONFIDENCE  KIND   REFERS TO                         WHERE
 1      CustomField:invoice__c.late_fee__c                       confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/fields/Late_Fee__c.field-meta.xml:6
 1      CustomField:invoice__c.summary__c                        confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml:5
 1      CustomField:invoice__c.total__c                          confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/fields/Total__c.field-meta.xml:4
 1      ValidationRule:invoice__c.amount_within_credit_limit     confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml:5
+1      ValidationRule:invoice__c.credit_note_is_negative        confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml:8
 1      ValidationRule:invoice__c.large_amount_needs_permission  confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Large_Amount_Needs_Permission.validationRule-meta.xml:6
 1      ValidationRule:invoice__c.locked_when_paid               confirmed   reads  CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Locked_When_Paid.validationRule-meta.xml:7
 2      CustomField:invoice__c.grand_total__c                    confirmed   reads  CustomField:invoice__c.total__c   force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE              LISTED  RETRIEVED
-ApexClass         12      12
-ApexTrigger       1       1
-CustomLabel       1       1
-CustomLabels      1       1
-CustomMetadata    1       1
-CustomPermission  1       1
-GlobalValueSet    1       1
+TYPE                     LISTED  RETRIEVED
+ApexClass                13      13
+ApexTrigger              1       1
+CustomLabel              1       1
+CustomLabels             1       1
+CustomMetadata           4       4
+CustomPermission         1       1
+EmailFolder              1       1
+EmailTemplate            1       1
+FieldSet                 1       1
+Flow                     6       6
+GlobalValueSet           1       1
+RecordType               2       2
+Workflow                 2       2
+WorkflowAlert            1       1
+WorkflowFieldUpdate      3       3
+WorkflowOutboundMessage  1       1
+WorkflowRule             4       4
+WorkflowTask             1       1

@@ -1,0 +1,68 @@
+# What an analyser must say about the flows of this folder.
+#
+# The files are written so that Salesforce refuses each of them. That is not verified: none was ever sent to
+# Salesforce. They lie in the layout of `main/default` of the project billing-sfdx, and none has the name of a
+# file of that project, so a test lays them over a copy of the project and analyses the whole. ../README.md says
+# more.
+#
+# One file: { file, flow, reads, why } and what is expected of the names in it:
+#   reads       whether the XML of the file can be read. A file that cannot be read is an error of the analysis
+#               and gives no reference.
+#   unknown     the elements of a kind that no flow has. Each is a warning. The merge fields in such an element
+#               are still read, and their references are `probable`.
+#   refs        references an analyser must find, as in the answer key, each with the element it starts from.
+#   unresolved  names that are of no namespace and that nothing in the project defines: a field, an object, a
+#               relationship, or a resource of the flow. Each is a finding.
+#   negatives   places where a reference to the named target must not be reported, as in the answer key.
+# A bare field name in an element of an unknown kind is not among the files: which object it would be of is for
+# the analyser to decide, and its plan does not say.
+
+version: 1
+project: billing-sfdx
+
+files:
+  - file: flows/Missing_Field.flow-meta.xml
+    flow: Flow:missing_field
+    reads: true
+    why: The flow names fields, a relationship, an object and a resource that do not exist. What exists beside them is still found.
+    refs:
+      - { from: "Flow:missing_field#element:check", line: 17, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: path }
+      - { from: "Flow:missing_field#element:save_lines", line: 45, match: Invoice__c, kind: reads, to: CustomField:invoice_line__c.invoice__c, via: filter }
+      - { from: "Flow:missing_field#element:save_lines", line: 54, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: path }
+      - { from: "Flow:missing_field#element:save_lines", line: 57, match: Invoice_Line__c, kind: references, to: CustomObject:invoice_line__c, via: object, op: update }
+      - { from: "Flow:missing_field#element:flow-start", line: 86, match: Invoice__c, kind: triggers-on, to: CustomObject:invoice__c, via: object }
+    unresolved:
+      - { from: "Flow:missing_field#element:check", line: 14, match: Not_There__c }
+      - { from: "Flow:missing_field#element:check", line: 21, match: Nowhere__r }
+      - { from: "Flow:missing_field#element:check", line: 24, match: No_Such_Resource }
+      - { from: "Flow:missing_field#element:save_lines", line: 52, match: Missing__c }
+      - { from: "Flow:missing_field#element:save_nothing", line: 70, match: No_Such_Object__c }
+      - { from: "Flow:missing_field#element:flow-start", line: 80, match: Gone__c }
+    negatives:
+      - { line: 21, match: Name, not: CustomField:invoice__c.name, why: What follows a relationship that does not exist cannot be followed. }
+      - { line: 24, match: Amount__c, not: CustomField:invoice__c.amount__c, why: The resource does not exist. Nothing says which object the field is of. }
+      - { line: 45, match: Invoice__c, not: CustomObject:invoice__c, why: "The lookup field of the line, not the object." }
+      - { line: 54, match: Status__c, not: CustomField:invoice_line__c.status__c, why: "The status of the invoice that started the flow. The line, which the element updates, has a field of the same name." }
+      - { line: 65, match: Amount__c, not: CustomField:invoice__c.amount__c, why: The object of the element does not exist. Nothing says which object the field is of. }
+
+  - file: flows/Unknown_Element.flow-meta.xml
+    flow: Flow:unknown_element
+    reads: true
+    why: One element is of a kind that no flow has. The merge fields in it are read with less confidence, and the element after it is read as usual.
+    unknown:
+      - { element: "Flow:unknown_element#element:beam", line: 25, match: recordTeleports }
+    refs:
+      - { from: "Flow:unknown_element#element:after_it", line: 14, match: Status__c, kind: reads, to: CustomField:invoice__c.status__c, via: path }
+      - { from: "Flow:unknown_element#element:beam", line: 33, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: merge-field, tier: probable }
+      - { from: "Flow:unknown_element#element:beam", line: 33, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: merge-field, tier: probable }
+      - { from: "Flow:unknown_element#element:beam", line: 33, match: Name, kind: reads, to: CustomField:account.name, via: merge-field, tier: probable }
+    negatives:
+      - { line: 27, match: Due_Date__c, not: CustomField:invoice__c.due_date__c, why: The label of an element is text. }
+      - { line: 33, match: Paid_Date__c, not: CustomField:invoice__c.paid_date__c, why: Text outside a merge field. }
+
+  - file: flows/Cut_Off.flow-meta.xml
+    flow: Flow:cut_off
+    reads: false
+    why: The file ends in the middle of an element.
+    negatives:
+      - { line: 13, match: Status__c, not: CustomField:invoice__c.status__c, why: A file that cannot be read gives no reference. }

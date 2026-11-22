@@ -7,6 +7,10 @@
  * saw and the key leaves out (`docs/research/phase-1/real-org.md`, section 4). The rows are written the way
  * Salesforce writes them (`mock-dependencies.ts`).
  *
+ * The mock reports nothing yet for what Phase 2 reads: flows, workflow rules, record types, field sets, records
+ * of custom metadata types and email templates. Which of their pairs Salesforce reports is measured in the test
+ * org first. Their rows come with their analysers.
+ *
  * The mock reports more than Salesforce does in two places that the engine treats as "not reported": the
  * formula of a rule that is not active, and the formula in a default value. A test that needs the difference
  * takes rows out.
@@ -38,6 +42,7 @@ export function keyedPairs(): KeyedPair[] {
   };
   const pairs = new Map<string, KeyedPair>();
   for (const reference of key.references) {
+    if (reference.phase === 2) continue;
     // Salesforce counts a class, not a method of it.
     const whole = reference.from.includes('#') ? reference.from.slice(0, reference.from.indexOf('#')) : reference.from;
     const from = endOf(whole);

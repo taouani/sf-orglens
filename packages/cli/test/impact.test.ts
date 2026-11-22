@@ -31,15 +31,27 @@ async function fixtureWorkspace(change: (dir: string) => void = () => undefined,
   return dir;
 }
 
+/** The types of the fixture project that no analyser reads yet, as the answer prints them. */
 const NOT_ANALYSED = [
-  'TYPE              LISTED  RETRIEVED',
-  'ApexClass         12      12',
-  'ApexTrigger       1       1',
-  'CustomLabel       1       1',
-  'CustomLabels      1       1',
-  'CustomMetadata    1       1',
-  'CustomPermission  1       1',
-  'GlobalValueSet    1       1',
+  'TYPE                     LISTED  RETRIEVED',
+  'ApexClass                13      13',
+  'ApexTrigger              1       1',
+  'CustomLabel              1       1',
+  'CustomLabels             1       1',
+  'CustomMetadata           4       4',
+  'CustomPermission         1       1',
+  'EmailFolder              1       1',
+  'EmailTemplate            1       1',
+  'FieldSet                 1       1',
+  'Flow                     6       6',
+  'GlobalValueSet           1       1',
+  'RecordType               2       2',
+  'Workflow                 2       2',
+  'WorkflowAlert            1       1',
+  'WorkflowFieldUpdate      3       3',
+  'WorkflowOutboundMessage  1       1',
+  'WorkflowRule             4       4',
+  'WorkflowTask             1       1',
 ];
 
 describe('orglens impact', () => {
@@ -47,7 +59,8 @@ describe('orglens impact', () => {
     ['a field that formulas and rules read', 'Invoice__c.Amount__c', 'amount'],
     ['a field of a standard object', 'Account.Tier__c', 'account-tier'],
     ['a standard field', 'User.Department', 'standard-field'],
-    ['an object', 'Invoice__c', 'object'],
+    // The file of workflow rules of the object has the name of the object, so the object is asked for by its key.
+    ['an object', 'CustomObject:Invoice__c', 'object'],
     ['a field that nothing refers to', 'Invoice__c.Unused_Field__c', 'unreferenced'],
     ['a field that is reached through a chain of formulas', 'Invoice_Line__c.Quantity__c', 'chain'],
   ])('prints the answer for %s as its golden file says', async (_what, component, file) => {
@@ -69,12 +82,12 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 5)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 18 types are not analysed yet. The details are below the answer.',
       '',
       '3 components refer to it, 2 of them directly.',
       '',
     ]);
-    expect(lines.slice(-10)).toEqual([
+    expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
       'Not analysed yet. A component of these types may refer to it, and is not in the answer:',
       ...NOT_ANALYSED,
       '',
@@ -101,7 +114,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('6 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('7 components refer to it, all of them directly.');
 
     const outgoing = await orglens(dir, ['impact', 'Invoice__c.Total__c', '--outgoing']);
     expect(outgoing).toMatchObject({ code: 0, stderr: '' });
@@ -128,7 +141,7 @@ describe('orglens impact', () => {
       '',
       'Not analysed yet. What the components of these types in the answer refer to is not known:',
       'TYPE       LISTED  RETRIEVED',
-      'ApexClass  12      12',
+      'ApexClass  13      13',
       '',
     ]);
   });
@@ -187,7 +200,7 @@ describe('orglens impact', () => {
     });
     // The warning is about the whole snapshot, so the other direction is not complete either.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 18 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
     );
   });
 
@@ -202,9 +215,9 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error. The details are below the answer.',
+      'The answer is not complete: 18 types are not analysed yet, and the analysis had 1 error. The details are below the answer.',
     );
-    expect(lines).toContain('5 components refer to it, all of them directly.');
+    expect(lines).toContain('6 components refer to it, all of them directly.');
     expect(lines.slice(-3)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
@@ -224,7 +237,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 18 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',

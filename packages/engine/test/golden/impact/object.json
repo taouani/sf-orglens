@@ -13,7 +13,7 @@
     "name": "Invoice__c",
     "file": "force-app/main/default/objects/Invoice__c/Invoice__c.object-meta.xml"
   },
-  "parts": 40,
+  "parts": 44,
   "direction": "incoming",
   "depth": null,
   "beyondDepth": false,
@@ -64,8 +64,8 @@
     "notAnalysed": [
       {
         "type": "ApexClass",
-        "listed": 12,
-        "retrieved": 12,
+        "listed": 13,
+        "retrieved": 13,
         "listing": "ok"
       },
       {
@@ -88,8 +88,8 @@
       },
       {
         "type": "CustomMetadata",
-        "listed": 1,
-        "retrieved": 1,
+        "listed": 4,
+        "retrieved": 4,
         "listing": "ok"
       },
       {
@@ -99,7 +99,73 @@
         "listing": "ok"
       },
       {
+        "type": "EmailFolder",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailTemplate",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "FieldSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "Flow",
+        "listed": 6,
+        "retrieved": 6,
+        "listing": "ok"
+      },
+      {
         "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "RecordType",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "Workflow",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowAlert",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowFieldUpdate",
+        "listed": 3,
+        "retrieved": 3,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowOutboundMessage",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowRule",
+        "listed": 4,
+        "retrieved": 4,
+        "listing": "ok"
+      },
+      {
+        "type": "WorkflowTask",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

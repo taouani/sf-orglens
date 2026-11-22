@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Credit_Note_Is_Negative</fullName>
+    <active>true</active>
+    <description>A credit note takes money back. The record type is named in text, by its developer name.</description>
+    <errorConditionFormula>AND(
+  $RecordType.DeveloperName = 'Credit_Note',
+  Amount__c &gt; 0
+)</errorConditionFormula>
+    <errorDisplayField>Amount__c</errorDisplayField>
+    <errorMessage>The amount of a credit note is negative.</errorMessage>
+</ValidationRule>

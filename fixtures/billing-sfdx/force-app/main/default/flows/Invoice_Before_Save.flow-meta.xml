@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <assignments>
+        <name>Set_Defaults</name>
+        <label>Set Defaults</label>
+        <locationX>50</locationX>
+        <locationY>395</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Region__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Account__r.Owner.Department</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>$Record.Approver__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Account__r.OwnerId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>$Record.Tax_Rate__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Default_Tax_Rate</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>$Record.Legacy_Code__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Amount__c</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <customErrors>
+        <name>Block_Large_Invoice</name>
+        <label>Block Large Invoice</label>
+        <locationX>314</locationX>
+        <locationY>395</locationY>
+        <customErrorMessages>
+            <errorMessage>The amount {!$Record.Amount__c} is above the credit limit of the account. Ask an approver, or have Credit_Limit__c raised.</errorMessage>
+            <fieldSelection>Amount__c</fieldSelection>
+            <isFieldError>true</isFieldError>
+        </customErrorMessages>
+    </customErrors>
+    <decisions>
+        <name>Is_Above_Limit</name>
+        <label>Is Amount__c Above The Limit</label>
+        <locationX>182</locationX>
+        <locationY>287</locationY>
+        <defaultConnector>
+            <targetReference>Set_Defaults</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Within Limit</defaultConnectorLabel>
+        <rules>
+            <name>Above_Limit</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Amount__c</leftValueReference>
+                <operator>GreaterThan</operator>
+                <rightValue>
+                    <elementReference>$Record.Account__r.Credit_Limit__c</elementReference>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Permission.Approve_Large_Invoices</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Block_Large_Invoice</targetReference>
+            </connector>
+            <label>Above Limit</label>
+        </rules>
+    </decisions>
+    <description>Runs before an invoice is saved. It sets fields of the record itself, so Tax_Rate__c needs no update.</description>
+    <environments>Default</environments>
+    <formulas>
+        <name>Default_Tax_Rate</name>
+        <dataType>Number</dataType>
+        <expression>IF({!$Record.Account__r.Is_Key_Account__c}, 0, {!$Setup.Billing_Settings__c.Late_Fee_Percent__c})</expression>
+        <scale>2</scale>
+    </formulas>
+    <interviewLabel>Invoice Before Save {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Invoice Before Save</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>56</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Is_Above_Limit</targetReference>
+        </connector>
+        <filterFormula>AND(ISPICKVAL({!$Record.Status__c}, &quot;Draft&quot;), NOT(ISBLANK({!$Record.Account__c})))</filterFormula>
+        <object>Invoice__c</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordBeforeSave</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

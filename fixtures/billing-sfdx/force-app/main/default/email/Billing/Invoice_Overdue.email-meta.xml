@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <available>true</available>
+    <description>Tells the approver and the billing contact that an invoice is overdue.</description>
+    <encodingKey>UTF-8</encodingKey>
+    <name>Invoice Overdue</name>
+    <style>none</style>
+    <subject>Invoice {!Invoice__c.Name} is overdue</subject>
+    <type>text</type>
+    <uiType>Aloha</uiType>
+</EmailTemplate>

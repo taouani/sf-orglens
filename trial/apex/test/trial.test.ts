@@ -39,7 +39,7 @@ const adapterOf = (name: string): SyntaxAdapter => {
 describe.each(['apex-parser', 'tree-sitter'])('the resolver on %s', (name) => {
   it('reads every file of the fixture project without a problem', () => {
     const files = parseFiles(readApexFiles(PROJECT), adapterOf(name));
-    expect(files).toHaveLength(13);
+    expect(files).toHaveLength(14);
     expect(files.flatMap((file) => file.unit.problems.map((problem) => `${file.path}: ${problem.message}`))).toEqual(
       [],
     );

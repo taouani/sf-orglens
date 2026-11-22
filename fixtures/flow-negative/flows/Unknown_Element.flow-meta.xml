@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <decisions>
+        <name>After_It</name>
+        <label>After It</label>
+        <locationX>182</locationX>
+        <locationY>242</locationY>
+        <defaultConnectorLabel>No</defaultConnectorLabel>
+        <rules>
+            <name>Is_Sent</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>inv.Status__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Sent</stringValue>
+                </rightValue>
+            </conditions>
+            <label>Is Sent</label>
+        </rules>
+    </decisions>
+    <label>Unknown Element</label>
+    <processType>AutoLaunchedFlow</processType>
+    <recordTeleports>
+        <name>Beam</name>
+        <label>Beam Due_Date__c Away</label>
+        <locationX>176</locationX>
+        <locationY>134</locationY>
+        <connector>
+            <targetReference>After_It</targetReference>
+        </connector>
+        <message>The invoice of {!inv.Amount__c} goes to {!inv.Account__r.Name}. Paid_Date__c stays.</message>
+    </recordTeleports>
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Beam</targetReference>
+        </connector>
+    </start>
+    <status>Active</status>
+    <variables>
+        <name>inv</name>
+        <dataType>SObject</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>false</isOutput>
+        <objectType>Invoice__c</objectType>
+    </variables>
+</Flow>

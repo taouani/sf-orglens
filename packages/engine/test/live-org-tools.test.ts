@@ -755,8 +755,8 @@ describe('deploying the fixture project', () => {
     expect(text().replace(/after \d+ seconds/, 'after N seconds')).toBe(
       [
         'The deploy of the fixture project ended as Succeeded after N seconds.',
-        'Components of the fixture project: 87. Salesforce counted 24, deployed 24 and found errors in 0.',
-        'Of the components Salesforce accepted, 12 are new in the org, 12 were changed, and 0 were as they are.',
+        'Components of the fixture project: 118. Salesforce counted 37, deployed 37 and found errors in 0.',
+        'Of the components Salesforce accepted, 18 are new in the org, 19 were changed, and 0 were as they are.',
         'The fixture project is in the test org. No Apex test was run.',
       ].join('\n'),
     );
@@ -832,7 +832,7 @@ describe('deploying the fixture project', () => {
         .concat(text().split('\n').slice(2)),
     ).toEqual([
       '::error::The deploy of the fixture project ended as Failed after N seconds.',
-      'Components of the fixture project: 87. Salesforce counted 24, deployed 0 and found errors in 5.',
+      'Components of the fixture project: 118. Salesforce counted 37, deployed 0 and found errors in 5.',
       '1. ApexClass InvoiceService, file classes/InvoiceService.cls, line 14, column 9',
       '   Problem: Variable does not exist: Amount__c',
       '2. ApexClass InvoiceSelector, file classes/InvoiceSelector.cls, line 3, column 1',
@@ -974,14 +974,14 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toContain(
-      'Components: 89 listed by the org, 89 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+      'Components: 120 listed by the org, 120 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
     );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
     expect(output).toMatch(/Requests to the Metadata API: [1-9]\d*\. Largest memory of the process: \d+ MB\./);
     expect(output).toMatch(/Retrieves: 1 chunk, 1 stored, 0 failed, 0 not ended\. Started more than once: 0\./);
-    expect(output).toMatch(/^ApexClass +12 +12 +ok$/m);
-    expect(output).toMatch(/^CustomField +54 +54 +ok$/m);
+    expect(output).toMatch(/^ApexClass +13 +13 +ok$/m);
+    expect(output).toMatch(/^CustomField +57 +57 +ok$/m);
     expect(output).toMatch(/^CustomLabel +1 +1 +ok$/m);
     expect(output).toMatch(/^GlobalValueSet +1 +1 +ok$/m);
     expect(output).toContain('Observations: 0.');
@@ -992,14 +992,14 @@ describe('reading the test org', () => {
     const files = fixtureFiles().size;
     // The mock org hands a file out as the Salesforce library writes it, which writes a quote as a reference.
     expect(output).toContain(
-      `Files of the fixture project: ${String(files)}. In the snapshot: ${String(files)}. The same byte for byte: ${String(files - 9)}. Different: 9.`,
+      `Files of the fixture project: ${String(files)}. In the snapshot: ${String(files)}. The same byte for byte: ${String(files - 10)}. Different: 10.`,
     );
     expect(output).toContain(
       '- objects/Invoice__c/fields/Summary__c.field-meta.xml: only how characters such as quotes are written differs (391 bytes here, 411 from the org)',
     );
-    expect(output).toMatch(/^0 +24 +7 +\d+\.\d +1 +done$/m);
+    expect(output).toMatch(/^0 +38 +10 +\d+\.\d +1 +done$/m);
     expect(output).toMatch(
-      /^Files by folder: classes 24, customMetadata 1, customPermissions 1, globalValueSets 1, labels 1, objects \d+, triggers 2$/m,
+      /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
     );
     // The cross-check: the rows of the mock org, held against the analysis by the engine.
     const rows = dependencies.rows.length;
@@ -1011,9 +1011,9 @@ describe('reading the test org', () => {
       `Rows: ${String(rows)}, read with 1 request. No query left a row out.`,
       'Rows from a component of a type that this phase does not analyse, which are not compared: 84 (ApexClass (82), ApexTrigger (1), CustomMetadata (1)).',
       'Rows with an end that is no component the org listed: 0. Rows from a component the snapshot does not hold or that was not analysed: 0.',
-      'Rows compared: 57, which are 57 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+      'Rows compared: 58, which are 58 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
       'References of the analysis of a kind Salesforce reports, for which it has no row: 0.',
-      'References of the analysis of kinds the API does not report: 38 (standard-field (23), roll-up-summary (5), standard-object (4), lookup-filter (2), value-set (2), controlling-field (1), lookup (1)).',
+      'References of the analysis of kinds the API does not report: 42 (standard-field (24), standard-object (6), roll-up-summary (5), controlling-field (2), lookup-filter (2), value-set (2), lookup (1)).',
       expect.stringMatching(
         new RegExp(
           `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
@@ -1049,7 +1049,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toContain(
-      'Rows compared: 58, which are 58 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 59, which are 59 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain(
       '- missed  ValidationRule:invoice__c.tax_rate_matches_code -> CustomField:invoice__c.amount__c',
@@ -1172,7 +1172,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toContain('The snapshot of the test org is partial.');
-    expect(output).toMatch(/^ApexClass +12 +11 +ok$/m);
+    expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
     expect(output).toContain(
       '- error NOT_RETRIEVED: 1 observation, about 1 components, files or remarks. Types: ApexClass',
     );
@@ -1180,7 +1180,7 @@ describe('reading the test org', () => {
     expect(output).toContain('- ApexClass InvoiceSelector: listed, not retrieved');
     expect(output).toContain('- classes/InvoiceSelector.cls: not in the snapshot');
     expect(output).toContain(
-      '- ApexClass: 1 of 12 did not come back. State: unmanaged (1). Forms of the names: a (1).',
+      '- ApexClass: 1 of 13 did not come back. State: unmanaged (1). Forms of the names: a (1).',
     );
     expect(output.split('\n').slice(-2)).toEqual([
       '',
@@ -1205,8 +1205,8 @@ describe('reading the test org', () => {
     expect(log.failed).toBe(true);
     expect(output).toMatch(/Retrieves: 1 chunk, 0 stored, 0 failed, 1 not ended\./);
     expect(output).toMatch(/^ApexTrigger +0 +0 +failed$/m);
-    expect(output).toContain('- and 67 more components.');
-    expect(output).toContain('- and 79 more files that are not in the snapshot.');
+    expect(output).toContain('- and 98 more components.');
+    expect(output).toContain('- and 102 more files that are not in the snapshot.');
     expect(output).toContain(
       '- error LISTING_FAILED: 1 observation. Types: ApexTrigger. Codes of Salesforce: INVALID_TYPE (1)',
     );
@@ -1299,7 +1299,7 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toContain('The snapshot of the test org is partial.');
     // What is missing is described without a name.
     expect(output).toContain(
-      '- ApexClass: 1 of 13 did not come back. State: unmanaged (1). Forms of the names: a (1).',
+      '- ApexClass: 1 of 14 did not come back. State: unmanaged (1). Forms of the names: a (1).',
     );
     expect(output).toContain('- CustomObject: 1. Forms of the names: a (1).');
     expect(output).toContain(
@@ -1327,9 +1327,9 @@ describe('reading an org that holds more than the fixture project', () => {
       '- 1 time: in documents, 2 levels deep, a name that ends in (an ending that is not shown). In everyday words:',
     );
     expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
-    expect(output).toMatch(/^ApexClass +13 +12 +ok$/m);
+    expect(output).toMatch(/^ApexClass +14 +13 +ok$/m);
     expect(output).toMatch(/^Report +0 +0 +failed$/m);
-    expect(output).toContain('Fixture project: 87 components. Listed by the org: 87. Retrieved: 87.');
+    expect(output).toContain('Fixture project: 118 components. Listed by the org: 118. Retrieved: 118.');
     expectNothingForeign(output);
   });
 
@@ -1362,7 +1362,7 @@ describe('reading an org that holds more than the fixture project', () => {
       'Rows from a component of a type that this phase does not analyse, which are not compared: 87 (ApexClass (83), CustomMetadata (2), (a type that is not shown) (1), ApexTrigger (1)).',
     );
     expect(output).toContain(
-      'Rows compared: 58, which are 58 pairs of components. The analysis has 55 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 59, which are 59 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain('- 1 pair has a component that is not of the fixture project, and is not named.');
     expect(output).not.toContain('- missed');
@@ -1384,7 +1384,7 @@ describe('reading an org that holds more than the fixture project', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toMatch(
-      /- error RETRIEVE_FAILED: \d+ observations, about \d+ components, files or remarks\. Types: ApexClass, CustomLabels\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/,
+      /- error RETRIEVE_FAILED: \d+ observations, about \d+ components, files or remarks\. Types: ApexClass, CustomObject\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/,
     );
     expect(output).toMatch(/- info CHUNK_SPLIT: \d+ observations\. Codes of Salesforce: LIMIT_EXCEEDED \(\d+\)/);
     expect(output.split('\n').slice(-4)).toEqual([
@@ -1663,11 +1663,11 @@ describe('asking the org what Salesforce knows about references', () => {
       'The rows with a component that is not of the fixture project, by type: ApexClass to CustomField 2, ApexClass to CustomObject 1, Flow to CustomField 1',
     );
     expect(output).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
+      'The answer key holds 343 pairs of a component and a component it refers to. The Dependency API reports 5 of them.',
     );
     expect(output).toMatch(/^ApexClass +CustomField +\d+ +1$/m);
     expect(output).toMatch(/^ApexClass +CustomObject \(of Salesforce\) +\d+ +1$/m);
-    expect(output).toMatch(/^ValidationRule +CustomField +18 +1$/m);
+    expect(output).toMatch(/^ValidationRule +CustomField +19 +1$/m);
     expect(output).toMatch(/^CustomField +GlobalValueSet +2 +0$/m);
     expect(output).toMatch(/^value-set +2 +0$/m);
     expect(output).toMatch(/^formula +\d+ +2$/m);
@@ -1681,7 +1681,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('- ApexClass:invoiceservice -> ApexClass:invoiceselector');
     expect(output).toContain('- ApexClass:invoiceservice -> CustomField:invoice_line__c.status__c');
     expect(output).toContain(
-      'Fields the answer key calls unreferenced: 15. The Dependency API reports a reference to 1 of them: CustomField:invoice__c.unused_field__c.',
+      'Fields the answer key calls unreferenced: 13. The Dependency API reports a reference to 1 of them: CustomField:invoice__c.unused_field__c.',
     );
     // Every query names a type of component, never a component.
     for (const soql of asked) for (const name of FOREIGN) expect(soql).not.toContain(name);
@@ -1696,12 +1696,12 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(log.failed).toBe(false);
     // Only classes with a name of the fixture project are asked for. One of them is of a package.
     expect(asked.filter((soql) => soql.includes('SymbolTable FROM ApexClass'))).toEqual([
-      expect.stringMatching(/ FROM ApexClass WHERE Name IN \('[A-Za-z]+'(, '[A-Za-z]+'){11}\)$/),
+      expect.stringMatching(/ FROM ApexClass WHERE Name IN \('[A-Za-z]+'(, '[A-Za-z]+'){12}\)$/),
     ]);
     expect(output).toMatch(
       /Classes with a name of the fixture project: 3 in 2 pages, after \d+\.\d s\. With a symbol table: 1\./,
     );
-    expect(output).toContain('Classes of the fixture project: 12. Found: 2. With a symbol table: 1.');
+    expect(output).toContain('Classes of the fixture project: 13. Found: 2. With a symbol table: 1.');
     expect(output).toMatch(/^InvoiceSelector +no symbol table$/m);
     expect(output).toMatch(/^InvoiceService +1 +0 +0 +1 +0 +2 +5$/m);
     expect(output).toContain(
@@ -1738,7 +1738,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'The query for the classes by their names failed (MALFORMED_QUERY). Every class of the org is asked for.',
     );
     expect(output).toMatch(/Classes: 4 in 1 page, after \d+\.\d s\. With a symbol table: 2\./);
-    expect(output).toContain('Classes of the fixture project: 12. Found: 2. With a symbol table: 1.');
+    expect(output).toContain('Classes of the fixture project: 13. Found: 2. With a symbol table: 1.');
     expectNothingForeign(output);
   });
 
@@ -1763,7 +1763,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'Different rows in all: 2037. 1 query was cut off at the limit or failed, so rows are missing.',
     );
     expect(output).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
+      'The answer key holds 343 pairs of a component and a component it refers to. The Dependency API reports 4 of them.',
     );
     // The step does not fail for it, and says at its end that the answer is not whole.
     expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
@@ -1922,9 +1922,12 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain(
       '- reported  ValidationRule:invoice__c.locked_when_paid -> CustomField:invoice__c.status__c',
     );
+    // A record refers to its type, and the key holds that.
+    expect(output).toContain(
+      '- reported  CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt  (record-of)',
+    );
     // The type itself, which the key does not hold as a target of the rule.
-    expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 5.');
-    expect(output).toContain('- CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt\n');
+    expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 4.');
     expect(output).toContain(
       '- ValidationRule:invoice__c.large_amount_needs_permission -> CustomObject:billing_rule__mdt\n',
     );
@@ -2064,8 +2067,12 @@ describe('asking the org what Salesforce knows about references', () => {
       const output = await run(name);
       expect(output).toContain(unfit);
       expect(output).toContain(`- missing   ${pair}`);
-      // The type is then named with the ending of a custom object, which the fixture project does not hold.
-      expect(output).not.toContain('CustomObject:billing_rule__mdt');
+      // The type is then named with the ending of a custom object, which the fixture project does not hold. So
+      // no row is about the type: the key names it, as what a record is of, and Salesforce is not seen to.
+      expect(output).toContain(
+        '- missing   CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt  (record-of)',
+      );
+      expect(output).not.toMatch(/^- (?!missing ).*CustomObject:billing_rule__mdt/m);
     }
     const differing = await run('Billing_Rule__mdt', 'Billing_Rule__c');
     expect(differing).toContain(unfit);
@@ -2191,9 +2198,9 @@ describe('a tool of the live-org workflow as a program', () => {
       'Different rows in all: 0. No query was cut off or failed in a way that leaves a row out.\n',
     );
     expect(probed.stdout).toContain(
-      'The answer key holds 189 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
+      'The answer key holds 343 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',
     );
-    expect(probed.stdout).toContain('Classes of the fixture project: 12. Found: 0. With a symbol table: 0.\n');
+    expect(probed.stdout).toContain('Classes of the fixture project: 13. Found: 0. With a symbol table: 0.\n');
     expect(probed.code).toBe(0);
     expectNoSecret(probed.stdout);
   });
