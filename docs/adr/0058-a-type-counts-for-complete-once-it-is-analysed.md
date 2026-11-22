@@ -37,7 +37,9 @@ Three statements below are conclusions of the author of this record. The maintai
 
 - **The list of record 0046 stays in force until the change is built.** That is work package 6 of the plan. The
   record written with it names the types that join and replaces the list of record 0046. Until then a snapshot is
-  judged as it is today.
+  judged as it is today. The three types of work package 8 join after that, with their analysers, in the pull
+  request of that work package (record
+  [0055](0055-email-templates-report-types-and-quick-actions-in-phase-2.md)).
 - **No type leaves the list.** The 21 names stay, also those no phase analyses yet, such as Apex classes: record
   0038 names them, and this answer adds to the list.
 - **A type joins with the version that analyses it**, not before. A snapshot is never changed (record
@@ -47,9 +49,14 @@ Three statements below are conclusions of the author of this record. The maintai
 
 ## Consequences
 
-- More orgs get a snapshot that is `partial`. On the test org 209 of 222 components that do not come back are
-  warnings today. How many of them are of a type that Phase 2 analyses was not counted. It is counted with work
-  package 6.
+- More orgs get a snapshot that is `partial`. On the test org it changes nothing as the types stand: 209 of 222
+  components that do not come back are warnings today, and none of them is of a type the Phase 2 plan analyses.
+  They are of ten types, 171 of them list views and 24 reports
+  ([note of the test org](../research/phase-1/real-org.md)). Two of the ten are close to a type that is
+  analysed: `EmailFolder`, the folder of email templates, and `WorkflowFlowAutomation`, a part of the file of
+  workflow rules that the plan does not name. Whether such a type joins with the type it belongs to is not
+  decided. For the first it is put to the maintainer with work package 8, for the second it is settled with work
+  package 6. One org says little about others.
 - The exit code of `orglens snapshot` follows the judgement, and `docs/cli.md` holds the list. Both change with
   work package 6, in the same pull request, and with the version of the pre-release that carries it. No name and
   no output is fixed before the first version without a pre-release part (record
@@ -59,4 +66,4 @@ Three statements below are conclusions of the author of this record. The maintai
 - The key `exclude_types` refuses a type of the logic tier (record
   [0048](0048-types-a-snapshot-leaves-out.md)). Whether it also refuses a type that joined by this record is
   settled with work package 6. Until it is, the key behaves as it does today.
-- `mayMiss` of an impact answer stays. It is true for a snapshot that is `partial` in a type the answer covers.
+- `mayMiss` of an impact answer stays as record [0044](0044-an-impact-answer.md) defines it.

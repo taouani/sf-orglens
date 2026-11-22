@@ -16,8 +16,7 @@ several components for one flow. The maintainer chose (a) on 22 November 2026.
 
 ## Decision
 
-**The version of a flow that the org hands out in a retrieve is the one that is analysed.** A flow is one
-component, whatever the number of its versions.
+**The version of a flow that the org hands out in a retrieve is the one that is analysed.**
 
 **A reference from a flow that is not active says so**, as a reference from a validation rule that is not active
 does.
@@ -26,6 +25,10 @@ That is all the maintainer decided.
 
 ## What goes further than the answer of the maintainer
 
+Three statements below are conclusions of the author of this record. The maintainer can strike any of them.
+
+- **A flow is one component, whatever the number of its versions.** The option the maintainer did not choose had
+  several components for one flow. The author reads the answer as one.
 - **Which version an org hands out is not verified.** The author expects the active version, and the latest one
   when none is active, and did not see it on an org. Work package 1 of the plan measures it on the test org, with a
   flow that has an active version and a newer draft and with a flow that is not active. If the org hands out

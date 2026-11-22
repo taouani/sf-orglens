@@ -87,8 +87,12 @@ the table to match. A superseded record keeps its "Decisions" line and no longer
 
 ## Planned records
 
-None at the moment. A decision that is taken and waits for the pull request that builds it is listed here, with
-that pull request.
+A decision that is taken and waits for the pull request that builds it is listed here, with that pull request.
+
+- **The types a snapshot of an org is judged over.** Record
+  [0058](0058-a-type-counts-for-complete-once-it-is-analysed.md) says that a type counts once it is analysed. The
+  record that names the types and replaces the list of record 0046 is written with work package 6 of the
+  [Phase 2 plan](../plans/phase-2.md), in the pull request that builds the change.
 
 ## Earlier prototypes
 

@@ -34,22 +34,32 @@ That is all the maintainer decided.
 
 ## What goes further than the answer of the maintainer
 
-Three statements below are conclusions of the author of this record. The maintainer can strike any of them.
+Five statements below are conclusions of the author of this record. The maintainer can strike any of them.
 
 - **How a component is known to be of a package is a choice of the build**, in work package 7 of the plan: from the
-  namespace the org lists it with and from the prefix of its name, and whether that namespace is the org's own. An
-  org with a namespace of its own was not read yet, so this is not verified.
+  namespace the org lists it with, from the prefix of its name, and from the state the org lists it with
+  (`manageableState`), which a snapshot keeps since Phase 1 and which tells an installed component from one of
+  the org's own namespace. An org with a namespace of its own was not read yet, so this is not verified.
 - **A repository of a package project is not a package.** The components of a repository such as NPSP are the
   repository's own, whatever prefix they will carry once installed. The plan says so in its acceptance criteria.
 - **An answer says how many results it left out**, in a line of its own, so that leaving out is never silent. The
   name of the option, the line and the field of the JSON output are written with work package 7, in
   `docs/cli.md` and in the schema of the output.
+- **A chain through a component of a package is settled with work package 7.** An answer is walked level by level,
+  and a result holds the reference to a result of the level before (record
+  [0044](0044-an-impact-answer.md)). If a formula field of a package reads the field asked about and a flow of
+  the org reads that formula field, the answer of the maintainer does not say whether the flow is a result, and
+  if it is, what its reference points at. The author expects that the flow stays a result and that the answer
+  names the component of the package it was reached through. That is not decided.
+- **Not retrieving the components of a package can still be decided later.** The maintainer chose (a) among three
+  options and did not say that (b) stays open. The author reads it so, because (a) drops nothing and (b) is the
+  one that could help with the target of 60 minutes for a first snapshot (record
+  [0037](0037-performance-targets.md)). The plan says that it is decided with a number from an org of the
+  maintainer.
 
 ## Consequences
 
-- A snapshot is not smaller and not faster by this decision. Option (b) is the one that could help with the target
-  of 60 minutes for a first snapshot (record [0037](0037-performance-targets.md)). It stays open, and the plan says
-  that it is decided with a number from an org of the maintainer.
+- A snapshot is not smaller and not faster by this decision.
 - The decision can be undone by an option, because nothing is dropped from the snapshot.
 - The cross-check with the Dependency API keeps its rows as Salesforce wrote them (record
   [0045](0045-the-cross-check-of-a-snapshot.md)). Whether a pair that Salesforce reports from a component of a

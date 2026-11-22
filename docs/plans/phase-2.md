@@ -3,7 +3,8 @@
 Status: **approved** on 22 November 2026. The maintainer answered the six questions of section 4 and said to start
 building. The answers are written in below section 4, and four of them have decision records (0055 to 0058). The
 plan was written for the recommended answers, which are the ones the maintainer gave, so its work packages stand
-as they were drafted. Nothing of it is built yet.
+as they were drafted, with one exception: when a person reads the ten entries of the key (work package 1, and the
+first reading below the answers). Nothing of it is built yet.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
@@ -80,8 +81,8 @@ Two smaller ones:
 - Approval processes, assignment, escalation and auto-response rules, sharing rules, duplicate and matching
   rules. Each can name a field. None is in the logic tier, and the roadmap has them in no phase. I name them
   here so that their absence is a decision and not an oversight. An answer names them as not analysed.
-- Layouts, list views, Lightning pages, dashboards and the rest of the presentation tier, and reports unless Q1
-  says otherwise.
+- Layouts, list views, Lightning pages, dashboards and the rest of the presentation tier, and reports: by your
+  answer to Q1 they stay in Phase 6.
 - Running a flow, or saying in which order the automation of an object runs. That is the first rider, after
   the gate.
 - The language model, the web UI, and any rider.
@@ -120,12 +121,22 @@ Two things I read into the answers, for you to strike:
 - **Q6 and work package 1.** Answer (a) puts your reading in the test plan, at the end of the phase. Work package
   1 and section 10 of this plan asked for the ten entries when the pull request of the key is up. I take the
   answer: the pull request of the key is merged on the review of the agent, and I tell you when the key is up, so
-  that you can read the ten entries then if you want to. Until a person has read them, the reports say that none
-  has.
+  that you can read the ten entries then if you want to. What this gives up: no person reads the key before the
+  analysers are built against it. That order is the reason record 0021 gives for writing the key first, so that
+  it is not shaped by what an analyser happens to find. The review of the agent is then the only reading before
+  the analysers, as it was in Phase 1. Until a person has read the entries, the reports say that none has.
 - **Phase 1 is not accepted yet.** You said to start, and the test plan of Phase 1 is not run as far as I know.
-  Work packages 1 and 2 do not rest on it. Part H of that test plan is still asked for before work package 3,
-  the analyser of flows, is built (finding 9, and the last risk of section 8): a defect it shows is corrected
-  first.
+  Work package 1 does not rest on it. Work package 2 moves the code of Phase 1 that reads the names of a formula
+  and does not change what it does: a defect that part H shows in it is corrected in the moved code. The plan
+  asks for part H before work package 3, the analyser of flows, is built (finding 9, and the last risk of section
+  8). Work package 3 does not wait for it by itself. When work package 2 is merged and part H is not run, I ask
+  you once whether work package 3 waits, and I build on until you answer. A defect that part H shows after that
+  is corrected before anything else is built.
+
+One number of Q1 was too low. The question says that the public codebases hold 11 formulas in quick actions.
+That is PMM alone. The package folders of the pinned codebases hold 16: 11 in PMM and 5 in NPSP
+([note of Phase 1](../research/phase-1/public-codebases.md)). The question is left as you answered it, and
+record 0055 has the number that is right.
 
 ## 5. Work packages
 
@@ -183,8 +194,9 @@ Accepted when:
   from a flow carries, and whether it is an id the org listed. Which version of a flow the org hands out, and
   what it hands out for the flow with a draft.
 - The pull request with the fixture and the key is merged before the pull request of WP3 is opened.
-- You read ten entries of the new key against their files in the test plan (Q6, answer (a)). The pull request
-  of the key does not wait for it.
+
+Not a condition of this package: your reading of ten entries of the new key against their files. By your answer
+to Q6 it is in the test plan of the phase. I tell you when the key is up.
 
 ### WP2 Names in text
 
@@ -258,7 +270,7 @@ Build:
   rule and of its time triggers (`references`), the field a field update sets (`writes`, on the object or on
   the parent it names), the names in its formula (`reads`), the fields an outbound message sends and the field
   that is the recipient of an alert (`reads`), and the email template of an alert (`references`, to a component
-  that is not analysed unless Q1 adds it).
+  that is named and not analysed until work package 8).
 - A rule that is not active carries that on its references.
 
 Accepted when:
@@ -333,8 +345,8 @@ Accepted when:
 - Against the mock org with a package, an answer names what was left out, and the option brings it back.
 - A repository of a package project, such as NPSP, is not treated as a package: its components are its own.
 
-With answer (b) this package becomes a key of `orglens.toml` that leaves a namespace out of a snapshot, like
-the key that leaves a type out, and needs a measurement on an org of yours first. With (c) it is dropped.
+With answer (b) this package would have been a key of `orglens.toml` that leaves a namespace out of a snapshot,
+like the key that leaves a type out, after a measurement on an org of yours.
 
 ### WP8 What Q1 adds
 
