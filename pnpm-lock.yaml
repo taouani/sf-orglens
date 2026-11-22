@@ -230,8 +230,8 @@ importers:
         specifier: 9.4.6
         version: 9.4.6
       '@salesforce/source-deploy-retrieve':
-        specifier: 13.12.0
-        version: 13.12.0(supports-color@7.2.0)
+        specifier: 13.12.1
+        version: 13.12.1(supports-color@7.2.0)
       ignore:
         specifier: 5.3.2
         version: 5.3.2
@@ -953,8 +953,8 @@ packages:
     resolution: {integrity: sha512-LXCswafab7AYmpaEvjHmpI3Ueg4dk9c/vFfHSEenVyx/dF1ABlxmf8kpVyox6iRBBh3RvM5/LkQMtXUv7iSd7w==}
     engines: {node: '>=22.0.0'}
 
-  '@salesforce/source-deploy-retrieve@13.12.0':
-    resolution: {integrity: sha512-d9o8WIKlb48vXUGHrO2T0ASPAimVhldCIeSJtJdbZOSdzcJ+bvie3zO4gP7kBv8byvjCD9zBxzf8dFt9wkqeew==}
+  '@salesforce/source-deploy-retrieve@13.12.1':
+    resolution: {integrity: sha512-QO+UHz/Gc8CIYHFOgxv+VRMNUgoNMm1BLtKcXyGjJSgYCk3ESQo2/Uwa5zztSeXAupeSGPeKIVV4a8MrVWc6jA==}
     engines: {node: '>=22.0.0'}
 
   '@salesforce/ts-types@3.2.4':
@@ -3143,7 +3143,7 @@ snapshots:
     dependencies:
       '@salesforce/ts-types': 3.2.4
 
-  '@salesforce/source-deploy-retrieve@13.12.0(supports-color@7.2.0)':
+  '@salesforce/source-deploy-retrieve@13.12.1(supports-color@7.2.0)':
     dependencies:
       '@salesforce/core': 9.4.6
       '@salesforce/kit': 4.0.10
