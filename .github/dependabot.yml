@@ -13,6 +13,11 @@ updates:
       # The Node.js types follow the oldest supported Node.js line, so a new major is taken by hand, with the floor.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # The engine reads a `.forceignore` with the very copy of `ignore` that the Salesforce library uses (decision
+      # record 0030, held by a test in `sources-forceignore.test.ts`). The library asks for version 5. Versions 5 and 7
+      # answer differently for a rule with a backslash or a tab, so a new major is taken with the library, not before.
+      - dependency-name: 'ignore'
+        update-types: ['version-update:semver-major']
     groups:
       dev-tools:
         dependency-type: development
