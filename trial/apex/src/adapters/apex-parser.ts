@@ -191,8 +191,10 @@ function unitColumn(line: number, characters: number): number {
 }
 
 const isTerminal = (node: Tree): node is ApexTerminalNode => (node as { symbol?: unknown }).symbol !== undefined;
+// A node that is no terminal is a rule context. Its children are read as a property, as the symbol above is,
+// without a cast to the class of the parser.
 const kids = (node: Tree | undefined): readonly Tree[] =>
-  node === undefined || isTerminal(node) ? [] : ((node as Ctx).children ?? []);
+  node === undefined || isTerminal(node) ? [] : ((node as { children?: readonly Tree[] | null }).children ?? []);
 const terminals = (node: Tree | undefined): ApexTerminalNode[] => kids(node).filter(isTerminal);
 const all = <T extends Ctx>(node: Tree | undefined, type: CtxClass<T>): T[] =>
   kids(node).filter((kid): kid is T => kid instanceof type);
