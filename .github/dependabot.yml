@@ -14,8 +14,9 @@ updates:
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       # The engine reads a `.forceignore` with the very copy of `ignore` that the Salesforce library uses (decision
-      # record 0030, held by a test in `sources-forceignore.test.ts`). The library asks for version 5. Versions 5 and 7
-      # answer differently for a rule with a backslash or a tab, so a new major is taken with the library, not before.
+      # record 0030, held by a test in `sources-forceignore.test.ts`). The library asks for `^5.3.2`. A newer major
+      # would be a second copy, and 7.0.14 answers differently from 5.3.2 for some rules with a backslash and for a
+      # rule that ends with a tab. So a new major is taken with the library, not before.
       - dependency-name: 'ignore'
         update-types: ['version-update:semver-major']
     groups:
