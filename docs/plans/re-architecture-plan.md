@@ -8,7 +8,7 @@ Agreed on 11 November 2026 · The OrgLens Authors
 > just before the phase starts, and decisions are recorded in [`docs/adr/`](../adr/). Where a phase plan or a
 > decision record differs from this document, the newer one wins.
 >
-> Last updated on 17 November 2026, at the close of Phase 1. Before that: on 15 November 2026, with the answers of the maintainer to the Phase 1 plan and the approval of that plan with one change, and on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
+> Last updated on 22 November 2026, when the maintainer answered the questions of the Phase 2 plan and approved it. Before that: on 17 November 2026, at the close of Phase 1, on 15 November 2026, with the answers of the maintainer to the Phase 1 plan and the approval of that plan with one change, and on 13 November 2026, at the close of Phase 0 and when the maintainer chose the Apex parser.
 
 ## Summary
 
@@ -22,7 +22,7 @@ The plan rests on five choices:
 - **Nothing is silently missed.** Every reference carries a confidence tier, dynamic references are resolved where possible, and Salesforce's own dependency data is used as a cross-check.
 - **One simple store.** A single SQLite file holds immutable snapshots of every org, sandbox and repo branch, so every comparison is the same operation.
 
-Rough effort to the correctness gate is 28 to 38 focused weeks for one developer with AI assistance. No deadline applies.
+Rough effort to the correctness gate is 30 to 39 focused weeks for one developer with AI assistance. No deadline applies.
 
 ## Changes since the plan was agreed
 
@@ -103,6 +103,21 @@ The reasons and the measurements are in the [Phase 1 report](../reports/phase-1.
 | Roadmap, Phase 2 | 3 to 4 weeks | The draft of the [Phase 2 plan](phase-2.md) estimates about 5 weeks, with managed packages and three more types in it. It is not approved, so the row of the roadmap and the total to the gate are not changed. |
 | Risks | 13 risks | Risks 2, 5, 6, 11, 12 and 13 are rewritten with what Phase 1 measured. Risk 14 is new: the install of a pre-release. |
 | Open questions | 16 questions | Four are new. Four are updated: the performance targets, the names, the public codebases and the scope of the Dependency API. |
+
+### With the approval of the Phase 2 plan, 22 November 2026
+
+The maintainer answered the six questions of the [Phase 2 plan](phase-2.md) and approved it. The plan holds the answers. Four of them change this plan.
+
+| What | Before | Now |
+| --- | --- | --- |
+| Roadmap, Phase 2 | Flows, workflow rules, record types, custom metadata types and their records, field sets. 3 to 4 weeks | Email templates, report types and quick actions join it (record [0055](../adr/0055-email-templates-report-types-and-quick-actions-in-phase-2.md)), and so does the handling of managed packages (record [0056](../adr/0056-components-of-a-managed-package.md)). About 5 weeks, as the Phase 2 plan estimates. |
+| Roadmap, Phase 6 and "Later" | Email templates and reports in Phase 6, report types in no phase | Reports stay in Phase 6. Email templates and report types are analysed in Phase 2. |
+| Total to the gate | 28 to 38 weeks | 30 to 39 weeks, with Phase 2 at about 5. |
+| Managed packages | An open question | Their components are read and kept, marked with their package, and left out of an answer as the thing that refers. They stay targets, and an option of `impact` shows them (record 0056). Not retrieving them at all stays open, to be decided with a number from an org of the maintainer. |
+| Which version of a flow | Not asked | The one the org hands out (record [0057](../adr/0057-the-version-of-a-flow-that-is-analysed.md)). Which one that is, is measured in the first work package of Phase 2. |
+| When a snapshot of an org is complete | The 21 types of the logic tier (record 0046) | Every type that has an analyser counts as well (record [0058](../adr/0058-a-type-counts-for-complete-once-it-is-analysed.md)). The list of record 0046 stays in force until work package 6 of Phase 2 builds the change. |
+
+Not changed by the approval: Phase 1 is closed when the maintainer has run its test plan, and that run is still open.
 
 What Phase 1 says about the proof: the four pass marks the maintainer accepted are met, and no reference that was checked is wrong. The check by hand was made by the author of the analyser and repeated by a second automated reader. No person has read an entry of the key or of the check, and no command was run on an org the maintainer knows.
 
@@ -338,16 +353,16 @@ Effort is in focused weeks for one developer with AI assistance. These are rough
 | --- | --- | --- | --- |
 | 0 Foundations | **Built in November 2026.** New repository, Apache 2.0, CI on three operating systems, decision records. Workspace, `orglens.toml`, source declarations, logins. Immutable snapshots of an org and of a repository folder, with a retrieve that can be continued. First read of a real org, and what Salesforce can confirm. Apex trial of two parsers. First version of the fixture project and its answer key. | 4 to 5 weeks | Nothing |
 | 1 First slice | **Built in November 2026.** Objects, fields, formula fields and validation rules through every layer: snapshot, store, impact by reachability, coverage, CLI with JSON output. Usable on real orgs for field-to-formula and field-to-rule impact. Added with the answers of 15 November 2026: the Dependency API read by the engine as cross-check for these types, and the rule for what a snapshot of an org reads and when it is complete. | 6 to 7 weeks | Phase 0 |
-| 2 Flows and config | Flows at element level with field reads and writes. Workflow rules, record types, custom metadata types and their records, field sets. B's Flow parser is the model for the design, and the fixtures are written fresh. | 3 to 4 weeks | Phase 1 |
+| 2 Flows and config | Flows at element level with field reads and writes. Workflow rules, record types, custom metadata types and their records, field sets. B's Flow parser is the model for the design, and the fixtures are written fresh. Added with the answers of 22 November 2026: email templates, report types and quick actions (record 0055), and components of managed packages marked and left out of an answer as the thing that refers (record 0056). | About 5 weeks | Phase 1 |
 | 3 Apex | Classes and triggers at method level with read, write and source location. Dynamic reference resolution and the three confidence tiers. The cross-check with the Dependency API, which the engine is to read from Phase 1 on, extended to Apex. LWC and Aura links to Apex. Named credentials. | 8 to 12 weeks | Phase 0 trial result, phase 1 |
 | 4 Compare and access | Snapshot comparison for all three pairings, which has to know the default values an org adds to almost every file. Multi-org workspace and repo sub-folder mapping. Change-set impact from a Git diff. Incremental refresh. Profiles, permission sets and groups read completely, with access impact. Change-aware rules for delete and data-type change. | 5 to 7 weeks | Phases 1 to 3 |
 | Correctness gate | Run on public codebases and one real 10,000+ component org. Fix every missing dependency. The second half of record 0035: the answer key for what Salesforce cannot confirm, and a sample checked by hand. Measure ingest and query times. Publish the benchmark. Announce. | 2 to 3 weeks, estimated before the second half existed and not looked at again | Phase 4, access to a suitable org |
 | 5 Riders | Automation order of execution, integration map, basic security audit. `orglens explain` through the LLM layer. | 4 to 6 weeks | Gate passed |
-| 6 Web UI and agent | Local HTTP server and browser UI. `orglens ask` as an agent over the engines. Presentation tier: layouts, Lightning pages, list views, email templates, sharing rules, reports. A snapshot reads them from Phase 1 on (record 0038), and this phase analyses them. | 6 to 10 weeks | Phase 5 |
+| 6 Web UI and agent | Local HTTP server and browser UI. `orglens ask` as an agent over the engines. Presentation tier: layouts, Lightning pages, list views, sharing rules, reports. A snapshot reads them from Phase 1 on (record 0038), and this phase analyses them. Email templates are analysed in Phase 2 (record 0055). | 6 to 10 weeks | Phase 5 |
 
-Total to the gate is 28 to 38 focused weeks, of which Phases 0 and 1 are built. Phases 5 and 6 add 10 to 16.
+Total to the gate is 30 to 39 focused weeks, of which Phases 0 and 1 are built. Phases 5 and 6 add 10 to 16.
 
-Later, with no estimate yet: the analysis of the metadata types beyond the logic tier and the presentation tier, report types among them, which a snapshot reads from Phase 1 on (record 0038), desktop app, documentation and diagram generation, dead-code detection, security posture audit, more change-aware rules, a possible Salesforce CLI plugin.
+Later, with no estimate yet: the analysis of the metadata types beyond the logic tier and the presentation tier, which a snapshot reads from Phase 1 on (record 0038), desktop app, documentation and diagram generation, dead-code detection, security posture audit, more change-aware rules, a possible Salesforce CLI plugin.
 
 ### What is reused in each phase
 
@@ -396,12 +411,12 @@ Twenty questions are open or were answered since the plan was agreed. A ticked b
 
 - [x] **Apex analysis foundation.** `web-tree-sitter-sfapex`. Both parsers passed the Phase 0 trial, which selected neither, and the maintainer chose on 13 November 2026 (S3).
 - [ ] **Scope of the Dependency API on large orgs.** Its type coverage is measured for the types of the fixture project. Reading it in parts was shown on the test org with every answer cut off at 30 rows. Its limits on an org above 2,000 rows, and flows, are not measured.
-- [ ] **Managed packages.** Their code is hidden. How are references into and out of a namespace shown, and at what confidence? The maintainer noted on 15 November 2026 that the goal is all metadata, except what comes from managed packages. Still open with that: whether the components of a package stay as named targets of references from the maintainer's own metadata, and from which phase packages are left out. With the approval of the Phase 1 plan the maintainer wrote that the metadata to index and retrieve "should cover almost everything in the org" (record 0038). The author of that record reads "almost" as the packages, and reads that the components of a package are still read until a later record says otherwise.
+- [ ] **Managed packages.** Answered in part on 22 November 2026 (record [0056](../adr/0056-components-of-a-managed-package.md)): their components are read and kept, marked with their package, and left out of an answer as the thing that refers, and they stay targets. Still open: at what confidence a reference into the hidden code of a package is shown, and whether a snapshot may leave a package out altogether, which is decided with a number from an org of the maintainer. The question as it stood: Their code is hidden. How are references into and out of a namespace shown, and at what confidence? The maintainer noted on 15 November 2026 that the goal is all metadata, except what comes from managed packages. Still open with that: whether the components of a package stay as named targets of references from the maintainer's own metadata, and from which phase packages are left out. With the approval of the Phase 1 plan the maintainer wrote that the metadata to index and retrieve "should cover almost everything in the org" (record 0038). The author of that record reads "almost" as the packages, and reads that the components of a package are still read until a later record says otherwise.
 
 **New at the close of Phase 0**
 
 - [x] **What the correctness gate asks for where Salesforce confirms nothing.** The gate says that no dependency Salesforce confirms may be missing. For standard fields, names in text, lookups and roll-up summaries Salesforce confirms nothing. Answered on 15 November 2026: the gate has a second half for these kinds (record [0035](../adr/0035-gate-where-salesforce-confirms-nothing.md)).
-- [x] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Answered on 15 November 2026: every listed component of the logic tier came back and could be read (record [0038](../adr/0038-a-snapshot-reads-every-type.md), which replaces record 0036). That what is missing in another type is a warning is a reading of the author of that record. Not decided: whether a type outside the logic tier counts for "complete" once it has an analyser.
+- [x] **What "complete" means for a snapshot** of an org that lists components it does not hand out. Answered on 15 November 2026: every listed component of the logic tier came back and could be read (record [0038](../adr/0038-a-snapshot-reads-every-type.md), which replaces record 0036). That what is missing in another type is a warning is a reading of the author of that record. Decided on 22 November 2026: a type outside the logic tier counts for "complete" once it has an analyser (record [0058](../adr/0058-a-type-counts-for-complete-once-it-is-analysed.md)).
 - [ ] **A sandbox that is refreshed gets a new org id.** Should a source of the kind `sandbox` follow its sandbox across a refresh? Record 0032 leaves it open. It matters from the phase that compares snapshots.
 - [ ] **Folders inside folders** of reports and dashboards may only be found by a query on an object of the data API. The data rule forbids such a query. Record 0032 leaves it open. Since record 0038 reports are read by default, so it matters from Phase 1 on. Whether the test org has such folders was not measured.
 
@@ -411,7 +426,7 @@ Twenty questions are open or were answered since the plan was agreed. A ticked b
 - [x] **Whether a pre-release is "the first release"** of records 0022 and 0027, from which the names of the packages and the JSON contract are fixed. The maintainer decided on 17 November 2026 that it is not: the first release is the first one on npm (record [0051](../adr/0051-the-first-release-is-the-first-on-npm.md)). What makes that release is not decided. With record 0053 pre-releases go to npm, so it came back to the maintainer: see "What a pre-release on npm fixes" below.
 - [x] **How the hole of the install of a pre-release is closed.** Risk 14. The maintainer first decided that the project holds the names on npm with empty packages. The review of that decision found that the policy of npm forbids it (record 0052, never accepted). Put to the maintainer again on 17 November 2026, with four ways. The maintainer chose that the pre-release itself is published on npm (record [0053](../adr/0053-a-pre-release-is-published-on-npm.md)).
 - [x] **What a pre-release on npm fixes.** Record 0051 fixes the names of the packages, the JSON output and the exit codes with the first release on npm, and was written when no pre-release went there. Put to the maintainer on 17 November 2026, with three answers. The maintainer chose: nothing. The first release is the first version on npm without a pre-release part (record [0053](../adr/0053-a-pre-release-is-published-on-npm.md)).
-- [ ] **Where email templates, report types and reports are analysed.** The maintainer named them on 15 November 2026 among what OrgLens should cover. The roadmap has email templates and reports after the gate, and report types in no phase. Question Q1 of the draft of the [Phase 2 plan](phase-2.md).
+- [x] **Where email templates, report types and reports are analysed.** The maintainer named them on 15 November 2026 among what OrgLens should cover. Answered on 22 November 2026 (record [0055](../adr/0055-email-templates-report-types-and-quick-actions-in-phase-2.md)): email templates and report types in Phase 2, with quick actions, and reports in Phase 6 as before.
 
 **Design details to settle when reached**
 

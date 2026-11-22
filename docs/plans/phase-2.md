@@ -1,8 +1,10 @@
 # Phase 2 plan: Flows and configuration
 
-Status: **draft, not approved.** Nothing of Phase 2 is built before the maintainer has answered the questions of
-section 4 and approved this plan.
-Date: 2026-11-17
+Status: **approved** on 22 November 2026. The maintainer answered the six questions of section 4 and said to start
+building. The answers are written in below section 4, and four of them have decision records (0055 to 0058). The
+plan was written for the recommended answers, which are the ones the maintainer gave, so its work packages stand
+as they were drafted. Nothing of it is built yet.
+Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
 
@@ -64,7 +66,7 @@ Two smaller ones:
 | WP5 Record types, field sets, custom metadata | Their references, and the names a custom metadata record holds                                                                                                                       |
 | WP6 The answers                               | `impact` and `coverage` with elements and the new types, the cross-check for them, and what an answer does not cover                                                                 |
 | WP7 Managed packages (Q2)                     | What of a package is read, analysed and shown                                                                                                                                        |
-| WP8 What Q1 adds                              | Email templates, report types and quick actions, if you choose them                                                                                                                  |
+| WP8 What Q1 adds                              | Email templates, report types and quick actions                                                                                                                                      |
 | WP9 Proof                                     | Every flow of the public codebases checked by hand, and the measurements                                                                                                             |
 | WP10 Phase close                              | Updated overall plan, test plan, phase report, the next pre-release, draft of the Phase 3 plan                                                                                       |
 
@@ -99,6 +101,31 @@ overall plan, in the pull request that records it.
 | Q4  | **Does a type count for "complete" once it is analysed?** Today a snapshot is complete when everything of the 21 types of the logic tier came back. The actions of a workflow rule are not among them, and neither are the types of Q1. If something of an analysed type is missing, an answer can miss a reference without the snapshot saying `partial`.                                                                     | (a) Yes: every type that has an analyser joins the list. (b) No: the list stays, and an impact answer says for itself that an analysed type is not whole, which it does today (`mayMiss`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | (a). An answer that may miss something should come from a snapshot that says so. The cost: more orgs with a snapshot that is `partial`.                            |
 | Q5  | **Pass marks for this phase.**                                                                                                                                                                                                                                                                                                                                                                                                 | Proposed: (1) every entry of the new answer key for flows, workflow rules, record types, field sets and custom metadata records that is not marked as stretch is found, nothing is reported that the key does not hold, no negative case is hit, and the marks of Phase 1 still hold. (2) Every flow and every file of workflow rules of the public codebases is read without an error. (3) On the test org, no pair that the Dependency API reports from a flow or a workflow rule is missing, for the kinds work package 1 shows that it reports. (4) Every flow of the pinned public codebases is checked by hand: no reference at the tier `confirmed` is wrong, and every reference that was missed is corrected or named with its cause. | Accept as proposed. If a mark is missed, the phase reports the gap and we decide together, as in Phase 1.                                                          |
 | Q6  | **Who is the second reader?** In Phase 1 I made the check by hand, and the agent that reviewed the pull request repeated it. No person read an entry, and your reading of ten entries of the key is still open.                                                                                                                                                                                                                | (a) You read ten entries of the new key and five flows of the check by hand, in the test plan. About 40 minutes. (b) A colleague of yours does. (c) Nobody until the gate: the review agent stays the second reader, and the reports say so.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | (a) or (b). A flow is where I am most likely to misread what Salesforce does, because I can deploy one and cannot run one.                                         |
+
+### Your answers, 22 November 2026
+
+You answered all six in one message and said to start building.
+
+| #   | Your answer                  | What it means                                                                                                                                                                                 | Where it is recorded                                                                    |
+| --- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Q1  | (a)                          | Email templates, report types and quick actions join Phase 2, as work package 8. Reports stay where the roadmap has them.                                                                     | Record [0055](../adr/0055-email-templates-report-types-and-quick-actions-in-phase-2.md) |
+| Q2  | (a)                          | The components of a managed package are read and kept, each marked with its package, and left out of an answer as the thing that refers. They stay targets. An option of `impact` shows them. | Record [0056](../adr/0056-components-of-a-managed-package.md)                           |
+| Q3  | (a)                          | The version of a flow that the org hands out is analysed. Work package 1 measures which one that is.                                                                                          | Record [0057](../adr/0057-the-version-of-a-flow-that-is-analysed.md)                    |
+| Q4  | (a)                          | Every type that has an analyser counts for "complete".                                                                                                                                        | Record [0058](../adr/0058-a-type-counts-for-complete-once-it-is-analysed.md)            |
+| Q5  | "ok for your recommendation" | The four pass marks as proposed. If one is missed, the phase reports the gap and we decide together.                                                                                          | Here                                                                                    |
+| Q6  | (a)                          | You read ten entries of the new key and five flows of the check by hand, in the test plan.                                                                                                    | Here                                                                                    |
+
+Two things I read into the answers, for you to strike:
+
+- **Q6 and work package 1.** Answer (a) puts your reading in the test plan, at the end of the phase. Work package
+  1 and section 10 of this plan asked for the ten entries when the pull request of the key is up. I take the
+  answer: the pull request of the key is merged on the review of the agent, and I tell you when the key is up, so
+  that you can read the ten entries then if you want to. Until a person has read them, the reports say that none
+  has.
+- **Phase 1 is not accepted yet.** You said to start, and the test plan of Phase 1 is not run as far as I know.
+  Work packages 1 and 2 do not rest on it. Part H of that test plan is still asked for before work package 3,
+  the analyser of flows, is built (finding 9, and the last risk of section 8): a defect it shows is corrected
+  first.
 
 ## 5. Work packages
 
@@ -156,7 +183,8 @@ Accepted when:
   from a flow carries, and whether it is an id the org listed. Which version of a flow the org hands out, and
   what it hands out for the flow with a draft.
 - The pull request with the fixture and the key is merged before the pull request of WP3 is opened.
-- You or a colleague have read ten entries of the new key against their files (Q6).
+- You read ten entries of the new key against their files in the test plan (Q6, answer (a)). The pull request
+  of the key does not wait for it.
 
 ### WP2 Names in text
 
@@ -272,8 +300,8 @@ Build:
 - `coverage` counts the new types as analysed, and the new origin `parser:flow`.
 - The cross-check compares the rows of the types this phase analyses, as far as work package 1 shows that the
   ids of the rows are ids the org listed.
-- The types of this phase join the judgement of "complete", if Q4 is answered with yes. The list in
-  `docs/cli.md` and the record that replaces the list of record 0046 follow.
+- The types of this phase join the judgement of "complete" (Q4, record 0058). The list in `docs/cli.md` and the
+  record that replaces the list of record 0046 follow.
 - **A choice of mine, for you to strike:** the list of types an answer does not cover is narrowed. A type is
   taken off it for a question only where its files cannot name the component asked about: a custom label
   cannot name a field. The table that says so is in one file, with the source of each line, and a type that is
@@ -290,7 +318,7 @@ Accepted when:
 
 ### WP7 Managed packages (Q2)
 
-Written for answer (a).
+Written for answer (a), which you gave (record 0056).
 
 Build:
 
@@ -310,7 +338,7 @@ the key that leaves a type out, and needs a measurement on an org of yours first
 
 ### WP8 What Q1 adds
 
-Written for answer (a). With (c) it is dropped.
+Written for answer (a), which you gave (record 0055).
 
 Build:
 
@@ -419,10 +447,10 @@ calendar days. Elapsed time depends on how fast you can answer, review the key a
 
 ## 10. What you will be asked to do
 
-1. Answer Q1 to Q6 and approve this plan, or change it.
+1. Answer Q1 to Q6 and approve this plan, or change it. Done on 22 November 2026.
 2. Run the test plan of Phase 1, at least its part H, before work package 3 is built.
-3. Read ten entries of the new answer key against their files, or have a colleague read them, when the pull
-   request of work package 1 is up. About 20 minutes.
+3. Read ten entries of the new answer key against their files and five flows of the check by hand, in the test
+   plan (Q6). About 40 minutes. I tell you when the key is up, in case you want to read the entries earlier.
 4. Review the pull requests you want to look at. Merging is done by the assistant under the rule of Phase 0.
 5. At the end, run the Phase 2 test plan. Its main step is `orglens impact` on an org you know, for fields
    whose flows you know. If that org is a client's, the client's permission comes first, and nothing of it goes
