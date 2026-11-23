@@ -91,9 +91,10 @@ The statements below are choices of the author of this record. The maintainer ca
   draft of `Invoice_Recalculate` with the rows of both versions: the rows of the draft, also one to a field only
   the draft reads, are counted in `rowsOtherVersion`, and nothing is missed. A test takes a field out of the file of
   a flow and finds the pair as missed.
-- On the test org, 62 of the 78 rows of flows should be compared and 16 counted as of another version. That is
-  worked out from what runs 21 and 26 printed, and was not measured: the first run of "Live org" after the merge
-  measures it.
+- On the test org, 62 of the 78 rows of flows are compared and 16 counted as of another version, and the analysis
+  misses none of the 62 pairs. That was worked out from what runs 21 and 26 printed, and run 27 of "Live org"
+  measured it after the merge, with the reading in parts whole again (section 5 of the
+  [research note of Phase 2](../research/phase-2/real-org.md)).
 - **On a real org, a flow can name what the reader of flows does not read**, such as a component of a screen or an
   action of a type other than Apex, a flow and an email alert. If the Dependency API reports such a pair, it is now
   `REFERENCE_MISSED`, and an impact answer from that snapshot says that it may miss something (exit code `5`).

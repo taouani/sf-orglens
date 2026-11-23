@@ -32,9 +32,14 @@ In short:
   reports, the analysis has 55, has 2 through a part of the object, and missed none. With the readers of Phase 2,
   run 26 compared 68 rows, those of the field updates, of the records and of the field set among them, and the
   analysis missed none either.
-- Read in parts, the rows of flows are whole before the draft and partial after it. By my reading of the code,
-  the reader of the engine does not ask per component once a row it was given comes from a version the org did
-  not list. It says that the reading is partial. The cross-check of flows has to be designed for it.
+- **The rows of flows are compared since a snapshot asks the org for the ids of the versions of its flows** (record
+  [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). Run 27 compared 130 rows, among them the
+  62 of the versions the snapshot holds, and the analysis missed none. The 16 rows of the draft are counted and not
+  compared.
+- Read in parts, the rows of flows were whole before the draft and partial after it. By my reading of the code, the
+  reader of the engine asked per component by the ids the org listed only, and the org does not list the id of the
+  active version of a flow that has a draft. With the ids of the versions as well, the reading in parts is whole
+  again `[run 27]`.
 - The symbol tables are as in Phase 0 and Phase 1: no reference in any of them.
 
 ## Conditions
@@ -57,6 +62,7 @@ In short:
 | [23](https://github.com/taouani/sf-orglens/actions/runs/45182733256) | read and probe | `3732f2d` | green, with the same warning |
 | [24](https://github.com/taouani/sf-orglens/actions/runs/45199698754) | read | `f5bb7fe` | green, with the same warning |
 | [26](https://github.com/taouani/sf-orglens/actions/runs/45221970983) | read | `3864d3b` | green, with the same warning |
+| [27](https://github.com/taouani/sf-orglens/actions/runs/45256396281) | read | `9e8e2d0` | green, with the same warning |
 
 Run 25 is the login the workflow makes once a week by itself. Run 16 was started by hand on `e86de72`, with the
 code of Phase 1, and read the org before anything of Phase 2 was deployed. This note does not use it.
@@ -319,12 +325,14 @@ with. The page does not say so.
 - **A snapshot can get the active version of a flow that has a newer draft.** One more retrieve, for the name
   with the number the definition names, gives the file `[run 22]`. That was not built when this note was
   written. Record [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) builds it.
-- **The cross-check cannot match every row of a flow by an id the org listed.** The rows of the latest version
-  can be matched that way. The rows of another version carry an id the org did not list. Record 0045 allows a
-  name only where there is no id, and the engine reads no object of the Tooling API but the one of the
-  dependencies. How the cross-check treats flows is put to the maintainer with a design in work package 6 of the
-  plan. From the moment flows are analysed, in work package 3, their rows are counted and not compared (record
-  0060).
+- **The cross-check cannot match every row of a flow by an id the org listed.** The rows of the latest version can
+  be matched that way. The rows of another version carry an id the org did not list. Record 0045 allows a name only
+  where there is no id, and the engine reads no object of the Tooling API but the one of the dependencies. How the
+  cross-check treats flows is put to the maintainer with a design in work package 6 of the plan. From the moment
+  flows are analysed, in work package 3, their rows are counted and not compared (record 0060). Built on
+  23 November 2026, as the maintainer chose (record
+  [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)): a snapshot asks the org for the ids of
+  the versions, and run 27 compared the rows of flows by them (section 5).
 - **The answer key does not describe `Invoice_Recalculate` as the test org hands it out for its name.** It is
   about the file of the project, which is version 1. For the name alone the org hands out version 2, which reads
   one field more.
@@ -352,17 +360,22 @@ In runs 19 and 21 the engine analyses the types of Phase 1 only, so it compares 
 validation rule. Run 24 read the org with the reader of workflow rules (record
 [0063](../../adr/0063-the-parts-of-a-file-of-workflow-rules.md)), so it compares the rows of the workflow rules as
 well. Run 26 read it with the readers of record types, field sets and records of custom metadata types too (record
-[0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)).
+[0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)). Run 27 compares the rows of
+flows by their version (record [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)).
+Until run 27 the rows from a flow are not compared, and the second line of the table counts them with those of a
+type that is not analysed: 62 in run 19, before the draft, and 78 after it (section 4). The third line is new in
+run 27.
 
-| | Run 19 | Run 21 | Run 24 | Run 26 |
-| --- | --- | --- | --- | --- |
-| Rows of the org | 335 | 351 | 351 | 351 |
-| Rows from a component of a type that is not analysed, or of a flow | 278 | 294 | 291 | 283 |
-| Rows compared, which are as many pairs | 57 | 57 | 60 | 68 |
-| The analysis has the pair | 55 | 55 | 58 | 66 |
-| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 | 2 |
-| Missed by the analysis | 0 | 0 | 0 | 0 |
-| Rows with an end the org did not list | 0 | 0 | 0 | 0 |
+| | Run 19 | Run 21 | Run 24 | Run 26 | Run 27 |
+| --- | --- | --- | --- | --- | --- |
+| Rows of the org | 335 | 351 | 351 | 351 | 351 |
+| Rows from a component of a type that is not analysed, or of a flow until run 27 | 278 | 294 | 291 | 283 | 205 |
+| Rows of a version of a flow that the snapshot does not hold | | | | | 16 |
+| Rows compared, which are as many pairs | 57 | 57 | 60 | 68 | 130 |
+| The analysis has the pair | 55 | 55 | 58 | 66 | 128 |
+| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 | 2 | 2 |
+| Missed by the analysis | 0 | 0 | 0 | 0 | 0 |
+| Rows with an end the org did not list | 0 | 0 | 0 | 0 | 0 |
 
 - **The three rows of the workflow rules, from the formulas of field updates, are compared, and the analysis has
   all three** `[run 24]`. Of the pairs the analysis has and no row reports, it counts 18 with the reason
@@ -382,8 +395,9 @@ well. Run 26 read it with the readers of record types, field sets and records of
   name the field. The six `values` elements the org added to three records, one for each field a record leaves out,
   gave no pair, so what Salesforce writes in them has no text. The log does not show it.
 
-- The rows from a flow are not compared, so the 15 rows of a version the org did not list are not counted as
-  rows with an end the org did not list `[run 21]`.
+- Until run 27 the rows from a flow are not compared, so the 15 rows of a version the org did not list are not
+  counted as rows with an end the org did not list `[run 21]`. In run 27 they are matched by the id the org named
+  for the active version, and compared.
 - Read once more with every answer cut off at 30 rows, the parts gave the same 335 rows as the one query, in 72
   requests, and the engine called the reading whole `[run 19]`.
 - **After the draft the same reading lacked 30 rows, all from a flow to a custom field, and the engine called it
@@ -401,22 +415,41 @@ well. Run 26 read it with the readers of record types, field sets and records of
   the reader asks per id and then once for the rows of every component that is not among the ids, which brings
   the rows of that version. An org that lists more than 200 flows gets a reading that is not whole for another
   reason, draft or not: that last query cannot name every id. The engine says what it could not read and
-  compares what it has. That belongs to the design of the cross-check of flows.
+  compares what it has. Since record 0067 the reader asks with the ids of the active and the latest version of
+  each flow as well, so a row of the active version no longer keeps it from asking per id: that is my reading of
+  the code, and the reading in parts of run 27 is whole. A row of a version that is neither active nor the latest
+  would still keep it from asking per id, if the API holds such rows: no run read a flow with more than two
+  versions. The ids of the versions count toward the 200 ids of that last query, and an active version that is
+  not the latest is one id more.
 
 ### The rows of flows compared
 
 The maintainer chose on 23 November 2026 that a snapshot asks the org for the ids of the active and the latest
 version of each flow, and compares a row from a flow where it is from the version the snapshot holds. Record
-[0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md) builds it. What follows is worked out from
-what runs 21 and 26 printed, and was not measured. The first run of "Live org" after the merge measures it.
+[0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md) builds it. Run 27 read the org with it, in
+the state the step "draft" left. All of the following is `[run 27]`.
 
-- Of the 78 rows from a flow, 62 should be compared: the 47 of the five flows with one version and the 15 of
-  version 1 of `Invoice_Recalculate`, which the snapshot holds. The 16 of version 2, the draft, should be counted
-  as of another version, the row to `Invoice__c.Paid_Date__c` among them.
-- The analysis should have each of the 62 pairs: section 3 counts them among the pairs of the key that the API
-  reports, and none among the 21 pairs the key does not hold.
-- The rows of version 1 are asked for by the id of that version when a part is at the limit, so the reading in
-  parts should be whole again.
+- **The org named the active and the latest version of 7 flows, as many as it lists.** The active version of
+  `Invoice_Recalculate` is not its latest. `Invoice_Purge_Void` and one flow that is not of the fixture project
+  have no active version. The snapshot has no warning `FLOW_VERSIONS_NOT_READ`. The rows and the versions were read
+  with 2 requests, so with one each.
+- **Of the 78 rows from a flow, 62 are compared and 16 are counted as of another version**, as runs 21 and 26 let
+  me work out before. The 62 are the 47 of the five flows with one version and the 15 of version 1 of
+  `Invoice_Recalculate`, which the snapshot holds. The 16 are those of version 2, the draft. The row to
+  `Invoice__c.Paid_Date__c`, which only the draft reads, is among them: no row is missed, and none is counted as
+  not matched or as of a component the snapshot does not hold.
+- **The analysis has each of the 62 pairs.** Of the 130 pairs compared it has 128, has 2 through a part of the
+  object, which are the 2 of the earlier runs, and missed none. No reference of the analysis of a kind Salesforce
+  reports is without a row.
+- **The references of a flow that the API does not report are counted with their reasons**: 3 with
+  `global-variable`, 1 with `name-in-text` and 1 with `subflow`. The counts are those of section 3: the two fields
+  of the custom setting and the custom permission that a formula reads through `$Setup` or `$Permission`, the
+  record type a condition names as text, and the subflow. The log gives the counts, not the pairs.
+- **Read in parts, the rows are whole again.** With every answer cut off at 30 rows, the reading took 74 requests,
+  gave the 351 rows of the one query just before, and the engine called it whole. Runs 21, 24 and 26 lacked 30 rows
+  from a flow to a custom field there. The reader now asks with the ids of the versions as well, among them the id
+  of version 1 of `Invoice_Recalculate`. That this is what made the difference is my reading of the code: the log
+  does not show the queries.
 
 ## 6. The symbol tables
 
@@ -438,7 +471,6 @@ Dependency API alone is the cross-check for Apex stands.
   [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) tried it with a zip file
   written for the purpose, not with an org.
 - What "deploy" does to a flow that has a draft.
-- What the analyser of flows makes of the files the test org hands out, held against the rows: the rows from a flow
-  are counted and not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)). The
-  readers of workflow rules, record types, field sets and records of custom metadata types read the org in runs 24
-  and 26 (section 5). The numbers of section 3 are the answer key against the Dependency API, not against OrgLens.
+- An org whose Tooling API does not name the versions of every flow it lists, and an answer of `FlowDefinition` of
+  more than one page. The test org named all 7 flows in one answer `[run 27]`, so the warning
+  `FLOW_VERSIONS_NOT_READ` was not seen on an org.
