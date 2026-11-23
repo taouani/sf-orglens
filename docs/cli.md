@@ -258,10 +258,11 @@ they have below a package directory, such as `classes/Foo.cls`.
   again twice. No request to the Metadata API follows a redirect. A retrieve that Salesforce does not end within
   30 minutes stops the command, and the next run asks for the same retrieve again. If it does not end then
   either, it is started anew. A chunk is started three times in all before it is given up.
-- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries one object,
-  `MetadataComponentDependency`, which says which component refers to which. One thing is not in its hands:
-  when the session of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it
-  and asks the org about the org itself (decision record 0031 names the requests).
+- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries two objects:
+  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
+  active and the latest version of each flow (decision record 0067). One thing is not in its hands: when the
+  session of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it and asks
+  the org about the org itself (decision record 0031 names the requests).
 - What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
   `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
   `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
@@ -540,9 +541,11 @@ as type and name, and carries the number of parts that are asked for in `details
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
-the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` carries the code in `details.code`, whether
-the org named the versions of some flows or of none in `details.state` (`partial` or `none`), how many flows it
-named in `details.flows`, and the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries
+the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` is written where the answer of
+`FlowDefinition` is not whole, or where it is whole and leaves out a flow the org listed. It carries the code of
+the failure in `details.code`, or `null`, the state of the answer in `details.state` (`whole`, `partial` or
+`none`), how many flows the org named in `details.flows`, how many of the flows it listed it named no version of in
+`details.notNamed`, and the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries
 `details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`

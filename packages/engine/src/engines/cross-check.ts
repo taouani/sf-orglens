@@ -180,23 +180,35 @@ export function listedMatcher(listed: readonly ListedId[]): (end: DependencyEnd)
   };
 }
 
-/** A version of a flow, as a row names it: the flow, and whether it is the version the snapshot holds. */
+/**
+ * A version of a flow, as a row names it: the flow, and whether it is the version the snapshot holds. The key is
+ * `null` for an id the org named for two flows: it stands for no version, and a row with it is not matched.
+ */
 interface FlowVersion {
-  readonly key: ComponentKey;
+  readonly key: ComponentKey | null;
   readonly held: boolean;
 }
 
 /**
  * Finds the flow that the end of a row stands for where its id is that of a version of a flow (decision record
  * 0067): by the ids the org named the active and the latest version with, and else by the id it listed the flow
- * with, which is that of its latest version. The version the snapshot holds is the active one where a newer one
- * is noted, and else the latest.
+ * with, which is that of its latest version. The flow is the one the org listed with the id of its latest version,
+ * under the name of the listing, which is the name of the component the snapshot holds. Only a flow that the org
+ * did not list with that id goes by the name `FlowDefinition` gives it. The version the snapshot holds is the
+ * active one where a newer one is noted, and else the latest. `null`: the end is no version of a flow the org
+ * named or listed.
  */
 export function versionMatcher(
   listed: readonly ListedId[],
   versions: readonly FlowVersionIds[],
   newerVersions: readonly string[],
 ): (end: DependencyEnd) => FlowVersion | null {
+  /** The flows the org listed, by the id it listed each with. */
+  const listedFlows = new Map<string, ComponentKey>();
+  for (const item of listed) {
+    const key = item.type === 'Flow' && item.id !== null ? keyOf('Flow', item.fullName) : null;
+    if (key !== null && item.id !== null) listedFlows.set(shortId(item.id), key);
+  }
   const byId = new Map<string, { readonly key: ComponentKey; readonly versions: Set<'active' | 'latest'> }>();
   /** Ids the org named for two flows. An id stands for one version of one flow, so such an id says nothing. */
   const twice = new Set<string>();
@@ -209,24 +221,44 @@ export function versionMatcher(
     byId.set(shortId(id), one);
   };
   for (const flow of versions) {
-    const key = keyOf('Flow', flow.flow);
+    // `FlowDefinition` gives the name of a flow and the prefix of its package in two fields. The name they make
+    // need not be the one the listing writes, so the listing is asked first.
+    const key = (flow.latest === null ? undefined : listedFlows.get(shortId(flow.latest))) ?? keyOf('Flow', flow.flow);
     if (key === null) continue;
     add(flow.active, key, 'active');
     add(flow.latest, key, 'latest');
   }
   // Where the org named no version of a flow, the id it listed the flow with is that of the latest one.
-  for (const item of listed) {
-    const key = item.type === 'Flow' ? keyOf('Flow', item.fullName) : null;
-    if (key !== null && item.id !== null && !byId.has(shortId(item.id))) add(item.id, key, 'latest');
-  }
+  for (const [id, key] of listedFlows) if (!byId.has(id)) add(id, key, 'latest');
   const activeHeld = new Set(newerVersions);
 
   return (end) => {
     if (end.type !== 'Flow') return null;
+    if (twice.has(shortId(end.id))) return { key: null, held: false };
     const found = byId.get(shortId(end.id));
-    if (found === undefined || twice.has(shortId(end.id))) return null;
+    if (found === undefined) return null;
     return { key: found.key, held: found.versions.has(activeHeld.has(found.key) ? 'active' : 'latest') };
   };
+}
+
+/**
+ * How many of the flows the org listed it named no version of. A flow is named where the id the org listed it
+ * with is one the org named for a version, or where its name is one the org named.
+ */
+export function flowsNotNamed(listed: readonly ListedId[], versions: readonly FlowVersionIds[]): number {
+  const ids = new Set<string>();
+  const names = new Set<ComponentKey>();
+  for (const flow of versions) {
+    for (const id of [flow.active, flow.latest]) if (id !== null) ids.add(shortId(id));
+    const key = keyOf('Flow', flow.flow);
+    if (key !== null) names.add(key);
+  }
+  return listed.filter((item) => {
+    if (item.type !== 'Flow') return false;
+    if (item.id !== null && ids.has(shortId(item.id))) return false;
+    const key = keyOf('Flow', item.fullName);
+    return key === null || !names.has(key);
+  }).length;
 }
 
 /** What the analysis knows of one pair: the references from the one component to the other. */
@@ -300,7 +332,10 @@ export function crossCheck(input: CrossCheckInput): CrossCheck {
   const listed = listedMatcher(input.listed);
   const versionOf = versionMatcher(input.listed, input.flowVersions, input.newerVersions);
   /** A flow is found by the id of any version of it: what refers to a flow refers to the flow. */
-  const match = (end: DependencyEnd): ComponentKey | null => versionOf(end)?.key ?? listed(end);
+  const match = (end: DependencyEnd): ComponentKey | null => {
+    const version = versionOf(end);
+    return version === null ? listed(end) : version.key;
+  };
 
   // What the analysis found, as pairs of whole components.
   const components = new Map<string, AnalysedComponent>();
@@ -338,7 +373,7 @@ export function crossCheck(input: CrossCheckInput): CrossCheck {
   const reported = new Map<string, CrossCheckPair>();
   for (const row of input.rows) {
     const version = versionOf(row.from);
-    const from = version?.key ?? listed(row.from);
+    const from = version === null ? listed(row.from) : version.key;
     // The type of the component that refers, as the snapshot names it. Without a match, the type the API
     // writes is taken: a row of a class is of a class whether its id is known or not.
     // A record of a custom metadata type has the name of that type as its type, which is no type.
@@ -348,8 +383,8 @@ export function crossCheck(input: CrossCheckInput): CrossCheck {
       continue;
     }
     // A row of another version of a flow than the one the snapshot holds says nothing about the one it holds. A
-    // flow the snapshot does not hold at all is counted as such below.
-    if (version !== null && !version.held && analysed(version.key)) {
+    // flow the snapshot does not hold at all is counted as such below. Here `from` is the flow of the version.
+    if (version?.held === false && from !== null && analysed(from)) {
       rowsOtherVersion += 1;
       continue;
     }

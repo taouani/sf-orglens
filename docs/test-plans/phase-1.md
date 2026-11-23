@@ -264,11 +264,11 @@ against a mock org only. The test org is small and holds little besides the fixt
 shows what neither can: whether the answers hold for fields whose uses you know, on formulas and rules that
 neither of us wrote.
 
-**If the org is a client's, the client's permission comes first.** The snapshot stores the metadata files of
-the org in `.orglens/orglens.db` on your machine and nowhere else. OrgLens reads metadata only and writes
-nothing to the org. It asks one object of the Tooling API, `MetadataComponentDependency`, for the cross-check.
-Work in a new folder outside any repository, and delete the folder afterwards if the org is not yours to keep
-a copy of.
+**If the org is a client's, the client's permission comes first.** The snapshot stores the metadata files of the
+org in `.orglens/orglens.db` on your machine and nowhere else. OrgLens reads metadata only and writes nothing to
+the org. For the cross-check it asks two objects of the Tooling API: `MetadataComponentDependency`, and since
+decision record 0067 `FlowDefinition`, which names the versions of each flow. Work in a new folder outside any
+repository, and delete the folder afterwards if the org is not yours to keep a copy of.
 
 If you have not run part G of the [Phase 0 test plan](phase-0.md#g-orglens-snapshot-against-an-org-with-your-own-login),
 its steps G0 to G2 come first: they show that the login works. They are the first run with a login of the

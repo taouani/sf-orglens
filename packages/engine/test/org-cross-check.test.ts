@@ -436,7 +436,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           message:
             'The org did not name the versions of its flows (INVALID_TYPE). A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.',
           component: null,
-          details: { code: 'INVALID_TYPE', state: 'none', flows: 0, requests: 1 },
+          details: {
+            code: 'INVALID_TYPE',
+            state: 'none',
+            flows: 0,
+            notNamed: metadata.flowDefinitionRows().length,
+            requests: 1,
+          },
         },
       ]);
       // The rows of the active version carry an id the org did not list. The rows of the draft carry the listed
@@ -465,6 +471,102 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         missed: [],
         onlyOrgLens: [],
       });
+    });
+
+    it('says when a whole answer leaves out a flow the org listed, and compares the rows of the others', async () => {
+      const { ofActive, ofDraft } = await orgWithDraft();
+      const others = metadata.flowDefinitionRows().filter((one) => one['DeveloperName'] !== FLOW_WITH_DRAFT);
+      dependencies.flowDefinitions = others;
+      const report = await snap(workspaceDir());
+      expect(report.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message:
+            'The org did not name the versions of 1 flow it listed. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.',
+          component: null,
+          details: { code: null, state: 'whole', flows: others.length, notNamed: 1, requests: 1 },
+        },
+      ]);
+      expect(report.crossCheck?.comparison).toMatchObject({
+        rowsNotMatched: ofActive.length,
+        rowsOtherVersion: ofDraft.length,
+        missed: [],
+      });
+    });
+
+    it('says when the answer of the versions breaks off, and compares by what it named', async () => {
+      const { ofDraft } = await orgWithDraft();
+      // The first page names the flow with the draft and one more. The org does not answer the second.
+      const rows = metadata.flowDefinitionRows();
+      const first = [
+        ...rows.filter((one) => one['DeveloperName'] === FLOW_WITH_DRAFT),
+        ...rows.filter((one) => one['DeveloperName'] !== FLOW_WITH_DRAFT).slice(0, 1),
+      ];
+      const next = '/services/data/v66.0/tooling/query/01gxx0000000001-2000';
+      mock.intercept = (request) => {
+        if (request.path.endsWith('/tooling/query') && (request.query.get('q') ?? '').includes(FLOW_VERSION_OBJECT)) {
+          const records = first.map((one) => ({ attributes: { type: FLOW_VERSION_OBJECT }, ...one }));
+          return { status: 200, body: JSON.stringify({ done: false, nextRecordsUrl: next, records }) };
+        }
+        if (request.path === next) {
+          return { status: 400, body: JSON.stringify([{ message: 'Not now.', errorCode: 'QUERY_TIMEOUT' }]) };
+        }
+        return undefined;
+      };
+      const report = await snap(workspaceDir());
+      expect(report.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message:
+            'The org did not name the versions of all of its flows (QUERY_TIMEOUT). A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.',
+          component: null,
+          details: {
+            code: 'QUERY_TIMEOUT',
+            state: 'partial',
+            flows: 2,
+            notNamed: rows.length - 2,
+            requests: 2,
+          },
+        },
+      ]);
+      // The flow with the draft was named: the rows of its active version are compared all the same.
+      expect(report.crossCheck).toMatchObject({
+        state: 'whole',
+        requests: 3,
+        comparison: { rowsNotMatched: 0, rowsOtherVersion: ofDraft.length, missed: [] },
+      });
+    });
+
+    it('takes a flow under the name the org listed it with, where FlowDefinition writes it with a prefix', async () => {
+      await orgWithDraft();
+      const plain = await snap(workspaceDir());
+      // The org gives the prefix of a package in a field of its own, and a listing need not write it.
+      dependencies.flowDefinitions = metadata.flowDefinitionRows().map((one) => ({ ...one, NamespacePrefix: 'acme' }));
+      const prefixed = await snap(workspaceDir());
+      expect(ofReading(prefixed)).toEqual(['info FLOW_NEWER_VERSION']);
+      expect(prefixed.crossCheck?.comparison).toMatchObject({ rowsNotHeld: 0, rowsNotMatched: 0, missed: [] });
+      expect(prefixed.crossCheck?.comparison).toEqual(plain.crossCheck?.comparison);
+    });
+
+    it('shows a comparison an earlier version stored without the rows of another version as one it cannot read', async () => {
+      const dir = workspaceDir();
+      const report = await snap(dir);
+      expect(report.crossCheck?.comparison).toMatchObject({ rowsOtherVersion: 0, missed: [] });
+      // What a version before decision record 0067 stored: the same comparison, without that number.
+      const store = openStore({ path: databaseOf(dir), driver });
+      try {
+        store.run("UPDATE snapshot_analysis SET cross_check = json_remove(cross_check, '$.rowsOtherVersion')");
+      } finally {
+        store.close();
+      }
+      const workspace = await openWorkspace({ root: dir, env });
+      expect((await workspace.coverage('prod')).crossCheck).toEqual({ ...report.crossCheck, comparison: null });
+      // `analyse` compares again from the rows the snapshot holds, and the comparison is back.
+      expect((await workspace.analyse('prod')).crossCheck).toEqual(report.crossCheck);
     });
 
     it('takes the snapshot of an org without the Dependency API all the same, and says that nothing was compared', async () => {

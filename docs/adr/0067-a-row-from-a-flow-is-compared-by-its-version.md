@@ -42,7 +42,8 @@ The statements below are choices of the author of this record. The maintainer ca
    rows are read with the requests that are left. A test holds the query. This changes the point of record 0045
    that `MetadataComponentDependency` is the one object that is queried, the sentence of record
    [0009](0009-one-ingestion-path.md), as record 0034 changed it, that the Tooling API supplies the Dependency API
-   only, and the rule of `CLAUDE.md` that the engine queries one object of the Tooling API: it queries two.
+   only, the sentence of record 0060 that the engine reads one object of the Tooling API and stays at one, and the
+   rule of `CLAUDE.md` that the engine queries one object of the Tooling API: it queries two.
 2. **The ids are kept with the reading of the rows**, in the new table `snapshot_flow_version` (migration 9): for
    each flow, the id of its active version and of its latest one, either of them `null`. `analyse` compares again
    from what the snapshot holds, without the org, as record 0045 asks.
@@ -54,17 +55,25 @@ The statements below are choices of the author of this record. The maintainer ca
    whose active version did not come back is not in the snapshot, and its rows count as from a component the
    snapshot does not hold.
 4. **A row from a flow is matched by the ids the org named for the versions**, and else by the id it listed the
-   flow with, as the id of the latest version. A row from the version the snapshot holds is compared. A row from
-   another version, such as a draft, is counted in the new number `rowsOtherVersion` and not compared: it says
-   nothing about the version that runs. An id that the org named for two flows is taken as the id of no version.
-   Where a row names a flow as what it refers to, any version of it stands for the flow.
-5. **Where the org does not name the versions, the snapshot has the warning `FLOW_VERSIONS_NOT_READ`**, with the
-   code of the failure, whether the org named some versions or none, how many flows it named, and the requests.
-   The rows are then matched as in point 4 with what there is. A row of the active version of a flow that has a
-   newer one then names a component the org did not list, and is counted in `rowsNotMatched`, which the report
-   shows as rows that may hide a missed reference. The warning is not written where the Dependency API gave no
-   answer either: `CROSS_CHECK_NOT_READ` says more. It makes neither the snapshot nor the analysis incomplete, and
-   no impact answer counts it.
+   flow with, as the id of the latest version. The flow is the one the org listed with the id of its latest
+   version, under the name of the listing, which is the name the snapshot holds it by: `FlowDefinition` gives the
+   name of a flow and the prefix of its package in two fields, and the name they make need not be the one the
+   listing writes. Only a flow the org did not list with that id goes by the name `FlowDefinition` gives. A row
+   from the version the snapshot holds is compared. A row from another version, such as a draft, is counted in the
+   new number `rowsOtherVersion` and not compared: it says nothing about the version that runs. An id that the org
+   named for two flows is taken as the id of no version, and a row with it is counted as not matched, also where
+   the org listed a flow with it. Where a row names a flow as what it refers to, any version of it stands for the
+   flow.
+5. **Where the org does not name the versions of every flow it listed, the snapshot has the warning
+   `FLOW_VERSIONS_NOT_READ`**: where it refused the query, where its answer broke off, and where a whole answer
+   left out a flow it listed. The warning has the code of the failure, the state of the answer, how many flows the
+   org named, how many of the flows it listed it named no version of, and the requests. A flow is named where the
+   id the org listed it with is one it named for a version, or where its name is one it named. The rows are then
+   matched as in point 4 with what there is. A row of the active version of a flow that has a newer one then names
+   a component the org did not list, and is counted in `rowsNotMatched`, which the report shows as rows that may
+   hide a missed reference. The warning is not written where the Dependency API gave no answer either:
+   `CROSS_CHECK_NOT_READ` says more. It makes neither the snapshot nor the analysis incomplete, and no impact
+   answer counts it.
 6. **The ids of the versions are among the ids a query names when the rows are asked for per component** (record
    0045). The rows of the active version of a flow with a newer one are then asked for by their own id, and the
    reading can be `whole`. Without the ids, such rows came only from the query for the rest, and the reading was

@@ -22,6 +22,7 @@ import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
 import { buildKey } from '../core/keys.ts';
 import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
+import { flowsNotNamed } from '../engines/cross-check.ts';
 import { DEFAULT_CHUNK_WEIGHT, partsWithOwnFiles, planChunks, splitMembers } from '../sources/chunks.ts';
 import {
   dependencyLimits,
@@ -1278,14 +1279,26 @@ async function readCrossCheck(
       );
       return;
     }
-    if (versions !== null && versions.state !== 'whole') {
+    // An answer can also be whole and leave out a flow the org listed.
+    const notNamed = versions === null ? 0 : flowsNotNamed(listed, versions.flows);
+    if (versions !== null && (versions.state !== 'whole' || notNamed > 0)) {
+      const which =
+        versions.state === 'whole'
+          ? `${plural(notNamed, 'flow', 'flows')} it listed`
+          : `${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'})`;
       issue(
         store,
         snapshotId,
         'warning',
         'FLOW_VERSIONS_NOT_READ',
-        `The org did not name the versions of ${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'}). A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
-        { code: versions.code, state: versions.state, flows: versions.flows.length, requests: versions.requests },
+        `The org did not name the versions of ${which}. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
+        {
+          code: versions.code,
+          state: versions.state,
+          flows: versions.flows.length,
+          notNamed,
+          requests: versions.requests,
+        },
       );
     }
     if (reading.state === 'partial') {

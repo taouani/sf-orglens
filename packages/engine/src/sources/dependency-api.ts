@@ -127,7 +127,7 @@ export interface DependencyOptions {
 const FIELDS =
   'MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, ' +
   'RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType';
-/** The one object that is queried. A test holds every query against this. */
+/** The object of the rows. The other one is `FLOW_VERSION_OBJECT`. A test holds every query against each. */
 export const DEPENDENCY_OBJECT = 'MetadataComponentDependency';
 const BASE = `SELECT ${FIELDS} FROM ${DEPENDENCY_OBJECT}`;
 

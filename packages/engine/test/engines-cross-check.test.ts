@@ -9,7 +9,13 @@ import { describe, expect, it } from 'vitest';
 import type { JsonValue } from '../src/core/errors.ts';
 import { buildKey, type ComponentKey } from '../src/core/keys.ts';
 import { validateReference, type Reference } from '../src/core/references.ts';
-import { crossCheck, crossCheckIssues, versionMatcher, type CrossCheckInput } from '../src/engines/cross-check.ts';
+import {
+  crossCheck,
+  crossCheckIssues,
+  flowsNotNamed,
+  versionMatcher,
+  type CrossCheckInput,
+} from '../src/engines/cross-check.ts';
 import type { AnalysedComponent } from '../src/extraction/analysed.ts';
 import type { DependencyEnd, DependencyRow } from '../src/sources/dependency-api.ts';
 import type { ListedId } from '../src/store/dependencies.ts';
@@ -402,11 +408,47 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       expect(versionOf(version('301xx0000000009AAA'))).toBeNull();
       // An id the org names for two flows stands for neither.
       const twice = [...VERSIONS, { flow: 'Other', active: ACTIVE_ID, latest: null }];
-      expect(versionMatcher([], twice, [])(version(ACTIVE_ID))).toBeNull();
+      expect(versionMatcher([], twice, [])(version(ACTIVE_ID))).toEqual({ key: null, held: false });
       expect(crossCheck(flowInput(rows.slice(0, 1), analysis, { flowVersions: twice }))).toMatchObject({
         rowsNotMatched: 1,
         rowsCompared: 0,
       });
+      // Also where the org listed a flow with that id: the rows of the draft are not matched, and so are not held
+      // against the analysis of the active version.
+      const listedTwice = [...VERSIONS, { flow: 'Other', active: DRAFT_ID, latest: null }];
+      expect(
+        crossCheck(flowInput(rows, analysis, { flowVersions: listedTwice, newerVersions: [REMIND] })),
+      ).toMatchObject({ rowsNotMatched: 2, rowsOtherVersion: 0, rowsCompared: 1, agreed: 1, missed: [] });
+    });
+
+    it('takes a flow under the name the org listed it with, where FlowDefinition writes its name otherwise', () => {
+      // `FlowDefinition` gives the prefix of a package in a field of its own, and the listing need not write it.
+      const prefixed = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: DRAFT_ID }];
+      const { listed } = flowInput([], []);
+      expect(versionMatcher(listed, prefixed, [REMIND])(version(ACTIVE_ID))).toEqual({ key: REMIND, held: true });
+      expect(crossCheck(flowInput(rows, analysis, { flowVersions: prefixed, newerVersions: [REMIND] }))).toEqual(
+        crossCheck(flowInput(rows, analysis, { flowVersions: VERSIONS, newerVersions: [REMIND] })),
+      );
+      // A flow the org did not list with the id of its latest version goes by the name the org named it with, and
+      // the id it listed a flow with is that of the latest version of the flow it listed.
+      const elsewhere = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: '301xx0000000003AAA' }];
+      expect(versionMatcher(listed, elsewhere, [])(version(ACTIVE_ID))).toEqual({
+        key: key('Flow', 'acme__Remind'),
+        held: false,
+      });
+      expect(versionMatcher(listed, elsewhere, [])(version(DRAFT_ID))).toEqual({ key: REMIND, held: true });
+    });
+
+    it('counts the flows the org listed and named no version of, by the id it listed them with or their name', () => {
+      const listed: ListedId[] = [
+        { type: 'Flow', fullName: 'Remind', id: DRAFT_ID },
+        { type: 'Flow', fullName: 'Caller', id: '301xx0000000005AAA' },
+        { type: 'ApexClass', fullName: 'InvoiceService', id: '01pxx0000000001AAA' },
+      ];
+      expect(flowsNotNamed(listed, [])).toBe(2);
+      expect(flowsNotNamed(listed, VERSIONS)).toBe(1);
+      expect(flowsNotNamed(listed, [{ flow: 'acme__Remind', active: null, latest: DRAFT_ID.slice(0, 15) }])).toBe(1);
+      expect(flowsNotNamed(listed, [...VERSIONS, { flow: 'Caller', active: null, latest: null }])).toBe(0);
     });
 
     it('takes a row to a flow as a row to the flow, whichever version of it the row names', () => {
