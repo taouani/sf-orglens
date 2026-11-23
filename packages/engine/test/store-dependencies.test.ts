@@ -4,13 +4,15 @@
  */
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DependencyReading, DependencyRow } from '../src/sources/dependency-api.ts';
+import type { DependencyReading, DependencyRow, FlowVersionIds } from '../src/sources/dependency-api.ts';
 import { readAnalysis, writeAnalysis } from '../src/store/analysis.ts';
 import {
   readDependencyReading,
   readDependencyRows,
+  readFlowVersionIds,
   readListedIds,
   writeDependencies,
+  writeFlowVersions,
 } from '../src/store/dependencies.ts';
 import { addInventory, markRetrieved } from '../src/store/journal.ts';
 import { MIGRATIONS } from '../src/store/migrate.ts';
@@ -176,6 +178,37 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     writeAnalysis(store, id, { ...analysis, analysedAt: T2 });
     expect(readDependencyRows(store, id)).toEqual(ROWS);
     expect(readDependencyReading(store, id)?.rows).toBe(3);
+    store.close();
+  });
+
+  it('keeps the versions of the flows with the reading, sorted by flow, and replaces them with it', () => {
+    const store = open();
+    const id = snapshot(store);
+    const other = snapshot(store, 'sandbox');
+    const versions: FlowVersionIds[] = [
+      { flow: 'Renew', active: '301xx0000000002AAA', latest: '301xx0000000003AAA' },
+      // A flow of a package, and a flow of which no version is active.
+      { flow: 'acme__Approve', active: '301xx0000000001AAA', latest: '301xx0000000001AAA' },
+      { flow: 'Draft_Only', active: null, latest: '301xx0000000004AAA' },
+    ];
+    expect(readFlowVersionIds(store, id)).toEqual([]);
+    store.write(() => {
+      writeDependencies(store, id, reading(), T1);
+      writeFlowVersions(store, id, versions);
+      writeDependencies(store, other, reading(), T1);
+      writeFlowVersions(store, other, versions.slice(0, 1));
+    });
+    expect(readFlowVersionIds(store, id)).toEqual([versions[2], versions[0], versions[1]]);
+    // A snapshot that is continued reads the API again, and keeps the versions of that reading only.
+    store.write(() => {
+      writeDependencies(store, id, reading({ requests: 2 }), T2);
+      writeFlowVersions(store, id, versions.slice(2));
+    });
+    expect(readFlowVersionIds(store, id)).toEqual(versions.slice(2));
+    expect(readFlowVersionIds(store, other)).toEqual(versions.slice(0, 1));
+    // They go with the snapshot, as the rows do.
+    store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
+    expect(count(store, 'snapshot_flow_version')).toBe(1);
     store.close();
   });
 

@@ -707,6 +707,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
         'snapshot_dependency',
         'snapshot_dependency_reading',
         'snapshot_file',
+        'snapshot_flow_version',
         'snapshot_issue',
         'snapshot_origin_coverage',
         'snapshot_type_coverage',

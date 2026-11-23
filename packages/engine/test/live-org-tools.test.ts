@@ -21,6 +21,7 @@ import {
   changedOnce,
   deployFixture,
   DRAFT_CHANGES,
+  DRAFT_ONLY_FIELD,
   fixtureWords,
   FLOW_WITH_DRAFT,
   MADE_UP_USER,
@@ -46,6 +47,9 @@ import type { DependencyRow } from '../src/sources/dependency-api.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
 
 const FIXTURE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
+/** The heading of the lines about the cross-check. */
+const CROSS_CHECK =
+  'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency, and FlowDefinition for the versions of flows)';
 const ORG_ID = '00Dxx0000000001EAA';
 const USERNAME = 'ci.user@orglens-test.example';
 const CLIENT_ID = '3MVG9clientidofthetestorg';
@@ -1189,19 +1193,20 @@ describe('reading the test org', () => {
     expect(output).toMatch(
       /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flowDefinitions 6, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
     );
-    // The cross-check: the rows of the mock org, held against the analysis by the engine.
+    // The cross-check: the rows of the mock org, held against the analysis by the engine. The rows of the flows,
+    // 62 as on the test org before the draft, are compared: the org names one version of each flow, the latest.
     const rows = dependencies.rows.length;
     const cross = output.split('\n');
-    expect(
-      cross.slice(cross.indexOf('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)')),
-    ).toEqual([
-      'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)',
-      `Rows: ${String(rows)}, read with 1 request. No query left a row out.`,
-      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 83 (ApexClass (82), ApexTrigger (1)).',
+    expect(cross.slice(cross.indexOf(CROSS_CHECK))).toEqual([
+      CROSS_CHECK,
+      `Rows: ${String(rows)}, read with 2 requests. No query left a row out.`,
+      'The org named the active and the latest version of 6 flows. Flows whose active version is not the latest: 0. Flows with no active version: 1 (Invoice_Purge_Void).',
+      'Rows that are not compared, from a component of a type that is not analysed: 83 (ApexClass (82), ApexTrigger (1)).',
       'Rows with an end that is no component the org listed: 0. Rows from a component the snapshot does not hold or that was not analysed: 0.',
-      'Rows compared: 69, which are 69 pairs of components. The analysis has 67 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+      'Rows from a version of a flow that the snapshot does not hold, such as a draft, which are not compared: 0.',
+      'Rows compared: 131, which are 131 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
       'References of the analysis of a kind Salesforce reports, for which it has no row: 0.',
-      'References of the analysis of kinds the API does not report: 92 (standard-field (26), workflow-rule (18), custom-metadata (15), workflow-action (7), standard-object (6), roll-up-summary (5), field-update (4), record-type (4), controlling-field (2), lookup-filter (2), value-set (2), lookup (1)).',
+      'References of the analysis of kinds the API does not report: 111 (standard-field (39), workflow-rule (18), custom-metadata (15), standard-object (7), workflow-action (7), roll-up-summary (5), field-update (4), record-type (4), global-variable (3), controlling-field (2), lookup-filter (2), value-set (2), lookup (1), name-in-text (1), subflow (1)).',
       expect.stringMatching(
         new RegExp(
           `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
@@ -1219,27 +1224,31 @@ describe('reading the test org', () => {
         ),
       ),
     ).toBe(true);
-    for (const soql of dependencies.queries) expect(soql).toContain(' FROM MetadataComponentDependency');
+    // Besides, the snapshot asked once for the versions of the flows, and the second reading did not.
+    expect(dependencies.queries.filter((soql) => !soql.includes(' FROM MetadataComponentDependency'))).toEqual([
+      'SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM FlowDefinition',
+    ]);
     expectNoSecret(output);
   });
 
   it('says which pairs of the files of Phase 2 Salesforce reports, by the ids the org listed', async () => {
     const flow = ['Flow', 'Invoice_After_Save'] as const;
     dependencies.rows.push(
-      // In the answer key: a field the flow reads, the flow it calls, and the alert it sends.
-      dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Amount__c']),
+      // In the answer key, and not reported by the test org: the flow that the flow calls, and an action the rule
+      // starts. The mock org reports the other pairs of the flow as the test org does.
       dependencyRow(metadata, flow, ['Flow', 'Invoice_Recalculate']),
-      dependencyRow(metadata, flow, ['WorkflowAlert', 'Invoice__c.Invoice_Overdue_Alert']),
       dependencyRow(
         metadata,
         ['WorkflowRule', 'Invoice__c.Remind_When_Sent'],
         ['WorkflowFieldUpdate', 'Invoice__c.Set_Sub_Status_Reminder'],
       ),
-      // Between components of the fixture project, and not in the answer key.
-      dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Paid_Date__c']),
-      // A row from the same flow with an id the org did not list, as the id of a version of a flow may be.
+      // Between components of the fixture project, and not in the answer key, as the test org reports it: from the
+      // email template to the object whose fields it names. Email templates are not analysed, so it is not compared.
+      dependencyRow(metadata, ['EmailTemplate', 'Billing/Invoice_Overdue'], ['CustomObject', 'Invoice__c']),
+      // A row from the same flow with an id the org did not list, and that it named for no version of a flow, to a
+      // standard object, which the test org does not report from the flow.
       {
-        ...dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Status__c']),
+        ...dependencyRow(metadata, flow, ['CustomObject', 'Account']),
         MetadataComponentId: '301xx0000000077AAA',
       },
     );
@@ -1251,13 +1260,14 @@ describe('reading the test org', () => {
     const head = lines.indexOf(
       'The files of Phase 2 of the fixture project in the rows of the Dependency API, held against the pairs of its answer key',
     );
-    const end = lines.indexOf('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)');
+    const end = lines.indexOf(CROSS_CHECK);
     const section = lines.slice(head, end).join('\n');
     expect(head).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(head);
     // What the id of a row is the id of.
-    expect(section).toMatch(/^Flow +Flow +4$/m);
+    expect(section).toMatch(/^Flow +Flow +63$/m);
     expect(section).toMatch(/^Flow +not listed +1$/m);
+    expect(section).toMatch(/^EmailTemplate +EmailTemplate +1$/m);
     expect(section).toMatch(/^WorkflowRule +WorkflowRule +1$/m);
     // The rows of the mock org from the formulas of field updates, from the records of the custom metadata type and
     // from the field set, as the test org reports them.
@@ -1267,9 +1277,9 @@ describe('reading the test org', () => {
     expect(section).toMatch(/^WorkflowAlert +WorkflowAlert +1$/m);
     // The pairs of the key for these files, and how many of them the rows are.
     expect(section).toContain(
-      'The answer key holds 149 pairs of a component and a component it refers to for these files. The Dependency API reports 15 of them.',
+      'The answer key holds 149 pairs of a component and a component it refers to for these files. The Dependency API reports 75 of them.',
     );
-    expect(section).toMatch(/^Flow +CustomField +62 +1$/m);
+    expect(section).toMatch(/^Flow +CustomField +62 +47$/m);
     expect(section).toMatch(/^Flow +Flow +1 +1$/m);
     expect(section).toMatch(/^WorkflowRule +WorkflowFieldUpdate +3 +1$/m);
     expect(section).toMatch(/^WorkflowFieldUpdate +CustomField +8 +3$/m);
@@ -1277,11 +1287,11 @@ describe('reading the test org', () => {
     expect(section).toMatch(/^FieldSet +CustomField +5 +4$/m);
     expect(section).toMatch(/^record-of +4 +4$/m);
     expect(section).toMatch(/^listed-field +24 +4$/m);
-    expect(section).toMatch(/^action +9 +3$/m);
+    expect(section).toMatch(/^action +9 +4$/m);
     expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path)');
     expect(section).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
     // The row with an id the org did not list is no row of the flow for the engine.
-    expect(section).toContain('- missing   Flow:invoice_after_save -> CustomField:invoice__c.status__c  (filter)');
+    expect(section).toContain('- missing   Flow:invoice_after_save -> CustomObject:account  (record)');
     expect(section).toContain(
       '- reported  WorkflowRule:invoice__c.remind_when_sent -> WorkflowFieldUpdate:invoice__c.set_sub_status_reminder  (action)',
     );
@@ -1296,16 +1306,19 @@ describe('reading the test org', () => {
     );
     expect(section.split('\n').slice(-3)).toEqual([
       'Pairs the Dependency API reports from a component of the types CustomMetadata, EmailTemplate, FieldSet, Flow, RecordType, WorkflowAlert, WorkflowFieldUpdate, WorkflowOutboundMessage, WorkflowRule, WorkflowTask that the answer key does not hold: 1.',
-      '- Flow:invoice_after_save -> CustomField:invoice__c.paid_date__c',
+      '- EmailTemplate:billing/invoice_overdue -> CustomObject:invoice__c',
       '',
     ]);
-    // The cross-check counts the rows of flows, and compares none of them. It compares the row of the workflow
-    // rule, whose pair the analysis has, and those of the records of the custom metadata type and of the field set.
+    // The cross-check compares the two rows from the flow and the rule, whose pairs the analysis has. It does not
+    // compare the row of the email template, and finds no component for the row with an id the org did not list.
     expect(output).toContain(
-      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 88 (ApexClass (82), Flow (5), ApexTrigger (1)).',
+      'Rows that are not compared, from a component of a type that is not analysed: 84 (ApexClass (82), ApexTrigger (1), EmailTemplate (1)).',
     );
     expect(output).toContain(
-      'Rows compared: 70, which are 70 pairs of components. The analysis has 68 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+      'Rows with an end that is no component the org listed: 1. Rows from a component the snapshot does not hold or that was not analysed: 0.',
+    );
+    expect(output).toContain(
+      'Rows compared: 133, which are 133 pairs of components. The analysis has 131 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
     );
     expectNoSecret(output);
   });
@@ -1362,11 +1375,38 @@ describe('reading the test org', () => {
     const withDraft = await metadataFromSource(join(dir, 'force-app'));
     withDraft.flowVersions.set(FLOW_WITH_DRAFT, { latest: 2, older: new Map([[1, active]]) });
     mock.metadata = withDraft;
-    mock.dependencies = mockDependencies(fixtureDependencyRows(withDraft));
+    // The Dependency API holds the rows of both versions: those of the draft carry the id the org lists the flow
+    // with, and one of them is to the field only the draft reads. Those of the active version carry its own id.
+    const rows = fixtureDependencyRows(withDraft);
+    const ofFlow = rows.filter(
+      (row) => row['MetadataComponentType'] === 'Flow' && row['MetadataComponentName'] === FLOW_WITH_DRAFT,
+    );
+    const activeId = withDraft.versionIdOf(FLOW_WITH_DRAFT, 1) ?? '';
+    mock.dependencies = mockDependencies([
+      ...rows,
+      dependencyRow(withDraft, ['Flow', FLOW_WITH_DRAFT], ['CustomField', DRAFT_ONLY_FIELD]),
+      ...ofFlow.map((row) => ({ ...row, MetadataComponentId: activeId })),
+    ]);
     const { log, text } = collected();
     await readOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
+    expect(ofFlow.length).toBeGreaterThan(5);
+    // The rows of the active version are compared, as those of the one version were above, and those of the draft
+    // are counted. With the ids of the versions, the reading in parts asks for the rows of each version by its id.
+    expect(output).toContain(
+      'The org named the active and the latest version of 6 flows. Flows whose active version is not the latest: 1 (Invoice_Recalculate). Flows with no active version: 1 (Invoice_Purge_Void).',
+    );
+    expect(output).toContain(
+      `Rows from a version of a flow that the snapshot does not hold, such as a draft, which are not compared: ${String(ofFlow.length + 1)}.`,
+    );
+    expect(output).toContain(
+      'Rows compared: 131, which are 131 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+    );
+    expect(output).toMatch(
+      /^Read once more with every answer cut off at 30 rows: .+ the engine calls the reading whole\. /m,
+    );
+    expect(output).toContain('The parts give the same rows as one query just before.');
     expect(output).toContain('Invoice_Recalculate    Active      Active\n');
     expect(output).toContain(
       'Invoice_Recalculate is the flow that the step "draft" sends once more as a draft, which differs in 3 places. The file from the org is the version that was sent as active.',
@@ -1374,6 +1414,26 @@ describe('reading the test org', () => {
     expect(output).toContain('- info FLOW_NEWER_VERSION: 1 observation\n');
     expect(output).toMatch(
       /After \d+\.\d s: 1 flow has a latest version that is not active\. The active version of each is asked for by its number\./,
+    );
+    expectNoSecret(output);
+  });
+
+  it('says when the org does not name the versions of its flows, and compares the rows by the ids it listed', async () => {
+    dependencies.refuse = (soql) => (soql.includes(' FROM FlowDefinition') ? 'INVALID_TYPE' : undefined);
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain('- warning FLOW_VERSIONS_NOT_READ: 1 observation');
+    const lines = output.split('\n');
+    const at = lines.indexOf(CROSS_CHECK);
+    expect(lines.slice(at + 1, at + 3)).toEqual([
+      `Rows: ${String(dependencies.rows.length)}, read with 2 requests. No query left a row out.`,
+      'The snapshot holds no version of a flow. A row from a flow is matched by the id the org listed the flow with.',
+    ]);
+    // The org lists each flow with the id of its one version, so the rows are compared as where it names them.
+    expect(output).toContain(
+      'Rows compared: 131, which are 131 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
     );
     expectNoSecret(output);
   });
@@ -1392,7 +1452,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toContain(
-      'Rows compared: 70, which are 70 pairs of components. The analysis has 67 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 132, which are 132 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain(
       '- missed  ValidationRule:invoice__c.tax_rate_matches_code -> CustomField:invoice__c.amount__c',
@@ -1414,9 +1474,10 @@ describe('reading the test org', () => {
     expect(log.failed).toBe(true);
     expect(output).toContain('The snapshot of the test org is complete.');
     expect(output).toContain('- warning CROSS_CHECK_NOT_READ: 1 observation');
+    // The query for the versions of the flows was refused as well, and counts with the others.
     expect(output.split('\n').slice(-4)).toEqual([
-      'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)',
-      'The Dependency API gave no answer (INVALID_TYPE), after 3 requests. Nothing was compared.',
+      CROSS_CHECK,
+      'The Dependency API gave no answer (INVALID_TYPE), after 4 requests. Nothing was compared.',
       '',
       '::error::The analysis of the snapshot was not held against the Dependency API. The lines above say why.',
     ]);
@@ -1703,13 +1764,13 @@ describe('reading an org that holds more than the fixture project', () => {
     await readOrg(log, { env: environment() });
     const output = text();
     expect(output).toContain(
-      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 85 (ApexClass (83), (a type that is not shown) (1), ApexTrigger (1)).',
+      'Rows that are not compared, from a component of a type that is not analysed: 85 (ApexClass (83), (a type that is not shown) (1), ApexTrigger (1)).',
     );
     expect(output).toContain(
       'Rows with an end that is no component the org listed: 1. Rows from a component the snapshot does not hold or that was not analysed: 0.',
     );
     expect(output).toContain(
-      'Rows compared: 70, which are 70 pairs of components. The analysis has 67 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 132, which are 132 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain('- 1 pair has a component that is not of the fixture project, and is not named.');
     expect(output).not.toContain('- missed');

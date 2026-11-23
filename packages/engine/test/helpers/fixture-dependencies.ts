@@ -8,11 +8,13 @@
  * way Salesforce writes them (`mock-dependencies.ts`).
  *
  * Of the files of Phase 2, the mock reports what the test org reports (`docs/research/phase-2/real-org.md`,
- * section 3): of the workflow rules, the custom fields the formula of a field update reads, and nothing else of a
- * rule or an action; of a record of a custom metadata type, the type it is a record of, and nothing else; of a
- * field set, its custom fields; of a record type, nothing. It reports nothing yet for the other files of Phase 2:
- * flows, whose rows are counted and not compared (decision record 0060), and email templates. Their rows come
- * with their analysers.
+ * section 3): of a flow, every custom field and custom object and what an action starts, but not a flow it starts,
+ * not a record type a condition names in a text, and not a field of a custom setting or a custom permission that
+ * only a formula of the flow names; of the workflow rules, the custom fields the formula of a field update reads,
+ * and nothing else of a rule or an action; of a record of a custom metadata type, the type it is a record of, and
+ * nothing else; of a field set, its custom fields; of a record type, nothing. It reports nothing yet for email
+ * templates. Their rows come with their analyser. A row from a flow carries the id the org lists the flow with,
+ * which is that of its latest version: the project has one version of each flow.
  *
  * The mock reports more than Salesforce does in two places that the engine treats as "not reported": the
  * formula of a rule that is not active, and the formula in a default value. A test that needs the difference
@@ -35,8 +37,22 @@ export interface KeyedPair {
   readonly apex: boolean;
 }
 
+/** The custom setting of the project. A flow reads its fields through `$Setup`. */
+const SETTING = 'CustomField:billing_settings__c.';
+
+/**
+ * Of the references of a flow in the key, those the test org reports, where their target is custom: not to a flow
+ * it starts, not a name in a text, and not to a field of the custom setting or a custom permission in a formula.
+ * A pair is reported where one of its references is.
+ */
+const reportedOfFlow = (reference: { readonly to: string; readonly via: string }): boolean =>
+  !reference.to.startsWith('Flow:') &&
+  reference.via !== 'text' &&
+  !(reference.via === 'formula' && (reference.to.startsWith(SETTING) || reference.to.startsWith('CustomPermission:')));
+
 /** Of the references of Phase 2 in the key, those the test org reports, where their target is custom. */
-const reportedOfPhase2 = (reference: { readonly from: string; readonly via: string }): boolean =>
+const reportedOfPhase2 = (reference: { readonly from: string; readonly to: string; readonly via: string }): boolean =>
+  (reference.from.startsWith('Flow:') && reportedOfFlow(reference)) ||
   (reference.from.startsWith('WorkflowFieldUpdate:') && reference.via === 'formula') ||
   (reference.from.startsWith('CustomMetadata:') && reference.via === 'record-of') ||
   reference.from.startsWith('FieldSet:');
@@ -52,7 +68,7 @@ export function keyedPairs(): KeyedPair[] {
   const pairs = new Map<string, KeyedPair>();
   for (const reference of key.references) {
     if (reference.phase === 2 && !reportedOfPhase2(reference)) continue;
-    // Salesforce counts a class, not a method of it.
+    // Salesforce counts a class, not a method of it, and a flow, not an element of it.
     const whole = reference.from.includes('#') ? reference.from.slice(0, reference.from.indexOf('#')) : reference.from;
     const from = endOf(whole);
     const to = endOf(reference.to);

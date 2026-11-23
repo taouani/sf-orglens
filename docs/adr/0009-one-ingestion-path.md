@@ -4,6 +4,7 @@
 - Date: 2026-11-11
 - Decisions: A5, S4
 - Changed by: [0034](0034-dependency-api-is-the-cross-check.md), which takes compiler symbol data out: the Tooling API supplies the Dependency API only
+- Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in one point: for the cross-check, the Tooling API also names the active and the latest version of each flow, from `FlowDefinition`
 
 ## Context
 

@@ -157,7 +157,7 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
           400,
         );
       }
-      const { status, body } = org.dependencies.answer(request.query.get('q') ?? '');
+      const { status, body } = org.dependencies.answer(request.query.get('q') ?? '', org.metadata);
       return { status, body };
     }
     // After it has renewed a session, the Salesforce library itself asks the org about the org.

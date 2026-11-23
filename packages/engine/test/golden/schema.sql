@@ -223,3 +223,14 @@ CREATE TABLE "snapshot_type_coverage" (
   listing     TEXT NOT NULL DEFAULT 'ok' CHECK (listing IN ('ok', 'failed', 'unlistable', 'excluded')),
   PRIMARY KEY (snapshot_id, type)
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE snapshot_flow_version (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshot_dependency_reading (snapshot_id) ON DELETE CASCADE,
+  -- The full name of the flow, with the prefix of its package before two underscores.
+  flow        TEXT NOT NULL CHECK (flow <> ''),
+  -- The id of the active version. NULL: no version of the flow is active.
+  active_id   TEXT CHECK (active_id IS NULL OR active_id <> ''),
+  -- The id of the latest version. NULL: the org named none.
+  latest_id   TEXT CHECK (latest_id IS NULL OR latest_id <> ''),
+  PRIMARY KEY (snapshot_id, flow)
+) STRICT, WITHOUT ROWID;

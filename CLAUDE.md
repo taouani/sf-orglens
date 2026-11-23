@@ -52,10 +52,11 @@ These rules come from the maintainer and apply to every phase.
   nothing else: one flow of the project as a draft, so that the org holds an active version of it and a newer
   one.
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
-  the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031
-  names those requests, and a test pins them. Through the Tooling API the engine queries one object,
-  `MetadataComponentDependency`, which says which component refers to which (`sources/dependency-api.ts`), and a
-  test holds every query against it. A tool of the tests asks the test org for more of the same kind
+  the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031 names
+  those requests, and a test pins them. Through the Tooling API the engine queries two objects:
+  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
+  active and the latest version of each flow (`sources/dependency-api.ts`, decision record 0067). A test holds
+  every query against them. A tool of the tests asks the test org for more of the same kind
   (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool asks the
   Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
 
@@ -109,13 +110,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of a field or a rule, the formula of a flow, which has a merge field `{!Resource.Path}` where the other has a
   name, and a text with merge fields, where only what stands in the braces is read. The caller says what the
   first name of a merge field is. `fixtures/merge-field-probes.yaml` must be read as each probe says.
-- A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component,
-  and each of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a
-  reference starts at. `resourcesOf` says what each resource holds: a record of an object, something that holds
-  no record, or something of which that is not known, and then a path from it is not followed and a warning says
-  so. An element of a kind the reader does not know is kept, with a warning and its names as `probable`. The
-  analysis has a row of its own for flows (`parser:flow`). The rows of the Dependency API from flows are counted
-  and not compared (decision record 0060).
+- A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component, and
+  each of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a reference
+  starts at. `resourcesOf` says what each resource holds: a record of an object, something that holds no record, or
+  something of which that is not known, and then a path from it is not followed and a warning says so. An element
+  of a kind the reader does not know is kept, with a warning and its names as `probable`. The analysis has a row of
+  its own for flows (`parser:flow`). A row of the Dependency API from a flow is compared where it is from the
+  version the snapshot holds, and counted otherwise (decision record 0067).
 - A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
   with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
   under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). The file contains them, as an object
@@ -162,12 +163,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
   (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
   Every analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
-  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by
-  the id the org listed the component with. A name is taken only where there is no id: for a standard object,
-  and for a component the org listed without one. A pair Salesforce reports and the analysis lacks is the error
-  `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The reading is `whole` only
-  where no query could have left a row out. It never fails a snapshot and never makes it partial: an org that
-  does not answer leaves a warning.
+  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by the
+  id the org listed the component with. A row from a flow carries the id of a version of it, and the org lists a
+  flow with the id of its latest version: so the snapshot asks the org for the ids of the active and the latest
+  version of each flow and keeps them with the rows (decision record 0067). A name is taken only where there is no
+  id: for a standard object, and for a component the org listed without one. A pair Salesforce reports and the
+  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The
+  reading is `whole` only where no query could have left a row out. It never fails a snapshot and never makes it
+  partial: an org that does not answer leaves a warning.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038 and 0046). The
   tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. What the
   org listed and did not hand out, a listing it refused, a retrieve that failed and a file that cannot be read

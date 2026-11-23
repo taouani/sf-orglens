@@ -533,10 +533,8 @@ function crossCheckLines(report: CoverageReport): string[] {
     return lines;
   }
   if (comparison.rowsNotAnalysed > 0) {
-    // Flows are analysed, and their rows are not compared yet (decision record 0060).
-    const orFlow = comparison.notAnalysed.some(({ type }) => type === 'Flow') ? ', or from a flow,' : ',';
     lines.push(
-      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed${orFlow} and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
+      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed, and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
     );
   }
   if (comparison.rowsNotMatched > 0) {
@@ -547,6 +545,11 @@ function crossCheckLines(report: CoverageReport): string[] {
   if (comparison.rowsNotHeld > 0) {
     lines.push(
       `${count(comparison.rowsNotHeld, 'row is', 'rows are')} from a component the snapshot does not hold or that was not analysed, and ${comparison.rowsNotHeld === 1 ? 'is' : 'are'} not compared.`,
+    );
+  }
+  if (comparison.rowsOtherVersion > 0) {
+    lines.push(
+      `${count(comparison.rowsOtherVersion, 'row is', 'rows are')} from a version of a flow that the snapshot does not hold, such as a draft, and ${comparison.rowsOtherVersion === 1 ? 'is' : 'are'} not compared.`,
     );
   }
   const missed = comparison.missed.length;
