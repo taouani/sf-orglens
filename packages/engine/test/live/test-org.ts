@@ -110,6 +110,8 @@ export interface AnswerKey {
   readonly unreferenced?: readonly string[];
   readonly references?: readonly {
     readonly file: string;
+    /** The roadmap phase whose analyser must find the references of the file. */
+    readonly phase?: number;
     readonly members: readonly { readonly from: string; readonly refs: readonly KeyedReference[] }[];
   }[];
 }

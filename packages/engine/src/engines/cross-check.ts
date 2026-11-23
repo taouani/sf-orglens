@@ -111,7 +111,7 @@ const isStandardObject = (key: string): boolean =>
   typeOf(key) === 'CustomObject' && !/__[a-z]+$/.test(parseKey(key).name);
 
 /** Finds the components of the snapshot that the ends of rows stand for. */
-function matcher(listed: readonly ListedId[]): (end: DependencyEnd) => ComponentKey | null {
+export function listedMatcher(listed: readonly ListedId[]): (end: DependencyEnd) => ComponentKey | null {
   const byId = new Map<string, { readonly type: string; readonly key: ComponentKey }[]>();
   /** The components the org listed without an id, by type and full name. */
   const withoutId = new Map<string, ComponentKey>();
@@ -187,7 +187,7 @@ const pairId = (from: string, to: string): string => `${from}\u0000${to}`;
 /** Compares the rows of the Dependency API with the references of an analysis. */
 export function crossCheck(input: CrossCheckInput): CrossCheck {
   const analysedTypes = new Set(input.analysedTypes);
-  const match = matcher(input.listed);
+  const match = listedMatcher(input.listed);
 
   // What the analysis found, as pairs of whole components.
   const components = new Map<string, AnalysedComponent>();

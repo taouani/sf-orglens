@@ -113,8 +113,12 @@ export interface MockMetadata {
   readonly extraFiles: Map<string, string>;
   /** What the org finds wrong in a deploy. While it holds something, a deploy fails and changes nothing. */
   readonly deployProblems: DeployProblem[];
-  /** Every deploy that was started, in order: the files of its zip file and its options. */
-  readonly deploys: { readonly files: string[]; readonly options: Readonly<Record<string, string>> }[];
+  /** Every deploy that was started, in order: the files of its zip file, their content as text, and its options. */
+  readonly deploys: {
+    readonly files: string[];
+    readonly texts: ReadonlyMap<string, string>;
+    readonly options: Readonly<Record<string, string>>;
+  }[];
   /** Every request to the Metadata API, in order. */
   readonly calls: MetadataCall[];
   /** The members of every retrieve that was started, in order, each as `Type:FullName`. */
@@ -396,6 +400,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
           .filter(([, entry]) => !entry.dir)
           .map(([path]) => path)
           .sort();
+        const texts = new Map<string, string>();
+        for (const path of files) texts.set(path, (await zip.file(path)?.async('string')) ?? '');
         const options: Record<string, string> = {};
         for (const [, name = '', value = ''] of (
           /<DeployOptions>(.*?)<\/DeployOptions>/s.exec(body)?.[1] ?? ''
@@ -405,7 +411,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
         issued += 1;
         const id = `0Afxx${String(issued).padStart(10, '0')}AAA`;
         deployJobs.set(id, { files, polls: 0 });
-        metadata.deploys.push({ files, options });
+        metadata.deploys.push({ files, texts, options });
         metadata.calls.push({ operation, about: String(files.length), job: id });
         return ok(
           `<deployResponse><result><done>false</done><id>${id}</id><state>Queued</state></result></deployResponse>`,
