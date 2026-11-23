@@ -573,6 +573,10 @@ export function readFlow(document: XmlDocument): FlowReading {
       // An element that names a record to write has the fields of that record, and no object of its own.
       const written = whole === null || group === 'recordLookups' ? null : reader.record(sink, whole, op);
       of = object !== null ? { start: object, through: [] } : written;
+    } else if (group === 'collectionProcessors' && name !== null) {
+      // The fields a step sorts a list by are fields of the records of that list.
+      const held = startOf(name)?.object ?? null;
+      of = held === null ? null : { start: held, through: [] };
     }
     if (kind !== undefined) reader.started(sink, element, group);
     const actionType = group === 'actionCalls' ? textOf(childOf(element, 'actionType')) : null;
