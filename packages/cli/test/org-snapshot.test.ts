@@ -88,6 +88,7 @@ const classesAnalysed = (components: string): string[] => [
   'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
   'parser:xml      0           0           0             0                   0',
   'parser:formula  0           0           0             0                   0',
+  'parser:flow     0           0           0             0                   0',
   '',
 ];
 
@@ -97,7 +98,7 @@ const classesAnalysed = (components: string): string[] => [
  */
 const CROSS_CHECKED = [
   'Cross-check: the Dependency API of Salesforce reports 1 row. No query left a row out.',
-  '1 row is from a component of a type this version does not analyse, and is not compared: ApexClass 1.',
+  '1 row is from a component of a type that is not analysed, or from a flow, and is not compared: ApexClass 1.',
   'No row was compared.',
   '',
 ];

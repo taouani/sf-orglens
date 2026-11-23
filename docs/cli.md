@@ -282,10 +282,13 @@ of three public codebases.
 
 The analysis finds the components that the files of a snapshot make up, and which component refers to which.
 Today it reads objects, fields and validation rules: the names written in their XML, and the formula of a field,
-its default value and the condition of a rule. Every other type is stored and not analysed yet. Decision record
-[0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
-[0041](adr/0041-components-and-names-written-in-xml.md) and [0042](adr/0042-the-names-in-a-formula.md) say what
-is read and what is not.
+its default value and the condition of a rule. It reads flows too: every element and resource of a flow is a
+component of its own, named `<flow>.<element>`, with the fields and objects it reads, writes or names, in a
+value, in the name of a resource with a path, in a formula or in a merge field of a text. Every other type is
+stored and not analysed yet. Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the
+rules, records [0041](adr/0041-components-and-names-written-in-xml.md),
+[0042](adr/0042-the-names-in-a-formula.md) and [0061](adr/0061-the-elements-of-a-flow.md) say what is read and
+what is not.
 
 - A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
   snapshot is stored, also for a snapshot of an org that was interrupted and continued.
@@ -347,8 +350,10 @@ records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
 - The rows are compared with every analysis of the snapshot. `orglens analyse` compares again from the rows the
   snapshot holds, without asking the org: an update of OrgLens that analyses more is measured against the same
   rows.
-- Only rows from a component of a type that is analysed are compared. A row from a class or a flow is counted
-  and not compared in this version.
+- Only rows from a component of a type that is analysed are compared. A row from a class is counted and not
+  compared in this version. So is a row from a flow, although flows are analysed: such a row carries the id of a
+  version of the flow, and how it is matched is not decided
+  ([record 0060](adr/0060-the-active-version-of-a-flow-is-analysed.md)).
 - A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
   for a standard object, which Salesforce names in the place of an id, and for a component the org listed
   without one. A row that names a component the org did not list is counted and not compared.
@@ -380,7 +385,8 @@ The first table has one line per metadata type that has components. For an org, 
 leaves out, and adds `(listing failed)` to the number of a type the org refused to list in whole or in part. The
 column `ANALYSED` says of how many components of the type the analysis read something. It is `0` for a type that
 is not analysed yet. It can be larger than `RETRIEVED`: the analysis also counts the fields and rules it finds
-inside the file of an object, and a type of which the source lists nothing can have a line for that reason.
+inside the file of an object, and the elements of a flow with their flow, and a type of which the source lists
+nothing can have a line for that reason.
 
 Below it stand the issues of the reading, then the analysis, and for a snapshot of an org the cross-check:
 
@@ -390,15 +396,17 @@ Analysed by engine 0.1.0: 89 components, 106 references.
 ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ
 parser:xml      69          26          0             0                   0
 parser:formula  34          80          0             0                   0
+parser:flow     0           0           0             0                   0
 ```
 
 There is one line for each origin of references that this version analyses. `COMPONENTS` are the components
-the analyser looked at: for `parser:formula`, those with a formula or a default value. `NOT RESOLVED` are the
+the analyser looked at: for `parser:formula`, those with a formula or a default value, and for `parser:flow`,
+the flows and their elements. A formula of a flow is counted for `parser:formula`. `NOT RESOLVED` are the
 references that are `unresolved`: a custom name that no file of the snapshot defines and that is not of a
 package. A standard name, such as a field of `Account`, and a name of a package are `external` and not counted. `PATHS NOT FOLLOWED` are the paths of names
 that could not be walked to their end. `FILES NOT READ` are the files the analyser tried to read and could not:
 for `parser:formula`, the files with a formula that was not read as a whole, whose names are recorded as
-`probable`. The number of components includes the parts found inside files, and the objects that are only
+`probable`, and for `parser:flow`, the files of flows. The number of components includes the parts found inside files, and the objects that are only
 named.
 
 The issues of the analysis follow, one line per code with their number and the first of them: an org can have
@@ -410,7 +418,7 @@ The cross-check of a snapshot of an org comes last:
 
 ```
 Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.
-61 rows are from a component of a type this version does not analyse, and are not compared: ApexClass 60, CustomMetadata 1.
+61 rows are from a component of a type that is not analysed, or from a flow, and are not compared: ApexClass 60, CustomMetadata 1.
 1 row names a component the org did not list, and is not compared.
 2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.
 56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.
@@ -452,7 +460,7 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 | Field                            | Meaning                                                                                                                                                                                                                                             |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rows`                           | The rows that were looked at.                                                                                                                                                                                                                       |
-| `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
+| `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, and rows from a flow, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
 | `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                               |
 | `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                 |
 | `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                        |
@@ -601,7 +609,7 @@ the answer says whether it is complete, and if not, why. Below the results it na
 
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each.
   A component of such a type can refer to the component and is not in the answer. In this pre-release, that is
-  every type except objects, fields and validation rules. A type that `exclude_types` leaves out of a snapshot
+  every type except objects, fields, validation rules and flows. A type that `exclude_types` leaves out of a snapshot
   of an org is among them, with `left out` for its number;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
