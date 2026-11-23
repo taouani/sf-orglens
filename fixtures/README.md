@@ -83,7 +83,7 @@ to now. The new files are these cases:
 
 - a flow that runs before an invoice is saved (`Invoice_Before_Save`): an entry condition that is a formula, a
   decision on `$Record`, a path through two relationships, a global variable in a condition and one in a formula,
-  a formula that reads a formula field of the record, assignments to fields of `$Record`, and a custom error whose message holds a merge field and, beside it, the
+  assignments to fields of `$Record`, and a custom error whose message holds a merge field and, beside it, the
   name of a field as plain text;
 - a flow that runs after the save and three days after a date field (`Invoice_After_Save`): a scheduled path, a
   condition on `$Record__Prior`, a query for lines with filters, a sort field and a list of queried fields, a
@@ -128,14 +128,16 @@ words came out (`docs/live-org-setup.md` says why).
   supported.)". The flow was not changed on a guess. The tool that deploys got a form for such a message, written
   from those words, and the second deploy, on the same day, printed it:
   `field integrity exception: unknown (When the TriggerType field is set to "RecordBeforeSave", the $Record.Account__r.Is_Key_Account__c field isn't supported.)`
-  That path stood in the formula `Default_Tax_Rate` and nowhere else in the flow. So it was neither the custom
-  error nor the formula the flow starts by, which I had thought of. As I read the message, a formula of a flow
-  that runs before the save may not cross a relationship from `$Record`. The formula now reads
-  `Account_Tier__c`, a formula field of the invoice that crosses the same relationship by itself, and the flow no
-  longer refers to `Account.Is_Key_Account__c`. A formula of a flow that crosses a relationship is left in the
-  process only (`Invoice_Sent_Process`). Three other paths across a relationship stand in the flow, in two
-  assignments and in a decision. Salesforce did not name them. Whether it accepts them, or names one problem of a
-  flow at a time, I do not know: the third deploy says.
+  That path stood in the formula `Default_Tax_Rate` and nowhere else in the flow. The message says that this one
+  path is not supported in a flow that runs before the save, and not why. Three readings fit it: a formula of
+  such a flow may not cross a relationship from `$Record`, or the path may not end at a formula field, which
+  `Is_Key_Account__c` is, or no path across a relationship is supported and Salesforce names one problem of a flow
+  at a time. The formula now reads `Tax_Code_Name__c`, a text field of the invoice itself, which the first two
+  readings allow, and the flow no longer refers to `Account.Is_Key_Account__c`. A formula of a flow that crosses a
+  relationship is left in the process only (`Invoice_Sent_Process`). Three other paths across a relationship stand
+  in the flow, in two assignments and in a decision, none of them to a formula field. Salesforce did not name
+  them, nor the custom error, nor the formula the flow starts by. Whether it accepts them, I do not know: the
+  third deploy says. If it refuses the paths, the flow has to get the account with an element of its own.
 
 The second deploy counted 118 components, found no error in 117 and refused that one flow, so the org is still as
 it was. What Salesforce found no error in, as far as that says anything: the process of the Process Builder and

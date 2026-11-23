@@ -823,7 +823,7 @@ references:
           - { line: 69, match: Approve_Large_Invoices, kind: references, to: CustomPermission:approve_large_invoices, via: path }
       - from: "Flow:invoice_before_save#element:default_tax_rate"
         refs:
-          - { line: 86, match: Account_Tier__c, kind: reads, to: CustomField:invoice__c.account_tier__c, via: formula, note: "A formula field of the record. Salesforce refuses a path across a relationship in a formula of a flow that runs before the save." }
+          - { line: 86, match: Tax_Code_Name__c, kind: reads, to: CustomField:invoice__c.tax_code_name__c, via: formula }
           - { line: 86, match: Late_Fee_Percent__c, kind: reads, to: CustomField:billing_settings__c.late_fee_percent__c, via: formula }
       - from: "Flow:invoice_before_save#element:flow-start"
         refs:

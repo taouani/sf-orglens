@@ -105,7 +105,7 @@ const form = (text: string): RegExp =>
 
 /**
  * The problems Salesforce is known to report for Apex and for fields, and
- * one it may report for a flow, each as a form the whole text has to have. What stands at a name, a signature
+ * one it reported for a flow, each as a form the whole text has to have. What stands at a name, a signature
  * or a token is printed if it has that form and nothing else. A problem of
  * another form is "not shown", but for its everyday words: the list is
  * written from memory and from the documentation, and grows with what the
@@ -163,10 +163,10 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   // 23 November 2026 was refused with a problem of which only the everyday words came out: "field … unknown (When
   // the … field is set to … the … field … supported.)". This form was written from those words, and the second
   // deploy of that day printed a problem with it: the value stood in double quotes, and the last place held a path
-  // from `$Record` across a relationship, which a formula of a flow that runs before the save may not hold. A
-  // place takes whatever has the form of a name, and the check of the words below lets through only words of the
-  // fixture project and of the platform. The words came out the same with a name in quotes and without the
-  // comma, so the form takes both, although Salesforce was seen to write one of them only.
+  // from `$Record` across a relationship that stood in a formula. Why that path is not supported, the problem
+  // does not say. A place takes whatever has the form of a name, and the check of the words below lets through
+  // only words of the fixture project and of the platform. The words came out the same with a name in quotes and
+  // without the comma, so the form takes both, although Salesforce was seen to write one of them only.
   form(
     `field integrity exception: unknown \\(When the ${QUOTE}NAME${QUOTE} field is set to ${QUOTE}NAME${QUOTE},? the ${QUOTE}NAME${QUOTE} field isn['’]t supported\\.\\)`,
   ),

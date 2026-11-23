@@ -180,8 +180,9 @@ describe('what a step of the live-org workflow may print', () => {
 });
 
 /**
- * A flow, with names of elements of its file and one of their values. The apostrophe comes in two forms, a name
- * may stand in quotes, and the comma may be missing: the public log would have shown the same words for each.
+ * A flow, with names of elements of its file, one of their values, or a path of fields. The apostrophe comes in
+ * two forms, a name may stand in quotes, and the comma may be missing: the public log would have shown the same
+ * words for each.
  */
 const FLOW_PROBLEMS: readonly string[] = [
   // The problem as the second deploy of 23 November 2026 printed it.
@@ -283,6 +284,8 @@ describe('a problem of a deploy, as it is printed', () => {
     'Method does not exist or incorrect signature: void post(List<Secret_Plan__c>) from the type InvoiceService',
     "field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the SecretPlan field isn't supported.)",
     "field integrity exception: unknown (When the 'triggerType' field is set to 'SecretPlan', the 'filterFormula' field isn't supported.)",
+    // A path as Salesforce wrote one, with one word that is not of the fixture project.
+    'field integrity exception: unknown (When the TriggerType field is set to "RecordBeforeSave", the $Record.Account__r.Secret_Plan__c field isn\'t supported.)',
   ])('does not show a known form that names something the fixture project does not hold: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(
       `not shown, because it names something that is not in the fixture project. ${where}`,
