@@ -113,8 +113,9 @@ const FLOW_FILE = new RegExp(`^flows/${escaped(FLOW_WITH_DRAFT)}(?:-\\d{1,6})?\\
 const DEFINITION_FILE = new RegExp(`^flowDefinitions/${escaped(FLOW_WITH_DRAFT)}\\.flowDefinition$`);
 
 /**
- * The number of the active version a file of a `FlowDefinition` names, or `null`. Salesforce writes 0 for a flow
- * that has no active version, which is no number of a version.
+ * The number of the active version a file of a `FlowDefinition` names, or `null`. The number 0 is read as no
+ * active version, since it is no number of a version. That Salesforce writes 0 for a flow without an active
+ * version is an expectation: no file that says so was seen.
  */
 function activeIn(definition: string): number | null {
   const found = /<activeVersionNumber>\s*(\d{1,6})\s*<\/activeVersionNumber>/.exec(definition)?.[1];

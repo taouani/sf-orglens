@@ -285,8 +285,10 @@ left: version 1 active, version 2 a draft. All of the following is `[run 22]`.
 
 The reference of the Metadata API says of the full name of a flow that the name held the version number up to
 API version 43 and no longer holds it from version 44. The org was asked with version 68.0 and handed out
-version 1 for the name with `-1` all the same. I did not read that paragraph in full, and do not know what it
-means to say.
+version 1 for the name with `-1` all the same. The same paragraph says that a version can be retrieved by its
+number, and that without a number "the flow is the latest version". Record 0060 quotes it as a tool read the
+page for me on 23 November 2026. I read the sentence about version 44 as being about the name a flow comes back
+with. The page does not say so.
 
 ### What follows
 
@@ -294,17 +296,28 @@ means to say.
   version the org hands out is analysed, and its author expected that to be the active one. With a newer draft it
   is the draft, which does not run. The maintainer chose the active version, and record
   [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md) replaces 0057.
-- **A snapshot can get the active version of a flow that has a newer draft.** The file of the flow says that it
-  is not active, the file of its `FlowDefinition` names the number of the active version, and one more retrieve,
-  for the name with that number, gives the file `[run 22]`. That is not built yet. Until it is, a snapshot of
-  such an org holds the draft.
+- **Whether the active version can be asked for by its number is not known.** The reference of the Metadata API
+  says of the full name of a flow that a version can be deployed or retrieved by its number, with a name such as
+  `Invoice_Recalculate-1`. The same paragraph says that the name held the version number up to API version 43
+  and no longer holds it from version 44. The org is read with version 68.0. `[unverified]`: no run asked that
+  way, and I did not read the paragraph in full. Measured on 23 November 2026 `[run 22]`: it can, on the test
+  org. The paragraph was then read in full, and record 0060 quotes it.
+- **A snapshot can tell that it holds a draft of a flow that has an active version.** The file of the flow says
+  `Draft`, and the file of its `FlowDefinition`, which the org hands out too, names the number of the active
+  version. `[unverified]`: the run did not print that file. Measured on 23 November 2026 `[run 22]`: the file
+  names version 1 as the active one.
+- **A snapshot can get the active version of a flow that has a newer draft.** One more retrieve, for the name
+  with the number the definition names, gives the file `[run 22]`. That is not built yet. Until it is, a
+  snapshot of such an org holds the draft.
 - **The cross-check cannot match every row of a flow by an id the org listed.** The rows of the latest version
   can be matched that way. The rows of another version carry an id the org did not list. Record 0045 allows a
   name only where there is no id, and the engine reads no object of the Tooling API but the one of the
-  dependencies. How the cross-check treats flows is designed with the analyser of flows, after the answer of the
-  maintainer.
-- **The answer key does not describe `Invoice_Recalculate` as the test org hands it out now.** It is about the
-  file of the project, which is version 1. The org hands out version 2, which reads one field more.
+  dependencies. How the cross-check treats flows is put to the maintainer with a design in work package 6 of the
+  plan. From the moment flows are analysed, in work package 3, their rows are counted and not compared (record
+  0060).
+- **The answer key does not describe `Invoice_Recalculate` as the test org hands it out for its name.** It is
+  about the file of the project, which is version 1. For the name alone the org hands out version 2, which reads
+  one field more.
 - **No tool takes the draft out.** A version of a flow is deleted by hand, in Setup under Flows. What a later
   run of "deploy" does to the two versions is `[unverified]`.
 
@@ -351,8 +364,9 @@ Dependency API alone is the cross-check for Apex stands.
 
 - Any other org, edition or API version.
 - Why Salesforce refused the two flows, beyond the words it gave.
-- A flow with more than two versions, one whose active version is the latest of several, and one with versions
-  that are obsolete.
+- A flow with more than two versions, one whose active version is the latest of several, one with versions
+  that are obsolete, and one whose latest version is obsolete while an older one is active.
+- A process of the Process Builder asked for by a number.
 - Several flows asked for by their numbers in one retrieve, and a flow of a managed package asked for that way.
 - What the file of a `FlowDefinition` says for a flow without an active version. The Tooling API says "none" for
   `Invoice_Purge_Void`, and no run printed its file.

@@ -973,9 +973,9 @@ export function phaseLines(
 /**
  * Which version of each flow of the fixture project the org handed out: the state its file names, beside the
  * state the file of the repository names. The tool that deploys can send one flow once more as a draft
- * (`deploy-fixture.ts draft`). After that the org should hold an active version of it and a newer draft, which
- * is not verified. Of that flow it is said which of the two the file from the org is, by the places in which
- * the draft differs.
+ * (`deploy-fixture.ts draft`). After that the org holds an active version of it and a newer draft, as run 21 of
+ * the workflow showed on the test org. Of that flow it is said which of the two the file from the org is, by the
+ * places in which the draft differs.
  *
  * `fileOf`: the text of a file of the snapshot, or `null` if the snapshot does not hold it.
  */
