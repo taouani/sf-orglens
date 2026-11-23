@@ -30,8 +30,8 @@ Work package 1 measured what the Dependency API of the test org reports
 else. Of a field set: its four custom fields, also the one across a relationship, and not the standard one. Of a
 record type: nothing. Record [0045](0045-the-cross-check-of-a-snapshot.md) holds the answer of the maintainer of
 16 November 2026 that a record refers to its type from the phase that analyses records. The test org also wrote a
-`values` element for every field a record leaves out, and its log does not show the value (section 2 of the note).
-The public codebases hold such elements with a value that is nil (`xsi:nil="true"`).
+`values` element for every field a record leaves out, and the log of the run does not show what its `value` holds
+(section 2 of the note). The public codebases hold such elements with a value that is nil (`xsi:nil="true"`).
 
 What follows under "Decision" are choices of the author. The maintainer can strike any of them.
 
@@ -80,24 +80,29 @@ References of a record:
    field whose value is nil or empty gives nothing, not even a warning when its name is not built like one. The
    test org writes an element for each field a record leaves out, and the public codebases hold 275 such elements
    with a value that is nil. Were they read, a record would refer to fields it gives no value.
-9. **The value of a relationship is a name, at the tier `confirmed`**, with the way `value`. Of a relationship to
-   `EntityDefinition` it is the object. Of a relationship to `FieldDefinition` it is the field alone, and its
-   object is the value the same record gives the field that the relationship names as controlling it. Where the
-   record gives that field no value, or a value that is not one name, nothing says which object the field is of:
-   the warning `PATH_NOT_FOLLOWED` says so, and the field is not guessed. Of a relationship to another custom
-   metadata type it is a record of that type, named without its type. A value of a relationship that is not one
-   name gives nothing: Salesforce writes a name there.
-10. **A value of a text field is a name only where it is exactly one, and only where a file of the snapshot
-    defines that field**, at the tier `probable`, with the way `text`. A text field is of the type `Text`,
-    `TextArea` or `LongTextArea`. Two names joined by a dot are the object and the field. One name alone is a
-    field of an object that the same record names in a relationship to `EntityDefinition`, of each such object
-    where it names several. Words around a name, a global variable such as `$User.Email`, three names, a field
-    that no file defines and a standard field are no reference, and give no warning, because a text can be
-    anything. A standard field has no file, so for it nothing tells a name from a word: `Account.Anything` would
-    be one. An object named in a text is not taken as the object of the record, because a public codebase has a
-    text naming an object beside a text naming a field of another object (see the consequences). The values of
-    fields of other types, such as a number, a checkbox or a picklist, are not read.
+9. **The value of a relationship is a name, at the tier `confirmed`**, with the way `value`. A relationship is a
+   field of the type `MetadataRelationship`, in any case of letters. Of a relationship to `EntityDefinition` it is
+   the object. Of a relationship to `FieldDefinition` it is the field alone, and its object is the value the same
+   record gives the field that the relationship names as controlling it. Where the record gives that field no
+   value, or a value that is not one name, nothing says which object the field is of: the warning
+   `PATH_NOT_FOLLOWED` says so, and the field is not guessed. Of a relationship to another custom metadata type it
+   is a record of that type, named without its type. A record whose name holds the type with its suffix (point 1)
+   is found under that name where the snapshot holds no record of the name without it. A value of a relationship
+   that is not one name, such as `Invoice__c.Amount__c` for a field or a name with a space, gives nothing and no
+   warning: Salesforce writes one name there.
+10. **A value of a text field is a name only where it is exactly one, and only where a file of the snapshot defines
+    that field**, at the tier `probable`, with the way `text`. A text field is of the type `Text`, `TextArea` or
+    `LongTextArea`, in any case of letters. Two names joined by a dot are the object and the field. One name alone
+    is a field of an object that the same record names in a relationship to `EntityDefinition`, of each such object
+    where it names several. Words around a name, a global variable such as `$User.Email`, three names, a field that
+    no file defines and a standard field are no reference, and give no warning, because a text can be anything. A
+    standard field has no file, so for it nothing tells a name from a word: `Account.Anything` would be one. An
+    object named in a text is not taken as the object of the record, because a public codebase has a text naming an
+    object beside a text naming a field of another object (see the consequences). The values of fields of other
+    types, such as a number, a checkbox or a picklist, are not read.
 11. **The values of a record are collected before any is resolved**, so their order in the file does not matter.
+    Where a file gives one field two values, which Salesforce does not write, each gives its references, and the
+    first one is the value that says the object of a field.
 
 The cross-check:
 
@@ -159,12 +164,15 @@ The cross-check:
   Nebula Logger, 18 of NPSP and 7 of PMM, with 6, 703 and 384 fields, of which 5, 139 and 230 are found and the
   rest are standard fields or fields of other packages, `external`. No codebase holds a record type, so no record
   type of them was read.
-- The plan asks for the numbers and the values read by hand in a note. They are here, and the note of work
-  package 9, which checks the codebases, lists them with the rest.
+- The plan asks for the numbers and the values read by hand in a note. That is the note of work package 9, which
+  checks the codebases and is not written yet. Until it is, they are here, and that note takes them over with the
+  rest.
 - Not read, and no reference: the label and the description of a record type, its compact layout, which value of
   a picklist is its default, whether a field of a field set is required, and the label and `protected` of a
   record. The values a record type allows are kept as written and not held against the values of the picklist.
 - Not verified on an org: the readers have not run on files that Salesforce wrote. The test org writes a `values`
-  element for every field a record leaves out, with a value its log does not show, adds the values of one more
-  picklist to each record type, and drops `externalId` from the relationship fields of the type (section 2 of the
-  note). A run of "Live org" after the merge reads them.
+  element for every field a record leaves out, adds the values of one more picklist to each record type, and drops
+  `externalId` from the relationship fields of the type (section 2 of the note). A run of "Live org" after the
+  merge reads them. Nor has a real org shown what the Dependency API reports of a record type with more than the
+  picklists of a custom object: a row from a record type to something the reader does not read, such as its compact
+  layout, would be a pair the analysis lacks, the error `REFERENCE_MISSED`.

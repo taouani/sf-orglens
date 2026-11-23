@@ -110,9 +110,19 @@ describe('the record types, field sets and records of custom metadata of the fix
     ]);
   });
 
-  it('are counted for the reader of XML', () => {
+  it('are counted for the reader of XML', async () => {
     expect(analysis.types).toEqual(expect.arrayContaining(['CustomMetadata', 'FieldSet', 'RecordType']));
     expect(components).toHaveLength(7);
+    // Without the seven, the reader of XML looks at seven components less.
+    const tree = readFolders(join(FIXTURES_DIR, answers.project), ['force-app']).tree;
+    const listed = (await resolveComponents(tree, ['force-app'])).components;
+    const without = analyseSource(
+      tree,
+      listed.filter((one) => !TYPES.test(`${one.type}:`)),
+    );
+    const read = (of: SourceAnalysis): number | undefined =>
+      of.work.find((work) => work.origin === 'parser:xml')?.components;
+    expect(read(analysis)).toBe((read(without) ?? 0) + 7);
   });
 });
 
@@ -456,6 +466,46 @@ describe('small records of custom metadata types that are written here', () => {
       {},
       {},
       {},
+    ]);
+    expect(issuesOf(analysis)).toEqual([]);
+  });
+
+  it('give nothing for the value of a relationship that is not one name, and no warning', () => {
+    const source = project();
+    record(
+      source,
+      'Rule.Odd',
+      ['Object__c', 'Invoice Object'],
+      ['Field__c', 'Invoice__c.Amount__c'],
+      ['Group__c', '$User'],
+    );
+    const analysis = source.analyse();
+    expect(from(analysis, 'CustomMetadata:rule.odd')).toEqual([
+      '2:2 references CustomObject:rule__mdt [Rule__mdt] record-of confirmed',
+      '6:16 references CustomField:rule__mdt.object__c [Object__c] listed-field confirmed',
+      '10:16 references CustomField:rule__mdt.field__c [Field__c] listed-field confirmed',
+      '14:16 references CustomField:rule__mdt.group__c [Group__c] listed-field confirmed',
+    ]);
+    expect(issuesOf(analysis)).toEqual([]);
+  });
+
+  it('find a record of another type named with the suffix of its type, and a relationship in any case', () => {
+    const source = project();
+    record(source, 'Group__mdt.Other');
+    source.field(
+      'Rule__mdt',
+      'Lower__c',
+      '<referenceTo>EntityDefinition</referenceTo>',
+      '<type>metadatarelationship</type>',
+    );
+    record(source, 'Rule.Linked', ['Group__c', 'Other'], ['Lower__c', 'Invoice__c']);
+    const analysis = source.analyse();
+    expect(from(analysis, 'CustomMetadata:rule.linked')).toEqual([
+      '2:2 references CustomObject:rule__mdt [Rule__mdt] record-of confirmed',
+      '6:16 references CustomField:rule__mdt.group__c [Group__c] listed-field confirmed',
+      '7:38 references CustomMetadata:group__mdt.other [Other] value confirmed',
+      '10:16 references CustomField:rule__mdt.lower__c [Lower__c] listed-field confirmed',
+      '11:38 references CustomObject:invoice__c [Invoice__c] value confirmed',
     ]);
     expect(issuesOf(analysis)).toEqual([]);
   });

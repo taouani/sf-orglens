@@ -11,9 +11,10 @@ by its number (record 0062), and run 23 of "Live org" showed it on the test org.
 one thing: it holds the reader of workflow rules (record 0063) and what the maintainer chose for the name alone of
 an object (record 0064), and the 24 references of the file of workflow rules of NPSP, which this plan wants in the
 note of work package 9, are listed there when that note is written. Run 24 of "Live org" read the test org with it.
-Work package 5 is built (record 0065). The 335 records of custom metadata types of the public codebases are read
-without an error and give no reference at the tier `probable`: record 0065 says why, with values of each codebase
-read by hand, and the note of work package 9 lists them with the rest.
+Work package 5 is built but for the same thing (record 0065): the 335 records of custom metadata types of the
+public codebases are read without an error and give no reference at the tier `probable`, and record 0065 says why,
+with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
+too, and they are written there when that note is written.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

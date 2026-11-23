@@ -299,23 +299,23 @@ of three public codebases.
 
 #### The analysis of a snapshot
 
-The analysis finds the components that the files of a snapshot make up, and which component refers to which.
-Today it reads objects, fields and validation rules: the names written in their XML, and the formula of a field,
-its default value and the condition of a rule. It reads flows too: every element and resource of a flow is a
-component of its own, named `<flow>.<element>`, with the fields and objects it reads, writes or names, in a
-value, in the name of a resource with a path, in a formula or in a merge field of a text. It reads workflow
-rules: each rule, field update, email alert, outbound message and task of a file of workflow rules is a
-component that the file contains, with the fields in the criteria and the formula of a rule, the actions it
-starts and the date fields its time triggers count from, the field an update writes, also on the parent of the
-record, the fields in its formula, the fields an outbound message sends, the fields and the email template an
-alert names, and the date field the due date of a task counts from. It reads record types, with the picklist
-fields whose values they limit, the values they allow and their business process, and field sets, with every
-field they list, also across a relationship. It reads records of custom metadata types: the type, each field a
-record gives a value, and what a value names. That is an object or a field where the field is a relationship to
-the definition of one, a record of another type where it is a relationship to that type, and a field, at the
-tier `probable`, where a text field holds exactly `Object.Field` or exactly the name of a field of an object the
-same record names. Every other type is stored and not analysed yet. Decision record
-[0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
+The analysis finds the components that the files of a snapshot make up, and which component refers to which. Today
+it reads objects, fields and validation rules: the names written in their XML, and the formula of a field, its
+default value and the condition of a rule. It reads flows too: every element and resource of a flow is a component
+of its own, named `<flow>.<element>`, with the fields and objects it reads, writes or names, in a value, in the
+name of a resource with a path, in a formula or in a merge field of a text. It reads workflow rules: each rule,
+field update, email alert, outbound message and task of a file of workflow rules is a component that the file
+contains, with the fields in the criteria and the formula of a rule, the actions it starts and the date fields its
+time triggers count from, the field an update writes, also on the parent of the record, the fields in its formula,
+the fields an outbound message sends, the fields and the email template an alert names, and the date field the due
+date of a task counts from. It reads record types, with the picklist fields whose values they limit, the values
+they allow and their business process, and field sets, with every field they list, also across a relationship. It
+reads records of custom metadata types: the type, each field a record gives a value, and what a value names. That
+is an object or a field where the field is a relationship to the definition of one, and a record of another type
+where it is a relationship to that type. It is a field, at the tier `probable`, where a text field holds exactly
+`Object.Field`, or exactly the name of a field of an object that the same record names in a relationship, and a
+file of the snapshot defines that field. Every other type is stored and not analysed yet.
+Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
 [0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md) and
 [0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) say what is read and what is not.
@@ -579,7 +579,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule has a type that is not known here, or none. No reference is made for it.                                                                                           |
 | `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
-| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), or which object a resource of a flow holds (`details.resource`), so the names after it have no reference (`details.origin` says whose).                                            |
+| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), which object a resource of a flow holds (`details.resource`), or, with neither key, which object a name is a field of. The names have no reference (`details.origin` says whose).  |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
 | `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                          |
@@ -734,11 +734,12 @@ What is not done, and what a user should know:
 
 - The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
   changes. That is a later phase.
-- Only objects, fields, validation rules and flows are analysed. Apex, layouts, permissions and the other types
-  follow in later phases. Until then an answer about what refers to a component of a real project says that it
-  is not complete. An answer with `--outgoing` can be complete, because it needs only the component and its
-  results to be analysed. It is complete only when the analysis of the snapshot had no warning at all: a warning
-  about any component counts for every answer, also for one it cannot touch.
+- Only objects, fields, validation rules, flows, workflow rules with their actions, record types, field sets and
+  records of custom metadata types are analysed. Apex, layouts, permissions and the other types follow in later
+  phases. Until then an answer about what refers to a component of a real project says that it is not complete. An
+  answer with `--outgoing` can be complete, because it needs only the component and its results to be analysed. It
+  is complete only when the analysis of the snapshot had no warning at all: a warning about any component counts
+  for every answer, also for one it cannot touch.
 - The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
 - An answer can be large: a field that much of an org rests on can have tens of thousands of results.
   `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.

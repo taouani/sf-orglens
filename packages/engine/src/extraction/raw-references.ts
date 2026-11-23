@@ -184,11 +184,13 @@ const TEXT_TYPES: ReadonlySet<string> = new Set(['text', 'textarea', 'longtextar
 
 /**
  * What a field of a custom metadata type is a relationship to, by its folded name: `entitydefinition`,
- * `fielddefinition` or another custom metadata type. `null` for a field that is no relationship.
+ * `fielddefinition` or another custom metadata type. `null` for a field that is no relationship. The type of the
+ * field is compared in any case, as the types of a text are.
  */
 const relationshipTo = (facts: FieldFacts | undefined): string | null => {
   const [only, ...others] = facts?.referenceTo ?? [];
-  return facts?.type === 'MetadataRelationship' && only !== undefined && others.length === 0 ? foldName(only) : null;
+  const relationship = foldName(facts?.type ?? '') === 'metadatarelationship';
+  return relationship && only !== undefined && others.length === 0 ? foldName(only) : null;
 };
 /** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
 const LONGEST_PATH_SHOWN = 200;
@@ -332,11 +334,14 @@ export function resolveReferences(
         if (object === undefined || !ONE_NAME.test(object)) nothingSays([first]);
         else add(first, model.field(object, first.name), 'references', one, { object });
       } else if (target.endsWith('__mdt')) {
-        // A record of another type, named without its type.
+        // A record of another type, named without its type. A record named with its type and the suffix is of the
+        // same type (`analyse.ts`), so it is found under that name where the snapshot holds no other.
         const type = facts.referenceTo[0] ?? '';
+        const named = model.component('CustomMetadata', `${type.slice(0, -'__mdt'.length)}.${first.name}`);
+        const suffixed = model.component('CustomMetadata', `${type}.${first.name}`);
         add(
           first,
-          model.component('CustomMetadata', `${type.slice(0, -'__mdt'.length)}.${first.name}`),
+          named.resolution !== 'resolved' && suffixed.resolution === 'resolved' ? suffixed : named,
           'references',
           one,
         );

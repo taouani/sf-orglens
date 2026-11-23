@@ -127,8 +127,9 @@ it:
 - **The screen flow** got `styleProperties` five times, each with a vertical alignment and a width. The log does
   not say where they stand. The file grew from 12,193 to 13,649 bytes. So the lines of a flow from an org are
   not the lines of the file that was deployed.
-- **The three records of the custom metadata type** that leave a field out got a `values` element for each such
-  field.
+- **The three records of the custom metadata type** that leave a field out got a `values` element, with a `field`
+  and a `value`, for each such field. The log counts the elements that were added by their names, and does not show
+  what a `value` holds.
 - **The two record types** each got the values of one more picklist.
 - **The two relationship fields of the custom metadata type** lost `externalId`.
 

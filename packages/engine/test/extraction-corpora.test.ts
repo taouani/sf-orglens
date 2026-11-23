@@ -214,11 +214,12 @@ const RECORD_FOLDERS: Readonly<Record<string, readonly string[]>> = {
  *   field that a record gives no value is no reference: Nebula Logger has 136 such values and NPSP 139, all nil.
  * - `issues`: the issues about a record, by their code.
  *
- * Only the four records in the settings of PMM are not found whole. Their type is named with `___NAMESPACE___`, and
- * their one field with `%%%NAMESPACE%%%`: tokens that the build tool of that project replaces before it deploys.
- * The analysis takes the first for the prefix of another package, so the type is `external`, and says that the
- * second is not read. No value of a text field gives a reference at the tier `probable`: the research note of
- * Phase 2 reads three values of each codebase by hand and says why.
+ * Only the four records of PMM in `unpackaged/config/cmdts` are not found whole. Their type is named with
+ * `___NAMESPACE___`, and their one field with `%%%NAMESPACE%%%`: tokens that the build tool of that project replaces
+ * before it deploys. No file defines a type of that name, and the snapshot holds a part of it, the record, so the
+ * type is `external`, as the type of any record is that no file defines. The analysis says that the field is not
+ * read. No value of a text field gives a reference at the tier `probable`: decision record 0065 reads values of
+ * each codebase by hand and says why.
  */
 interface ExpectedRecords {
   readonly files: number;

@@ -128,9 +128,10 @@ packages/cli   the `orglens` binary                            imports only `@sf
   `extraction/custom-metadata.ts` (decision record 0065). A record refers to its type, to each field it gives a
   value, and to what the value of a relationship names: an object, a field, whose object is the value of the field
   that controls the relationship, or a record of another type. A text is a field only where it is exactly
-  `Object.Field`, or the name of a field of an object the same record names, and a file defines that field: then
-  it is `probable`. A field without a value gives nothing, though Salesforce writes one for every field a record
-  leaves out. Of these, the Dependency API reports the type of a record and the custom fields of a field set.
+  `Object.Field`, or the name of a field of an object the same record names in a relationship, and a file defines
+  that field: then it is `probable`. A field without a value gives nothing, though Salesforce writes one for every
+  field a record leaves out. Of these, the Dependency API reports the type of a record and the custom fields of a
+  field set.
 - A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,
   means the object in an impact question, and the answer names the others (`sameName`, decision record 0064). A
   name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.
