@@ -8,7 +8,8 @@
  * object, a custom object without its ending, a standard object has the type `StandardEntity` and its name as
  * its id, and a record of a custom metadata type has the name of that type as its type. A query whose condition
  * on the type of the target names `StandardEntity` is refused with `INVALID_TYPE_FOR_OPERATION`, as run 11 on
- * the test org showed.
+ * the test org showed. A test can make it leave rows out of an answer it cut off (`hidden`), as an answer of a
+ * large org was (decision record 0069).
  *
  * It knows the few conditions the engine writes and refuses every other query, so that a test fails when the
  * engine asks for something else.
@@ -26,6 +27,14 @@ export interface MockDependencies {
   readonly rows: MockDependencyRow[];
   /** A query gives at most this many rows. Salesforce stops at 2,000. */
   limit: number;
+  /**
+   * Rows the org holds and never hands out, which count against `limit` all the same: the org cuts an answer off
+   * and then leaves them out of it. So an answer can be cut off with fewer rows than the limit, as an answer of a
+   * large org was (decision record 0069). Which rows Salesforce leaves out is not known. `null`: none.
+   */
+  hidden: ((row: MockDependencyRow) => boolean) | null;
+  /** Whether the number of rows an answer says it has (`totalSize`) counts the hidden rows it was cut off with. */
+  countsHidden: boolean;
   /** Every query that was asked, in order, as its SOQL. */
   readonly queries: string[];
   /** Set by a test to refuse a query: returns the code the org refuses it with, or `undefined` to answer it. */
@@ -86,13 +95,13 @@ const refused = (errorCode: string, message: string): { status: number; body: st
 /** The query of the versions of the flows, the one query of `FlowDefinition` the engine asks. */
 const FLOW_VERSIONS = 'SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM FlowDefinition';
 
-const answered = (entityTypeName: string, rows: readonly Readonly<Record<string, unknown>>[]) => {
+const answered = (entityTypeName: string, rows: readonly Readonly<Record<string, unknown>>[], total = rows.length) => {
   const records = rows.map((row) => ({ attributes: { type: entityTypeName }, ...row }));
   return {
     status: 200,
     body: JSON.stringify({
       size: records.length,
-      totalSize: records.length,
+      totalSize: total,
       done: true,
       queryLocator: null,
       entityTypeName,
@@ -130,6 +139,8 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
   const dependencies: MockDependencies = {
     rows: [...rows],
     limit: 2_000,
+    hidden: null,
+    countsHidden: false,
     queries: [],
     refuse: null,
     flowDefinitions: null,
@@ -152,10 +163,11 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
       }
       const tests = (parsed[2] ?? '') === '' ? [] : (parsed[2] ?? '').split(' AND ').map(condition);
       if (tests.includes(null)) return refused('MALFORMED_QUERY', 'The mock org does not know this condition.');
-      const records = dependencies.rows
+      const kept = dependencies.rows
         .filter((row) => tests.every((test) => test?.(row) === true))
         .slice(0, dependencies.limit);
-      return answered('MetadataComponentDependency', records);
+      const records = kept.filter((row) => dependencies.hidden?.(row) !== true);
+      return answered('MetadataComponentDependency', records, dependencies.countsHidden ? kept.length : records.length);
     },
   };
   return dependencies;

@@ -272,22 +272,25 @@ the analysis has, has through a part of an object, and missed. A pair is named o
 of the fixture project. Of the others the step gives the number. The step fails when nothing was compared, and
 when the analysis missed a pair that Salesforce reports.
 
-The test org holds fewer rows than the 2,000 at which Salesforce cuts a query off, so the engine never has to ask
-in parts there. The step therefore reads the rows twice more: with one query, and just after it through a session
-that shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine
-then asks per type, per pair of types and per group of components, and the step says whether the parts give the
-same rows as the one query just before. It fails when the parts give a row that the one query did not give, and
-when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
+The test org holds fewer rows than half the 2,000 at which Salesforce cuts a query off, so the engine never has to
+ask per pair of types or per group of components there. The step therefore reads the rows twice more: as the
+snapshot does it, with the query for every row and one query per type of the component that refers (decision
+record [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and just after it through a session that
+shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine then
+asks per type, per pair of types and per group of components, and the step says whether the parts give the same
+rows as the reading just before. It fails when the parts give a row that the reading just before did not give,
+and when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
 readings, so a second run tells whether a failure is one of the engine. The step ends with a warning when the
 org refuses one of those queries. Whenever a request of that reading failed, the step prints the condition of
 its query, with the names of the metadata types and the number of ids in the place of the ids, and how many
 queries and requests had that condition. Whenever the parts lack a row or give one too many, it counts those
-rows by the types of their two ends. It does not try the parts when the one query did not give every row, or when
-the org holds fewer than 30 rows, and says so.
+rows by the types of their two ends. It does not try the parts when the reading just before did not give every
+row, or when the org holds fewer than 30 rows, and says so.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
-the symbol tables. One query of the Dependency API gives at most 2,000 rows, so the reader of the engine asks per
-type and per pair of types. Where a query is still cut off or fails, rows are missing. The step then ends with a
+the symbol tables. One query of the Dependency API gives at most 2,000 rows, and an answer that Salesforce cut off
+can hold fewer, so the reader of the engine asks per type, and per pair of types where an answer holds half the
+limit or more. Where a query is still cut off or fails, rows are missing, or may be. The step then ends with a
 warning, and the number of pairs it reports is a lower bound. A pair that only the name of a field or of a rule
 gives, because the org did not say which object the id belongs to, is marked "by name" and not counted.
 

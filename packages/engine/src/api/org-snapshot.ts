@@ -1306,12 +1306,12 @@ async function readCrossCheck(
       const said: string[] = [];
       if (left > 0) {
         said.push(
-          `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing.`,
+          `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off or failed. Rows are missing, or may be.`,
         );
       }
       if (reading.unproven > 0) {
         said.push(
-          `${plural(reading.unproven, 'query', 'queries')} at the limit of rows ${reading.unproven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing.`,
+          `${plural(reading.unproven, 'query', 'queries')} near the limit of rows ${reading.unproven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing.`,
         );
       }
       issue(

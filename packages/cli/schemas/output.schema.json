@@ -941,7 +941,7 @@
       "additionalProperties": false,
       "properties": {
         "state": {
-          "description": "`whole`: no query left a row out. `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be missing, because rows were asked for component by component and nothing shows that the org listed every component. A reference that Salesforce knows and the analysis missed can then go unseen. `none`: the org answered no query, and nothing was compared.",
+          "description": "`whole`: no answer shows that a row is missing. `partial`: rows are missing, or may be, because a query was cut off or failed, or because rows were asked for component by component and nothing shows that the org listed every component. A reference that Salesforce knows and the analysis missed can then go unseen. `none`: the org answered no query, and nothing was compared.",
           "enum": ["whole", "partial", "none"]
         },
         "readAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
@@ -952,7 +952,7 @@
         },
         "rows": { "description": "The rows the snapshot holds.", "type": "integer", "minimum": 0 },
         "queriesCutOff": {
-          "description": "The queries that reached the limit of rows and could not be asked in smaller parts.",
+          "description": "The queries that were cut off: near the limit of rows, which is half the rows one query gives at most, with no smaller part to ask for, or shown to be cut off by the other queries.",
           "type": "integer",
           "minimum": 0
         },
@@ -962,7 +962,7 @@
           "minimum": 0
         },
         "queriesNotProven": {
-          "description": "The queries at the limit of rows whose rows were asked for component by component, for more components than one query can name. Every row of a component the org listed was read. A row of a component it did not list would be missing, and nothing shows whether there is one.",
+          "description": "The queries near the limit of rows whose rows were asked for component by component, for more components than one query can name. Every row of a component the org listed was read. A row of a component it did not list would be missing, and nothing shows whether there is one.",
           "type": "integer",
           "minimum": 0
         },

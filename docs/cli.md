@@ -367,17 +367,19 @@ tests.
 Salesforce keeps a list of which component refers to which, the Dependency API. OrgLens does not answer from
 it: it reads less than OrgLens does, and says of no reference where it is. It is a second opinion. Where
 Salesforce reports a reference and the analysis has none, the analysis is wrong, and OrgLens says so. Decision
-records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
-[0045](adr/0045-the-cross-check-of-a-snapshot.md) have the rules.
+records [0034](adr/0034-dependency-api-is-the-cross-check.md), [0045](adr/0045-the-cross-check-of-a-snapshot.md)
+and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
 
 - `orglens snapshot` of an org or a sandbox asks the API after the last chunk is stored, and keeps its rows with
   the snapshot. `--no-cross-check` leaves it unasked. A source of the kind `git` has no cross-check.
 - A snapshot that was interrupted and is continued asks again, and the new reading takes the place of an
   earlier one and of its warning. Continued with `--no-cross-check`, it keeps a reading it already has.
-- One query gives at most 2,000 rows and cannot be continued. Where a query reaches that number, the rows are
-  asked for in parts: per type of the component that refers, per pair of types, and per group of components.
-  A part that is still at the limit, or a query that fails, leaves rows out. The snapshot then has the warning
-  `CROSS_CHECK_PARTIAL`, and the report says that rows are missing.
+- One query gives at most 2,000 rows and cannot be continued, and an answer that Salesforce cut off can hold
+  fewer. So after one query for every row, the rows are always asked for per type of the component that refers,
+  and the answers are held against each other. Where an answer holds 1,000 rows or more, half of what one gives
+  at most, the rows are asked for in parts: per pair of types, and per group of components. A part that is still
+  near the limit, a query that fails, and answers that do not agree leave rows out, or may. The snapshot then has
+  the warning `CROSS_CHECK_PARTIAL`, and the report says that rows are missing, or may be.
 - The groups of components are the components the org listed. Where a type has more of them than one query
   can name, which is 200, nothing shows whether a component the org did not list has a row as well. The
   reading is then `partial` too, and the warning and the report say that rows may be missing.
@@ -419,9 +421,11 @@ records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
   or a custom permission that only its formulas name.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
-Not verified: the command was not run against a real org. The test org is read by a tool of the tests, which
-compares in the same way. How many requests a large org needs was not measured, and the limit of 2,000 is a
-choice without a measurement.
+Not verified: the maintainer took a snapshot of a large org once, with a version that took the query for every
+row as whole where it gave fewer than 2,000 rows. It gave a little less, and no row from a field (record 0069).
+Whether the reading per type is whole on such an org is not verified. The test org is read by a tool of the
+tests, which compares in the same way. How many requests a large org needs was not measured, and the limit of
+2,000 requests is a choice without a measurement.
 
 #### The report of a snapshot
 
@@ -466,7 +470,7 @@ which version of the engine.
 The cross-check of a snapshot of an org comes last:
 
 ```
-Cross-check: the Dependency API of Salesforce reports 136 rows. No query left a row out.
+Cross-check: the Dependency API of Salesforce reports 136 rows. No answer shows that a row is missing.
 61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.
 1 row names a component the org did not list, and is not compared.
 2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.
@@ -485,10 +489,10 @@ Several rows can name the same two components, so there are fewer pairs than row
 first 20, and `--json` has all of them. A snapshot of an org that was taken with `--no-cross-check`, or before
 this version, says that the API was not asked. A snapshot of a repository says nothing.
 
-Where the reading is not whole, the first line says why in the place of "No query left a row out.":
+Where the reading is not whole, the first line says why in the place of "No answer shows that a row is missing.":
 
 ```
-Cross-check: the Dependency API of Salesforce reports 9,214 rows. Rows are missing: 2 queries were cut off at the limit of the API or failed (TIMEOUT). Rows of a component the org did not list may be missing: 1 query at the limit of the API was asked again component by component.
+Cross-check: the Dependency API of Salesforce reports 9,214 rows. Rows are missing, or may be: 2 queries were cut off or failed (TIMEOUT). Rows of a component the org did not list may be missing: 1 query near the limit of the API was asked again component by component.
 ```
 
 The list of the references that only the analysis has then says that their rows can be among those that are
@@ -496,14 +500,14 @@ missing or not compared.
 
 In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it holds:
 
-| Field                            | Meaning                                                                                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `state`                          | `whole`: no query left a row out. `partial`: rows are missing, or may be. `none`: the org answered no query, and nothing was compared.                       |
-| `readAt`, `requests`, `rows`     | When the API was read, with how many requests, those for the versions of flows among them, and how many different rows the snapshot holds.                   |
-| `queriesCutOff`, `queriesFailed` | Queries that reached the limit with no smaller part to ask for, and queries that failed and whose rows no other query gave.                                  |
-| `queriesNotProven`               | Queries at the limit that were asked again per component, for more components than one query names. Rows of a component the org did not list may be missing. |
-| `code`                           | The code of the first failure, such as `INVALID_TYPE`, `TIMEOUT` or `REQUESTS_USED_UP`, or `null`. The last is a code of OrgLens.                            |
-| `comparison`                     | What the comparison found, or `null` if nothing was compared: the API gave nothing, or the snapshot has no analysis with a comparison.                       |
+| Field                            | Meaning                                                                                                                                                        |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`                          | `whole`: no answer shows that a row is missing. `partial`: rows are missing, or may be. `none`: the org answered no query, and nothing was compared.           |
+| `readAt`, `requests`, `rows`     | When the API was read, with how many requests, those for the versions of flows among them, and how many different rows the snapshot holds.                     |
+| `queriesCutOff`, `queriesFailed` | Queries near the limit with no smaller part to ask for or shown to be cut off by the others, and queries that failed and whose rows no other query gave.       |
+| `queriesNotProven`               | Queries near the limit that were asked again per component, for more components than one query names. Rows of a component the org did not list may be missing. |
+| `code`                           | The code of the first failure, such as `INVALID_TYPE`, `TIMEOUT` or `REQUESTS_USED_UP`, or `null`. The last is a code of OrgLens.                              |
+| `comparison`                     | What the comparison found, or `null` if nothing was compared: the API gave nothing, or the snapshot has no analysis with a comparison.                         |
 
 `comparison` holds:
 

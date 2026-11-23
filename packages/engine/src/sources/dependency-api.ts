@@ -5,14 +5,17 @@
  * OrgLens reads the rows as a second opinion on the references it finds itself (decision records 0034 and
  * 0045). They are never the source of an answer.
  *
- * One query gives at most 2,000 rows and cannot be continued. So the rows are asked for in parts where a query
- * reaches that number: per type of the component that refers, then per pair of types, then per group of
- * components that refer, whose ids the caller knows from what the org listed. A standard object as the target
- * cannot be asked for by name, so its rows are asked for with the rest: whatever is of no type that a query
- * named. A part that is still at the limit
- * is cut off: rows are missing, and the reading says so. Where rows were asked for per component, the reading
- * is only as whole as the list of components: it asks for the rows of every other component in one more query
- * where the list is short enough for that, and says so where it is not.
+ * One query gives at most 2,000 rows and cannot be continued, and an answer that Salesforce cut off can hold
+ * fewer: on a large org the query for every row gave a little less than 2,000, and most rows were not among them
+ * (decision record 0069). So an answer is taken as whole only where it holds fewer rows than half the limit, and
+ * the query for every row never stands for the org: the rows are always asked for per type of the component that
+ * refers, and the first answer is held against them. Where an answer is near the limit, the rows are asked for in
+ * parts: per pair of types, then per group of components that refer, whose ids the caller knows from what the org
+ * listed. A standard object as the target cannot be asked for by name, so its rows are asked for with the rest:
+ * whatever is of no type that a query named. A part that is still near the limit is taken as cut off: rows are
+ * missing, and the reading says so. Where rows were asked for per component, the reading is only as whole as the
+ * list of components: it asks for the rows of every other component in one more query where the list is short
+ * enough for that, and says so where it is not.
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. So the versions of the flows are asked for as well: one more object of the Tooling API,
@@ -59,12 +62,16 @@ export interface DependencyReading {
   readonly state: 'whole' | 'partial' | 'none';
   /** Requests that were sent. */
   readonly requests: number;
-  /** Queries that reached the limit of rows and could not be asked in smaller parts. */
+  /**
+   * Queries that were cut off: near the limit of rows with no smaller part to ask for, or shown by other queries.
+   * A query counts as cut off where the parts it was asked in lack a row it gave, and where it held fewer rows
+   * than half the limit and its parts give a row it lacks (decision record 0069).
+   */
   readonly cutOff: number;
   /** Queries that failed and whose rows no other query gave. */
   readonly failed: number;
   /**
-   * Queries at the limit whose rows were asked for per component, for more components than one query can name.
+   * Queries near the limit whose rows were asked for per component, for more components than one query can name.
    * Every row of a component the caller named was read. A row of a component it did not name, because the org
    * did not list it, is missing, and nothing shows whether there is one.
    */
@@ -75,7 +82,11 @@ export interface DependencyReading {
 
 /** The numbers the Dependency API is read with. A test sets them to make things happen that are rare. */
 export interface DependencyLimits extends RequestLimits {
-  /** A query that gives this many rows may have left rows out. Salesforce stops at 2,000. */
+  /**
+   * The rows one answer holds at most. Salesforce stops at 2,000. An answer that holds half as many or more, or
+   * says it does, is near the limit and may have left rows out: an answer that Salesforce cut off can hold fewer
+   * rows than this (decision record 0069).
+   */
   readonly rowsPerQuery: number;
   /** No answer is followed over more pages than this. */
   readonly pages: number;
@@ -116,7 +127,7 @@ export interface DependencyOptions {
   readonly apiVersion?: string | undefined;
   /**
    * The ids of the components of a type that the org listed, where the type is given as the Dependency API
-   * writes it. With them, a part of a type that is at the limit is asked for per group of components: a pair
+   * writes it. With them, a part of a type that is near the limit is asked for per group of components: a pair
    * of types, or the rest of a type.
    */
   readonly idsOfType?: ((type: string) => readonly string[]) | undefined;
@@ -176,11 +187,17 @@ interface Page {
   readonly done?: unknown;
   readonly nextRecordsUrl?: unknown;
   readonly records?: unknown;
+  readonly totalSize?: unknown;
 }
 
 /** What one query gave. */
 interface Asked {
   readonly rows: DependencyRow[];
+  /**
+   * The number of rows the answer says it has (`totalSize`), or 0 where it says none. Should Salesforce count rows
+   * it left out, this is more than `rows` holds (decision record 0069).
+   */
+  readonly total: number;
   /** Why rows of the answer are missing, or `null` if every page came. */
   readonly failure: MetadataRequestError | null;
 }
@@ -237,10 +254,14 @@ export async function readDependencies(
   let code: string | null = null;
   /** The only address an answer may go on at: the same query of the Tooling API, further on. */
   const furtherOn = new RegExp(`^/services/data/v${apiVersion.replaceAll('.', '\\.')}/tooling/query/[A-Za-z0-9_-]+$`);
+  /** The rows that queries after the first one gave, which the first answer is held against. */
+  const later = new Set<string>();
+  let afterFirst = false;
 
   /** Asks one query, follows its answer over its pages, and keeps the rows. */
   const ask = async (where: string): Promise<Asked> => {
     const found: DependencyRow[] = [];
+    let total = 0;
     const soql = where === '' ? BASE : `${BASE} WHERE ${where}`;
     let url: string | null = `/services/data/v${apiVersion}/tooling/query?q=${encodeURIComponent(soql)}`;
     let failure: MetadataRequestError | null = null;
@@ -276,6 +297,8 @@ export async function readDependencies(
             found.push({ from: endOf(record, 'MetadataComponent'), to: endOf(record, 'RefMetadataComponent') });
           }
         }
+        const size = page?.totalSize;
+        if (typeof size === 'number' && Number.isSafeInteger(size)) total = Math.max(total, size);
         const next = text(page?.nextRecordsUrl);
         if (page?.done === true) url = null;
         else if (furtherOn.test(next)) url = next;
@@ -288,7 +311,11 @@ export async function readDependencies(
       if (!(error instanceof MetadataRequestError)) throw error;
       failure = error;
     }
-    for (const row of found) rows.set(identity(row), row);
+    for (const row of found) {
+      const id = identity(row);
+      rows.set(id, row);
+      if (afterFirst) later.add(id);
+    }
     options.onProgress?.(requests, rows.size);
     if (failure === null) {
       answered += 1;
@@ -307,16 +334,20 @@ export async function readDependencies(
         (answered === 0 && refusedAtStart >= limits.refusalsAtStart);
       if (stops) throw new Stopped(failure);
     }
-    return { rows: found, failure };
+    return { rows: found, total, failure };
   };
 
-  const atLimit = (asked: Asked): boolean => asked.rows.length >= limits.rowsPerQuery;
+  /**
+   * Whether an answer may have left rows out: it holds half as many rows as one answer can, or more, or says that
+   * it does. An answer that Salesforce cut off can hold fewer rows than the limit (decision record 0069).
+   */
+  const nearLimit = (asked: Asked): boolean => 2 * Math.max(asked.rows.length, asked.total) >= limits.rowsPerQuery;
   const seen = (pick: (row: DependencyRow) => string): string[] =>
     [...new Set([...rows.values()].map(pick))].filter((type) => TYPE_NAME.test(type));
 
   /**
-   * The rows of one part of a type that is at the limit, per group of the components that refer. A part is a
-   * pair of types, the rest of a type, or the whole type. A group at the limit is asked for in two halves, down
+   * The rows of one part of a type that is near the limit, per group of the components that refer. A part is a
+   * pair of types, the rest of a type, or the whole type. A group near the limit is asked for in two halves, down
    * to one component. `sample`: rows that are known to be of the part.
    */
   const askPerComponent = async (part: string, sample: readonly DependencyRow[], type: string): Promise<void> => {
@@ -338,7 +369,7 @@ export async function readDependencies(
     for (let group = groups.shift(); group !== undefined; group = groups.shift()) {
       const asked = await ask(`${part} AND MetadataComponentId IN (${quoted(group)})`);
       for (const row of asked.rows) came.add(identity(row));
-      if (atLimit(asked)) {
+      if (nearLimit(asked)) {
         if (group.length === 1) {
           cutOff += 1;
           lacking = true;
@@ -366,7 +397,7 @@ export async function readDependencies(
       return;
     }
     const others = await ask(`${part} AND MetadataComponentId NOT IN (${quoted(ids)})`);
-    if (atLimit(others)) cutOff += 1;
+    if (nearLimit(others)) cutOff += 1;
     else if (others.failure !== null) failed += 1;
   };
 
@@ -379,7 +410,7 @@ export async function readDependencies(
     asked.failure?.kind === 'refused' && asked.rows.length === 0 && !(asked.failure.code ?? '').includes('TIMEOUT');
 
   /**
-   * The rows of one type of component, per type of the target where the type alone is at the limit.
+   * The rows of one type of component, per type of the target where the type alone is near the limit.
    *
    * A type of target that cannot be asked for by name is never left out of the rest, so its rows come with the
    * rest. That holds for a standard object, and for a type whose query the org refused as it is written.
@@ -387,7 +418,7 @@ export async function readDependencies(
   const askType = async (type: string): Promise<void> => {
     const whole = `MetadataComponentType = '${type}'`;
     const ofType = await ask(whole);
-    if (!atLimit(ofType) && ofType.failure === null) return;
+    if (!nearLimit(ofType) && ofType.failure === null) return;
     // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
     // A type whose query failed is asked for in the same parts: a part can be answered where the whole is not.
     /** The types of target that a query of their own was asked for and that the rest leaves out. */
@@ -403,7 +434,7 @@ export async function readDependencies(
       for (const target of targets) {
         const pair = `${whole} AND RefMetadataComponentType = '${target}'`;
         const asked = await ask(pair);
-        if (atLimit(asked)) {
+        if (nearLimit(asked)) {
           done.add(target);
           await askPerComponent(pair, asked.rows, type);
         } else if (asked.failure === null) done.add(target);
@@ -423,7 +454,7 @@ export async function readDependencies(
       // the rows to a standard object, and nothing else shows that the org puts them into its answer.
       const known = ofType.rows.filter((row) => !done.has(row.to.type));
       targets = left();
-      if (!atLimit(others)) {
+      if (!nearLimit(others)) {
         if (others.failure === null) {
           const came = new Set(others.rows.map(identity));
           // A row that is of the rest and did not come with it: the org does not read the list of types the
@@ -435,7 +466,7 @@ export async function readDependencies(
         } else failed += 1;
         return;
       }
-      // At the limit with no type left to ask for by name, or after the last round: the rest is asked for per
+      // Near the limit with no type left to ask for by name, or after the last round: the rest is asked for per
       // component, which leaves no type out.
       if (targets.length === 0 || round === limits.rounds - 1) {
         await askPerComponent(rest, [...others.rows, ...known], type);
@@ -447,32 +478,42 @@ export async function readDependencies(
   try {
     try {
       const all = await ask('');
-      // Whether the first query gave every row of the org. Then no later query can add one.
-      const whole = all.failure === null && !atLimit(all);
-      if (!whole) {
-        // The types that are known to refer and the ones the rows show, then whatever is of another type.
-        const done = new Set<string>();
-        let types = [...new Set([...REFERRING_TYPES, ...seen((row) => row.from.type)])].sort();
-        for (let round = 0; round < limits.rounds; round += 1) {
-          for (const type of types) {
-            done.add(type);
-            await askType(type);
-          }
-          const others = await ask(`MetadataComponentType NOT IN (${quoted(done)})`);
-          types = seen((row) => row.from.type)
-            .filter((type) => !done.has(type))
-            .sort();
-          if (!atLimit(others)) {
-            // Without this answer, a type that no row shows stays unseen.
-            if (others.failure !== null) failed += 1;
-            break;
-          }
-          if (types.length === 0 || round === limits.rounds - 1) {
-            cutOff += 1;
-            break;
-          }
+      afterFirst = true;
+      // The first answer never stands for the org, also where it holds few rows: an answer that Salesforce cut
+      // off can hold fewer rows than the limit, and nothing in it shows that (decision record 0069). So the rows
+      // are asked for per type of the component that refers: the types that are known to refer and the ones the
+      // rows show, then whatever is of another type.
+      const done = new Set<string>();
+      let types = [...new Set([...REFERRING_TYPES, ...seen((row) => row.from.type)])].sort();
+      for (let round = 0; round < limits.rounds; round += 1) {
+        for (const type of types) {
+          done.add(type);
+          await askType(type);
+        }
+        const others = await ask(`MetadataComponentType NOT IN (${quoted(done)})`);
+        types = seen((row) => row.from.type)
+          .filter((type) => !done.has(type))
+          .sort();
+        if (!nearLimit(others)) {
+          // Without this answer, a type that no row shows stays unseen.
+          if (others.failure !== null) failed += 1;
+          break;
+        }
+        if (types.length === 0 || round === limits.rounds - 1) {
+          cutOff += 1;
+          break;
         }
       }
+      // The first answer and the later ones have to agree. A row it gave that no later query gave again: one of
+      // them left it out without showing it, or the org does not read a condition the way it is meant here. Where
+      // rows are missing already, the query that lacks it is counted there.
+      const first = new Set(all.rows.map(identity));
+      const lacked = cutOff + failed + unproven === 0 && [...first].some((id) => !later.has(id));
+      // A row the first answer lacks, where it was not near the limit: it was cut off all the same. Then so can be
+      // any answer below the limit on this org, also one the reading took as whole.
+      const cutShort = all.failure === null && !nearLimit(all) && [...later].some((id) => !first.has(id));
+      // Either way it is the first query that is counted, and once.
+      if (lacked || cutShort) cutOff += 1;
     } catch (error) {
       if (!(error instanceof Stopped)) throw error;
       // What stopped the reading left the rows of every query that was not asked out.

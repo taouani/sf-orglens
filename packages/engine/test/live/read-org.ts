@@ -24,17 +24,18 @@
  * - the files of Phase 2 of the fixture project: which of the pairs its
  *   answer key has for them the Dependency API reports, by the ids the org
  *   listed, and which version of each flow the org handed out,
- * - the rows read twice more, with one query and then with every answer
- *   cut off at a few rows, to see that the parts the engine asks for then
- *   give every row, and that the org answers each way of asking. Of a
+ * - the rows read twice more, as the snapshot reads them and then with
+ *   every answer cut off at a few rows, to see that the parts the engine
+ *   asks for then give every row, and that the org answers each way of
+ *   asking. Of a
  *   request that failed, the condition of its query is shown: the names of
  *   the types, and the number of ids in the place of the ids.
  *
  * The step fails when the snapshot does not end, when the fixture project
  * is not whole in it, when the Dependency API gave nothing to compare, when
  * the analysis missed a reference that Salesforce reports, when the parts
- * give a row that one query just before did not give, or when a reading
- * in parts that the engine calls whole lacks a row of that query. A real
+ * give a row that the reading just before did not give, or when a reading
+ * in parts that the engine calls whole lacks a row of that reading. A real
  * org lists components it does not hand out, so a snapshot that is partial
  * for that reason is a warning.
  *
@@ -86,8 +87,9 @@ const PAIRS_SHOWN = 60;
 const CONDITIONS_SHOWN = 40;
 /**
  * The rows of the Dependency API are read a second time with every answer cut off at this many rows. The test
- * org holds fewer rows than the 2,000 a query really gives, so the parts the engine asks for at that limit are
- * never asked for there otherwise.
+ * org holds fewer rows than half the 2,000 a query really gives, so the parts the engine asks for near that limit
+ * are never asked for there otherwise. The engine is told twice this number: it takes an answer as near the limit
+ * from half of it on (decision record 0069), so it asks in parts where an answer was cut off, and only there.
  */
 const PRETENDED_LIMIT = 30;
 /** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
@@ -1082,8 +1084,8 @@ export function crossCheckLines(
   log.say(
     `Rows: ${String(crossCheck.rows)}, read with ${plural(crossCheck.requests, 'request', 'requests')}. ` +
       (crossCheck.state === 'whole'
-        ? 'No query left a row out.'
-        : `Rows are missing: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off at the limit, ${String(crossCheck.queriesFailed)} failed (${log.code(crossCheck.code) ?? 'a code that is not shown'}).`),
+        ? 'No answer shows that a row is missing.'
+        : `Rows are missing, or may be: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off, ${String(crossCheck.queriesFailed)} failed (${log.code(crossCheck.code) ?? 'a code that is not shown'}).`),
   );
   for (const line of flowVersionLines(log, versions)) log.say(line);
   const { comparison } = crossCheck;
@@ -1271,13 +1273,14 @@ export function rowsByTypes(log: PublicLog, rows: readonly DependencyRow[]): str
 }
 
 /**
- * Reads the rows of the Dependency API twice more: with one query, as the snapshot did, and then through a
- * session that cuts every answer off at a few rows. So the engine has to ask per type, per pair of types and
- * per component, and the org has to answer each of those queries. The two readings follow each other at once,
- * so that the org has no time to change between them: the rows of the snapshot are minutes old.
+ * Reads the rows of the Dependency API twice more: as the snapshot did, with the query for every row and one for
+ * each type of component that refers (decision record 0069), and then through a session that cuts every answer
+ * off at a few rows. So the engine has to ask per pair of types and per component as well, and the org has to
+ * answer each of those queries. The two readings follow each other at once, so that the org has no time to change
+ * between them: the rows of the snapshot are minutes old.
  *
- * Returns false if the reading in parts gives a row the one query did not give, or if the engine calls it whole
- * and it lacks one.
+ * Returns false if the reading in parts gives a row the first reading did not give, or if the engine calls it
+ * whole and it lacks one.
  */
 export async function readInParts(
   log: PublicLog,
@@ -1290,7 +1293,9 @@ export async function readInParts(
   const version = apiVersion === null ? {} : { apiVersion };
   const one = await readDependencies(session, version);
   if (one.state !== 'whole') {
-    log.say('One query did not give every row this time, so reading them in parts was not tried.');
+    log.say(
+      'The reading as the snapshot does it did not give every row this time, so reading them in parts was not tried.',
+    );
     return true;
   }
   if (one.rows.length < limit) {
@@ -1313,7 +1318,7 @@ export async function readInParts(
     cutOffAt(session, limit, (url, error) => {
       failures.push({ url, error });
     }),
-    { ...version, limits: { rowsPerQuery: limit }, idsOfType: (type) => ids.get(type) ?? [] },
+    { ...version, limits: { rowsPerQuery: 2 * limit }, idsOfType: (type) => ids.get(type) ?? [] },
   );
   const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
@@ -1333,14 +1338,14 @@ export async function readInParts(
   }
   log.say(
     lacking === 0 && more === 0
-      ? 'The parts give the same rows as one query just before.'
-      : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
+      ? 'The parts give the same rows as the reading just before.'
+      : `The parts lack ${plural(lacking, 'row', 'rows')} of the reading just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
   );
   if (lacking > 0)
     log.say(`The rows the parts lack, by the types of their two ends: ${rowsByTypes(log, lackingRows)}.`);
   if (more > 0) log.say(`The rows only the parts give, by the types of their two ends: ${rowsByTypes(log, moreRows)}.`);
   if (again.failed > 0) {
-    log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
+    log.say('::warning::The org refused a query the engine asks when a query is near the limit of rows.');
   }
   // A reading that says that rows are missing may lack rows. One that says it is whole may not.
   return again.state === 'whole' ? lacking === 0 && more === 0 : more === 0;
@@ -1486,7 +1491,7 @@ export async function readOrg(
     } else if (!sameInParts) {
       log.say('');
       log.fail([
-        'Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
+        'Reading the Dependency API in parts gave other rows than the reading just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
       ]);
     } else if (taken?.status !== 'complete') {
       // A real org lists components it does not hand out. The step says so and does not fail for it: it fails

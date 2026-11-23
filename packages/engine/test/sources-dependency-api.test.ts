@@ -25,6 +25,14 @@ const source: OrgSource = {
   excludeTypes: [],
 };
 const FAST: Partial<DependencyLimits> = { requestMs: 2_000, repeats: 1, repeatAfterMs: 10 };
+/** The mock org cuts an answer off at this many rows, in most tests here. */
+const CUT = 5;
+/**
+ * The limit those tests give the reader. They are about the parts a reading asks for, not about where the limit
+ * is. The reader takes an answer that holds half its limit as near it (decision record 0069), so with twice the
+ * cut of the mock org an answer is near the limit exactly where the mock org cut it off.
+ */
+const LIMIT = 2 * CUT;
 
 let mock: MockOrg;
 
@@ -126,7 +134,7 @@ afterEach(async () => {
 });
 
 describe('reading the Dependency API', () => {
-  it('reads the rows of a small org with one query', async () => {
+  it('reads the rows of a small org per type, and holds them against the query for every row', async () => {
     mock.dependencies = mockDependencies([
       dependencyRow(null, ['CustomField', 'Invoice__c.Total__c'], ['CustomField', 'Invoice__c.Amount__c']),
       dependencyRow(null, ['ValidationRule', 'Invoice__c.Amount_Positive'], ['CustomField', 'Invoice__c.Amount__c']),
@@ -136,7 +144,7 @@ describe('reading the Dependency API', () => {
       { ...dependencyRow(null, ['ApexClass', 'A'], ['ApexClass', 'B']), RefMetadataComponentNamespace: 'pkg' },
     ]);
     const reading = await read();
-    expect(reading).toMatchObject({ state: 'whole', requests: 1, cutOff: 0, failed: 0, code: null });
+    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
     expect(pairs(reading)).toEqual([
       'ApexClass A > ApexClass B',
       'ApexClass InvoiceService > CustomObject Invoice',
@@ -155,7 +163,99 @@ describe('reading the Dependency API', () => {
       id: 'Account',
       namespace: null,
     });
-    expect(mock.asked()).toEqual(['GET /services/data/v66.0/tooling/query']);
+    // The query for every row, one for each of the 17 types that are known to refer, and one for the rest. The
+    // first answer does not stand for the org, however few rows it holds (decision record 0069).
+    const where = mock.dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
+    expect(where[0]).toBe('');
+    expect(where.filter((one) => /^MetadataComponentType = '\w+'$/.test(one))).toHaveLength(17);
+    expect(where.at(-1)).toMatch(/^MetadataComponentType NOT IN \(/);
+    expect(where).toHaveLength(19);
+    expect(reading.requests).toBe(19);
+    expect(new Set(mock.asked())).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
+  });
+
+  it('does not take an answer as whole that holds fewer rows than the limit and was cut off', async () => {
+    // The org cuts an answer off at 10 rows and then leaves out the rows it never hands out, here those of a
+    // report. The answer for every row holds 8 rows, fewer than the limit, and lacks the rows of the fields: what
+    // a large org did, which the reading took as whole.
+    const rows = [
+      ...rowsOf('Report', 'CustomField', 2),
+      ...rowsOf('Layout', 'CustomField', 4),
+      ...rowsOf('ApexClass', 'CustomField', 4),
+      ...rowsOf('CustomField', 'CustomField', 3),
+    ];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 10;
+    dependencies.hidden = (row) => row['MetadataComponentType'] === 'Report';
+    mock.dependencies = dependencies;
+    const reading = await read({ limits: { rowsPerQuery: 10 } });
+    expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
+    expect(pairs(reading)).toEqual(pairsOf(rows.filter((row) => row['MetadataComponentType'] !== 'Report')));
+    const first = JSON.parse(dependencies.answer(dependencies.queries[0] ?? '').body) as {
+      records: MockDependencyRow[];
+    };
+    expect(dependencies.queries[0]).not.toContain(' WHERE ');
+    expect(first.records).toHaveLength(8);
+    expect(first.records.some((row) => row['MetadataComponentType'] === 'CustomField')).toBe(false);
+  });
+
+  it('says that rows may be missing where an answer below half the limit was cut off', async () => {
+    // Most of what the org cut the answer for every row off with is left out of it: it holds 2 rows, fewer than
+    // half the limit. The queries per type give rows it lacks, so it was cut off, and an answer below the limit
+    // can be cut off on this org. No answer the reading took as whole is then proven so.
+    const rows = [
+      ...rowsOf('Report', 'CustomField', 8),
+      ...rowsOf('ApexClass', 'CustomField', 4),
+      ...rowsOf('CustomField', 'CustomField', 4),
+    ];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 10;
+    dependencies.hidden = (row) => row['MetadataComponentType'] === 'Report';
+    mock.dependencies = dependencies;
+    const reading = await read({ limits: { rowsPerQuery: 10 } });
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    expect(reading.rows).toHaveLength(8);
+
+    // The same where the answer for every row gives a row that no query per type gives again.
+    mock.dependencies = mockDependencies(rowsOf('ApexClass', 'CustomField', 4));
+    const answer = mock.dependencies.answer.bind(mock.dependencies);
+    mock.dependencies.answer = (soql, metadata) => {
+      const answered = answer(soql, metadata);
+      if (!soql.includes(' WHERE ')) return answered;
+      const body = JSON.parse(answered.body) as { records: MockDependencyRow[] };
+      const records = body.records.filter((row) => row['MetadataComponentName'] !== 'ApexClass_0');
+      return {
+        status: 200,
+        body: JSON.stringify({ ...body, records, size: records.length, totalSize: records.length }),
+      };
+    };
+    const lacking = await read({ limits: { rowsPerQuery: 10 } });
+    expect(lacking).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    expect(lacking.rows).toHaveLength(4);
+  });
+
+  it('takes an answer that says it has more rows than it gave as near the limit', async () => {
+    // Of the rows of the classes, the org cuts the answer off with 8 it then leaves out: the answer holds 2 rows.
+    // Where it says nothing of the 8, the reading cannot see them, and takes the answer as whole: an answer that
+    // lost more than half its rows after it was cut off looks like any other (decision record 0069).
+    const hidden = Array.from({ length: 8 }, (_, at) =>
+      dependencyRow(null, ['ApexClass', `Hidden_${String(at)}`], ['Report', `Report_${String(at)}`]),
+    );
+    const rows = [...hidden, ...rowsOf('ApexClass', 'CustomField', 4)];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 10;
+    dependencies.hidden = (row) => row['RefMetadataComponentType'] === 'Report';
+    mock.dependencies = dependencies;
+    const ids = idsIn(rows, 'ApexClass');
+    const blind = await read({ limits: { rowsPerQuery: 10 }, idsOfType: () => ids });
+    expect(blind).toMatchObject({ state: 'whole', cutOff: 0, failed: 0 });
+    expect(blind.rows).toHaveLength(2);
+
+    // Where its total counts them, the answer is near the limit, and its parts give every row.
+    dependencies.countsHidden = true;
+    const counted = await read({ limits: { rowsPerQuery: 10 }, idsOfType: () => ids });
+    expect(counted).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
+    expect(pairs(counted)).toEqual(pairsOf(rows.slice(8)));
   });
 
   it('gives the rows in the same order whatever order the org gives them in', async () => {
@@ -179,8 +279,8 @@ describe('reading the Dependency API', () => {
       ...rowsOf('Odd_Thing', 'CustomField', 1),
     ];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    mock.dependencies.limit = CUT;
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
     const asked = mock.dependencies.queries.map((soql) => soql.slice(soql.indexOf(' FROM ')));
@@ -199,14 +299,14 @@ describe('reading the Dependency API', () => {
     const rows = ['Aa', 'Bb', 'Cc', 'Dd'].flatMap((type) => rowsOf(type, 'CustomField', 3));
     mock.dependencies = mockDependencies(rows);
     mock.dependencies.limit = 3;
-    const reading = await read({ limits: { rowsPerQuery: 3, rounds: 6 } });
+    const reading = await read({ limits: { rowsPerQuery: 6, rounds: 6 } });
     // A type alone is at the limit too, so it is asked per type of target, and per component, of which no id
     // is known here.
     expect(reading.state).toBe('partial');
     expect(pairs(reading)).toEqual(pairsOf(rows));
     // With too few rounds, a type stays unseen and the reading says that rows are missing.
     mock.dependencies.queries.length = 0;
-    const short = await read({ limits: { rowsPerQuery: 3, rounds: 2 } });
+    const short = await read({ limits: { rowsPerQuery: 6, rounds: 2 } });
     expect(short.state).toBe('partial');
     expect(short.rows.length).toBeLessThan(rows.length);
   });
@@ -219,8 +319,8 @@ describe('reading the Dependency API', () => {
       ...rowsOf('CustomField', 'CustomField', 2),
     ];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    mock.dependencies.limit = CUT;
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0 });
     expect(pairs(reading)).toEqual(pairsOf(rows));
     const where = mock.dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
@@ -242,9 +342,9 @@ describe('reading the Dependency API', () => {
     expect(standard.every((row) => row['RefMetadataComponentType'] === 'StandardEntity')).toBe(true);
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...standard, ...rowsOf('CustomField', 'CustomField', 2)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
     expect(dependencies.queries.filter((soql) => soql.includes('StandardEntity'))).toEqual([]);
@@ -278,7 +378,7 @@ describe('reading the Dependency API', () => {
     // Salesforce puts them in, and the rest is the only query that asks for them.
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomObject', 3)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     const answer = dependencies.answer.bind(dependencies);
     dependencies.answer = (soql) => {
@@ -288,7 +388,7 @@ describe('reading the Dependency API', () => {
       const records = body.records.filter((row) => row['RefMetadataComponentType'] !== 'StandardEntity');
       return { status: 200, body: JSON.stringify({ ...body, records, size: records.length }) };
     };
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     // The query for all classes showed one row to a standard object before it was cut off, and the rest did
     // not bring it again.
     expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0 });
@@ -299,10 +399,10 @@ describe('reading the Dependency API', () => {
     // 3 classes that refer to a field, and 12 that each refer to one standard object.
     const rows = [...rowsOf('ApexClass', 'CustomField', 3), ...rowsOf('ApexClass', 'CustomObject', 12)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     const ids = idsIn(rows, 'ApexClass');
-    const reading = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 16 }, idsOfType: () => ids });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT, idsPerQuery: 16 }, idsOfType: () => ids });
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
     expect(dependencies.queries.filter((soql) => soql.includes('StandardEntity'))).toEqual([]);
@@ -315,16 +415,19 @@ describe('reading the Dependency API', () => {
     expect(where.filter((one) => one.startsWith(`${rest} AND MetadataComponentId NOT IN (`))).toHaveLength(1);
 
     // Without the ids of the classes, the rest cannot be asked for in smaller parts, and the reading says so.
-    const blind = await read({ limits: { rowsPerQuery: 5 } });
+    const blind = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(blind).toMatchObject({ state: 'partial', cutOff: 1, failed: 0 });
 
     // Where every row the type shows is to a standard object, no type is left out of the rest: the rest is the
     // query for the whole type, which is not asked a second time, and its rows are asked for per class.
     const only = rowsOf('ApexClass', 'CustomObject', 12);
     const alone = mockDependencies(only);
-    alone.limit = 5;
+    alone.limit = CUT;
     mock.dependencies = alone;
-    const all = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 16 }, idsOfType: () => idsIn(only, 'ApexClass') });
+    const all = await read({
+      limits: { rowsPerQuery: LIMIT, idsPerQuery: 16 },
+      idsOfType: () => idsIn(only, 'ApexClass'),
+    });
     expect(all).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
     expect(pairs(all)).toEqual(pairsOf(only));
     const asked = alone.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
@@ -338,11 +441,11 @@ describe('reading the Dependency API', () => {
   it('leaves the rows of a type of target that the org refuses by name to the rest', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomLabel', 3)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     dependencies.refuse = (soql) =>
       soql.includes("RefMetadataComponentType = 'CustomLabel'") ? 'INVALID_TYPE_FOR_OPERATION' : undefined;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     // The rest gave the rows of the type that got no answer, so nothing is missing.
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
@@ -354,11 +457,11 @@ describe('reading the Dependency API', () => {
     // left to name, and is asked for per group of classes.
     const many = [...rowsOf('ApexClass', 'CustomField', 3), ...rowsOf('ApexClass', 'CustomLabel', 12)];
     const large = mockDependencies(many);
-    large.limit = 5;
+    large.limit = CUT;
     large.refuse = dependencies.refuse;
     mock.dependencies = large;
     const perClass = await read({
-      limits: { rowsPerQuery: 5, idsPerQuery: 16 },
+      limits: { rowsPerQuery: LIMIT, idsPerQuery: 16 },
       idsOfType: () => idsIn(many, 'ApexClass'),
     });
     expect(perClass).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
@@ -368,13 +471,13 @@ describe('reading the Dependency API', () => {
   it('asks for the whole type per component when the org refuses the list of types of the rest', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomObject', 3)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     // The test org has not shown that it answers a list of types of the target. An org that does not:
     dependencies.refuse = (soql) =>
       soql.includes('RefMetadataComponentType NOT IN') ? 'INVALID_TYPE_FOR_OPERATION' : undefined;
     const ids = idsIn(rows, 'ApexClass');
-    const reading = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 16 }, idsOfType: () => ids });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT, idsPerQuery: 16 }, idsOfType: () => ids });
     // The conditions on the id of a component need no list of types, and give every row of the classes.
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
     expect(pairs(reading)).toEqual(pairsOf(rows));
@@ -385,7 +488,7 @@ describe('reading the Dependency API', () => {
     ).toBe(true);
 
     // Without the ids of the classes there is no other way to ask, and the reading says that rows are missing.
-    const blind = await read({ limits: { rowsPerQuery: 5 } });
+    const blind = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(blind).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, code: 'INVALID_TYPE_FOR_OPERATION' });
     expect(blind.rows.length).toBeLessThan(rows.length);
   });
@@ -393,11 +496,11 @@ describe('reading the Dependency API', () => {
   it('does not leave the rows of a type to the rest when its query took too long or broke off', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('ApexClass', 'CustomLabel', 3)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     dependencies.refuse = (soql) =>
       soql.includes("RefMetadataComponentType = 'CustomLabel'") ? 'QUERY_TIMEOUT' : undefined;
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     // A rest with these rows in it would take longer still. The type is counted, and the rest leaves it out.
     expect(reading).toMatchObject({ state: 'partial', cutOff: 0, failed: 1, code: 'QUERY_TIMEOUT' });
     expect(dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '')).toContain(
@@ -409,10 +512,10 @@ describe('reading the Dependency API', () => {
     // Three types of target with more rows each than a query gives: every rest shows one more type.
     const rows = ['CustomField', 'CustomLabel', 'CustomPermission'].flatMap((to) => rowsOf('ApexClass', to, 6));
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     const ids = idsIn(rows, 'ApexClass');
-    const reading = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 32, rounds: 1 }, idsOfType: () => ids });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT, idsPerQuery: 32, rounds: 1 }, idsOfType: () => ids });
     expect(reading).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
     expect(pairs(reading)).toEqual(pairsOf(rows));
   });
@@ -421,10 +524,10 @@ describe('reading the Dependency API', () => {
     // 12 classes with 2 rows each, and one class with 4.
     const rows = [...rowsOf('ApexClass', 'CustomField', 12, 2), ...rowsOf('ApexClass', 'CustomObject', 1, 4)];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
+    mock.dependencies.limit = CUT;
     const ids = idsIn(rows, 'ApexClass');
     const reading = await read({
-      limits: { rowsPerQuery: 5, idsPerQuery: 4 },
+      limits: { rowsPerQuery: LIMIT, idsPerQuery: 4 },
       idsOfType: (type) => (type === 'ApexClass' ? ids : []),
     });
     // Every row is there. The classes are more than one query names, so no query can ask for the rows of a class
@@ -444,7 +547,7 @@ describe('reading the Dependency API', () => {
     // here, and the reading is whole.
     mock.dependencies.queries.length = 0;
     const proven = await read({
-      limits: { rowsPerQuery: 5, idsPerQuery: 16 },
+      limits: { rowsPerQuery: LIMIT, idsPerQuery: 16 },
       idsOfType: (type) => (type === 'ApexClass' ? ids : []),
     });
     expect(proven).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
@@ -456,19 +559,19 @@ describe('reading the Dependency API', () => {
     // 12 classes with one row each. The listing knows 10 of them: two were made after it, say.
     const rows = rowsOf('ApexClass', 'CustomField', 12);
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
+    mock.dependencies.limit = CUT;
     const ids = idsIn(rows, 'ApexClass');
-    const most = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ids.slice(0, 10) });
+    const most = await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => ids.slice(0, 10) });
     expect(most).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0 });
     expect(pairs(most)).toEqual(pairsOf(rows));
 
     // The listing knows 6. The other 6 are as many as a query gives: the query for them is cut off.
-    const half = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ids.slice(0, 6) });
+    const half = await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => ids.slice(0, 6) });
     expect(half).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
     expect(half.rows.length).toBeLessThan(rows.length);
 
     // More ids than one query names: the 6 other classes cannot be asked for, and the reading says so.
-    const unknown = await read({ limits: { rowsPerQuery: 5, idsPerQuery: 3 }, idsOfType: () => ids.slice(0, 6) });
+    const unknown = await read({ limits: { rowsPerQuery: LIMIT, idsPerQuery: 3 }, idsOfType: () => ids.slice(0, 6) });
     expect(unknown).toMatchObject({ state: 'partial', cutOff: 0, failed: 0, unproven: 1 });
   });
 
@@ -476,13 +579,13 @@ describe('reading the Dependency API', () => {
     // An org that answers a condition on the id with no row: because it reads the id otherwise, say.
     const rows = rowsOf('ApexClass', 'CustomField', 12);
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     mock.intercept = (request) =>
       (request.query.get('q') ?? '').includes('MetadataComponentId IN')
         ? { status: 200, body: JSON.stringify({ done: true, records: [] }) }
         : undefined;
-    const reading = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => idsIn(rows, 'ApexClass') });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => idsIn(rows, 'ApexClass') });
     expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
     // The query for every other class is not asked: what the groups gave says nothing.
     expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN'))).toBe(false);
@@ -491,9 +594,9 @@ describe('reading the Dependency API', () => {
   it('says that rows are missing when one component alone is at the limit', async () => {
     const rows = rowsOf('ApexClass', 'CustomField', 2, 7);
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
+    mock.dependencies.limit = CUT;
     const ids = idsIn(rows, 'ApexClass');
-    const reading = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ids });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => ids });
     expect(reading).toMatchObject({ state: 'partial', cutOff: 2, failed: 0 });
     expect(reading.rows).toHaveLength(10);
   });
@@ -501,25 +604,25 @@ describe('reading the Dependency API', () => {
   it('does not ask per component when the ids it has are not the ones of the rows', async () => {
     const rows = rowsOf('ApexClass', 'CustomField', 12);
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
+    mock.dependencies.limit = CUT;
     // No id at all.
-    expect(await read({ limits: { rowsPerQuery: 5 } })).toMatchObject({ state: 'partial', cutOff: 1 });
+    expect(await read({ limits: { rowsPerQuery: LIMIT } })).toMatchObject({ state: 'partial', cutOff: 1 });
     // Ids of something else: asking per id would give nothing, and look complete.
     mock.dependencies.queries.length = 0;
-    const other = await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ['0Axxx0000000001AAA'] });
+    const other = await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => ['0Axxx0000000001AAA'] });
     expect(other).toMatchObject({ state: 'partial', cutOff: 1 });
     expect(mock.dependencies.queries.some((soql) => soql.includes('MetadataComponentId IN'))).toBe(false);
     // An id that is none never stands in a query.
     mock.dependencies.queries.length = 0;
-    await read({ limits: { rowsPerQuery: 5 }, idsOfType: () => ["x' OR Id != '", ...idsIn(rows, 'ApexClass')] });
+    await read({ limits: { rowsPerQuery: LIMIT }, idsOfType: () => ["x' OR Id != '", ...idsIn(rows, 'ApexClass')] });
     expect(mock.dependencies.queries.some((soql) => soql.includes(' OR '))).toBe(false);
   });
 
   it('queries one object, and only reads', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 12, 2), ...rowsOf('CustomField', 'CustomField', 7)];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
-    await read({ limits: { rowsPerQuery: 5, idsPerQuery: 8 }, idsOfType: (type) => idsIn(rows, type) });
+    mock.dependencies.limit = CUT;
+    await read({ limits: { rowsPerQuery: LIMIT, idsPerQuery: 8 }, idsOfType: (type) => idsIn(rows, type) });
     expect(mock.dependencies.queries.length).toBeGreaterThan(20);
     for (const soql of mock.dependencies.queries) {
       expect(soql).toMatch(new RegExp(`^SELECT [A-Za-z, ]+ FROM ${DEPENDENCY_OBJECT}( WHERE |$)`));
@@ -552,12 +655,12 @@ describe('reading the Dependency API', () => {
   it('asks for a type whose query is refused in its parts, and counts what is refused there', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('CustomField', 'CustomField', 3)];
     const dependencies = mockDependencies(rows);
-    dependencies.limit = 5;
+    dependencies.limit = CUT;
     mock.dependencies = dependencies;
     // The org refuses the query for all rows of the type, as it does when that query takes it too long.
     dependencies.refuse = (soql) =>
       soql.endsWith("MetadataComponentType = 'ApexClass'") ? 'QUERY_TIMEOUT' : undefined;
-    const inParts = await read({ limits: { rowsPerQuery: 5 } });
+    const inParts = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(inParts).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, code: null });
     expect(pairs(inParts)).toEqual(pairsOf(rows));
     expect(dependencies.queries).toContain(
@@ -570,7 +673,7 @@ describe('reading the Dependency API', () => {
     dependencies.queries.length = 0;
     dependencies.refuse = (soql) =>
       soql.includes("MetadataComponentType = 'ApexClass'") ? 'UNKNOWN_EXCEPTION' : undefined;
-    const refused = await read({ limits: { rowsPerQuery: 5 } });
+    const refused = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(refused).toMatchObject({ state: 'partial', cutOff: 0, failed: 1, code: 'UNKNOWN_EXCEPTION' });
     expect(dependencies.queries.filter((soql) => soql.endsWith("MetadataComponentType = 'ApexClass'"))).toHaveLength(1);
     expect(refused.rows.filter((row) => row.from.type === 'CustomField')).toHaveLength(3);
@@ -581,7 +684,7 @@ describe('reading the Dependency API', () => {
       !soql.includes(' WHERE ') || soql.includes("MetadataComponentType = 'ApexClass'")
         ? 'UNKNOWN_EXCEPTION'
         : undefined;
-    const blind = await read({ limits: { rowsPerQuery: 5 } });
+    const blind = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(blind).toMatchObject({ state: 'partial', failed: 1 });
     expect(dependencies.queries.filter((soql) => soql.includes("MetadataComponentType = 'ApexClass'"))).toHaveLength(1);
   });
@@ -589,7 +692,7 @@ describe('reading the Dependency API', () => {
   it('stops without failing when the org no longer accepts the session', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('CustomField', 'CustomField', 3)];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
+    mock.dependencies.limit = CUT;
     let answered = 0;
     mock.intercept = (request) => {
       if (!request.path.endsWith('/tooling/query')) return undefined;
@@ -597,7 +700,7 @@ describe('reading the Dependency API', () => {
       if (answered === 3) mock.sessions.clear();
       return undefined;
     };
-    const reading = await read({ limits: { rowsPerQuery: 5 } });
+    const reading = await read({ limits: { rowsPerQuery: LIMIT } });
     expect(reading).toMatchObject({ state: 'partial', code: 'INVALID_SESSION_ID' });
     expect(reading.failed).toBeGreaterThan(0);
     // No query after the one that was refused for the session.
@@ -642,8 +745,8 @@ describe('reading the Dependency API', () => {
   it('stops at its limit of requests, and says that rows are missing', async () => {
     const rows = [...rowsOf('ApexClass', 'CustomField', 12, 2), ...rowsOf('CustomField', 'CustomField', 7)];
     mock.dependencies = mockDependencies(rows);
-    mock.dependencies.limit = 5;
-    const reading = await read({ limits: { rowsPerQuery: 5, requestsInAll: 4 } });
+    mock.dependencies.limit = CUT;
+    const reading = await read({ limits: { rowsPerQuery: LIMIT, requestsInAll: 4 } });
     expect(reading).toMatchObject({ state: 'partial', requests: 4, code: 'REQUESTS_USED_UP' });
     expect(reading.failed).toBeGreaterThan(0);
     expect(reading.rows.length).toBeLessThan(rows.length);
@@ -664,8 +767,12 @@ describe('reading the Dependency API', () => {
       return undefined;
     };
     const reading = await read();
-    expect(reading).toMatchObject({ state: 'whole', requests: 2 });
+    expect(reading).toMatchObject({ state: 'whole' });
     expect(pairs(reading)).toEqual(pairsOf(rows));
+    // Every query was answered in two pages, and the second page of each was asked for.
+    const firstPages = mock.requests.filter((request) => request.path.endsWith('/tooling/query')).length;
+    expect(firstPages).toBeGreaterThan(1);
+    expect(reading.requests).toBe(2 * firstPages);
 
     // An answer that says neither that it is done nor where it goes on.
     mock.intercept = (request) =>

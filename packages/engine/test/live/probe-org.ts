@@ -510,7 +510,7 @@ async function probeDependencies(
   log.say(
     `Different rows in all: ${String(rows.size)}.` +
       (cutOff > 0
-        ? ` ${plural(cutOff, 'query was', 'queries were')} cut off at the limit or failed${code === null ? '' : ` (${code})`}, so rows are missing.`
+        ? ` ${plural(cutOff, 'query was', 'queries were')} cut off or failed${code === null ? '' : ` (${code})`}, so rows are missing, or may be.`
         : ' No query was cut off or failed in a way that leaves a row out.'),
   );
 

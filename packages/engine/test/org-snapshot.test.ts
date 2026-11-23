@@ -349,15 +349,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
-      expect(events.slice(-5)).toEqual([
+      const fromPlan = events.slice(events.findIndex((event) => event.step === 'planned'));
+      expect(fromPlan.slice(0, 3)).toEqual([
         { step: 'planned', snapshot: 1, components: 126, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
-        // Before the first request to the Dependency API, and after its one query for rows, which gave no row here.
-        // The query for the versions of the flows came before it, and counts with it.
+        // Before the first request to the Dependency API.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
-        { step: 'cross-checking', snapshot: 1, requests: 2, rows: 0 },
-        { step: 'analysing', snapshot: 1 },
       ]);
+      // After every query for rows, none of which gave a row here: the query for every row, one for each of the 17
+      // types that are known to refer, and one for the rest (decision record 0069). The query for the versions of
+      // the flows came before them, and counts with them.
+      expect(fromPlan.slice(3, -1)).toEqual(
+        Array.from({ length: 19 }, (_, at) => ({ step: 'cross-checking', snapshot: 1, requests: at + 2, rows: 0 })),
+      );
+      expect(fromPlan.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.
       expect(metadata.retrieves).toHaveLength(1);
       expect(metadata.retrieves[0]).toContain('CustomObject:Account');

@@ -177,10 +177,10 @@ export async function analyseStored(store: Store, source: string, snapshot: Anal
  */
 export interface CrossCheckReport {
   /**
-   * - `whole`: no query left a row out.
-   * - `partial`: rows are missing, because a query was cut off at the limit of the API or failed, or may be
-   *   missing, because rows were asked for per component and nothing shows that the org listed every
-   *   component. A pair without a row says less then.
+   * - `whole`: no answer shows that a row is missing (decision record 0069).
+   * - `partial`: rows are missing, or may be, because a query was cut off or failed, or because rows were asked
+   *   for per component and nothing shows that the org listed every component. A pair without a row says less
+   *   then.
    * - `none`: the org answered no query. Nothing was compared.
    */
   readonly state: 'whole' | 'partial' | 'none';
@@ -189,12 +189,15 @@ export interface CrossCheckReport {
   readonly requests: number;
   /** The rows the snapshot holds. */
   readonly rows: number;
-  /** Queries that reached the limit of rows and could not be asked in smaller parts. */
+  /**
+   * Queries that were cut off: near the limit of rows with no smaller part to ask for, or shown to be cut off by
+   * the other queries (decision record 0069).
+   */
   readonly queriesCutOff: number;
   /** Queries that failed and whose rows no other query gave. */
   readonly queriesFailed: number;
   /**
-   * Queries at the limit whose rows were asked for per component, for more components than one query can name.
+   * Queries near the limit whose rows were asked for per component, for more components than one query can name.
    * Every row of a component the org listed was read. A row of a component it did not list would be missing.
    */
   readonly queriesNotProven: number;
