@@ -116,23 +116,31 @@ deployed. Whether it names every error of a deploy in one go, I do not know. Of 
 words came out (`docs/live-org-setup.md` says why).
 
 - `Invoice_Review_Screen`: the field of a record on its screen was bound to `Amount__c`, a currency field, and had
-  a name of its own. The words say that a field of the screen cannot refer to the field because its type is not
-  supported. The field is now bound to `Tax_Code_Name__c`, a text field, and has no name, as the one public
-  example I found, which binds two text fields. That the type was the reason is my reading of those words.
-- `Invoice_Before_Save`: the words say that an element is not supported when another element is set to a value.
-  Which element, they do not say. It may be the custom error, which I doubted before, or the formula the flow
-  starts by. The flow is not changed until the message is known. The tool that deploys knows the form of such a
-  message now, so the next run prints it, if I wrote the form right.
+  a name of its own. The words that came out: "field … unknown (A … field of type … reference the field … because
+  its … type … supported on this object. … or … the …". The field is now bound to `Tax_Code_Name__c`, a text
+  field, and has no name. That is the shape of the one public example I found, in Nebula Logger. It binds two
+  fields of the user, a text field and one that is a long text as far as I know, and it takes them from the record
+  an element that gets records stores by itself, not from a record variable, as here. That the type was the reason
+  is my reading of "its … type … supported". The words "on this object" may mean that the object counts as well.
+  Two things were changed at once, the type and the name, so a deploy that Salesforce accepts does not say which
+  of them it was. No form is known for this message: if the flow is refused once more, the same words come out.
+- `Invoice_Before_Save`: the words that came out: "field … unknown (When the … field is set to … the … field …
+  supported.)". So an element is not supported when another element is set to a value. Which element, they do not
+  say. It may be the custom error, which I doubted before, or the formula the flow starts by. The flow is not
+  changed until the message is known. The tool that deploys knows a form for such a message now, with the names in
+  quotes or not, so the next run prints it, if the message has that form. That is a guess.
 
 So the next deploy is refused again, for that flow at least. What Salesforce found no error in, as far as that
 says anything: the process of the Process Builder and the workflow rules, which the setup pages no longer create,
 the time trigger of a workflow rule and the scheduled path of a flow, and the outbound message with the user of
 the login in the place of the made-up user name (`integration.user@billing-fixture.invalid`).
 
-Two things Salesforce will accept and that are not as a person would build them. `Get_Invoice` of the screen flow
-stores five fields of the invoice, and later elements read four others of the same record. The flow would show
-nothing for them when it runs. And the screen has a field of the record and a choice for the same thing, the tax
-code, of which the update takes the choice. For an analysis that reads the file neither makes a difference.
+Three things are not as a person would build them, and I expect Salesforce to accept them. `Get_Invoice` of the
+screen flow stores five fields of the invoice, and later elements read four others of the same record. The flow
+would show nothing for them when it runs. The screen has a field of the record and a choice for the same thing,
+the tax code, of which the update takes the choice. And `Save_Invoice` writes `Amount__c` back as `Get_Invoice`
+read it, since no field of the screen changes it any more. For an analysis that reads the file none of them makes
+a difference.
 
 The tool that deploys can also send `Invoice_Recalculate` once more, in a step of its own, as a draft that reads
 `Paid_Date__c` where the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and

@@ -95,14 +95,17 @@ const SIGNATURE = `(?:${TYPE} )?${TYPE}(?:\\((?:${TYPE})?\\))?`;
 /** A token of Apex or of a formula, as the compiler quotes it. */
 const TOKEN = String.raw`[A-Za-z0-9_.;:,(){}\[\]<>=!+*/&|?@-]{1,24}`;
 
+/** A quote that may stand before or after a name. It is part of the form and not of the name. */
+const QUOTE = String.raw`['"\u2018\u2019\u201C\u201D]?`;
+
 const form = (text: string): RegExp =>
   new RegExp(
     `^${text.replace(/NAME/g, `(${NAME})`).replace(/SIG/g, `(${SIGNATURE})`).replace(/TOKEN/g, `(${TOKEN})`)}$`,
   );
 
 /**
- * The problems Salesforce is known to report for Apex and for fields, each
- * as a form the whole text has to have. What stands at a name, a signature
+ * The problems Salesforce is known to report for Apex and for fields, and
+ * one it may report for a flow, each as a form the whole text has to have. What stands at a name, a signature
  * or a token is printed if it has that form and nothing else. A problem of
  * another form is "not shown", but for its everyday words: the list is
  * written from memory and from the documentation, and grows with what the
@@ -156,12 +159,15 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   form("Can not specify 'NAME' for a CustomField of type SIG"),
   form('Entity is not org-accessible'),
   form('Not available for deploy for this organization'),
-  // A flow with an element that does not go with the way the flow starts. The deploy of 23 November 2026 was
-  // refused with a problem of which only the everyday words came out: "field … unknown (When the … field is set
-  // to … the … field … supported.)". This form is written from those words, so it is a guess until a run prints
-  // a problem with it. The three places hold names of elements of a flow file and one of their values.
+  // A flow in which an element is not supported when another element is set to a value. The deploy of
+  // 23 November 2026 was refused with a problem of which only the everyday words came out: "field … unknown (When
+  // the … field is set to … the … field … supported.)". This form is written from those words, so it is a guess
+  // until a run prints a problem with it. Which elements they are, the words do not say. A place takes whatever
+  // has the form of a name, and the check of the words below lets through only words of the fixture project and
+  // of the platform: names of elements of a flow file and their values are such words. The words came out the
+  // same with a name in quotes and without the comma, so the form takes both.
   form(
-    "field integrity exception: unknown \\(When the NAME field is set to NAME, the NAME field isn['’]t supported\\.\\)",
+    `field integrity exception: unknown \\(When the ${QUOTE}NAME${QUOTE} field is set to ${QUOTE}NAME${QUOTE},? the ${QUOTE}NAME${QUOTE} field isn['’]t supported\\.\\)`,
   ),
 ];
 
