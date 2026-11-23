@@ -1,7 +1,8 @@
 /**
  * Analyses the public codebases of `fixtures/corpora.toml`: every component gets a row, and the objects, fields
  * and validation rules are read for the references that are written in XML and for those in their formulas.
- * Every flow of them is read too, also the flows outside the package folders the file names.
+ * Every flow of them is read too, and every record of a custom metadata type, also those outside the package
+ * folders the file names.
  *
  * The codebases are not part of this repository. A codebase that was not downloaded (`pnpm run corpora:fetch`)
  * is skipped, so the test needs no network. CI does not download them.
@@ -32,7 +33,10 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   this test reads the folders as they are, without `.forceignore`, and the source library takes the folder
  *   `lwc/__tests__`, which holds data of tests and which that file leaves out, for a component.
  * - `analysed`: the objects, fields, validation rules and workflow rules that were read. NPSP has 7 more since
- *   workflow rules are read: its one file of workflow rules, with 2 rules, 3 field updates and an alert.
+ *   workflow rules are read: its one file of workflow rules, with 2 rules, 3 field updates and an alert. Since
+ *   records of custom metadata types, field sets and record types are read, Apex Recipes has 11 more (its
+ *   records), Nebula Logger 56 (55 records and a field set), NPSP 211 (193 records and 18 field sets) and PMM 34
+ *   (27 records and 7 field sets). No package folder of the four holds a record type.
  * - `withFormula`: those of them that hold a formula, a default value or a condition. Most are the default
  *   value of a checkbox. NPSP has 3 more since workflow rules are read: 2 field updates and a rule.
  * - `references`: the references by how the source names the target. The controlling fields are those of
@@ -40,7 +44,9 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   the object that the flow of Apex Recipes looks up. The 24 of the workflow rules of NPSP were checked by
  *   hand on 23 November 2026: 4 actions of its rules, the 3 fields its field updates write, the 4 criteria of
  *   one rule, 11 names in the formulas of a rule and a field update, the field of the recipient of its alert,
- *   and the email template of the alert.
+ *   and the email template of the alert. Of `listed-field`, one is a field that the outbound message of NPSP
+ *   sends, and the others are a field a record gives a value or a field set lists. `record-of` is the type of
+ *   each record, and `value` a value of a record that names an object, a field or another record.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
  *   through a lookup of another package four times: no file says where that lookup leads.
  */
@@ -54,29 +60,39 @@ interface Expected {
 const EXPECTED: Readonly<Record<string, Expected>> = {
   'apex-recipes': {
     components: 258,
-    analysed: 44,
+    analysed: 55,
     withFormula: 1,
-    references: { 'controlling-field': 1, lookup: 8, object: 1 },
+    references: {
+      'controlling-field': 1,
+      'listed-field': 19,
+      lookup: 8,
+      object: 1,
+      'record-of': 11,
+      value: 12,
+    },
     issues: {},
   },
   'nebula-logger': {
     components: 894,
-    analysed: 622,
+    analysed: 678,
     withFormula: 142,
     references: {
       'controlling-field': 3,
       'display-field': 4,
       filter: 7,
       formula: 387,
+      'listed-field': 139,
       lookup: 17,
+      'record-of': 55,
       summary: 16,
+      value: 6,
       'value-set': 2,
     },
     issues: {},
   },
   npsp: {
     components: 11_722,
-    analysed: 826,
+    analysed: 1037,
     withFormula: 171,
     references: {
       action: 4,
@@ -85,10 +101,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'display-field': 2,
       filter: 11,
       formula: 69,
-      'listed-field': 1,
+      'listed-field': 1962,
       lookup: 77,
+      'record-of': 193,
       summary: 4,
       template: 1,
+      value: 318,
       'value-set': 2,
     },
     issues: { PATH_NOT_FOLLOWED: 4 },
@@ -96,9 +114,17 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   // Added on 17 November 2026, with the codebase.
   pmm: {
     components: 1667,
-    analysed: 129,
+    analysed: 163,
     withFormula: 38,
-    references: { 'controlling-field': 1, filter: 4, formula: 133, lookup: 26 },
+    references: {
+      'controlling-field': 1,
+      filter: 4,
+      formula: 133,
+      'listed-field': 424,
+      lookup: 26,
+      'record-of': 27,
+      value: 25,
+    },
     issues: {},
   },
 };
@@ -159,6 +185,77 @@ const EXPECTED_FLOWS: Readonly<Record<string, ExpectedFlows>> = {
     elements: 21,
     references: {},
     issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 24 },
+  },
+};
+
+/**
+ * The folders of a codebase that hold its records of custom metadata types, with the package folders the records
+ * need for their types. The plan of Phase 2 counts 335 records: every file of a record in the four codebases.
+ * Nebula Logger keeps records in its tests and plugins as well, and PMM four in the settings of a developer org.
+ */
+const RECORD_FOLDERS: Readonly<Record<string, readonly string[]>> = {
+  'apex-recipes': ['force-app'],
+  'nebula-logger': [
+    'nebula-logger/core',
+    'nebula-logger/extra-tests',
+    'nebula-logger/managed-package',
+    'nebula-logger/plugins',
+  ],
+  npsp: ['force-app'],
+  pmm: ['force-app', 'unpackaged/config/cmdts'],
+};
+
+/**
+ * What the analysis gave for the records on 23 November 2026.
+ *
+ * - `files`: the files of records, 335 in all. `records`: the components. Seven records of Nebula Logger stand in
+ *   two folders of its tests, as the same file, and both files are read.
+ * - `references`: the references of the records, by how the record names the target and whether it was found. A
+ *   field that a record gives no value is no reference: Nebula Logger has 136 such values and NPSP 139, all nil.
+ * - `issues`: the issues about a record, by their code.
+ *
+ * Only the four records of PMM in `unpackaged/config/cmdts` are not found whole. Their type is named with
+ * `___NAMESPACE___`, and their one field with `%%%NAMESPACE%%%`: tokens that the build tool of that project replaces
+ * before it deploys. No file defines a type of that name, and the snapshot holds a part of it, the record, so the
+ * type is `external`, as the type of any record is that no file defines. The analysis says that the field is not
+ * read. No value of a text field gives a reference at the tier `probable`: decision record 0065 reads values of
+ * each codebase by hand and says why.
+ */
+interface ExpectedRecords {
+  readonly files: number;
+  readonly records: number;
+  readonly references: Readonly<Record<string, number>>;
+  readonly issues: Readonly<Record<string, number>>;
+}
+const EXPECTED_RECORDS: Readonly<Record<string, ExpectedRecords>> = {
+  'apex-recipes': {
+    files: 11,
+    records: 11,
+    references: { 'listed-field resolved': 19, 'record-of resolved': 11, 'value resolved': 12 },
+    issues: {},
+  },
+  'nebula-logger': {
+    files: 100,
+    records: 93,
+    references: { 'listed-field resolved': 306, 'record-of resolved': 100, 'value resolved': 40 },
+    issues: {},
+  },
+  npsp: {
+    files: 193,
+    records: 193,
+    references: { 'listed-field resolved': 1258, 'record-of resolved': 193, 'value resolved': 318 },
+    issues: {},
+  },
+  pmm: {
+    files: 31,
+    records: 31,
+    references: {
+      'listed-field resolved': 40,
+      'record-of external': 4,
+      'record-of resolved': 27,
+      'value resolved': 25,
+    },
+    issues: { NAME_NOT_READ: 4 },
   },
 };
 
@@ -236,6 +333,43 @@ describe('the analysis of the public codebases', () => {
         // No element is of a kind the reader does not know, so nothing of a flow is less than confirmed.
         expect(ofFlows.filter((one) => one.attrs?.['kind'] === 'unknown')).toEqual([]);
         expect(ofFlows.flatMap((one) => one.references).filter((one) => one.confidence !== 'confirmed')).toEqual([]);
+        // Every key once.
+        expect(new Set(analysis.components.map((one) => one.key)).size).toBe(analysis.components.length);
+      },
+      300_000,
+    );
+
+    const recordFolders = RECORD_FOLDERS[name];
+    it.skipIf(!existsSync(join(corpora, name)) || recordFolders === undefined)(
+      `reads every record of a custom metadata type of ${name}`,
+      async () => {
+        const paths = [...(recordFolders ?? [])];
+        const { tree } = readFolders(join(corpora, name), paths);
+        const files = tree.files.filter((path) => path.endsWith('.md-meta.xml'));
+        const listed = (await resolveComponents(tree, paths)).components;
+        const analysis = analyseSource(tree, listed);
+        const records = analysis.components.filter((one) => one.key.startsWith('CustomMetadata:'));
+        const issues = analysis.issues.filter((issue) => issue.componentKey?.startsWith('CustomMetadata:') === true);
+
+        // Every record was read, no file of the codebase was refused, and nothing is an error.
+        expect(records.filter((one) => one.attrs === null)).toEqual([]);
+        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, 0, 0]);
+        expect(analysis.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
+        expect({
+          files: files.length,
+          records: records.length,
+          references: counted(
+            records.flatMap((one) =>
+              one.references.map((reference) => {
+                const via = reference.attrs?.['via'];
+                return `${typeof via === 'string' ? via : 'none'} ${reference.resolution}`;
+              }),
+            ),
+          ),
+          issues: counted(issues.map((issue) => issue.code)),
+        }).toEqual(EXPECTED_RECORDS[name]);
+        // No value gives a reference at the tier `probable`.
+        expect(records.flatMap((one) => one.references).filter((one) => one.confidence !== 'confirmed')).toEqual([]);
         // Every key once.
         expect(new Set(analysis.components.map((one) => one.key)).size).toBe(analysis.components.length);
       },

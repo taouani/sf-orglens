@@ -53,6 +53,7 @@ In short:
 | [21](https://github.com/taouani/sf-orglens/actions/runs/45100823619) | draft, read and probe | `f563174` | green, with the same warning |
 | [22](https://github.com/taouani/sf-orglens/actions/runs/45120017211) | probe | `5b9fb0b` | green |
 | [23](https://github.com/taouani/sf-orglens/actions/runs/45182733256) | read and probe | `3732f2d` | green, with the same warning |
+| [24](https://github.com/taouani/sf-orglens/actions/runs/45199698754) | read | `f5bb7fe` | green, with the same warning |
 
 Run 16 is the login the workflow makes once a week by itself.
 
@@ -126,8 +127,9 @@ it:
 - **The screen flow** got `styleProperties` five times, each with a vertical alignment and a width. The log does
   not say where they stand. The file grew from 12,193 to 13,649 bytes. So the lines of a flow from an org are
   not the lines of the file that was deployed.
-- **The three records of the custom metadata type** that leave a field out got a `values` element for each such
-  field.
+- **The three records of the custom metadata type** that leave a field out got a `values` element, with a `field`
+  and a `value`, for each such field. The log counts the elements that were added by their names, and does not show
+  what a `value` holds.
 - **The two record types** each got the values of one more picklist.
 - **The two relationship fields of the custom metadata type** lost `externalId`.
 
@@ -342,17 +344,29 @@ version 1 of `Invoice_Recalculate` active, version 2 a draft. All of the followi
 
 ## 5. The cross-check of the engine
 
-The engine analyses the types of Phase 1 only, so it compares rows from a custom field or a validation rule.
+In runs 19 and 21 the engine analyses the types of Phase 1 only, so it compares rows from a custom field or a
+validation rule. Run 24 read the org with the reader of workflow rules (record
+[0063](../../adr/0063-the-parts-of-a-file-of-workflow-rules.md)), so it compares the rows of the workflow rules as
+well.
 
-| | Run 19 | Run 21 |
-| --- | --- | --- |
-| Rows of the org | 335 | 351 |
-| Rows from a component of a type that is not analysed | 278 | 294 |
-| Rows compared, which are as many pairs | 57 | 57 |
-| The analysis has the pair | 55 | 55 |
-| The analysis has it through a part of the object Salesforce names | 2 | 2 |
-| Missed by the analysis | 0 | 0 |
-| Rows with an end the org did not list | 0 | 0 |
+| | Run 19 | Run 21 | Run 24 |
+| --- | --- | --- | --- |
+| Rows of the org | 335 | 351 | 351 |
+| Rows from a component of a type that is not analysed, or of a flow | 278 | 294 | 291 |
+| Rows compared, which are as many pairs | 57 | 57 | 60 |
+| The analysis has the pair | 55 | 55 | 58 |
+| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 |
+| Missed by the analysis | 0 | 0 | 0 |
+| Rows with an end the org did not list | 0 | 0 | 0 |
+
+- **The three rows of the workflow rules, from the formulas of field updates, are compared, and the analysis has
+  all three** `[run 24]`. Of the pairs the analysis has and no row reports, it counts 18 with the reason
+  `workflow-rule`, 7 with `workflow-action` and 4 with `field-update`. Those are the pairs of the key for these
+  files that the API does not report (section 3): the 18 of the rules, the 7 of the alert, the outbound message
+  and the task, and 5 of the field updates, of which one is to a standard field and counted as one.
+- The rows from records of the custom metadata type and from the field set, 4 each, are still counted as not
+  compared in run 24: their readers were built after it (record
+  [0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)).
 
 - The rows from a flow are not compared, so the 15 rows of a version the org did not list are not counted as
   rows with an end the org did not list `[run 21]`.
@@ -364,6 +378,8 @@ The engine analyses the types of Phase 1 only, so it compares rows from a custom
   an id that is not among them, the reader takes the ids for the wrong ones, does not ask per id and counts the
   part as cut off. The row here is one of the active version of `Invoice_Recalculate`, whose id the org no
   longer lists. That this is the cause is my reading of the code and of the counts, not something the log says.
+  Run 24 gave the same: the cut-off reading lacked 30 rows from a flow to a custom field, in 68 requests, and was
+  partial `[run 24]`.
 - What that means for a real org: the limit of Salesforce is 2,000 rows per query. An org whose flows give that
   many rows or more to one type of target, and that has one flow with an active version and a newer draft, can
   get a partial reading of the rows of its flows. It does when a row of the version the org does not list is
@@ -395,5 +411,6 @@ Dependency API alone is the cross-check for Apex stands.
 - What "deploy" does to a flow that has a draft.
 - What the analysers of Phase 2 make of the files the test org hands out. The rows from a flow are counted and
   not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)), and the reader of
-  workflow rules was built after run 23. The numbers of section 3 are the answer key against the Dependency API,
-  not against OrgLens.
+  workflow rules was built after run 23. Run 24 read the org with it (section 5). The readers of record types,
+  field sets and records of custom metadata types were built after run 24. The numbers of section 3 are the
+  answer key against the Dependency API, not against OrgLens.

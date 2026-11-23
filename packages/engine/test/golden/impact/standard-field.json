@@ -202,12 +202,6 @@
         "listing": "ok"
       },
       {
-        "type": "CustomMetadata",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
         "type": "CustomPermission",
         "listed": 1,
         "retrieved": 1,
@@ -226,21 +220,9 @@
         "listing": "ok"
       },
       {
-        "type": "FieldSet",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "RecordType",
-        "listed": 2,
-        "retrieved": 2,
         "listing": "ok"
       }
     ],

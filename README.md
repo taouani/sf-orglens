@@ -18,14 +18,15 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 > `npx orglens`:** the name `orglens` is not a package of this project, and npx fetches whatever package has that
 > name. To run OrgLens without installing it, use `npx sf-orglens@next`.
 >
-> What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
-> and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
-> fields and validation rules, with the formulas in them. On `main`, which no pre-release holds yet, flows are
-> analysed too, element by element, and a snapshot of an org holds the active version of a flow. So are workflow
-> rules with their field updates, email alerts, outbound messages and tasks. Nothing else is analysed yet.
-> `orglens impact` shows what refers to a component among those types, and an answer names the types it does not
-> cover. The commands are `init`, `source`, `snapshot`, `analyse`, `coverage`, `impact`, `status` and
-> `doctor`. See [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
+> What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI, and
+> immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects, fields
+> and validation rules, with the formulas in them. On `main`, which no pre-release holds yet, flows are analysed
+> too, element by element, and a snapshot of an org holds the active version of a flow. So are workflow rules with
+> their field updates, email alerts, outbound messages and tasks, record types, field sets, and records of custom
+> metadata types. Nothing else is analysed yet. `orglens impact` shows what refers to a component among those
+> types, and an answer names the types it does not cover. The commands are `init`, `source`, `snapshot`, `analyse`,
+> `coverage`, `impact`, `status` and `doctor`. See [docs/cli.md](docs/cli.md) and
+> [docs/configuration.md](docs/configuration.md).
 
 ## What it will do
 

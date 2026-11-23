@@ -31,6 +31,11 @@ export interface FieldFacts {
   readonly type: string | null;
   /** The objects the field points at, as the file names them. */
   readonly referenceTo: readonly string[];
+  /**
+   * Of a relationship of a custom metadata type to the definition of a field: the field of the same type whose
+   * value says which object the field is of, as the file names it (`Billing_Rule__mdt.Object__c`).
+   */
+  readonly controllingField?: string;
 }
 
 export interface ObjectModel {
@@ -45,6 +50,8 @@ export interface ObjectModel {
    * `null` when that is not known. `Account__r` is the field `Account__c`, and `Owner` is the field `OwnerId`.
    */
   relationship(object: string, name: string): { readonly field: Target; readonly leadsTo: string | null };
+  /** What the file of the field `name` of the object `object` says. `undefined` where no file defines the field. */
+  facts(object: string, name: string): FieldFacts | undefined;
 }
 
 export interface ModelInput {
@@ -192,7 +199,12 @@ export function buildModel(input: ModelInput): ObjectModel {
     return { field: behind, leadsTo: known === undefined ? null : known === SELF ? objectName : known };
   };
 
-  return { object, field, component, relationship };
+  const factsOf = (objectName: string, name: string): FieldFacts | undefined => {
+    const target = field(objectName, name);
+    return target.resolution === 'resolved' && target.to !== null ? fields.get(target.to) : undefined;
+  };
+
+  return { object, field, component, relationship, facts: factsOf };
 }
 
 /** What the source says about one name of a path beyond the name. */

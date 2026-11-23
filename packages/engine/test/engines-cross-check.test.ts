@@ -439,6 +439,55 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     expect(crossCheckIssues(result)).toEqual([]);
   });
 
+  it('compares the type of a record and the custom fields of a field set, and nothing else of the three', () => {
+    const TYPE = key('CustomObject', 'Billing_Rule__mdt');
+    const SET = key('FieldSet', 'Invoice__c.Summary');
+    const KIND = key('RecordType', 'Invoice__c.Credit_Note');
+    const listedField = { origin: 'parser:xml', attrs: { via: 'listed-field' } } as const;
+    const components = [
+      // A record: its type is reported. The field it gives a value, the object a value names and a name in a
+      // text are not.
+      component(RECORD, {}, [
+        defined(RECORD, TYPE, 'record-of'),
+        defined(RECORD, RATE, 'listed-field'),
+        defined(RECORD, INVOICE, 'value'),
+        reference(RECORD, AMOUNT, {
+          kind: 'references',
+          origin: 'parser:xml',
+          confidence: 'probable',
+          attrs: { via: 'text' },
+        }),
+      ]),
+      // A field set: its custom fields are reported, a standard one is not.
+      component(SET, {}, [
+        reference(SET, AMOUNT, listedField),
+        reference(SET, ACCOUNT_NAME, { ...listedField, resolution: 'external' }),
+      ]),
+      // A record type: nothing, not the picklist whose values it limits.
+      component(KIND, { active: true }, [defined(KIND, STATUS, 'listed-field')]),
+    ];
+    const analysedTypes = [...TYPES, 'CustomMetadata', 'FieldSet', 'RecordType'];
+    const result = crossCheck({ ...input([], components), analysedTypes });
+    expect(result.onlyOrgLens).toEqual([
+      { from: RECORD, to: TYPE },
+      { from: SET, to: AMOUNT },
+    ]);
+    expect(result.notReported).toEqual([
+      { reason: 'custom-metadata', pairs: 3 },
+      { reason: 'record-type', pairs: 1 },
+      { reason: 'standard-field', pairs: 1 },
+    ]);
+    // The row from the record to its type, which Salesforce writes with the name of the type as its type.
+    const rows = [row(end('CustomMetadata', 'Billing_Rule.Default'), end('CustomObject', 'Billing_Rule__mdt'))];
+    expect(crossCheck({ ...input(rows, components), analysedTypes })).toMatchObject({
+      rowsNotAnalysed: 0,
+      rowsCompared: 1,
+      agreed: 1,
+      missed: [],
+      onlyOrgLens: [{ from: SET, to: AMOUNT }],
+    });
+  });
+
   it('leaves out of both lists what a component of a type that was not analysed refers to, and a name without a target', () => {
     const record = component(RECORD, {}, [reference(RECORD, RATE)]);
     const unresolved = validateReference({

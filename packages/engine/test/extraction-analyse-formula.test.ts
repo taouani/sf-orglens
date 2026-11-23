@@ -783,7 +783,7 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
     // Ten more components were read, and each holds a formula. Five files hold one that was not read. The
     // flows of the project are counted as they are without the ten.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 95, failedFiles: 0 },
+      { origin: 'parser:xml', components: 102, failedFiles: 0 },
       { origin: 'parser:formula', components: 56, failedFiles: 5 },
       alone.work[2],
     ]);

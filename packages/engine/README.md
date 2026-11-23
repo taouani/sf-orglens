@@ -4,9 +4,9 @@ The engine of [OrgLens](https://github.com/taouani/sf-orglens), a local-first im
 It reads a live org, a sandbox or a Git repository, builds a dependency graph in a local SQLite file, and answers
 impact questions from that graph.
 
-> **Pre-release.** The engine takes snapshots and analyses objects, fields, validation rules and formulas. It
-> answers what refers to a component among those types, and names the types an answer does not cover. Its API
-> will change. See the
+> **Pre-release.** The engine takes snapshots and analyses objects, fields, validation rules, formulas, flows,
+> workflow rules, record types, field sets and records of custom metadata types. It answers what refers to a
+> component among those types, and names the types an answer does not cover. Its API will change. See the
 > [roadmap](https://github.com/taouani/sf-orglens/blob/main/docs/plans/re-architecture-plan.md#roadmap).
 
 Most people want the command line, [`sf-orglens`](https://github.com/taouani/sf-orglens/tree/main/packages/cli).

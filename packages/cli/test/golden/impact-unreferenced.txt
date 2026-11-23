@@ -1,5 +1,5 @@
 What refers to CustomField:invoice__c.unused_field__c (Invoice__c.Unused_Field__c), in snapshot #1 of "fixture".
-The answer is not complete: 11 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
 Nothing that was analysed refers to it.
 
@@ -9,12 +9,9 @@ ApexClass         13      13
 ApexTrigger       1       1
 CustomLabel       1       1
 CustomLabels      1       1
-CustomMetadata    4       4
 CustomPermission  1       1
 EmailFolder       1       1
 EmailTemplate     1       1
-FieldSet          1       1
 GlobalValueSet    1       1
-RecordType        2       2
 
 The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

@@ -41,6 +41,8 @@ export type NotReportedReason =
   | 'workflow-rule'
   | 'workflow-action'
   | 'field-update'
+  | 'custom-metadata'
+  | 'record-type'
   | 'other';
 
 /** What the comparison of the rows of the Dependency API with an analysis found. */
@@ -178,6 +180,12 @@ function notReported(from: AnalysedComponent, to: string, found: Found): NotRepo
     return 'workflow-action';
   }
   if (type === 'WorkflowFieldUpdate') return found.origins.has('parser:formula') ? null : 'field-update';
+  // Of a record of a custom metadata type, the test org reports the type it is a record of, and nothing else: not
+  // the fields it gives a value, not what a value names. Of a record type, nothing: not the picklist fields whose
+  // values it limits. Of a field set, every custom field, also across a relationship.
+  if (type === 'CustomMetadata') return found.vias.has('record-of') ? null : 'custom-metadata';
+  if (type === 'RecordType') return 'record-type';
+  if (type === 'FieldSet') return null;
   if (found.origins.has('parser:formula')) {
     // A formula of a rule or of a formula field. A field without a formula has one in its default value, and
     // whether the API reports something custom there was not measured.

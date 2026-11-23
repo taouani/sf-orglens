@@ -47,13 +47,10 @@ const NOT_ANALYSED = [
   'ApexTrigger       1       1',
   'CustomLabel       1       1',
   'CustomLabels      1       1',
-  'CustomMetadata    4       4',
   'CustomPermission  1       1',
   'EmailFolder       1       1',
   'EmailTemplate     1       1',
-  'FieldSet          1       1',
   'GlobalValueSet    1       1',
-  'RecordType        2       2',
 ];
 
 describe('orglens impact', () => {
@@ -114,9 +111,9 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 5)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 11 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
       '',
-      '6 components refer to it, 3 of them directly.',
+      '7 components refer to it, 4 of them directly.',
       '',
     ]);
     expect(lines.slice(-(NOT_ANALYSED.length + 4))).toEqual([
@@ -136,7 +133,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('8 components refer to it, 5 of them directly.');
+    expect(lines).toContain('9 components refer to it, 6 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -148,7 +145,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('20 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('22 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -236,7 +233,7 @@ describe('orglens impact', () => {
     });
     // The warning is about the whole snapshot, so the other direction is not complete either.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 11 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
     );
   });
 
@@ -251,10 +248,10 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 11 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
+      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
     );
-    // The 20 of the project without the field that could not be read, and without the one that reads it.
-    expect(lines).toContain('19 components refer to it, all of them directly.');
+    // The 22 of the project without the field that could not be read, and without the one that reads it.
+    expect(lines).toContain('21 components refer to it, all of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
@@ -276,7 +273,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 11 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 8 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',
