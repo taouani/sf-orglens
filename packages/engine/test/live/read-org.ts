@@ -972,9 +972,10 @@ export function phaseLines(
 
 /**
  * Which version of each flow of the fixture project the org handed out: the state its file names, beside the
- * state the file of the repository names. The tool that deploys sends one flow a second time as a draft
- * (`deploy-fixture.ts`), so the org holds an active version of it and a newer draft. Of that flow it is said
- * which of the two the file from the org is, by the places in which the draft differs.
+ * state the file of the repository names. The tool that deploys can send one flow once more as a draft
+ * (`deploy-fixture.ts draft`). After that the org should hold an active version of it and a newer draft, which
+ * is not verified. Of that flow it is said which of the two the file from the org is, by the places in which
+ * the draft differs.
  *
  * `fileOf`: the text of a file of the snapshot, or `null` if the snapshot does not hold it.
  */
@@ -999,7 +1000,7 @@ export function flowLines(log: PublicLog, fileOf: (path: string) => string | nul
     const ofActive = DRAFT_CHANGES.filter(([from]) => text.includes(from)).length;
     const all = DRAFT_CHANGES.length;
     lines.push(
-      `${FLOW_WITH_DRAFT} is the flow that is sent a second time as a draft, which differs in ${String(all)} places. ` +
+      `${FLOW_WITH_DRAFT} is the flow that the step "draft" sends once more as a draft, which differs in ${String(all)} places. ` +
         (ofDraft === all && ofActive === 0
           ? 'The file from the org is the draft.'
           : ofActive === all && ofDraft === 0

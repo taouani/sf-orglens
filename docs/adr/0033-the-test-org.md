@@ -111,3 +111,16 @@ same day.
   where its name has the form of a name of a metadata type, letters and digits, as the step already does for
   the types of rows. The name of a custom metadata type, which is a name of the org, has an underscore and is
   not shown. An id is never shown.
+
+Phase 2 added to what a step may do, on 23 November 2026.
+
+- The project is no longer sent as its files are: the outbound message of the project names a made-up user,
+  because no user name of an org may stand in the repository, and the step of the deploy writes the user it logs
+  in as in its place, in the copy it sends. That name reaches no line of the log.
+- A step of its own sends one flow of the fixture project once more, as a draft that differs from the version the
+  project holds, so that the org holds a flow with an active version and a newer one. That is the second thing
+  that is ever deployed, and it is made of a file of the fixture project.
+- The probe reads two more objects of the Tooling API that describe metadata, `FlowDefinition` and `Flow`: the
+  flows of the org and their versions, for the names behind the ids of rows and for the number and the state of
+  the versions of the flows of the fixture project. A flow that is not of the fixture project is counted and
+  not named. The state of a version is shown where it has the form of a name of the Metadata API.

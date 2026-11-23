@@ -16,9 +16,9 @@
  * project: how many versions each has, which one is active and which one is
  * the latest (`FlowDefinition` and `Flow`), and whether the id on a row of
  * the Dependency API from a flow is the id of a version or of the
- * definition. The tool that deploys sends one flow a second time as a
- * draft (`deploy-fixture.ts`), so that flow should have an active version
- * and a newer one.
+ * definition. The tool that deploys can send one flow once more as a
+ * draft (`deploy-fixture.ts draft`). After that, the flow should have an
+ * active version and a newer one, which is not verified.
  *
  * All of it is read through the Tooling API, whose objects describe metadata.
  * No record of the data of the org is read, and nothing is written. A
@@ -228,6 +228,9 @@ function keyOf(side: Side, { byId, built }: Names, fixture: Fixture): { key: str
     const key = `CustomMetadata:${name}`;
     return fixture.keys.has(key) ? { key, guessed: false } : null;
   }
+  // The whole name, with its object or its folder, if the row writes it so: that names one component.
+  const whole = `${side.type}:${name}`;
+  if (/[./]/.test(name) && fixture.ofType(side.type).includes(whole)) return { key: whole, guessed: false };
   const candidates = fixture.ofType(side.type).filter((key) => {
     // The name of a field without its object, and of a template without its folder.
     const last =
@@ -269,13 +272,17 @@ interface FlowVersion {
 interface Flows {
   readonly definitions: ReadonlyMap<string, FlowDefinition>;
   readonly versions: ReadonlyMap<string, FlowVersion>;
-  /** False if the org did not answer one of the two queries. */
-  readonly read: boolean;
+  /** Whether the org answered the query for the flows (`FlowDefinition`) and the one for their versions (`Flow`). */
+  readonly definitionsRead: boolean;
+  readonly versionsRead: boolean;
 }
 
 /** The names behind the ids of the rows. */
 interface Names {
-  /** The key of a component by its id. A flow is found by the id of its definition and by the id of each version. */
+  /**
+   * The key of a component by its id. A flow is found by the id of its definition and by the id of each version:
+   * the active and the latest one as the definition names them, and the others where the versions could be read.
+   */
   readonly byId: ReadonlyMap<string, string>;
   readonly flows: Flows;
   /** The ids whose key rests on the name of a custom object that is built with `__c`: a guess about the ending. */
@@ -406,18 +413,22 @@ async function namesBehindIds(log: PublicLog, session: OrgSession, counter: { re
   // A flow. The org holds the flow and each of its versions as rows of their own, and a row of the Dependency
   // API can carry the id of either. Both are read as the Tooling API was documented when this was written. Whether
   // the test org answers the two queries is for the run to say: a query it refuses is said and counted.
-  const before = failed;
   const definitions = new Map<string, FlowDefinition>();
   const versions = new Map<string, FlowVersion>();
+  let before = failed;
   for (const row of await read(
     'FlowDefinition',
     'Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId',
   )) {
     const id = short(row['Id']);
     const name = prefixed(row, text(row['DeveloperName']));
-    definitions.set(id, { name, active: short(row['ActiveVersionId']), latest: short(row['LatestVersionId']) });
-    byId.set(id, `Flow:${name.toLowerCase()}`);
+    const flow = { name, active: short(row['ActiveVersionId']), latest: short(row['LatestVersionId']) };
+    definitions.set(id, flow);
+    // The two versions the flow names are found without the query for the versions, which the org may refuse.
+    for (const one of [id, flow.active, flow.latest]) if (one !== '') byId.set(one, `Flow:${name.toLowerCase()}`);
   }
+  const definitionsRead = failed === before;
+  before = failed;
   for (const row of await read('Flow', 'Id, DefinitionId, VersionNumber, Status')) {
     const id = short(row['Id']);
     const definition = short(row['DefinitionId']);
@@ -426,7 +437,7 @@ async function namesBehindIds(log: PublicLog, session: OrgSession, counter: { re
     const flow = definitions.get(definition);
     if (flow !== undefined) byId.set(id, `Flow:${flow.name.toLowerCase()}`);
   }
-  const flows: Flows = { definitions, versions, read: failed === before };
+  const flows: Flows = { definitions, versions, definitionsRead, versionsRead: failed === before };
   log.say(`Rows read to find the names behind the ids: ${said.join(', ')}.`);
   if (objects.size > 0) {
     const others = objects.size - named.size;
@@ -544,7 +555,7 @@ async function probeDependencies(
   log.say(
     `The answer key holds ${String(expected.length)} pairs of a component and a component it refers to. The Dependency API reports ${String(found.length)} of them.` +
       (byName.length > 0
-        ? ` ${String(byName.length)} more are matched by a name alone, because the org gave no object for the id of a field or of a rule, or no ending for the name of a custom object. They are marked "by name" and not counted as reported.`
+        ? ` ${String(byName.length)} more are matched by a name alone: the name of a component of a type this step reads no ids for, such as an email template, a part of the workflow rules of an object, a record type or a field set, or the name of a field or of a rule whose object the org did not give, or of a custom object whose ending it did not give. They are marked "by name" and not counted as reported.`
         : ''),
   );
   const tally = (group: (pair: { from: string; to: string; via: Set<string>; tiers: Set<string> }) => string[]) => {
@@ -607,12 +618,17 @@ async function probeDependencies(
  */
 function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): void {
   if (names === null) return;
-  const { definitions, versions, read } = names.flows;
+  const { definitions, versions, definitionsRead, versionsRead } = names.flows;
   log.say('');
   log.say('The flows of the fixture project and their versions (FlowDefinition and Flow)');
-  if (!read) {
+  if (!definitionsRead || !versionsRead) {
     log.say(
-      'The org did not answer both queries for its flows. The line about the rows read to find the names says which. What follows is counted from what it did answer.',
+      (definitionsRead
+        ? 'The org did not answer the query for the versions of its flows (Flow). Of a flow, only the ids of its active and of its latest version are known, and neither a number nor a state.'
+        : versionsRead
+          ? 'The org did not answer the query for its flows (FlowDefinition). No version can be given to a flow, so nothing is said about the flows of the fixture project.'
+          : 'The org answered neither the query for its flows (FlowDefinition) nor the one for their versions (Flow). Nothing is known about the flows of the fixture project.') +
+        ' The line about the rows read to find the names has the code.',
     );
   }
   const state = (version: FlowVersion | undefined): string =>
@@ -625,7 +641,7 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
   for (const name of fixture.flowNames) {
     const found = [...definitions].find(([, flow]) => flow.name.toLowerCase() === name.toLowerCase());
     if (found === undefined) {
-      lines.push([name, 'not in the org']);
+      lines.push([name, definitionsRead ? 'not in the org' : 'unknown']);
       continue;
     }
     const [id, flow] = found;
@@ -633,7 +649,7 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
     const count = [...versions.values()].filter((version) => version.definition === id).length;
     lines.push([
       name,
-      String(count),
+      versionsRead ? String(count) : 'unknown',
       flow.active === '' ? 'none' : numbered(versions.get(flow.active)),
       flow.latest === '' ? 'none' : numbered(versions.get(flow.latest)),
       flow.latest === '' ? '' : state(versions.get(flow.latest)),
@@ -641,18 +657,27 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
   }
   for (const line of table(lines)) log.say(line);
   log.say(
-    `Flows the org holds: ${String(definitions.size)}, with ${plural(versions.size, 'version', 'versions')}. Of the fixture project: ${String(ours.size)} of ${String(fixture.flowNames.length)}.`,
+    `Flows the org holds: ${definitionsRead ? String(definitions.size) : 'unknown'}, with ${versionsRead ? plural(versions.size, 'version', 'versions') : 'a number of versions that is not known'}. Of the fixture project: ${definitionsRead ? String(ours.size) : 'unknown'} of ${String(fixture.flowNames.length)}.`,
   );
 
-  // What the id of a row stands for.
+  // The flow a version is of, where a row of the versions or the flow itself says so.
+  const flowOf = (id: string): string | undefined =>
+    versions.get(id)?.definition ?? [...definitions].find(([, flow]) => flow.active === id || flow.latest === id)?.[0];
+  /**
+   * What the id of a row stands for. Which version is the active one, the flow says. Where the flows could not
+   * be read, the state of the version says it: only the active version of a flow has the state `Active`.
+   */
   const standsFor = (id: string): string => {
+    if (definitions.has(id)) return 'a flow, not a version';
     const version = versions.get(id);
-    if (version !== undefined) {
-      return definitions.get(version.definition)?.active === id
-        ? 'the active version of a flow'
-        : `a version that is not the active one (${state(version)})`;
-    }
-    return definitions.has(id) ? 'a flow, not a version' : 'no flow and no version the org named';
+    const flow = flowOf(id);
+    const active = flow === undefined ? undefined : definitions.get(flow)?.active;
+    if (active === id || (active === undefined && version?.status === 'Active')) return 'the active version of a flow';
+    if (version !== undefined) return `a version that is not the active one (${state(version)})`;
+    if (flow !== undefined) return 'the latest version of a flow, which is not the active one';
+    return versionsRead && definitionsRead
+      ? 'no flow and no version the org named'
+      : 'no flow and no version among those the org named, which are not all';
   };
   const tallied = (ends: readonly Side[]): string => {
     const counts = new Map<string, number>();
@@ -665,7 +690,8 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
       .map(([what, count]) => `${what}: ${String(count)}`)
       .join('; ');
   };
-  const aboutFlow = (end: Side): boolean => end.type.startsWith('Flow');
+  // `Flow` and `FlowDefinition`. The name of a custom metadata type that begins the same has an underscore.
+  const aboutFlow = (end: Side): boolean => /^Flow[A-Za-z]*$/.test(end.type);
   const from = rows.filter((row) => aboutFlow(row.from)).map((row) => row.from);
   const to = rows.filter((row) => aboutFlow(row.to)).map((row) => row.to);
   log.say(
@@ -681,9 +707,16 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
   for (const [id, name] of ours) {
     const parts = new Map<string, number>();
     for (const row of rows) {
+      if (row.from.id !== id && flowOf(row.from.id) !== id) continue;
       const version = versions.get(row.from.id);
-      if (version?.definition !== id && row.from.id !== id) continue;
-      const what = version === undefined ? 'the flow itself' : `version ${numbered(version)} (${state(version)})`;
+      const what =
+        row.from.id === id
+          ? 'the flow itself'
+          : version !== undefined
+            ? `version ${numbered(version)} (${state(version)})`
+            : definitions.get(id)?.active === row.from.id
+              ? 'the active version'
+              : 'the latest version, which is not the active one';
       parts.set(what, (parts.get(what) ?? 0) + 1);
     }
     log.say(
@@ -698,14 +731,20 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
     );
   }
 
-  // The draft that the tool that deploys sent reads a field that the active version does not read.
+  // The draft that the tool that deploys sends reads a field that the active version does not read.
   const flow = `Flow:${FLOW_WITH_DRAFT.toLowerCase()}`;
   const field = `CustomField:${DRAFT_ONLY_FIELD.toLowerCase()}`;
+  if (![...ours.values()].includes(FLOW_WITH_DRAFT)) {
+    log.say(
+      `The flow ${FLOW_WITH_DRAFT} ${definitionsRead ? 'is not in the org' : 'could not be found, because the flows could not be read'}, so nothing is said about a draft of it.`,
+    );
+    return;
+  }
   const ofDraft = rows.filter(
     (row) => keyOf(row.from, names, fixture)?.key === flow && keyOf(row.to, names, fixture)?.key === field,
   );
   log.say(
-    `The draft of ${FLOW_WITH_DRAFT} reads ${DRAFT_ONLY_FIELD}, which its active version does not. Rows from that flow to that field: ${String(ofDraft.length)}` +
+    `A draft of ${FLOW_WITH_DRAFT}, as the tool that deploys sends it, reads ${DRAFT_ONLY_FIELD}, which the version of the project does not. Rows from that flow to that field: ${String(ofDraft.length)}` +
       (ofDraft.length > 0
         ? `, with the id of ${[...new Set(ofDraft.map((row) => standsFor(row.from.id)))].sort().join(' and of ')}.`
         : '.'),

@@ -33,7 +33,11 @@ Three statements below are conclusions of the author of this record. The maintai
   when none is active, and did not see it on an org. Work package 1 of the plan measures it on the test org, with a
   flow that has an active version and a newer draft and with a flow that is not active. If the org hands out
   something else, the author comes back to the maintainer before the analyser of flows is built, as the plan
-  says.
+  says. A note of 23 November 2026, from the code review of the tools that measure it: the reference of the
+  Metadata API says of a flow that is named without a version number that it "is the latest version", and
+  Gearset reports that an org with an active version and a newer draft hands out the draft. So the expectation
+  of the author is most likely wrong for a flow with a newer draft. The measurement decides, and nothing is
+  changed here before it.
 - **The other versions are not read.** A draft that is newer than the active version is not in a snapshot, so an
   answer does not hold what the draft would change.
 

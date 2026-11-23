@@ -30,7 +30,10 @@
  * or of Apex (`probe-org.ts`). Of a query of the Dependency API that
  * failed, a tool may show the condition: its three fields, the names of
  * metadata types, and the number of ids in the place of the ids
- * (`conditionForm` in `read-org.ts`). On top of the forms,
+ * (`conditionForm` in `read-org.ts`). Of a version of a flow of the
+ * fixture project, a tool may show its number and its state, which is a
+ * word of the Metadata API, where it has the form of a name
+ * (`probe-org.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */

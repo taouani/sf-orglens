@@ -128,10 +128,12 @@ One thing Salesforce will accept and that is not as a person would build it: `Ge
 stores five fields of the invoice, and later elements read four others of the same record. The flow would show
 nothing for them when it runs. For an analysis that reads the file it makes no difference.
 
-The tool that deploys also sends `Invoice_Recalculate` a second time, as a draft that reads `Paid_Date__c` where
-the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and a newer draft
-(`docs/live-org-setup.md`). The key is about the file here, which is the active version. What the deploy showed
-comes with the note of the run.
+The tool that deploys can also send `Invoice_Recalculate` once more, in a step of its own, as a draft that reads
+`Paid_Date__c` where the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and
+a newer draft (`docs/live-org-setup.md`). The key is about the file here, which the project sends as the active
+version. If the org hands out the draft after that step, as the documentation suggests, the key does not describe
+that flow as the test org hands it out: it lacks the reference to `Paid_Date__c`. What the deploy showed comes
+with the note of the run.
 
 ## The answer key
 

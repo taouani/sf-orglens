@@ -11,13 +11,20 @@
  * Apex and checks the formulas, which is what the fixture has not been
  * through yet.
  *
- * Two things are not sent as the project holds them. The outbound message
- * of the project names a user that does not exist, because no user name of
- * an org may stand in the repository: it is sent with the user this step
- * logs in as. And one flow is sent a second time, as a draft that differs
- * from its active version, so that the org holds a flow with both.
+ * One file is not sent as the project holds it. The outbound message of the
+ * project names a user that does not exist, because no user name of an org
+ * may stand in the repository: it is sent with the user this step logs in
+ * as.
+ *
+ * With the argument `draft` the tool sends something else, and not the
+ * project: one flow of it, as a draft that differs from the version the
+ * project holds, which is active. It is a step of its own, so that the org
+ * can be read before and after it. After it the org should hold a flow with
+ * an active version and a newer draft. What the documentation says, and what
+ * is not verified, is in `docs/live-org-setup.md`.
  *
  *   node --no-warnings packages/engine/test/live/deploy-fixture.ts
+ *   node --no-warnings packages/engine/test/live/deploy-fixture.ts draft
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -251,7 +258,7 @@ const escapeXml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** A text with one thing in it said differently. The thing has to stand there exactly once. */
-function changedOnce(text: string, from: string, to: string, where: string): string {
+export function changedOnce(text: string, from: string, to: string, where: string): string {
   if (text.split(from).length !== 2) throw new Error(`${where} does not hold "${from}" exactly once.`);
   return text.replace(from, () => to);
 }
@@ -416,12 +423,22 @@ async function deploy(
   return { lines, succeeded: flag(result['success']) && state === 'Succeeded' };
 }
 
+/**
+ * Deploys the fixture project, or with `draft` the draft of one flow of it and nothing else. Each is one deploy,
+ * so that a step of the workflow never waits for two.
+ */
 export async function deployFixture(
   log: PublicLog,
-  options: { env?: Readonly<Record<string, string | undefined>>; pollMs?: number; deployMs?: number } = {},
+  options: {
+    env?: Readonly<Record<string, string | undefined>>;
+    pollMs?: number;
+    deployMs?: number;
+    draft?: boolean;
+  } = {},
 ): Promise<void> {
   const env = loginEnvironment(log, options.env);
   if (env === undefined) return;
+  const sent = options.draft === true ? `A draft of the flow ${FLOW_WITH_DRAFT}` : 'The fixture project';
 
   const { forUser, entries, draft } = await fixtureZip();
   const fixture = new Set(fixtureComponents().map((one) => `${one.type}:${one.fullName}`));
@@ -431,13 +448,26 @@ export async function deployFixture(
   try {
     session = await connectToOrg(SOURCE, undefined, env);
   } catch (error) {
-    log.fail(
-      failureLines(log, 'The fixture project was not deployed, because the login to the test org failed', error),
-    );
+    log.fail(failureLines(log, `${sent} was not deployed, because the login to the test org failed`, error));
     return;
   }
   log.forbid(session.instanceUrl, session.orgId, session.orgId.slice(0, 15), session.username);
   const { metadata } = session.connection;
+
+  if (options.draft === true) {
+    // One flow as a draft. Whether its active version stays as it is, the org has to show.
+    const second = await deploy(log, metadata, draft, `a draft of the flow ${FLOW_WITH_DRAFT}`, known, options);
+    if (second === undefined) return;
+    if (!second.succeeded) {
+      log.fail(second.lines);
+      return;
+    }
+    for (const line of second.lines) log.say(line);
+    log.say(
+      `Salesforce took the draft. Whether the flow ${FLOW_WITH_DRAFT} now has an active version and a newer draft, and which of the two the org hands out, is for the steps that read the org and ask it about its flows to say.`,
+    );
+    return;
+  }
 
   // The project, with the user of this login as the user of its outbound message.
   const project = await deploy(
@@ -455,19 +485,15 @@ export async function deployFixture(
   }
   for (const line of project.lines) log.say(line);
   log.say('The fixture project is in the test org. No Apex test was run.');
-
-  // One flow once more, as a draft. Whether its active version stays as it is, the org has to show.
-  log.say('');
-  const second = await deploy(log, metadata, draft, `a draft of the flow ${FLOW_WITH_DRAFT}`, known, options);
-  if (second === undefined) return;
-  if (!second.succeeded) {
-    log.fail(second.lines);
-    return;
-  }
-  for (const line of second.lines) log.say(line);
-  log.say(
-    `Salesforce took the draft. Whether the flow ${FLOW_WITH_DRAFT} now has an active version and a newer draft is for the step that asks the org about its flows to say.`,
-  );
 }
 
-if (import.meta.main) await asStep(import.meta.filename, deployFixture);
+if (import.meta.main) {
+  const given = process.argv.slice(2);
+  await asStep(import.meta.filename, async (log) => {
+    if (given.length > 1 || (given[0] !== undefined && given[0] !== 'draft')) {
+      log.fail(['The tool that deploys takes no argument, or the one argument "draft". Nothing was sent.']);
+      return;
+    }
+    await deployFixture(log, { draft: given[0] === 'draft' });
+  });
+}

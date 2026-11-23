@@ -12,7 +12,11 @@ name: Live org
 # A run that a maintainer starts can do more, by the choice "steps":
 #
 #   deploy  puts the fixture project (fixtures/billing-sfdx) into the test
-#           org. Nothing else is ever deployed, and no Apex test is run.
+#           org. No Apex test is run. One file is sent with the user of the
+#           login in the place of a made-up user name.
+#   draft   sends one flow of the fixture project once more, as a draft
+#           that differs from its active version, so that the org holds a
+#           flow with both. Nothing else is ever deployed.
 #   read    takes a snapshot of the test org with the engine, in a folder
 #           that is deleted when the step ends, and prints what it holds in
 #           numbers. The snapshot asks the Dependency API of the org, and
@@ -20,9 +24,13 @@ name: Live org
 #           fails when the analysis missed a reference Salesforce reports.
 #   probe   asks the org what Salesforce itself knows about references: the
 #           rows of the Dependency API and the symbol tables of the Apex
-#           compiler, both through the Tooling API. It writes nothing, and
-#           prints how much of the answer key of the fixture project each
-#           of the two reports.
+#           compiler, both through the Tooling API, and which versions of
+#           the flows of the fixture project the org holds. It writes
+#           nothing, and prints how much of the answer key of the fixture
+#           project each of the two reports.
+#
+# The steps run in this order: deploy, draft, read, probe. A step that fails
+# ends the run.
 #
 # The secrets belong to the environment "live-org", which hands them only to
 # a run from the branch "main". The log of this workflow can be read by
@@ -57,6 +65,8 @@ on:
           - deploy and read
           - probe
           - read and probe
+          - draft
+          - draft, read and probe
   schedule:
     # Mondays at 05:17 UTC.
     - cron: '17 5 * * 1'
@@ -114,6 +124,18 @@ jobs:
           ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
           SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
         run: node --no-warnings packages/engine/test/live/deploy-fixture.ts
+      # The draft of one flow is a step of its own, so that the org can be read before it and after it, and so
+      # that no step waits for two deploys.
+      - name: Deploy the draft of one flow
+        if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'draft')
+        timeout-minutes: 30
+        env:
+          ORGLENS_JWT_TEST_ORG_LOGIN_URL: ${{ secrets.ORGLENS_TEST_ORG_LOGIN_URL }}
+          ORGLENS_JWT_TEST_ORG_USERNAME: ${{ secrets.ORGLENS_TEST_ORG_USERNAME }}
+          ORGLENS_JWT_TEST_ORG_CLIENT_ID: ${{ secrets.ORGLENS_TEST_ORG_CLIENT_ID }}
+          ORGLENS_JWT_TEST_ORG_KEY: ${{ secrets.ORGLENS_TEST_ORG_JWT_KEY }}
+          SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+        run: node --no-warnings packages/engine/test/live/deploy-fixture.ts draft
       # After a deploy that failed, the org is not read.
       - name: Read the org
         if: github.event_name == 'workflow_dispatch' && contains(inputs.steps, 'read')
