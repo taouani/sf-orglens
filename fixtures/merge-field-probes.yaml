@@ -1,0 +1,131 @@
+# Merge-field probes: small texts and formulas with merge fields, `{!Resource.Path}`, as a flow writes them. An
+# analyser must find every merge field each of them lists, and nothing else.
+#
+# The probes test the reading: where a merge field starts and ends, and what stands in it. They are not deployed,
+# so Salesforce has not checked them. Each is written for a flow about the object Invoice__c of the project
+# billing-sfdx, and names only fields that project has. README.md says more.
+#
+# What is not probed: a merge field of an email template or of a page, which may hold a whole formula. One probe
+# shows that such a merge field is found and not read as a name.
+#
+# `starts` says what the first name of a merge field is in these probes, as a flow would know it of its
+# resources: the object of a record, or nothing for a resource that holds no record. A first name that is not
+# listed is a global variable of the formula language, or it is not known.
+#
+# One text: { covers, text, fields } and, where it applies: notClosed, unread, note.
+#   covers     what the probe is there for. No two probes cover the same.
+#   text       the text, as the text of the element, with no entities of XML.
+#   fields     what stands in each merge field, without the white space around it, in the order they stand.
+#   notClosed  how many times `{!` stands in the text without being closed. 0 if it is left out.
+#   unread     those of `fields` that are not read as a name. None if it is left out.
+#
+# One formula: { covers, formula, names } and, where it applies: bare, unread, problem, note.
+#   formula    the formula, as the text of the element, with no entities of XML.
+#   names      every name of the formula that is not the name of a call and not TRUE, FALSE, NULL or NOT, in the
+#              order they stand: what stands in a merge field, and a name outside braces as it is written.
+#   bare       those of `names` that stand outside braces. A flow has no such name, and it is not read.
+#   unread     those of `names` in braces that are not read as a name. None if it is left out.
+#   problem    true for a formula that is not read as a whole. Its names are the names among its tokens.
+
+version: 1
+
+starts:
+  $Record: Invoice__c
+  $Record__Prior: Invoice__c
+  varInvoice: Invoice__c
+  Each_Line: Invoice_Line__c
+  myVariable_current: Invoice__c
+  varCount: null
+  New_Due_Date: null
+  Confirmation: null
+  $Flow: null
+
+texts:
+  # ---------------------------------------------------------------- where a merge field stands
+  - { covers: "no merge field", text: "The invoice is saved.", fields: [] }
+  - { covers: "nothing but a merge field", text: "{!varInvoice.Name}", fields: [varInvoice.Name] }
+  - { covers: "at the start", text: "{!varInvoice.Name} is saved.", fields: [varInvoice.Name] }
+  - { covers: "at the end", text: "The amount is {!varInvoice.Amount__c}", fields: [varInvoice.Amount__c] }
+  - { covers: "in the middle", text: "Invoice {!varInvoice.Name} is saved.", fields: [varInvoice.Name] }
+  - { covers: "two in a row", text: "{!varInvoice.Name}{!varInvoice.Amount__c}", fields: [varInvoice.Name, varInvoice.Amount__c] }
+  - { covers: "two with a text between", text: "{!varInvoice.Name} of {!varInvoice.Due_Date__c}", fields: [varInvoice.Name, varInvoice.Due_Date__c] }
+  - { covers: "the same twice", text: "{!varInvoice.Name} and {!varInvoice.Name}", fields: [varInvoice.Name, varInvoice.Name] }
+  - { covers: "over two lines", text: "Invoice {!varInvoice.Name}\nis due on {!varInvoice.Due_Date__c}.", fields: [varInvoice.Name, varInvoice.Due_Date__c] }
+  - { covers: "in the tags of a screen", text: "<p>Invoice <b>{!varInvoice.Name}</b></p>", fields: [varInvoice.Name] }
+  - { covers: "after a character outside the basic plane", text: "\U0001F4C4 {!varInvoice.Name}", fields: [varInvoice.Name] }
+  - { covers: "a name of the project outside a merge field", text: "Tax_Rate__c comes from {!varInvoice.Tax_Code_Name__c}.", fields: [varInvoice.Tax_Code_Name__c] }
+
+  # ---------------------------------------------------------------- what stands in a merge field
+  - { covers: "a resource without a path", text: "{!Confirmation}", fields: [Confirmation] }
+  - { covers: "a record as a whole", text: "{!varInvoice}", fields: [varInvoice] }
+  - { covers: "a path across a relationship", text: "{!varInvoice.Account__r.Name}", fields: [varInvoice.Account__r.Name] }
+  - { covers: "a relationship taken as a kind of record", text: "{!varInvoice.Owner:User.Email}", fields: ["varInvoice.Owner:User.Email"] }
+  - { covers: "the record that starts the flow", text: "{!$Record.Amount__c}", fields: [$Record.Amount__c] }
+  - { covers: "the record as it was", text: "{!$Record__Prior.Status__c}", fields: [$Record__Prior.Status__c] }
+  - { covers: "a variable of the flow itself", text: "{!$Flow.CurrentDateTime}", fields: [$Flow.CurrentDateTime] }
+  - { covers: "a custom label", text: "{!$Label.Overdue_Notice}", fields: [$Label.Overdue_Notice] }
+  - { covers: "a custom setting", text: "{!$Setup.Billing_Settings__c.Grace_Days__c}", fields: [$Setup.Billing_Settings__c.Grace_Days__c] }
+  - { covers: "a custom permission", text: "{!$Permission.Approve_Large_Invoices}", fields: [$Permission.Approve_Large_Invoices] }
+  - { covers: "the user", text: "{!$User.Email} of {!$Profile.Name} in {!$Organization.Country}", fields: [$User.Email, $Profile.Name, $Organization.Country] }
+  - { covers: "white space in the braces", text: "{! varInvoice.Name }", fields: [varInvoice.Name], note: "Whether a flow accepts it is not verified." }
+  - { covers: "nothing in the braces", text: "{!}", fields: [""], unread: [""] }
+  - { covers: "a resource that is not known", text: "{!varOther.Name}", fields: [varOther.Name], unread: [varOther.Name] }
+  - { covers: "a variable that is not known", text: "{!$Orchestration.Instance}", fields: [$Orchestration.Instance], unread: [$Orchestration.Instance] }
+  - { covers: "a formula in the braces", text: "{!IF(varCount > 0, 'some', 'none')}", fields: ["IF(varCount > 0, 'some', 'none')"], unread: ["IF(varCount > 0, 'some', 'none')"], note: "An email template or a page may write this. It is found and not read." }
+  - { covers: "a path that ends with a dot", text: "{!varInvoice.}", fields: [varInvoice.], unread: [varInvoice.] }
+
+  # ---------------------------------------------------------------- braces that are no merge field
+  - { covers: "a brace that is no merge field", text: "Step {0} of {1}", fields: [] }
+  - { covers: "braces of another language", text: "{\"amount\": 1}", fields: [] }
+  - { covers: "a brace with a space before the mark", text: "{ !varInvoice.Name}", fields: [] }
+  - { covers: "a mark without a brace", text: "!varInvoice.Name}", fields: [] }
+  - { covers: "a closing brace alone", text: "} and }", fields: [] }
+  - { covers: "a merge field in braces", text: "{{!varInvoice.Name}}", fields: [varInvoice.Name] }
+
+  # ---------------------------------------------------------------- merge fields that are not closed
+  - { covers: "not closed", text: "Invoice {!varInvoice.Name is saved.", fields: [], notClosed: 1 }
+  - { covers: "not closed at the end of the text", text: "Invoice {!", fields: [], notClosed: 1 }
+  - { covers: "not closed before one that is", text: "{!varInvoice.Name and {!varInvoice.Amount__c}", fields: [varInvoice.Amount__c], notClosed: 1 }
+  - { covers: "not closed before a brace", text: "{!varInvoice.Name {0}", fields: [], notClosed: 1 }
+  - { covers: "not closed twice", text: "{!varInvoice.Name {!varInvoice.Amount__c", fields: [], notClosed: 2 }
+  - { covers: "not closed after one that is", text: "{!varInvoice.Name} and {!varInvoice.Amount__c", fields: [varInvoice.Name], notClosed: 1 }
+
+formulas:
+  # ---------------------------------------------------------------- merge fields where a formula has names
+  - { covers: "one merge field", formula: "{!$Record.Amount__c}", names: [$Record.Amount__c] }
+  - { covers: "an operator between two", formula: "{!Each_Line.Quantity__c} * {!Each_Line.Unit_Price__c}", names: [Each_Line.Quantity__c, Each_Line.Unit_Price__c] }
+  - { covers: "no spaces", formula: "{!$Record.Amount__c}*2+{!$Record.Tax_Rate__c}/4-1", names: [$Record.Amount__c, $Record.Tax_Rate__c] }
+  - { covers: "in a call", formula: "ISBLANK({!$Record.Tax_Code_Name__c})", names: [$Record.Tax_Code_Name__c] }
+  - { covers: "in a call in a call", formula: "NOT(ISBLANK({!$Record.Account__c}))", names: [$Record.Account__c] }
+  - { covers: "a picklist compared with a value", formula: "ISPICKVAL({!$Record.Status__c}, \"Draft\")", names: [$Record.Status__c] }
+  - { covers: "after a sign", formula: "-{!$Record.Amount__c} + !{!$Record.Is_Mine__c}", names: [$Record.Amount__c, $Record.Is_Mine__c] }
+  - { covers: "after NOT without a bracket", formula: "NOT {!$Record.Is_Mine__c}", names: [$Record.Is_Mine__c] }
+  - { covers: "in brackets", formula: "({!$Record.Amount__c} + 1) * 2", names: [$Record.Amount__c] }
+  - { covers: "over lines", formula: "AND(\n  {!$Record.Amount__c} > 0,\n  {!varCount} < 10\n)", names: [$Record.Amount__c, varCount] }
+  - { covers: "a path across a relationship in a formula", formula: "{!myVariable_current.Account__r.Is_Key_Account__c}", names: [myVariable_current.Account__r.Is_Key_Account__c] }
+  - { covers: "a relationship taken as a kind of record in a formula", formula: "{!varInvoice.Owner:User.Email} <> \"\"", names: ["varInvoice.Owner:User.Email"] }
+  - { covers: "the record as it was in a formula", formula: "{!$Record.Amount__c} <> {!$Record__Prior.Amount__c}", names: [$Record.Amount__c, $Record__Prior.Amount__c] }
+  - { covers: "a value that is no record", formula: "{!New_Due_Date} >= DATEVALUE({!varInvoice.CreatedDate})", names: [New_Due_Date, varInvoice.CreatedDate] }
+  - { covers: "the time of the flow", formula: "{!varInvoice.Due_Date__c} < {!$Flow.CurrentDate}", names: [varInvoice.Due_Date__c, $Flow.CurrentDate] }
+  - { covers: "global variables in a formula", formula: "{!$Setup.Billing_Settings__c.Late_Fee_Percent__c} & {!$Label.Overdue_Notice} & {!$User.Email}", names: [$Setup.Billing_Settings__c.Late_Fee_Percent__c, $Label.Overdue_Notice, $User.Email] }
+  - { covers: "a variable that names nothing that can change", formula: "LEN({!$Api.Session_ID}) > 0", names: [$Api.Session_ID] }
+  - { covers: "white space in the braces of a formula", formula: "{! $Record.Amount__c } + 1", names: [$Record.Amount__c], note: "Whether a flow accepts it is not verified." }
+  - { covers: "a resource named like a word of the language", formula: "IF({!True}, {!Null}, {!NOT})", names: ["True", "Null", "NOT"], unread: ["True", "Null", "NOT"], note: "A merge field is a name whatever it holds. These three are no resource of the probes." }
+
+  # ---------------------------------------------------------------- what is no merge field in a formula
+  - { covers: "no name at all", formula: "TODAY() + 30", names: [] }
+  - { covers: "words of the language beside a merge field", formula: "IF({!$Record.Is_Mine__c}, TRUE, NULL)", names: [$Record.Is_Mine__c] }
+  - { covers: "a merge field in a text", formula: "\"{!$Record.Amount__c}\" & {!$Record.Name}", names: [$Record.Name], note: "A text is a text. Whether a flow fills a merge field in a text of a formula is not verified." }
+  - { covers: "a merge field in a comment", formula: "/* {!$Record.Paid_Date__c} */ {!$Record.Amount__c}", names: [$Record.Amount__c] }
+  - { covers: "a name outside braces", formula: "{!$Record.Amount__c} * Tax_Rate__c", names: [$Record.Amount__c, Tax_Rate__c], bare: [Tax_Rate__c], note: "Whether a flow accepts a name outside braces is not verified." }
+  - { covers: "a variable outside braces", formula: "$Record.Amount__c > 0", names: [$Record.Amount__c], bare: [$Record.Amount__c], note: "Whether a flow accepts a name outside braces is not verified." }
+
+  # ---------------------------------------------------------------- formulas that are not read as a whole
+  - { covers: "a merge field that is not closed in a formula", formula: "{!$Record.Amount__c * 2", names: [$Record.Amount__c], problem: true }
+  - { covers: "not closed before one that is, in a formula", formula: "{!$Record.Amount__c + {!$Record.Tax_Rate__c}", names: [$Record.Amount__c, $Record.Tax_Rate__c], problem: true }
+  - { covers: "not closed at the end of a formula", formula: "1 + {!", names: [], problem: true }
+  - { covers: "two merge fields without an operator", formula: "{!$Record.Amount__c}{!$Record.Tax_Rate__c}", names: [$Record.Amount__c, $Record.Tax_Rate__c], problem: true }
+  - { covers: "a merge field before a bracket", formula: "{!varCount}(1)", names: [varCount], problem: true, note: "A merge field is never the name of a call." }
+  - { covers: "a brace without a mark in a formula", formula: "{$Record.Amount__c} + 1", names: [$Record.Amount__c], bare: [$Record.Amount__c], problem: true, note: "Whether a flow accepts a name outside braces is not verified." }
+  - { covers: "a closing brace alone in a formula", formula: "{!$Record.Amount__c}} + 1", names: [$Record.Amount__c], problem: true }
+  - { covers: "an operator in the braces", formula: "{!$Record.Amount__c + 1}", names: ["$Record.Amount__c + 1"], unread: ["$Record.Amount__c + 1"], note: "The formula is read as a whole. What stands in the braces is not a name." }

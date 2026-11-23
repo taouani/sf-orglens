@@ -10,6 +10,7 @@ org, and nothing is copied from another project.
 | `expected/answer-key.v1.yaml` | The key of Phase 1, kept so that the check can say what version 2 changed.          |
 | `expected/answer-key.v0.yaml` | The key of Phase 0, kept as the key the Apex trial was scored with.                 |
 | `formula-probes.yaml`         | One small formula for every operator, literal and function, to test a parser with.  |
+| `merge-field-probes.yaml`     | Small texts and formulas of a flow with merge fields, to test their reader with.    |
 | `formula-negative/`           | Fields and a rule whose formulas cannot be deployed, and what is expected of them.  |
 | `flow-negative/`              | Three flows that cannot be deployed, and what is expected of them.                  |
 | `parser-negative/`            | Apex files that do not compile, for tests of error recovery. Not part of a project. |
@@ -437,6 +438,24 @@ the text finds. `extraction-formula.test.ts` reads each probe with the reader of
   not verified. Nine functions are marked as not usable in a field or a rule, from the same summary.
 - One thing has no probe: a text that runs over two lines. The grammar of the engine refuses it and the formula
   editor of Salesforce may accept it. Which holds is not verified, so no file here takes a side.
+
+## Merge-field probes
+
+`merge-field-probes.yaml` holds 41 small texts and 33 small formulas as a flow writes them, with merge fields:
+`{!varInvoice.Name}`. Each text lists by hand what stands in each of its merge fields, how many are not closed,
+and which are not read as a name. Each formula lists its names, and which of them stand outside braces.
+`packages/engine/test/extraction-merge-fields.test.ts` reads each probe with the readers of the engine, and holds
+the list of each text against what a regular expression finds.
+
+- The probes cover what the plan of Phase 2 asks for: a merge field at the start and at the end of a text, two in
+  a row, one that is not closed, and a brace that is no merge field.
+- The file says what the first name of a merge field is in the probes, as a flow knows it of its resources: a
+  record of `Invoice__c` or of `Invoice_Line__c`, or a value that is no record.
+- The probes are not deployed, so Salesforce has not checked them. Three things in them are not verified, and
+  each probe of them says so in a note: white space in the braces, a name outside braces in a formula of a flow,
+  and a merge field in a text of such a formula.
+- A merge field of an email template or of a page may hold a whole formula. One probe shows that it is found
+  and not read. Nothing else of that kind is probed.
 
 ## Formulas that cannot be deployed
 

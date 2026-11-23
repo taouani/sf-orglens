@@ -8,9 +8,13 @@
  *
  * A formula it cannot read is not dropped. It says where it stopped, and gives the tokens it read, those after
  * that place too.
+ *
+ * A flow writes the same language with one difference: where the formula of a field has a name, it has a merge
+ * field, `{!Resource.Path}`. `parseFormula` reads that way of writing when it is asked to.
  */
 
 import { cut } from './analysed.ts';
+import { closesIn, insideOfMergeField } from './merge-fields.ts';
 
 /** A part of a formula. `start` and `end` count the code units of the text of the formula, from 0. */
 interface Span {
@@ -19,8 +23,12 @@ interface Span {
 }
 
 export type FormulaToken = Span &
+  /**
+   * A name. `mergeField` is set for what stands between the braces of a merge field, which is the name then:
+   * the token starts and ends with it, and the braces are part of no token.
+   */
   (
-    | { readonly kind: 'name'; readonly text: string }
+    | { readonly kind: 'name'; readonly text: string; readonly mergeField?: true }
     | { readonly kind: 'number' }
     /** A text in quotes. `value` is what stands between them, with what a backslash keeps. */
     | { readonly kind: 'text'; readonly value: string }
@@ -30,7 +38,7 @@ export type FormulaToken = Span &
 
 export type FormulaNode = Span &
   (
-    | { readonly kind: 'name'; readonly text: string }
+    | { readonly kind: 'name'; readonly text: string; readonly mergeField?: true }
     /** `TRUE`, `FALSE` or `NULL`, in any case. */
     | { readonly kind: 'word'; readonly text: string }
     | { readonly kind: 'number' }
@@ -135,10 +143,20 @@ class Stop extends Error {
   }
 }
 
+/** How a formula is written. */
+export interface FormulaWriting {
+  /**
+   * True for the formula of a flow: `{!Resource.Path}` is a name. Without it a brace is no part of a formula. A
+   * name outside braces is read as a name in both, and is marked in neither.
+   */
+  readonly mergeFields?: boolean;
+}
+
 /** The tokens of a formula. Comments and white space are no tokens. */
-function tokensOf(text: string): { tokens: FormulaToken[]; problem: FormulaProblem | null } {
+function tokensOf(text: string, mergeFields: boolean): { tokens: FormulaToken[]; problem: FormulaProblem | null } {
   const tokens: FormulaToken[] = [];
   let problem: FormulaProblem | null = null;
+  const closeOf = closesIn(text);
   const match = (pattern: RegExp, at: number): string | null => {
     pattern.lastIndex = at;
     return pattern.exec(text)?.[0] ?? null;
@@ -177,6 +195,27 @@ function tokensOf(text: string): { tokens: FormulaToken[]; problem: FormulaProbl
       at = end + 1;
       continue;
     }
+    if (mergeFields && text.startsWith('{!', at)) {
+      const close = closeOf(at);
+      if (close === null) {
+        // The name after the braces is still the name of a merge field. The first problem is the one that is told.
+        problem ??= { message: 'A merge field is not closed.', at };
+        const from = at + 2 + (match(SPACE, at + 2)?.length ?? 0);
+        const opened = match(NAME, from);
+        if (opened === null) {
+          at += 2;
+        } else {
+          tokens.push({ kind: 'name', text: opened, start: from, end: from + opened.length, mergeField: true });
+          at = from + opened.length;
+        }
+        continue;
+      }
+      const inside = insideOfMergeField(text, at, close);
+      const end = inside.start + inside.text.length;
+      tokens.push({ kind: 'name', text: inside.text, start: inside.start, end, mergeField: true });
+      at = close + 1;
+      continue;
+    }
     const name = match(NAME, at);
     if (name !== null) {
       tokens.push({ kind: 'name', text: name, start: at, end: at + name.length });
@@ -208,8 +247,8 @@ function tokensOf(text: string): { tokens: FormulaToken[]; problem: FormulaProbl
 }
 
 /** Reads a formula. It never throws for what the text holds. */
-export function parseFormula(text: string): ParsedFormula {
-  const { tokens, problem: inTokens } = tokensOf(text);
+export function parseFormula(text: string, writing: FormulaWriting = {}): ParsedFormula {
+  const { tokens, problem: inTokens } = tokensOf(text, writing.mergeFields === true);
 
   let next = 0;
   let depth = 0;
@@ -219,8 +258,10 @@ export function parseFormula(text: string): ParsedFormula {
   const stop = (expected: string): never => {
     const token = peek();
     if (token === undefined) throw new Stop(`The formula ends where ${expected} is expected.`, text.length);
+    const shown = text.slice(token.start, token.end);
     throw new Stop(
-      `"${cut(text.slice(token.start, token.end), LONGEST_TOKEN_SHOWN)}" stands where ${expected} is expected.`,
+      // A merge field that holds nothing is a name without a letter.
+      `${shown === '' ? 'A merge field that holds nothing' : `"${cut(shown, LONGEST_TOKEN_SHOWN)}"`} stands where ${expected} is expected.`,
       token.start,
     );
   };
@@ -251,11 +292,11 @@ export function parseFormula(text: string): ParsedFormula {
     for (;;) {
       const token = peek();
       if (token === undefined || token.kind === 'number' || token.kind === 'text') break;
-      // `NOT` before a value without a bracket is a sign. Before a bracket it is a call.
+      // `NOT` before a value without a bracket is a sign. Before a bracket it is a call. A merge field is neither.
       const isSign =
         token.kind === 'mark'
           ? SIGNS.has(token.text)
-          : token.text.toLowerCase() === 'not' && !isMark(tokens[next + 1], '(');
+          : token.mergeField !== true && token.text.toLowerCase() === 'not' && !isMark(tokens[next + 1], '(');
       if (!isSign) break;
       signs.push({ text: token.text, start: token.start });
       next += 1;
@@ -280,6 +321,10 @@ export function parseFormula(text: string): ParsedFormula {
     }
     if (token.kind === 'name') {
       next += 1;
+      if (token.mergeField === true) {
+        // A merge field is a name whatever it holds: never a word of the language, never the name of a call.
+        return { kind: 'name', text: token.text, start: token.start, end: token.end, mergeField: true };
+      }
       if (!isMark(peek(), '(')) {
         const kind = WORDS.has(token.text.toLowerCase()) ? 'word' : 'name';
         return { kind, text: token.text, start: token.start, end: token.end };
@@ -333,6 +378,8 @@ export interface FormulaName {
   readonly start: number;
   /** The value of a picklist that the formula compares the name with, if it does. */
   readonly value?: string;
+  /** Set for a name that stands between the braces of a merge field. */
+  readonly mergeField?: true;
 }
 
 /** The calls that compare a picklist, their first argument, with a value, their second. */
@@ -349,7 +396,12 @@ export function namesOfTree(tree: FormulaNode): FormulaName[] {
   for (let item = open.pop(); item !== undefined; item = open.pop()) {
     const { node, value } = item;
     if (node.kind === 'name') {
-      names.push({ text: node.text, start: node.start, ...(value === undefined ? {} : { value }) });
+      names.push({
+        text: node.text,
+        start: node.start,
+        ...(value === undefined ? {} : { value }),
+        ...(node.mergeField === true ? { mergeField: true as const } : {}),
+      });
     } else if (node.kind === 'operation') {
       for (const operand of [...node.operands].reverse()) open.push({ node: operand });
     } else if (node.kind === 'call') {
@@ -377,6 +429,10 @@ export function namesOfTokens(tokens: readonly FormulaToken[]): FormulaName[] {
   const names: FormulaName[] = [];
   tokens.forEach((token, index) => {
     if (token.kind !== 'name') return;
+    if (token.mergeField === true) {
+      names.push({ text: token.text, start: token.start, mergeField: true });
+      return;
+    }
     const after = tokens[index + 1];
     if (after?.kind === 'mark' && after.text === '(') return;
     const word = token.text.toLowerCase();

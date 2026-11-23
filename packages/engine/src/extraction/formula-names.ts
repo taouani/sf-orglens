@@ -1,9 +1,10 @@
 /**
  * What a name in a formula stands for, as far as the name itself says it: a path of fields from the object of
  * the formula, a field behind a global variable, a custom label, a custom permission, a record of a custom
- * metadata type, or nothing that can change.
+ * metadata type, or nothing that can change. The name of a merge field is read the same way, with one
+ * difference: its first name is something the text around it knows, and the caller says what.
  *
- * Nothing is resolved here. `objects.ts` gives each part its place in the file, and the names are resolved
+ * Nothing is resolved here. `names-in-text.ts` gives each part its place in the file, and the names are resolved
  * against the model when every file was read.
  */
 import { GLOBAL_OBJECTS } from './model.ts';
@@ -47,55 +48,58 @@ const TAKEN_AS: ReadonlyMap<string, { object: string; fields: ReadonlyMap<string
   ['queue', { object: 'Group', fields: new Map([['queuename', 'Name']]) }],
 ]);
 
-/**
- * What the name of a formula stands for. `own` is the object the formula belongs to.
- *
- * Gives the uses of the name, which are none for a name that stands for nothing that can change, or `null` for
- * a name that is not read: one that is not built like a name, or one behind a global variable this reader does
- * not know.
- */
-export function usesOfName(name: string, own: string): readonly NameUse[] | null {
-  const segments: { text: string; from: number }[] = [];
+/** One name between two dots, and where it starts in the whole name. */
+interface Segment {
+  readonly text: string;
+  readonly from: number;
+}
+
+function segmentsOf(name: string): Segment[] {
+  const segments: Segment[] = [];
   let from = 0;
   for (const text of name.split('.')) {
     segments.push({ text, from });
     from += text.length + 1;
   }
-  const [first, ...rest] = segments;
-  if (first === undefined) return null;
+  return segments;
+}
 
-  /** A path of plain names. `null` if one of them is not a name. */
-  const plain = (start: string, path: readonly { text: string; from: number }[]): NameUse[] | null => {
-    if (path.length === 0) return null;
-    const parts: NamePart[] = [];
-    let fields: ReadonlyMap<string, string> | undefined;
-    for (const [index, { text, from: at }] of path.entries()) {
-      const found = SEGMENT.exec(text);
-      const [, word, kind] = found ?? [];
-      if (word === undefined) return null;
-      const last = index === path.length - 1;
-      // The kind of record is said of a relationship, never of the field at the end.
-      if (kind !== undefined && last) return null;
-      const resolveAs = last ? fields?.get(word.toLowerCase()) : undefined;
-      const taken = kind === undefined ? undefined : TAKEN_AS.get(kind.toLowerCase());
-      fields = taken?.fields;
-      parts.push({
-        name: word,
-        from: at,
-        ...(kind === undefined ? {} : { leadsTo: taken?.object ?? kind }),
-        ...(resolveAs === undefined ? {} : { resolveAs }),
-      });
-    }
-    return [{ form: 'path', start, parts }];
-  };
-  /** One name that is the name of a component. */
-  const one = (segment: { text: string; from: number } | undefined): NamePart | null =>
-    segment !== undefined && /^[A-Za-z][A-Za-z0-9_]*$/.test(segment.text)
-      ? { name: segment.text, from: segment.from }
-      : null;
+/** A path of plain names from the object `start`. `null` if there is none, or if one of them is not a name. */
+function plain(start: string, path: readonly Segment[]): NameUse[] | null {
+  if (path.length === 0) return null;
+  const parts: NamePart[] = [];
+  let fields: ReadonlyMap<string, string> | undefined;
+  for (const [index, { text, from: at }] of path.entries()) {
+    const found = SEGMENT.exec(text);
+    const [, word, kind] = found ?? [];
+    if (word === undefined) return null;
+    const last = index === path.length - 1;
+    // The kind of record is said of a relationship, never of the field at the end.
+    if (kind !== undefined && last) return null;
+    const resolveAs = last ? fields?.get(word.toLowerCase()) : undefined;
+    const taken = kind === undefined ? undefined : TAKEN_AS.get(kind.toLowerCase());
+    fields = taken?.fields;
+    parts.push({
+      name: word,
+      from: at,
+      ...(kind === undefined ? {} : { leadsTo: taken?.object ?? kind }),
+      ...(resolveAs === undefined ? {} : { resolveAs }),
+    });
+  }
+  return [{ form: 'path', start, parts }];
+}
 
-  if (!first.text.startsWith('$')) return plain(own, segments);
-  const variable = first.text.toLowerCase();
+/** One name that is the name of a component. */
+const one = (segment: Segment | undefined): NamePart | null =>
+  segment !== undefined && /^[A-Za-z][A-Za-z0-9_]*$/.test(segment.text)
+    ? { name: segment.text, from: segment.from }
+    : null;
+
+/**
+ * What stands behind a global variable. `variable` is its name in lower case, `rest` the names after it, and
+ * `own` the object of the formula, or `null` where there is none, as for a merge field.
+ */
+function usesOfVariable(variable: string, rest: readonly Segment[], own: string | null): readonly NameUse[] | null {
   if (NOTHING.has(variable)) return [];
 
   if (variable === '$user' && rest.length === 1 && NO_FIELD_OF_USER.has(rest[0]?.text.toLowerCase() ?? '')) return [];
@@ -103,7 +107,7 @@ export function usesOfName(name: string, own: string): readonly NameUse[] | null
   if (object !== undefined) return plain(object, rest);
   if (variable === '$recordtype') return plain('RecordType', rest);
   // The record that holds a lookup, in its filter. A formula of a field has no such variable.
-  if (variable === '$source') return plain(own, rest);
+  if (variable === '$source') return own === null ? null : plain(own, rest);
 
   if (variable === '$label' || variable === '$permission') {
     const part = rest.length === 1 ? one(rest[0]) : null;
@@ -138,4 +142,61 @@ export function usesOfName(name: string, own: string): readonly NameUse[] | null
     return plain(named.name, rest.slice(2));
   }
   return null;
+}
+
+/**
+ * What the name of a formula stands for. `own` is the object the formula belongs to.
+ *
+ * Gives the uses of the name, which are none for a name that stands for nothing that can change, or `null` for
+ * a name that is not read: one that is not built like a name, or one behind a global variable this reader does
+ * not know.
+ */
+export function usesOfName(name: string, own: string): readonly NameUse[] | null {
+  const segments = segmentsOf(name);
+  const [first, ...rest] = segments;
+  if (first === undefined) return null;
+  if (!first.text.startsWith('$')) return plain(own, segments);
+  return usesOfVariable(first.text.toLowerCase(), rest, own);
+}
+
+/**
+ * What the first name of a merge field is, as the text around it knows it: a resource of a flow, or the object an
+ * email template is written for.
+ *
+ * - `{ object: 'Invoice__c' }`: a record of that object. The names after it are a path from the object.
+ * - `{ object: null }`: something that holds no record and names nothing that can change, such as a number, a
+ *   text or the time. The names after it give no reference. Anything after it that is no name is not read.
+ */
+export interface MergeStart {
+  readonly object: string | null;
+}
+
+/** A name after a dot, where nothing is known of what it names. */
+const PLAIN_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/**
+ * What the name of a merge field stands for: what stands between `{!` and `}`. `startOf` says what the first
+ * name is, and gives `undefined` for one it does not know. It gets the name as the text writes it: a caller for
+ * whom capitals make no difference folds them itself. It is asked before anything else, so that `$Record` of a
+ * flow is what the flow says. A first name it does not know is read as the global variable of a formula, if it
+ * is one.
+ *
+ * Gives the uses of the name, as `usesOfName` does: none for a name that stands for nothing that can change,
+ * and for a record that is named as a whole, and `null` for a name that is not read.
+ */
+export function usesOfMergeField(
+  name: string,
+  startOf: (first: string) => MergeStart | undefined,
+): readonly NameUse[] | null {
+  const [first, ...rest] = segmentsOf(name);
+  // A first name that is not built like one is not asked about: nothing can be known of it.
+  if (first === undefined || !/^\$?[A-Za-z][A-Za-z0-9_]*$/.test(first.text)) return null;
+  const start = startOf(first.text);
+  if (start !== undefined) {
+    if (rest.length === 0) return [];
+    // What stands after a name that holds no record gives no reference, as long as it is built like names.
+    if (start.object === null) return rest.every((segment) => PLAIN_NAME.test(segment.text)) ? [] : null;
+    return plain(start.object, rest);
+  }
+  return first.text.startsWith('$') ? usesOfVariable(first.text.toLowerCase(), rest, null) : null;
 }

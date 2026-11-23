@@ -102,6 +102,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the
   names among its tokens are `probable`. `fixtures/formula-probes.yaml` must be read without a problem.
+- A name in a text is read by shared code (decision record 0059). A reader hands its names over as they are
+  written, each with its place (`extraction/raw-references.ts`), and `resolveReferences` resolves them when
+  every file was read. `extraction/names-in-text.ts` reads the three ways a name stands in a text: the formula
+  of a field or a rule, the formula of a flow, which has a merge field `{!Resource.Path}` where the other has a
+  name, and a text with merge fields, where only what stands in the braces is read. The caller says what the
+  first name of a merge field is. `fixtures/merge-field-probes.yaml` must be read as each probe says.
 - A snapshot is analysed from the files it holds (`api/analysis.ts`, decision record 0043): `snapshot` stores
   first and analyses what it stored, and `analyse` does the same for a snapshot that is already there. Whether
   a snapshot is `complete` or `partial` says what was read. Whether its analysis is complete is said by the

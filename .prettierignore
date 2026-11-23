@@ -13,6 +13,7 @@ fixtures/parser-negative/**
 fixtures/formula-negative/**
 fixtures/flow-negative/**
 fixtures/formula-probes.yaml
+fixtures/merge-field-probes.yaml
 fixtures/expected/**
 # Public test codebases, downloaded on demand.
 .corpora
