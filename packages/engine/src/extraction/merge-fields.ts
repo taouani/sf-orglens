@@ -42,10 +42,9 @@ export function closeOfMergeField(text: string, open: number): number | null {
 /** What stands between the braces of a merge field that closes at `close`, and where it starts. */
 export function insideOfMergeField(text: string, open: number, close: number): { text: string; start: number } {
   const raw = text.slice(open + OPENS.length, close);
-  const inside = raw.trim();
-  // The white space before what stands there. An empty merge field has its place at the closing brace.
-  const before = inside === '' ? raw.length : (SPACE_BEFORE.exec(raw)?.[0].length ?? 0);
-  return { text: inside, start: open + OPENS.length + before };
+  // The white space before what stands there. In a merge field that holds nothing else, that is all of it.
+  const before = SPACE_BEFORE.exec(raw)?.[0].length ?? 0;
+  return { text: raw.trim(), start: open + OPENS.length + before };
 }
 
 /**

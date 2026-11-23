@@ -147,6 +147,17 @@ describe('a formula as a flow writes it', () => {
       { text: '$Record.Amount__c', start: 5, mergeField: true },
       { text: 'var', start: 32, mergeField: true },
     ]);
+    // The token ends with the name, not with the white space or the brace after it.
+    expect(parseFormula('{!  a.b  } + 1', { mergeFields: true }).tokens.map(tokenOf)).toEqual([
+      'name a.b 4-7 merge',
+      'mark + 11-12',
+      'number 13-14',
+    ]);
+    // So a problem shows the name, and nothing of the braces.
+    expect(parseFormula('1 {! a }', { mergeFields: true }).problem).toEqual({
+      message: '"a" stands where an operator or the end of the formula is expected.',
+      at: 5,
+    });
   });
 
   it('keeps the value a picklist is compared with', () => {
