@@ -339,8 +339,8 @@ export function readIssuesOf(store: Store, snapshotId: number, code: string): St
  * a type. A snapshot of an org writes what is missing outside the logic tier as a warning (decision record
  * 0046). Such a warning counts too if it says, in `details.types`, that what is missing can be of one of the
  * types `covered`: the types an answer claims to cover. Every type this version analyses is of the tier (decision
- * record 0068), so such a warning is one of a snapshot an earlier version took, about an action of a workflow rule,
- * which was analysed and outside the tier then (decision record 0063). `analysis`: the errors of the analysis.
+ * record 0068), and no snapshot is known to hold such a warning: the rule is there for later. `analysis`: the
+ * errors of the analysis.
  * `analysisWarnings`: its warnings, each of which says that a name was not turned into a reference or that a
  * part of a file was not found. A warning of the reading that says a component was read in a form that may not
  * be the one that runs counts with them when its `details.types` names a type `covered`: a flow analysed as a

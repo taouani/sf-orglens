@@ -150,7 +150,9 @@ they have below a package directory, such as `classes/Foo.cls`.
   tier and does not make the snapshot partial, the snapshot is `complete`, and the exit code is `0`. The first
   line of the report then says "is complete for the logic tier", and after the numbers: "Something of other
   types is missing, and the warnings below say what." A script that needs every type reads the issues: each of
-  the four carries `details.tier`, which is `logic` or `other`.
+  the four carries `details.tier`, which is `logic` or `other`. A snapshot keeps the judgement of the version
+  that took it, also where an older list of the tier was shorter: the line says what that version judged
+  (decision record 0068).
 
   The types of the logic tier are:
 
@@ -716,8 +718,7 @@ the answer says whether it is complete, and if not, why. Below the results it na
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
   about a type the answer covers: a type the analysis read, or one of which it analysed a component. Every type
-  this version analyses is of the tier, so such a warning is one of a snapshot an earlier version took, about an
-  action of a workflow rule, such as an email alert, which was outside the tier then;
+  this version analyses is of the tier, and no snapshot is known to hold such a warning;
 - how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
   to its end, or a part of a file was not found. A reference may be missing for each. For an answer that covers
   flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading count with them: such a flow was analysed as a

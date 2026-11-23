@@ -204,8 +204,7 @@ export function impactOf(store: Store, source: string, component: string, query:
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
   // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
   // component. A warning of the reading about one of them counts. Every type this version analyses is of the
-  // logic tier (decision record 0068), but a snapshot an earlier version took can hold such a warning about an
-  // action of a workflow rule, which was outside the tier then (decision record 0063).
+  // logic tier (decision record 0068), and no snapshot is known to hold such a warning: the rule is there for later.
   const covered = [
     ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
   ];

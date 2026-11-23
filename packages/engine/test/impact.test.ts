@@ -439,8 +439,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: true,
         notCovered: { partial: [], readErrors: 1 },
       });
-      // An earlier version wrote such a warning for an action of a workflow rule, which the analysis read and which
-      // was outside the logic tier until decision record 0068 (decision record 0063): every answer covers it.
+      // No snapshot is known to hold a warning outside the logic tier about a type an answer covers (decision
+      // records 0046 and 0068), so the row is written by hand. An email alert is analysed: every answer covers it.
       warn(['WorkflowAlert']);
       expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({ mayMiss: true, notCovered: { readErrors: 2 } });
     });

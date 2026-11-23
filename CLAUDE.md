@@ -189,8 +189,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
   under the path of the flow, with the note `FLOW_NEWER_VERSION` (`api/flow-versions.ts`, decision records 0060 and
   0062). A snapshot of a Git source is not judged by tier. An impact answer counts such a warning when it can be
-  about a type it covers, which only a snapshot an older version took can hold (decision record 0068).
-  `exclude_types` of an org source in `orglens.toml` leaves types outside the tier out of its
+  about a type it covers (decision record 0046), which no snapshot is known to hold, since every analysed type is
+  of the tier. `exclude_types` of an org source in `orglens.toml` leaves types outside the tier out of its
   snapshots (decision record 0048): the org is not asked for them, and the coverage keeps each with the listing
   `excluded`, so that a report and an answer can say that it was not read.
 - Component keys never contain the org, the source or the snapshot.

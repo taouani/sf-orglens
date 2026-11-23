@@ -56,9 +56,11 @@ The statements below are choices of the author of this record. The maintainer ca
    and an action that sends (`WorkflowSend`) are components with a row and nothing read (record 0063, point 2).
    `WorkflowFlowAutomation` is not read either: the Salesforce library knows it only as a type of its own, in a
    folder of its own, and what a file of workflow rules holds of it is no component (record 0063, point 9). The
-   test org lists 7 components of it and hands out none, in runs 23 and 27 of "Live org". In run 27 it lists no
-   component of the other actions that are not analysed. If the type joined, a snapshot would be `partial` for a
-   type that nothing reads, while a rule that names one of its components refers to it by its name either way.
+   test org lists 7 components of it and hands out none, in runs 23 and 27 of "Live org". In run 27 that is as
+   many as it lists flows, and what such a component stands for is not verified. In the same run the org lists no
+   component of `WorkflowKnowledgePublish` and `WorkflowSend`, and does not describe `WorkflowFlowAction`. If the
+   type joined, a snapshot would be `partial` for a type that nothing reads, while a rule that names one of its
+   components refers to it by its name either way.
    `FlowDefinition` names the active version of a flow, and a snapshot reads it to fetch that version. Where it is
    missing or left out, a flow whose file is not active is kept as it came, with the warning
    `FLOW_VERSION_UNKNOWN`, which an impact answer that covers flows counts (record
@@ -69,12 +71,15 @@ The statements below are choices of the author of this record. The maintainer ca
    org is asked.
 5. **A snapshot keeps the judgement it was given** (record [0007](0007-immutable-snapshots.md)). One that an older
    version took, in which an action did not come back, stays `complete`, and its issue stays a warning, also when
-   this version analyses it again. An impact answer from it says already that it may miss something: the counts
-   of the type put it in `notCovered.partial`, whatever the severity of the issue (record
-   [0044](0044-an-impact-answer.md)), and a warning of another code that names one of the four in `details.types`
-   counts in `readErrors` (record 0046). Every type this version analyses is of the list, so only a snapshot that
-   an older version took can hold such a warning, and the rule of record 0046 that counts it has an effect for
-   such snapshots only.
+   this version analyses it again. For such a snapshot, `orglens analyse` and `orglens coverage` still say that it
+   is complete for the logic tier, as the version that took it judged. An impact answer from it says that it may
+   miss something where its analysis read the actions, as one by this version does: the counts of the type put it
+   in `notCovered.partial`, whatever the severity of the issue (record [0044](0044-an-impact-answer.md)). The rule
+   of record 0046 that counts a warning outside the tier in `readErrors`, when it names a type the answer covers,
+   is one for later again: every type this version analyses is of the list. No snapshot is known to hold such a
+   warning about an action either. An older version wrote a file under `workflows` that could not be read, and a
+   retrieve that failed, with `Workflow` among their types, so as an error. The one way to such a warning was a
+   failure of the Salesforce library while it reads a part of a file of workflow rules, which no test reaches.
 6. **The three types of work package 8**, email templates, report types and quick actions, join with their
    analysers, in the pull request of that work package (record 0058). The test of point 1 fails that pull request
    until they do.
@@ -84,7 +89,9 @@ The statements below are choices of the author of this record. The maintainer ca
 - A snapshot of an org that lists an action of a workflow rule and does not hand it out is `partial` where it was
   `complete`, and `orglens snapshot` ends with `5` where it ended with `0`. A test against the mock org takes a
   task out of a file of workflow rules and finds the error `NOT_RETRIEVED` with `details.tier` set to `logic`. An
-  impact answer from such a snapshot does not change: it said before that it may miss something.
+  impact answer from such a snapshot names the status `partial` where it named `complete`. That it may miss
+  something it said before as well, since the actions are analysed (record 0063): the counts of the type put the
+  type in `notCovered.partial`.
 - On the test org nothing changes. In
   [run 27 of "Live org"](https://github.com/taouani/sf-orglens/actions/runs/45256396281) it listed and handed out
   every action of its files of workflow rules: 1 email alert, 4 field updates, of which the fixture project has 3,
@@ -92,7 +99,8 @@ The statements below are choices of the author of this record. The maintainer ca
   types that do not come back (record 0049).
 - A file `orglens.toml` that names one of the four in `exclude_types` is refused where it was read with a warning.
 - Records 0046 and 0048 say that every analysed type is of the logic tier. That holds again: record 0063 had made
-  it untrue for the four actions.
+  it untrue for the four actions. The rule of record 0046 that counts a warning outside the tier for an impact
+  answer is one for later again, as that record says of it.
 - `docs/cli.md` lists the 25 names and says that every type an analyser reads is among them. The JSON Schema of
   the output names no type of the list: only the description of `readErrors` changes. `docs/configuration.md`
   refers to the list in `docs/cli.md` and does not change.
