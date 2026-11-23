@@ -476,7 +476,8 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       holds(rule(same)),
       holds(permission),
     ]);
-    const found = (named: string, types: readonly string[] = []): string => findComponent(graph, named, types).key;
+    const found = (named: string, types: readonly string[] = []): string =>
+      findComponent(graph, named, types).component.key;
     expect(found(A)).toBe(A);
     expect(found('CustomField:Thing__c.A__c')).toBe(A);
     expect(found('customfield:THING__C.a__C')).toBe(A);
@@ -516,6 +517,41 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     // A type that is none, and a name no key can hold.
     expect(codeOf(() => found('not a type:Thing__c.A__c'))).toBe('KEY_INVALID');
     expect(codeOf(() => found('Thing__c.\u0007'))).toBe('KEY_INVALID');
+    // A name that fits one component, a key, and a type with a name fit nothing else.
+    for (const named of ['thing__c', THING, 'CustomObject:Thing__c', 'Account']) {
+      expect(findComponent(graph, named, []).sameName, named).toEqual([]);
+    }
+  });
+
+  it('takes a name alone that fits an object and more for the object, and names the others', () => {
+    const workflow = buildKey({ type: 'Workflow', fullName: 'Thing__c' });
+    const tab = buildKey({ type: 'CustomTab', fullName: 'Thing__c' });
+    const graph = graphOf([holds(THING), holds(workflow), holds(tab)]);
+    // The two types are looked in because the snapshot has them: the engine does not know them by name.
+    const types = ['CustomTab', 'Workflow'];
+    expect(findComponent(graph, ' thing__C', types)).toMatchObject({
+      component: { key: THING },
+      sameName: [tab, workflow],
+    });
+    expect(findComponent(graph, 'Thing__c', ['Workflow'])).toMatchObject({ sameName: [workflow] });
+    expect(findComponent(graph, 'Thing__c', [])).toMatchObject({ component: { key: THING }, sameName: [] });
+    // An object the snapshot only refers to counts as one the name fits.
+    const account = buildKey({ type: 'Workflow', fullName: 'Account' });
+    const referred = graphOf([holds(account, to(object('Account'), 1, { resolution: 'external' }))]);
+    expect(findComponent(referred, 'Account', types)).toMatchObject({
+      component: { key: object('Account'), version: null },
+      sameName: [account],
+    });
+    // Named with its type or by its key, a component is the one asked for, and nothing else is named.
+    expect(findComponent(graph, 'Workflow:Thing__c', [])).toMatchObject({ component: { key: workflow }, sameName: [] });
+    expect(findComponent(graph, tab, [])).toMatchObject({ component: { key: tab }, sameName: [] });
+    // Without an object among them, the name is still an error that lists them.
+    const noObject = graphOf([holds(workflow), holds(tab)]);
+    expect(codeOf(() => findComponent(noObject, 'Thing__c', types))).toBe('COMPONENT_AMBIGUOUS');
+    expect(findComponent(noObject, 'Thing__c', ['Workflow'])).toMatchObject({
+      component: { key: workflow },
+      sameName: [],
+    });
   });
 });
 

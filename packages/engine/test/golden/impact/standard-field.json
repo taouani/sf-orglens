@@ -13,6 +13,7 @@
     "name": null,
     "file": null
   },
+  "sameName": [],
   "parts": 0,
   "direction": "incoming",
   "depth": null,
@@ -113,6 +114,63 @@
         "line": 4,
         "column": 14
       }
+    },
+    {
+      "key": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+      "type": "WorkflowAlert",
+      "name": "Invoice__c.Invoice_Overdue_Alert",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "to": "CustomField:invoice__c.approver__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 8,
+        "column": 20
+      }
+    },
+    {
+      "key": "Flow:invoice_after_save#element:send_overdue_alert",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Send_Overdue_Alert",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:send_overdue_alert",
+        "to": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "kind": "references",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 8,
+        "column": 32
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.remind_when_sent",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Remind_When_Sent",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.remind_when_sent",
+        "to": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 73,
+        "column": 19
+      }
     }
   ],
   "unresolved": [],
@@ -183,42 +241,6 @@
         "type": "RecordType",
         "listed": 2,
         "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "Workflow",
-        "listed": 2,
-        "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowAlert",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowFieldUpdate",
-        "listed": 3,
-        "retrieved": 3,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowOutboundMessage",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowRule",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowTask",
-        "listed": 1,
-        "retrieved": 1,
         "listing": "ok"
       }
     ],

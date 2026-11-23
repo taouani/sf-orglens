@@ -1197,11 +1197,11 @@ describe('reading the test org', () => {
     ).toEqual([
       'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)',
       `Rows: ${String(rows)}, read with 1 request. No query left a row out.`,
-      'Rows from a component of a type that this phase does not analyse, which are not compared: 84 (ApexClass (82), ApexTrigger (1), CustomMetadata (1)).',
+      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 84 (ApexClass (82), ApexTrigger (1), CustomMetadata (1)).',
       'Rows with an end that is no component the org listed: 0. Rows from a component the snapshot does not hold or that was not analysed: 0.',
-      'Rows compared: 58, which are 58 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
+      'Rows compared: 61, which are 61 pairs of components. The analysis has 59 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
       'References of the analysis of a kind Salesforce reports, for which it has no row: 0.',
-      'References of the analysis of kinds the API does not report: 42 (standard-field (24), standard-object (6), roll-up-summary (5), controlling-field (2), lookup-filter (2), value-set (2), lookup (1)).',
+      'References of the analysis of kinds the API does not report: 72 (standard-field (25), workflow-rule (18), workflow-action (7), standard-object (6), roll-up-summary (5), field-update (4), controlling-field (2), lookup-filter (2), value-set (2), lookup (1)).',
       expect.stringMatching(
         new RegExp(
           `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
@@ -1223,7 +1223,7 @@ describe('reading the test org', () => {
     expectNoSecret(output);
   });
 
-  it('says which pairs of the files no analyser reads yet Salesforce reports, by the ids the org listed', async () => {
+  it('says which pairs of the files of Phase 2 Salesforce reports, by the ids the org listed', async () => {
     const flow = ['Flow', 'Invoice_After_Save'] as const;
     dependencies.rows.push(
       // In the answer key: a field the flow reads, the flow it calls, and the alert it sends.
@@ -1249,7 +1249,7 @@ describe('reading the test org', () => {
     expect(log.failed).toBe(false);
     const lines = output.split('\n');
     const head = lines.indexOf(
-      'The files of Phase 2 of the fixture project, which no analyser reads yet, in the rows of the Dependency API',
+      'The files of Phase 2 of the fixture project in the rows of the Dependency API, held against the pairs of its answer key',
     );
     const end = lines.indexOf('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)');
     const section = lines.slice(head, end).join('\n');
@@ -1259,15 +1259,18 @@ describe('reading the test org', () => {
     expect(section).toMatch(/^Flow +Flow +4$/m);
     expect(section).toMatch(/^Flow +not listed +1$/m);
     expect(section).toMatch(/^WorkflowRule +WorkflowRule +1$/m);
+    // The rows of the mock org from the formulas of field updates, as the test org reports them.
+    expect(section).toMatch(/^WorkflowFieldUpdate +WorkflowFieldUpdate +3$/m);
     expect(section).toMatch(/^\(the name of a custom metadata type\) +CustomMetadata +1$/m);
     expect(section).toMatch(/^WorkflowAlert +WorkflowAlert +1$/m);
     // The pairs of the key for these files, and how many of them the rows are.
     expect(section).toContain(
-      'The answer key holds 149 pairs of a component and a component it refers to for these files. The Dependency API reports 5 of them.',
+      'The answer key holds 149 pairs of a component and a component it refers to for these files. The Dependency API reports 8 of them.',
     );
     expect(section).toMatch(/^Flow +CustomField +62 +1$/m);
     expect(section).toMatch(/^Flow +Flow +1 +1$/m);
     expect(section).toMatch(/^WorkflowRule +WorkflowFieldUpdate +3 +1$/m);
+    expect(section).toMatch(/^WorkflowFieldUpdate +CustomField +8 +3$/m);
     expect(section).toMatch(/^record-of +4 +1$/m);
     expect(section).toMatch(/^action +9 +3$/m);
     expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path)');
@@ -1285,9 +1288,13 @@ describe('reading the test org', () => {
       '- Flow:invoice_after_save -> CustomField:invoice__c.paid_date__c',
       '',
     ]);
-    // The cross-check counts the rows of these types and compares none of them.
+    // The cross-check counts the rows of flows and of a record of a custom metadata type, and compares none of
+    // them. It compares the row of the workflow rule, whose pair the analysis has.
     expect(output).toContain(
-      'Rows from a component of a type that this phase does not analyse, which are not compared: 90 (ApexClass (82), Flow (5), ApexTrigger (1), CustomMetadata (1), WorkflowRule (1)).',
+      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 89 (ApexClass (82), Flow (5), ApexTrigger (1), CustomMetadata (1)).',
+    );
+    expect(output).toContain(
+      'Rows compared: 62, which are 62 pairs of components. The analysis has 60 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
     );
     expectNoSecret(output);
   });
@@ -1374,7 +1381,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(true);
     expect(output).toContain(
-      'Rows compared: 59, which are 59 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 62, which are 62 pairs of components. The analysis has 59 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain(
       '- missed  ValidationRule:invoice__c.tax_rate_matches_code -> CustomField:invoice__c.amount__c',
@@ -1684,10 +1691,10 @@ describe('reading an org that holds more than the fixture project', () => {
     await readOrg(log, { env: environment() });
     const output = text();
     expect(output).toContain(
-      'Rows from a component of a type that this phase does not analyse, which are not compared: 87 (ApexClass (83), CustomMetadata (2), (a type that is not shown) (1), ApexTrigger (1)).',
+      'Rows that are not compared, from a component of a type that is not analysed or of a flow: 87 (ApexClass (83), CustomMetadata (2), (a type that is not shown) (1), ApexTrigger (1)).',
     );
     expect(output).toContain(
-      'Rows compared: 59, which are 59 pairs of components. The analysis has 56 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
+      'Rows compared: 62, which are 62 pairs of components. The analysis has 59 of them, has 2 as a reference to a part of the object Salesforce names, and missed 1.',
     );
     expect(output).toContain('- 1 pair has a component that is not of the fixture project, and is not named.');
     expect(output).not.toContain('- missed');
@@ -1700,7 +1707,7 @@ describe('reading an org that holds more than the fixture project', () => {
     expectNothingForeign(output);
   });
 
-  it('names no flow and no rule of the org among the pairs of the files no analyser reads yet', () => {
+  it('names no flow and no rule of the org among the pairs of the files of Phase 2', () => {
     // The mock org above has no flow of its own, so the rows are made here, with the ids an org would list.
     const listed = [
       { type: 'Flow', fullName: 'Takeover', id: '300xx0000000001AAA' },

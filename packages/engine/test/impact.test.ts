@@ -69,12 +69,6 @@ const NOT_ANALYSED: readonly (readonly [string, number])[] = [
   ['FieldSet', 1],
   ['GlobalValueSet', 1],
   ['RecordType', 2],
-  ['Workflow', 2],
-  ['WorkflowAlert', 1],
-  ['WorkflowFieldUpdate', 3],
-  ['WorkflowOutboundMessage', 1],
-  ['WorkflowRule', 4],
-  ['WorkflowTask', 1],
 ];
 
 /** The questions whose answers are golden files, as the plan of the phase lists them. */
@@ -82,8 +76,8 @@ const GOLDEN: readonly (readonly [string, string, string])[] = [
   ['a field that formulas and rules read', 'Invoice__c.Amount__c', 'amount'],
   ['a field of a standard object', 'Account.Tier__c', 'account-tier'],
   ['a standard field', 'User.Department', 'standard-field'],
-  // The file of workflow rules of the object has the name of the object, so the object is asked for by its key.
-  ['an object', 'CustomObject:Invoice__c', 'object'],
+  // The file of workflow rules of the object has the name of the object. The name alone means the object.
+  ['an object', 'Invoice__c', 'object'],
   ['a field that nothing refers to', 'Invoice__c.Unused_Field__c', 'unreferenced'],
   ['a field that is reached through a chain of formulas', 'Invoice_Line__c.Quantity__c', 'chain'],
 ];
@@ -138,9 +132,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('gives every component of the fixture the answer that the answer key implies', async () => {
       const { workspace } = await setUp();
       const answers = loadAnswerKey();
-      // What the analysers must find so far: the references of fields and rules, and those of flows.
+      // What the analysers must find so far: the references of fields and rules, of flows and of workflow rules.
       const keyed = answers.references.filter(
-        (reference) => reference.phase === 1 || reference.file.startsWith('force-app/main/default/flows/'),
+        (reference) => reference.phase === 1 || /^force-app\/main\/default\/(?:flows|workflows)\//.test(reference.file),
       );
       const placeOf = (step: {
         from: string;
@@ -160,7 +154,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const asked = new Set<ComponentKey>();
       for (const one of keyed.flatMap((reference) => [reference.from, reference.to])) asked.add(one);
       for (const one of answers.components) {
-        if (['CustomObject', 'CustomField', 'Flow', 'ValidationRule'].includes(one.type)) asked.add(one.key);
+        if (/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*)$/.test(one.type)) asked.add(one.key);
       }
       for (const one of [...asked]) {
         const parent = parentKey(one);
@@ -210,8 +204,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(152);
-      expect(results).toBe(322);
+      expect(asked.size).toBe(164);
+      expect(results).toBe(406);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -352,8 +346,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect((await again.snapshot('fixture')).snapshot.status).toBe('partial');
       const report = await again.impact('fixture', AMOUNT);
       expect(report.snapshot.status).toBe('partial');
-      // 8 fields and rules, and 10 elements of flows.
-      expect(report.results).toHaveLength(18);
+      // 8 fields and validation rules, 10 elements of flows, and 2 workflow rules and an outbound message.
+      expect(report.results).toHaveLength(21);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -369,7 +363,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(16);
+      expect(report.results).toHaveLength(19);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -410,6 +404,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: true,
         notCovered: { partial: [], readErrors: 1 },
       });
+      // The actions of a workflow rule are outside the logic tier too, and the analysis reads them (decision record
+      // 0063): every answer covers them.
+      warn(['WorkflowAlert']);
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({ mayMiss: true, notCovered: { readErrors: 2 } });
     });
 
     it('may miss something when the snapshot holds an analysed type in part', async () => {
@@ -535,8 +533,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 17]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 18]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 20]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 21]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -576,16 +574,24 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
     });
 
-    it('does not choose between an object and the file of its workflow rules, which have one name', async () => {
-      // The fixture project has workflow rules for the invoice since Phase 2. A file of workflow rules is a
-      // component with the name of its object, so the name alone fits two. That holds for every org with
-      // workflow rules. What the name should mean is for the work package that reads workflow rules to decide.
+    it('takes the name of an object for the object, and names the file of its workflow rules, which has it too', async () => {
+      // A file of workflow rules is a component with the name of its object, on every org with workflow rules.
+      // The name alone means the object, and the answer names the other (decision record 0064).
       const { workspace } = await setUp();
-      expect(await failure(() => workspace.impact('fixture', 'Invoice__c'))).toMatchObject({
-        code: 'COMPONENT_AMBIGUOUS',
-        details: { component: 'Invoice__c', candidates: ['CustomObject:invoice__c', 'Workflow:invoice__c'] },
+      const named = await workspace.impact('fixture', 'Invoice__c');
+      expect(named).toMatchObject({ component: { key: 'CustomObject:invoice__c' }, sameName: ['Workflow:invoice__c'] });
+      // Asked for by its type or by its key, the object is the same answer, and nothing else is named.
+      const { sameName, ...rest } = named;
+      for (const asked of ['CustomObject:Invoice__c', 'CustomObject:invoice__c']) {
+        expect(await workspace.impact('fixture', asked)).toEqual({ ...rest, sameName: [] });
+      }
+      expect(sameName).toEqual(['Workflow:invoice__c']);
+      expect(await workspace.impact('fixture', 'Workflow:Invoice__c')).toMatchObject({
+        component: { key: 'Workflow:invoice__c', type: 'Workflow' },
+        sameName: [],
       });
-      expect((await workspace.impact('fixture', 'CustomObject:Invoice__c')).component.type).toBe('CustomObject');
+      // A name that fits one component names nothing else.
+      expect((await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c')).sameName).toEqual([]);
     });
 
     it('refuses a snapshot that was never analysed, and says how to analyse it', async () => {
@@ -610,7 +616,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(18);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(21);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

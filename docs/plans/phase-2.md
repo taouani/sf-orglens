@@ -5,9 +5,12 @@ building. The answers are written in below section 4, and four of them have deci
 answer to Q3 changed on 23 November 2026, after a measurement (record 0060). The plan was written for the
 recommended answers, which are the ones the maintainer gave, so its work packages stand as they were drafted, with
 two exceptions: when a person reads the ten entries of the key (work package 1, and the first reading below the
-answers), and what the second answer to Q3 adds to work packages 3 and 6. Work packages 1 and 2 are built. Of
-work package 3 the analyser of flows is built (record 0061), and a snapshot of an org fetches the active version
-of a flow by its number (record 0062). The run of "Live org" that work package 3 asks for is not made yet.
+answers), and what the second answer to Q3 adds to work packages 3 and 6. Work packages 1 to 4 are built. Of work
+package 3 the analyser of flows is built (record 0061), a snapshot of an org fetches the active version of a flow
+by its number (record 0062), and run 23 of "Live org" showed it on the test org. Work package 4 holds the reader
+of workflow rules (record 0063) and what the maintainer chose for the name alone of an object (record 0064). The
+references of the file of workflow rules of NPSP are listed in the note of work package 9, which is not written
+yet.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

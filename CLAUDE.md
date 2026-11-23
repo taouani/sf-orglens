@@ -116,6 +116,16 @@ packages/cli   the `orglens` binary                            imports only `@sf
   so. An element of a kind the reader does not know is kept, with a warning and its names as `probable`. The
   analysis has a row of its own for flows (`parser:flow`). The rows of the Dependency API from flows are counted
   and not compared (decision record 0060).
+- A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
+  with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
+  under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). What they name is of the object the
+  file is named after, also the formula of a field update that writes on the parent. A rule says whether it is
+  active. An action of a type the reader does not know, or of none, is not read, and a warning says so. A test
+  holds the types of action and the parts against the Salesforce library. Of these files the Dependency API
+  reports only the fields the formula of a field update reads, so nothing else of them is compared.
+- A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,
+  means the object in an impact question, and the answer names the others (`sameName`, decision record 0064). A
+  name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.
 - A snapshot is analysed from the files it holds (`api/analysis.ts`, decision record 0043): `snapshot` stores
   first and analyses what it stored, and `analyse` does the same for a snapshot that is already there. Whether
   a snapshot is `complete` or `partial` says what was read. Whether its analysis is complete is said by the
@@ -159,10 +169,10 @@ packages/cli   the `orglens` binary                            imports only `@sf
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
   under the path of the flow, with the note `FLOW_NEWER_VERSION` (`api/flow-versions.ts`, decision records 0060 and
   0062). A snapshot of a Git source is not judged by tier. An impact answer counts such a warning when it can be
-  about a type it covers, which no warning is while every analysed type is of the tier. `exclude_types` of an org
-  source in `orglens.toml` leaves types outside the tier out of its snapshots (decision record 0048): the org is
-  not asked for them, and the coverage keeps each with the listing `excluded`, so that a report and an answer can
-  say that it was not read.
+  about a type it covers, such as an action of a workflow rule, which is analysed and outside the tier (decision
+  record 0063). `exclude_types` of an org source in `orglens.toml` leaves types outside the tier out of its
+  snapshots (decision record 0048): the org is not asked for them, and the coverage keeps each with the listing
+  `excluded`, so that a report and an answer can say that it was not read.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

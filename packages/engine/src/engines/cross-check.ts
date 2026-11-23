@@ -38,6 +38,9 @@ export type NotReportedReason =
   | 'value-set'
   | 'display-field'
   | 'default-value'
+  | 'workflow-rule'
+  | 'workflow-action'
+  | 'field-update'
   | 'other';
 
 /** What the comparison of the rows of the Dependency API with an analysis found. */
@@ -167,6 +170,14 @@ function notReported(from: AnalysedComponent, to: string, found: Found): NotRepo
   if (isStandardObject(to)) return 'standard-object';
   const type = typeOf(from.key);
   if (type === 'ValidationRule' && from.attrs?.['active'] === false) return 'inactive-rule';
+  // Of a file of workflow rules, the test org reports the custom fields the formula of a field update reads, and
+  // nothing else: not what a rule reads or starts, not what an alert, an outbound message or a task names, not the
+  // field an update writes and not the relationship that leads to the parent it writes on.
+  if (type === 'WorkflowRule') return 'workflow-rule';
+  if (type === 'WorkflowAlert' || type === 'WorkflowOutboundMessage' || type === 'WorkflowTask') {
+    return 'workflow-action';
+  }
+  if (type === 'WorkflowFieldUpdate') return found.origins.has('parser:formula') ? null : 'field-update';
   if (found.origins.has('parser:formula')) {
     // A formula of a rule or of a formula field. A field without a formula has one in its default value, and
     // whether the API reports something custom there was not measured.

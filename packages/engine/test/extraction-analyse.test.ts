@@ -3,8 +3,9 @@
  * validation rules, those that are written in XML and those that stand in a formula.
  *
  * The first part runs on the fixture project and is measured with its answer key. The second part runs on
- * small sources that are written here, for what the fixture project does not have. The flows of the project
- * and what they say have a file of their own, `extraction-flows.test.ts`.
+ * small sources that are written here, for what the fixture project does not have. The flows and the workflow
+ * rules of the project and what they say have files of their own, `extraction-flows.test.ts` and
+ * `extraction-workflows.test.ts`.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -59,8 +60,10 @@ describe('the analysis of the fixture project', () => {
     tree = readFolders(project, ['force-app']).tree;
     listed = (await resolveComponents(tree, ['force-app'])).components;
     analysis = analyseSource(tree, listed);
-    // What the objects, fields and rules say. What the flows say is measured in the file of the flows.
-    references = analysis.components.filter((one) => !one.key.startsWith('Flow:')).flatMap((one) => one.references);
+    // What the objects, fields and rules say. What the flows and the workflow rules say is measured in their files.
+    references = analysis.components
+      .filter((one) => !one.key.startsWith('Flow:') && !/^Workflow[A-Za-z]*:/.test(one.key))
+      .flatMap((one) => one.references);
   });
 
   it('has a component for everything the key lists, and for the two standard objects it holds fields of', () => {
@@ -173,16 +176,17 @@ describe('the analysis of the fixture project', () => {
     }
   });
 
-  it('raises no issue outside the flows, and counts the objects, fields, rules and flows it looked at', () => {
+  it('raises no issue outside the flows, and counts the components and the flows it looked at', () => {
     // The one issue is the path of a flow that the key calls unknown.
     expect(analysis.issues.map((issue) => `${issue.code} ${String(issue.componentKey)}`)).toEqual([
       'PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
-    // 5 objects, 57 fields and 11 rules. The two objects without a file were not looked at. 35 of the fields
-    // and rules hold a formula or a default value, and so do 7 elements of flows. The 6 flows have 55 elements.
+    // 5 objects, 57 fields and 11 rules, and 2 files of workflow rules with 4 rules and 6 actions. The two
+    // objects without a file were not looked at. 35 of the fields and rules hold a formula or a default value,
+    // and so do 7 elements of flows and 2 workflow rules and 2 field updates. The 6 flows have 55 elements.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 73, failedFiles: 0 },
-      { origin: 'parser:formula', components: 42, failedFiles: 0 },
+      { origin: 'parser:xml', components: 85, failedFiles: 0 },
+      { origin: 'parser:formula', components: 46, failedFiles: 0 },
       { origin: 'parser:flow', components: 61, failedFiles: 0 },
     ]);
     const withFormula = analysis.components.filter((one) =>
@@ -232,9 +236,9 @@ describe('the analysis of the fixture project', () => {
 
   it('leaves the components of every other type without attributes and without references', () => {
     const others = analysis.components.filter(
-      (one) => !/^(?:CustomObject|CustomField|Flow|ValidationRule):/.test(one.key),
+      (one) => !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*):/.test(one.key),
     );
-    expect(others).toHaveLength(39);
+    expect(others).toHaveLength(27);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -299,8 +303,8 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      // 112 references of fields and rules, and 126 of flows.
-      expect(written).toMatchObject({ components: 175, references: 238 });
+      // 112 references of fields and rules, 126 of flows and 33 of workflow rules.
+      expect(written).toMatchObject({ components: 175, references: 271 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
@@ -327,6 +331,12 @@ describe('the analysis of the fixture project', () => {
         'ValidationRule:invoice__c.paid_cannot_be_reopened references display-field parser:xml',
         'ValidationRule:invoice__c.paid_requires_paid_date reads formula parser:formula',
         'ValidationRule:invoice__c.void_needs_admin reads formula parser:formula',
+        // The formula of a field update, the fields an outbound message sends, and three workflow rules.
+        'WorkflowFieldUpdate:invoice__c.stamp_legacy_code reads formula parser:formula',
+        'WorkflowOutboundMessage:invoice__c.notify_ledger reads listed-field parser:xml',
+        'WorkflowRule:invoice__c.follow_up_when_void reads filter parser:xml',
+        'WorkflowRule:invoice__c.remind_when_sent reads filter parser:xml',
+        'WorkflowRule:invoice__c.stamp_code_when_paid reads formula parser:formula',
       ]);
       // The standard object the project holds fields of is a component of the snapshot, without a file.
       expect(graph.find(key('CustomObject', 'Account'))?.version).toEqual({ name: 'Account', path: null, attrs: null });

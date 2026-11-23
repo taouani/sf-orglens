@@ -180,16 +180,21 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(apex).toBeGreaterThan(20);
       expect(compared).toBeGreaterThan(40);
       // What the analysis has and the API never reports is counted by its reason, and is no issue. The mock org
-      // reports every formula, also the one of a rule that is not active and the one in a default value.
+      // reports every formula, also the one of a rule that is not active and the one in a default value. Of the
+      // workflow rules, it reports what the test org reports: the custom fields the formula of a field update
+      // reads.
       const reasons = report.crossCheck?.comparison?.notReported.map((one) => one.reason);
       expect(reasons).toEqual([
         'controlling-field',
+        'field-update',
         'lookup',
         'lookup-filter',
         'roll-up-summary',
         'standard-field',
         'standard-object',
         'value-set',
+        'workflow-action',
+        'workflow-rule',
       ]);
 
       // Only metadata is read: one object of the Tooling API is queried, and nothing else is.

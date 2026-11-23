@@ -1,0 +1,144 @@
+# 0063. The parts of a file of workflow rules are components, and what they name is of the object of the file
+
+- Status: Accepted
+- Date: 2026-11-23
+- Decisions: none (the analyser of workflow rules of work package 4 of the Phase 2 plan)
+
+## Context
+
+Work package 4 of the [Phase 2 plan](../plans/phase-2.md) asks for workflow rules: the rules, field updates,
+email alerts, outbound messages and tasks of a file of workflow rules as components, and the references they
+make. The plan names the kinds of reference. It does not say which element of the file holds what, nor what
+becomes of a part of the file that it does not name.
+
+Salesforce keeps the workflow rules of an object and the actions they start in one file, named after the object:
+`workflows/Invoice__c.workflow-meta.xml`. It names each rule and each action `<object>.<name>`. An org lists them
+as types of their own, such as `WorkflowRule` and `WorkflowFieldUpdate`, and the Salesforce library of the engine
+knows them as the parts of the type `Workflow`, each in a group of the file: `rules`, `fieldUpdates`, `alerts`,
+`outboundMessages`, `tasks`, and three more. The type of an action that a rule starts is one of the nine values of
+`WorkflowActionType` in `@salesforce/types`, which that library brings.
+
+Work package 1 measured what the Dependency API of the test org reports of these files
+([research note](../research/phase-2/real-org.md), section 3): the custom fields that the formula of a field
+update reads, and nothing else. Not the fields of the criteria or of the formula of a rule, not the actions it
+starts, not the field an update writes nor the relationship field that leads to the parent it writes on, and
+nothing of an alert, an outbound message or a task.
+
+The file of the workflow rules of an object has the name of the object, so a name alone such as `Invoice__c` fits
+both. Record [0064](0064-a-name-alone-that-fits-an-object-means-the-object.md) holds what the maintainer chose
+for it.
+
+What follows under "Decision" are choices of the author. The maintainer can strike any of them.
+
+## Decision
+
+The reader is `extraction/workflows.ts`. It reads one element of a file and nothing else, with the reader of
+values of `extraction/objects.ts`. `analyseSource` makes the components and resolves the names against the model
+of objects when every file was read, as for a field, a validation rule or a flow (record
+[0041](0041-components-and-names-written-in-xml.md)).
+
+Components:
+
+1. **The file is a component, `Workflow:<object>`, and so is each part of it**, under the type and the name
+   Salesforce gives it: `WorkflowRule:Invoice__c.Remind_When_Sent`. A part is defined by its own element of the
+   file, with a hash of its own. The file itself names nothing: its parts hold all of it. A project laid out with
+   the preset `decomposeWorkflowBeta`, a file for each part, gives the same components and the same references,
+   each at its place in the file of its part.
+2. **Five types of part are read**: rules, field updates, email alerts, outbound messages and tasks. The three
+   other parts the Salesforce library knows, a flow action (`WorkflowFlowAction`), an action that publishes an
+   article (`WorkflowKnowledgePublish`) and an action that sends (`WorkflowSend`), are components with a row and
+   nothing read, like a component of any type that is not analysed.
+3. **A rule says whether it is active** (`active`), as a validation rule does. A reference carries that through
+   the rule it starts at.
+4. **The work of the reader is counted in the row of the reader of XML** (`parser:xml`): it reads names written
+   in XML, as the reader of objects does.
+
+References:
+
+5. **The criteria of a rule read their fields.** The `field` and the `valueField` of each criterion are a path
+   that starts with the name of an object, and are read as the field of a filter of a lookup is:
+   `Invoice__c.Amount__c` `reads` the field `Amount__c` of `Invoice__c`, and `User.Department` a field of the user.
+   The object itself gets no reference. The way is `filter`.
+6. **The formula of a rule is read by the reader of formulas**, against the object of the file. Its references
+   have the origin `parser:formula`. Every other reference of these files has the origin `parser:xml`.
+7. **A rule `references` each action it starts**, at once (`actions`) and in each of its time triggers
+   (`workflowTimeTriggers`), with the way `action`. The type of the component follows the type the rule gives the
+   action: an `Alert` is a `WorkflowAlert`, a `FieldUpdate` a `WorkflowFieldUpdate`, and so on for the nine values
+   of `WorkflowActionType`. A test holds the nine against that type and the parts against the library, so that a
+   newer version of the library that adds one fails it. The name of the target is the object of the rule and the
+   name of the action: an action is a part of the file of the same object. The date field a time trigger counts
+   from (`offsetFromField`) `reads`, with the way `time`.
+8. **An action of a type that is not among the nine, or of no type, is not read.** The warning `NAME_NOT_READ`
+   says which, and no reference is made. Salesforce refuses an action without a type.
+9. **Two of the nine are no part of a file of workflow rules that the library knows.** It knows no
+   `WorkflowNotification` at all, and `WorkflowFlowAutomation` only as a type of its own, in a folder of its own.
+   An action of either type is a reference to a component of that type, which is not resolved where the snapshot
+   holds none. The test org lists 7 components of `WorkflowFlowAutomation` and hands out none
+   ([research note](../research/phase-2/real-org.md), section 2).
+10. **A field update `writes` its field** (`field`), with the way `assignment`. Where it names a parent
+    (`targetObject`), it writes a field of the record that a relationship field of the record leads to, and
+    `targetObject` is taken for the name of that relationship field: `Invoice__c` on an invoice line, or a
+    standard field such as `AccountId`. The relationship field `reads`, with the way `path`, and the field is
+    written on the object it leads to. The relationship is found by the name of the field: a custom field
+    `Invoice__c` is the relationship `Invoice__r`, and a standard field `AccountId` the relationship `Account`. A
+    name that is no relationship of the object gives the warning `PATH_NOT_FOLLOWED`, and the field is not written
+    anywhere: its object is not guessed.
+11. **The formula of a field update is about the record of the object of the file**, also where the update
+    writes on the parent. The fixture has such an update, and the key holds it so.
+12. **An email alert reads the fields that hold its recipients.** A recipient that names a `field`, such as a
+    lookup to a user or a contact, `reads` it, with the way `listed-field`. A recipient named by itself, such as a
+    group, a role or a person, is not read. **Its template is a reference to the email template**, named with its
+    folder (`Billing/Invoice_Overdue`), with the way `template`. The reference stands at the name after the
+    folder. A folder can hold a `$`, as `unfiled$public` does. A template written without a folder is not read,
+    with the warning `NAME_NOT_READ`. Email templates are not analysed before work package 8: the reference is
+    resolved where the snapshot holds the template, and not resolved where it does not.
+13. **An outbound message reads each field it sends** (`fields`), with the way `listed-field`. The field `Id`
+    gives no reference, as at the end of a path of a formula: every message sends it.
+14. **A task reads the date field its due date counts from** (`offsetFromField`), with the way `time`.
+
+The cross-check:
+
+15. **Of a file of workflow rules, only the custom fields that the formula of a field update reads are compared
+    with the rows of the Dependency API.** The rest is counted, with a reason, among the pairs the API does not
+    report: `workflow-rule` for any reference of a rule, `workflow-action` for any reference of an email alert,
+    an outbound message or a task, and `field-update` for a reference of a field update that is not in its
+    formula. The mock org of the tests reports what the test org reports.
+
+## Consequences
+
+- The fixture project has 2 files of workflow rules with 4 rules, 3 field updates, an email alert, an outbound
+  message and a task: 12 components. The analysis finds all 33 references the answer key holds for them, each
+  from the rule or the action the key says, at the line and column, with the way and the tier the key says, and
+  no other. None of the 5 places where the key forbids a reference is hit, and the files give no issue.
+- The one file of workflow rules of the public codebases, in NPSP, is read without an issue: 2 rules, 3 field
+  updates and an email alert, with 24 references. Each of them was checked by hand against the file on the day
+  of this record. The plan asks for them in the note of work package 9, which does not exist yet: they are listed
+  there with it.
+- The six impact answers of the golden files of the engine and of the command line change: the rules and the
+  actions that refer to a component are among the results. Each new result was checked against the key.
+- The actions of a workflow rule are analysed and are not of the logic tier. Two things follow that could not
+  happen before. A warning of a snapshot of an org that something of such a type is missing counts for an impact
+  answer that covers the type, which every answer does: the answer says that it may miss something (`mayMiss`),
+  as record [0044](0044-an-impact-answer.md), changed by record [0046](0046-complete-over-the-logic-tier.md), says.
+  A test holds it for an email alert. And a type that `exclude_types` leaves out can be one the analysis reads,
+  which record [0048](0048-types-a-snapshot-leaves-out.md) says cannot happen: the answer then has the type in
+  `notCovered.partial` and may miss something. That rule of the answer is tested with a type of its own, and not
+  with a snapshot of an org that leaves out an action. On the test org, none of the components that do not come
+  back is an action of a workflow rule, by the count of record 0058.
+- Until work package 6 builds record 0058, what an org lists of the actions and does not hand out leaves the
+  snapshot `complete`. The actions join the list of "complete" with work package 6, and the question whether
+  `WorkflowFlowAutomation` joins it is settled there.
+- The output of `impact` does not show whether a rule is active, as it does not for a validation rule or a flow:
+  the database keeps it with the component.
+- Not read, and no reference: a recipient named by itself, the addresses an alert copies (`ccEmails`) and sends
+  from (`senderAddress`), the user an outbound message runs as (`integrationUser`) and the address it sends to
+  (`endpointUrl`), the user or the queue a field update sets (`lookupValue`), the person a task is assigned to
+  (`assignedTo`), and what a flow action, an action that publishes an article and an action that sends hold. A
+  flow action names the flow it starts: a flow that only a workflow rule starts is not shown as referred to.
+- Not verified: whether Salesforce writes in `targetObject` the name of the relationship field or the name of
+  the object it leads to. In the fixture both are `Invoice__c`, and the test org accepted it. If it is the object,
+  an update that goes through a custom relationship field named otherwise gets the warning `PATH_NOT_FOLLOWED` and
+  no reference to the field it writes. A criterion with `valueField`, a flow action, the layout of
+  `decomposeWorkflowBeta` and a template in `unfiled$public` were not seen in a file that Salesforce wrote: they
+  follow the types of the library. Whether Salesforce reports through the Dependency API what the reader finds is
+  compared only for the formulas of field updates.

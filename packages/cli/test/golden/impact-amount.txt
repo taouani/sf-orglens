@@ -1,7 +1,7 @@
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "fixture".
-The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 11 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-18 components refer to it, 17 of them directly.
+21 components refer to it, 20 of them directly.
 
 DEPTH  COMPONENT                                                CONFIDENCE  KIND    REFERS TO                         WHERE
 1      CustomField:invoice__c.late_fee__c                       confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/fields/Late_Fee__c.field-meta.xml:6
@@ -21,26 +21,23 @@ DEPTH  COMPONENT                                                CONFIDENCE  KIND
 1      ValidationRule:invoice__c.credit_note_is_negative        confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml:8
 1      ValidationRule:invoice__c.large_amount_needs_permission  confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Large_Amount_Needs_Permission.validationRule-meta.xml:6
 1      ValidationRule:invoice__c.locked_when_paid               confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/objects/Invoice__c/validationRules/Locked_When_Paid.validationRule-meta.xml:7
+1      WorkflowOutboundMessage:invoice__c.notify_ledger         confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:45
+1      WorkflowRule:invoice__c.remind_when_sent                 confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:87
+1      WorkflowRule:invoice_line__c.stamp_when_billed           confirmed   reads   CustomField:invoice__c.amount__c  force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml:21
 2      CustomField:invoice__c.grand_total__c                    confirmed   reads   CustomField:invoice__c.total__c   force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE                     LISTED  RETRIEVED
-ApexClass                13      13
-ApexTrigger              1       1
-CustomLabel              1       1
-CustomLabels             1       1
-CustomMetadata           4       4
-CustomPermission         1       1
-EmailFolder              1       1
-EmailTemplate            1       1
-FieldSet                 1       1
-GlobalValueSet           1       1
-RecordType               2       2
-Workflow                 2       2
-WorkflowAlert            1       1
-WorkflowFieldUpdate      3       3
-WorkflowOutboundMessage  1       1
-WorkflowRule             4       4
-WorkflowTask             1       1
+TYPE              LISTED  RETRIEVED
+ApexClass         13      13
+ApexTrigger       1       1
+CustomLabel       1       1
+CustomLabels      1       1
+CustomMetadata    4       4
+CustomPermission  1       1
+EmailFolder       1       1
+EmailTemplate     1       1
+FieldSet          1       1
+GlobalValueSet    1       1
+RecordType        2       2
 
 The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

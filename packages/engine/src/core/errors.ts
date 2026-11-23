@@ -38,7 +38,7 @@ export const ERROR_CODES = {
   SNAPSHOT_RUNNING: 'Another process is taking a snapshot of this source.',
   SNAPSHOT_NOT_ANALYSED: 'The snapshot was not analysed, so nothing is known about its references.',
   COMPONENT_NOT_FOUND: 'The snapshot knows no component with this key or name.',
-  COMPONENT_AMBIGUOUS: 'The name fits components of several types, and the engine does not choose.',
+  COMPONENT_AMBIGUOUS: 'The name fits components of several types and no object, and the engine does not choose.',
   LOGIN_FAILED: 'No login for the org of a source was found, or the login did not work, or the org did not answer.',
   ORG_MISMATCH: 'The login belongs to another org than the one the source declares.',
   INTERNAL: 'An unexpected failure inside the engine. This is a bug in OrgLens.',

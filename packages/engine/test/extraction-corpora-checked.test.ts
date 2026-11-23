@@ -20,7 +20,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
-import { digestOf, isLiteral, listCodebase, viaOf, type EntryKind } from './corpora/listing.ts';
+import { digestOf, isLiteral, LISTED_FILE, listCodebase, viaOf, type EntryKind } from './corpora/listing.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const corpora = join(root, '.corpora');
@@ -105,10 +105,12 @@ describe('the entries of the public codebases that were checked by hand', () => 
         }).toEqual(counts);
         // The listing shows a reference under an entry of its file by its `via`. So it shows every reference
         // once only while a file has one entry, and it hides none only while every reference with one of
-        // these `via` is of a file with an entry.
+        // these `via` of a file of fields, rules or objects is of a file with an entry. The formulas and the
+        // criteria of flows and workflow rules are in files of their own, which the listing does not show.
         expect(new Set(listing.entries.map((entry) => entry.file)).size).toBe(listing.entries.length);
         expect(
           listing.analysis.components
+            .filter((one) => LISTED_FILE.test(one.definition?.path ?? ''))
             .flatMap((one) => one.references)
             .filter((one) => ['formula', 'filter', 'summary'].includes(viaOf(one))).length,
         ).toBe(counts.references);

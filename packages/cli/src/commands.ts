@@ -834,6 +834,12 @@ function impactLines(report: ImpactReport): string[] {
     .filter((part) => part !== null)
     .join(', ');
   const lines = [incoming ? `What refers to ${named}, ${scope}.` : `What ${named} refers to, ${scope}.`];
+  // A name alone that fits an object and more means the object. The others are named, so that none is missed.
+  if (report.sameName.length > 0) {
+    lines.push(
+      `The name also fits ${report.sameName.join(', ')}. The answer is about the object. To ask about ${report.sameName.length === 1 ? 'the other' : 'another'}, name it by its key.`,
+    );
+  }
   if (report.parts > 0) {
     lines.push(
       `It contains ${count(report.parts, 'component', 'components')} of the snapshot. The answer is about ${report.parts === 1 ? 'it' : 'them'} too.`,

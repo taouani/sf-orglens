@@ -486,6 +486,7 @@
       "required": [
         "snapshot",
         "component",
+        "sameName",
         "parts",
         "direction",
         "depth",
@@ -533,6 +534,12 @@
         "component": {
           "description": "The component that was asked about.",
           "$ref": "#/$defs/impactComponent"
+        },
+        "sameName": {
+          "description": "The keys of the other components of the same name, sorted. Only where the component was named by its name alone and the name fits an object and more, such as the file of the workflow rules of the object: the answer is about the object. Empty for a name that fits one component, and for a key or a type with a name.",
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
         },
         "parts": {
           "description": "How many components of the snapshot the component contains, at any depth: the fields and rules of an object. The answer is about them too, and none of them is a result.",
@@ -701,7 +708,7 @@
               }
             },
             "readErrors": {
-              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type. A warning of a snapshot of an org about something outside the logic tier (`details.tier` = `other`) is counted too if one of its `details.types` is a type the answer covers. No type outside the tier is analysed yet, so no such warning is counted today.",
+              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type. A warning of a snapshot of an org about something outside the logic tier (`details.tier` = `other`) is counted too if one of its `details.types` is a type the answer covers, such as an email alert or another action of a workflow rule.",
               "type": "integer",
               "minimum": 0
             },
@@ -1015,7 +1022,7 @@
             "additionalProperties": false,
             "properties": {
               "reason": {
-                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `other`: any other reference from the definition of a component. Reasons can be added.",
+                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `workflow-rule`: it is from a workflow rule. `workflow-action`: it is from an email alert, an outbound message or a task of a workflow rule. `field-update`: it is from a field update, and not in its formula. `other`: any other reference from the definition of a component. Reasons can be added.",
                 "type": "string"
               },
               "pairs": { "type": "integer", "minimum": 1 }

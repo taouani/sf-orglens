@@ -31,12 +31,16 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   and no file, most of them objects of the packages it builds on. PMM has one more than a snapshot of it:
  *   this test reads the folders as they are, without `.forceignore`, and the source library takes the folder
  *   `lwc/__tests__`, which holds data of tests and which that file leaves out, for a component.
- * - `analysed`: the objects, fields and validation rules that were read.
+ * - `analysed`: the objects, fields, validation rules and workflow rules that were read. NPSP has 7 more since
+ *   workflow rules are read: its one file of workflow rules, with 2 rules, 3 field updates and an alert.
  * - `withFormula`: those of them that hold a formula, a default value or a condition. Most are the default
- *   value of a checkbox.
+ *   value of a checkbox. NPSP has 3 more since workflow rules are read: 2 field updates and a rule.
  * - `references`: the references by how the source names the target. The controlling fields are those of
  *   relationships to a field definition: no file of the four names one for a picklist. The one by `object` is
- *   the object that the flow of Apex Recipes looks up.
+ *   the object that the flow of Apex Recipes looks up. The 24 of the workflow rules of NPSP were checked by
+ *   hand on 23 November 2026: 4 actions of its rules, the 3 fields its field updates write, the 4 criteria of
+ *   one rule, 11 names in the formulas of a rule and a field update, the field of the recipient of its alert,
+ *   and the email template of the alert.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
  *   through a lookup of another package four times: no file says where that lookup leads.
  */
@@ -72,15 +76,19 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   npsp: {
     components: 11_722,
-    analysed: 819,
-    withFormula: 168,
+    analysed: 826,
+    withFormula: 171,
     references: {
+      action: 4,
+      assignment: 3,
       'controlling-field': 5,
       'display-field': 2,
-      filter: 7,
-      formula: 58,
+      filter: 11,
+      formula: 69,
+      'listed-field': 1,
       lookup: 77,
       summary: 4,
+      template: 1,
       'value-set': 2,
     },
     issues: { PATH_NOT_FOLLOWED: 4 },
@@ -242,9 +250,10 @@ describe('the analysis of the public codebases', () => {
         const differ: string[] = [];
         let formulas = 0;
         for (const path of tree.files) {
-          if (!/\.(?:field|validationRule|object)(?:-meta\.xml)?$/.test(path)) continue;
+          if (!/\.(?:field|validationRule|object|workflow)(?:-meta\.xml)?$/.test(path)) continue;
           const text = Buffer.from(tree.read(path)).toString('utf8');
-          // The files are searched as text here, not read as XML. None of the four writes a formula in CDATA.
+          // The files are searched as text here, not read as XML. None of the four writes a formula in CDATA. A
+          // file of workflow rules holds the formulas of its rules and field updates.
           for (const [, , body = ''] of text.matchAll(
             /<(formula|errorConditionFormula|defaultValue)>([\s\S]*?)<\/\1>/g,
           )) {

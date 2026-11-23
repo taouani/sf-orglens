@@ -324,12 +324,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'RecordType', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
         { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
-        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
-        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 0, listing: 'ok', note: null },
-        { type: 'WorkflowOutboundMessage', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 0, listing: 'ok', note: null },
-        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null },
+        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 3, listing: 'ok', note: null },
+        { type: 'WorkflowOutboundMessage', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null },
+        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'ListView')).toEqual({
@@ -433,7 +433,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
       expect(org.components).toHaveLength(175);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(238);
+      expect(org.references).toHaveLength(271);
       // The flows among them: 6 flows with 55 elements, and the 126 references of the answer key.
       const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
       expect(org.components.filter(ofFlow)).toHaveLength(61);
@@ -464,30 +464,32 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(lookupToAccount(folder.references)).toEqual(['external', 'external']);
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
-      const xml = { failedFiles: 0, references: 30, unresolved: 0, pathsNotFollowed: 0 };
-      // The formulas of 35 fields and rules and of 7 elements of flows: 82 names and 19. Of the 126 references
-      // of flows, the other 107 are of the reader of flows. One path of a flow is not followed.
-      const formula = { components: 42, failedFiles: 0, references: 101, unresolved: 0, pathsNotFollowed: 0 };
+      // The 12 components of the two files of workflow rules are read as XML too, with 21 references.
+      const xml = { failedFiles: 0, references: 51, unresolved: 0, pathsNotFollowed: 0 };
+      // The formulas of 35 fields and rules, of 7 elements of flows and of 2 workflow rules and 2 field updates:
+      // 82 names, 19 and 12. Of the 126 references of flows, the other 107 are of the reader of flows. One path
+      // of a flow is not followed.
+      const formula = { components: 46, failedFiles: 0, references: 113, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 61, failedFiles: 0, references: 107, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 181,
-        references: 238,
+        references: 271,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 75, ...xml },
+          { origin: 'parser:xml', components: 87, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 175,
-        references: 238,
+        references: 271,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 73, ...xml },
+          { origin: 'parser:xml', components: 85, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
@@ -495,8 +497,28 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const analysed = (report: CoverageReport): Record<string, number> =>
         Object.fromEntries(report.types.filter((type) => type.analysed > 0).map((type) => [type.type, type.analysed]));
       // A flow is counted with its elements.
-      expect(analysed(fromOrg)).toEqual({ CustomField: 57, CustomObject: 7, Flow: 61, ValidationRule: 11 });
-      expect(analysed(fromFolder)).toEqual({ CustomField: 57, CustomObject: 5, Flow: 61, ValidationRule: 11 });
+      const workflow = {
+        Workflow: 2,
+        WorkflowAlert: 1,
+        WorkflowFieldUpdate: 3,
+        WorkflowOutboundMessage: 1,
+        WorkflowRule: 4,
+        WorkflowTask: 1,
+      };
+      expect(analysed(fromOrg)).toEqual({
+        CustomField: 57,
+        CustomObject: 7,
+        Flow: 61,
+        ValidationRule: 11,
+        ...workflow,
+      });
+      expect(analysed(fromFolder)).toEqual({
+        CustomField: 57,
+        CustomObject: 5,
+        Flow: 61,
+        ValidationRule: 11,
+        ...workflow,
+      });
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {

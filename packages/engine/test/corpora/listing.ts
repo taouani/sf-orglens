@@ -117,6 +117,9 @@ function entriesOfFile(text: string): { kind: EntryKind; text: string }[] {
   return found;
 }
 
+/** The files whose entries are listed: those of fields, validation rules and objects. */
+export const LISTED_FILE = /\.(?:field|validationRule|object)(?:-meta\.xml)?$/;
+
 export async function listCodebase(root: string, paths: readonly string[]): Promise<Listing> {
   const { tree } = readFolders(root, paths);
   const listed = (await resolveComponents(tree, paths)).components;
@@ -126,7 +129,7 @@ export async function listCodebase(root: string, paths: readonly string[]): Prom
   const byFile = new Map(analysis.components.map((one) => [one.definition?.path ?? '', one]));
   const entries: ListingEntry[] = [];
   for (const file of tree.files) {
-    if (!/\.(?:field|validationRule|object)(?:-meta\.xml)?$/.test(file)) continue;
+    if (!LISTED_FILE.test(file)) continue;
     const component = byFile.get(file);
     // An issue without a component is of no entry, and neither is one of a file without a component.
     const issues =

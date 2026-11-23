@@ -613,8 +613,18 @@ describe('small flows that are written here', () => {
       ],
       (source) => {
         source.flow('Other_Flow', ACTIVE);
-        const alerts = source.file('workflows/Invoice__c.workflow-meta.xml', xml('Workflow'));
-        source.listed.push({ type: 'WorkflowAlert', fullName: 'Invoice__c.Overdue', files: [alerts] });
+        // An alert is a part of the file of the workflow rules of its object, as the Salesforce library lists it.
+        const alerts = source.file(
+          'workflows/Invoice__c.workflow-meta.xml',
+          xml('Workflow', '<alerts><fullName>Overdue</fullName></alerts>'),
+        );
+        source.listed.push({ type: 'Workflow', fullName: 'Invoice__c', files: [alerts] });
+        source.listed.push({
+          type: 'WorkflowAlert',
+          fullName: 'Invoice__c.Overdue',
+          files: [],
+          within: { file: alerts, element: 'alerts', nameElement: 'fullName' },
+        });
       },
     );
     // No file of the source defines the two classes. A class is looked for all the same.

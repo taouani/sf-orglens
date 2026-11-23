@@ -42,8 +42,8 @@ const child = (element: XmlElement | null, local: string): XmlElement | null =>
 const children = (element: XmlElement | null, local: string): XmlElement[] =>
   element === null ? [] : childrenOf(element, local);
 
-/** Reads one file: its values, with the place of each part of a value. */
-class Reader {
+/** Reads one file: its values, with the place of each part of a value. The reader of workflow rules uses it too. */
+export class Reader {
   readonly references: RawReference[] = [];
   readonly unread: Unread[] = [];
   readonly formulas: FormulaReading[] = [];
@@ -58,17 +58,51 @@ class Reader {
     return placesIn(this.#document, value)(from, to);
   }
 
-  #refuse(element: XmlElement, value: Value): void {
+  #refuse(element: XmlElement, value: Value, why?: Unread['why']): void {
     const { name, line, column } = this.#at(value);
-    this.unread.push({ element: element.local, text: cut(name, LONGEST_TEXT_SHOWN), line, column });
+    const text = cut(name, LONGEST_TEXT_SHOWN);
+    this.unread.push({ element: element.local, text, line, column, ...(why === undefined ? {} : { why }) });
+  }
+
+  /** A value that is not read, for a reason the caller knows. */
+  refuse(element: XmlElement | null, why: NonNullable<Unread['why']>): void {
+    const value = valueOf(element);
+    if (element !== null && value !== null) this.#refuse(element, value, why);
   }
 
   /** A value that is one name. */
   name(element: XmlElement | null, make: (at: NameAt) => RawReference): void {
+    const at = this.nameAt(element);
+    if (at !== null) this.references.push(make(at));
+  }
+
+  /** A value that is one name, with its place. `null` for no value, and for a value that is no name, which is not read. */
+  nameAt(element: XmlElement | null): NameAt | null {
+    const value = valueOf(element);
+    if (element === null || value === null) return null;
+    if (!NAME.test(value.value) || value.value.startsWith('$')) {
+      this.#refuse(element, value);
+      return null;
+    }
+    return this.#at(value);
+  }
+
+  /**
+   * A value that names a component in a folder, such as the email template `Billing/Invoice_Overdue`. The
+   * reference stands at the name after the folder. A folder can hold a `$`, as `unfiled$public` does.
+   */
+  inFolder(element: XmlElement | null, type: string, via: Via): void {
     const value = valueOf(element);
     if (element === null || value === null) return;
-    if (!NAME.test(value.value) || value.value.startsWith('$')) this.#refuse(element, value);
-    else this.references.push(make(this.#at(value)));
+    const slash = value.value.indexOf('/');
+    const folder = value.value.slice(0, slash);
+    const name = value.value.slice(slash + 1);
+    if (slash < 1 || !/^[A-Za-z][A-Za-z0-9_$]*$/.test(folder) || !NAME.test(name) || name.startsWith('$')) {
+      this.#refuse(element, value);
+      return;
+    }
+    const at = this.#at(value, slash + 1);
+    this.references.push({ form: 'component', type, at, fullName: value.value, via });
   }
 
   /**

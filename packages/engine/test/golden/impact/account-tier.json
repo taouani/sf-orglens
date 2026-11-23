@@ -13,6 +13,7 @@
     "name": "Account.Tier__c",
     "file": "force-app/main/default/objects/Account/fields/Tier__c.field-meta.xml"
   },
+  "sameName": [],
   "parts": 0,
   "direction": "incoming",
   "depth": null,
@@ -113,6 +114,25 @@
         "line": 6,
         "column": 3
       }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.stamp_code_when_paid",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Stamp_Code_When_Paid",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.stamp_code_when_paid",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 114,
+        "column": 14
+      }
     }
   ],
   "unresolved": [],
@@ -183,42 +203,6 @@
         "type": "RecordType",
         "listed": 2,
         "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "Workflow",
-        "listed": 2,
-        "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowAlert",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowFieldUpdate",
-        "listed": 3,
-        "retrieved": 3,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowOutboundMessage",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowRule",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowTask",
-        "listed": 1,
-        "retrieved": 1,
         "listing": "ok"
       }
     ],
