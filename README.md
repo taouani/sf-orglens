@@ -20,7 +20,8 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 >
 > What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI,
 > and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
-> fields and validation rules, with the formulas in them, and for nothing else yet. `orglens impact` shows what
+> fields and validation rules, with the formulas in them, and for nothing else yet. On `main`, which no
+> pre-release holds yet, flows are analysed too, element by element. `orglens impact` shows what
 > refers to a component among those types, and an answer names the types it does not cover. The commands
 > are `init`, `source`, `snapshot`, `analyse`, `coverage`, `impact`, `status` and `doctor`. See
 > [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
@@ -43,7 +44,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, in test |
 | 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Built, in test |
-| 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Not started    |
+| 2 Flows and config   | Flows, workflow rules, record types, custom metadata                                                                                    | Being built    |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started    |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started    |
 | Correctness gate     | Proof on public codebases and a real 10,000+ component org                                                                              | Not started    |

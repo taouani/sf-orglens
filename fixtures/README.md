@@ -473,8 +473,10 @@ is not verified: none was sent to Salesforce.
 of each. One names fields, a relationship, an object and a resource that do not exist, beside names that do. One
 holds an element of a kind that no flow has, with merge fields in it. One ends in the middle of an element. No file
 has the name of a file of the project, so a test lays the folder over a copy of the project. They are written so
-that Salesforce refuses them, which is not verified: none was sent to Salesforce. No test reads them with an
-analyser yet. The analyser of flows comes with a later work package of Phase 2.
+that Salesforce refuses them, which is not verified: none was sent to Salesforce. The test of the analyser of
+flows (`packages/engine/test/extraction-flows.test.ts`) reads them, and holds what it finds against
+`expected.yaml`. It finds one unresolved name more than that file lists: the field that an element sets on the
+object that does not exist.
 
 ## Public codebases
 
