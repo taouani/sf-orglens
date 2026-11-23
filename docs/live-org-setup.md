@@ -174,9 +174,9 @@ runs):
 - **A read after the step "draft" holds the draft, and not the active version.** The reference of the Metadata
   API says of the name of the file of a flow: "If you don't specify a version number, the flow is the latest
   version." The plan of Phase 2 and decision record 0057 expected the active version. That went to the
-  maintainer before the analyser of flows is built, as the plan says. Since that step the answer key, which is
-  about the file of the repository, does not describe that flow as the test org hands it out: it is off by the
-  reference to `Paid_Date__c`.
+  maintainer, who chose that the active version is analysed (decision record 0060). Since that step the answer
+  key, which is about the file of the repository, does not describe that flow as the test org hands it out for
+  its name: it is off by the reference to `Paid_Date__c`.
 
 What follows is not verified:
 
@@ -199,17 +199,17 @@ of a class in the org, which writes to the org, so the probe does not do that.
 Last, the probe asks the Metadata API for one flow of the fixture project, the one the step "draft" sends once
 more: by its name, by the file of its `FlowDefinition`, and by its name with the number of a version, such as
 `Invoice_Recalculate-1`, each in a retrieve of its own (`packages/engine/test/live/flow-versions.ts`). It asks for
-five numbers at most, the active version first and then from the newest down, and names the versions it left
-out. As a control it asks for one number the org holds no version for. It prints for each name whether a file
-came back, the state the file names, and whether it is the draft or the version that was sent as active. An org
-hands out the draft when it is asked for the flow by its name, and the active version is the one OrgLens
-analyses (decision record 0057), so the last lines say whether the active version can be asked for by its
-number. They can say it only while the org holds a draft that is newer than the active version: where the name
-alone gives the active version, the step says that it cannot tell. What it says holds for the test org and the
-API version of the run. The reference of the Metadata API speaks of a change at version 44, and no older version
-is asked. A retrieve that fails or does not end is said to give no answer, and after one that does not end no
-other is started. The part is left out where the org did not say which versions of the flow it holds. No file is
-kept.
+five numbers at most, the active version first and then from the newest down, and names the versions it left out.
+As a control it asks for one number the org holds no version for. It prints for each name whether a file came back,
+the state the file names, and whether it is the draft or the version that was sent as active. An org hands out the
+draft when it is asked for the flow by its name, and the active version is the one OrgLens analyses (decision
+record 0060), so the last lines say whether the active version can be asked for by its number. In run 22, of 23
+November 2026, they said that it can. They can say it only while the org holds a draft that is newer than the
+active version: where the name alone gives the active version, the step says that it cannot tell. What it says
+holds for the test org and the API version of the run. The reference of the Metadata API speaks of a change at
+version 44, and no older version is asked. A retrieve that fails or does not end is said to give no answer, and
+after one that does not end no other is started. The part is left out where the org did not say which versions of
+the flow it holds. No file is kept.
 
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
 `__c`. So a field and a rule are asked for with the name of their object (`EntityDefinition.QualifiedApiName`).

@@ -2,9 +2,10 @@
 
 Status: **approved** on 22 November 2026. The maintainer answered the six questions of section 4 and said to start
 building. The answers are written in below section 4, and four of them have decision records (0055 to 0058). The
-plan was written for the recommended answers, which are the ones the maintainer gave, so its work packages stand
-as they were drafted, with one exception: when a person reads the ten entries of the key (work package 1, and the
-first reading below the answers). Nothing of it is built yet.
+answer to Q3 changed on 23 November 2026, after a measurement (record 0060). The plan was written for the
+recommended answers, which are the ones the maintainer gave, so its work packages stand as they were drafted, with
+two exceptions: when a person reads the ten entries of the key (work package 1, and the first reading below the
+answers), and what the second answer to Q3 adds to work packages 3 and 6. Work packages 1 and 2 are built.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
@@ -117,12 +118,20 @@ You answered all six in one message and said to start building.
 | Q6  | (a)                          | You read ten entries of the new key and five flows of the check by hand, in the test plan.                                                                                                    | Here                                                                                    |
 
 **Q3 changed on 23 November 2026.** Work package 1 measured that an org hands out the draft of a flow that has
-an active version and a newer draft. You were asked again and chose: the active version is analysed, and a newer
-draft is reported as present and not analysed. Record
-[0057](../adr/0057-the-version-of-a-flow-that-is-analysed.md) holds the answer until a record of its own replaces
-it, with what the test org says about asking for a version by its number.
+an active version and a newer draft. You were asked again and chose the option that read: "OrgLens fetches the
+active version by its number and analyses it. A newer draft is reported as present and not analysed." Record
+[0060](../adr/0060-the-active-version-of-a-flow-is-analysed.md) holds that answer and replaces record 0057. Run 22
+of "Live org" then showed that the test org hands out the active version when it is asked for by the name of the
+flow with the number of that version. Work package 3 builds it.
 
-Two things I read into the answers, for you to strike:
+Three things I read into the answers, for you to strike:
+
+- **Q3 and how the active version is fetched.** Your answer names the way, by the number. The rest is mine, and
+  the section "What goes further than the answer of the maintainer" of record 0060 lists it: the number is read
+  from the file of the `FlowDefinition`, a latest version that is obsolete is treated like a newer draft, a flow
+  whose active version does not come back counts as not handed out and is not replaced by its draft, a flow
+  without a definition is kept as not active with a warning, and the rows of the Dependency API from flows stay
+  out of the cross-check until you have decided in work package 6 how they are compared.
 
 - **Q6 and work package 1.** Answer (a) puts your reading in the test plan, at the end of the phase. Work package
   1 and section 10 of this plan asked for the ten entries when the pull request of the key is up. I take the
@@ -254,12 +263,23 @@ Build:
   the merge fields and field names in it are still read, at the tier `probable`. A flow whose XML cannot be
   read is an error of the analysis, as for any file.
 - A reference from a flow that is not active carries that, as one from an inactive validation rule does.
+- **The active version (added on 23 November 2026, record 0060).** A snapshot of an org asks for the active
+  version of a flow by its number where the org handed out a version that is not active and the file of the
+  `FlowDefinition` names an active one. The file that comes back, with or without the number in its name, is
+  stored as the file of the flow. The snapshot keeps that the flow has a newer version that is not analysed. The
+  rows of the Dependency API from flows are counted and not compared.
 
 Accepted when:
 
 - The analysis finds every entry of the key for flows that is not marked as stretch, at the line the key says,
   and no other. No negative case is hit.
 - A snapshot of the fixture folder and one of the mock org give the same components and references for flows.
+- The mock org answers for a flow by a name with a number as run 22 showed the test org does. A snapshot of a
+  mock org with a flow that has an active version and a newer draft holds the active version under the key of
+  the flow, and says that there is a newer one. A flow whose active version does not come back, and one without
+  a definition, are each a test.
+- A run of the workflow "Live org" reads the test org, where `Invoice_Recalculate` has a newer draft, and the
+  snapshot holds version 1 of it.
 - Every flow of the public codebases is read without an error. The number of elements of a kind the reader does
   not know, of paths not followed and of names not resolved is reported per codebase.
 - The three processes of the Process Builder in the public codebases are read as flows. What of them is not
@@ -324,7 +344,9 @@ Build:
 - A name finds an element without its exact key: `Invoice_After_Save.Update_Account`.
 - `coverage` counts the new types as analysed, and the new origin `parser:flow`.
 - The cross-check compares the rows of the types this phase analyses, as far as work package 1 shows that the
-  ids of the rows are ids the org listed.
+  ids of the rows are ids the org listed. For flows it showed that they are ids of versions, and that the org
+  lists the id of the latest version only (record 0060). How the rows of flows are compared is put to you here,
+  with a design. From work package 3 until then they are counted and not compared.
 - The types of this phase join the judgement of "complete" (Q4, record 0058). The list in `docs/cli.md` and the
   record that replaces the list of record 0046 follow.
 - **A choice of mine, for you to strike:** the list of types an answer does not cover is narrowed. A type is
@@ -436,16 +458,16 @@ twenty: a run of the test org and a review each brought pull requests of their o
 
 ## 8. Risks in this phase
 
-| Risk                                                                                                                                | Handling                                                                                                                                                                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The format of a flow is large, and Salesforce adds kinds of elements with every release.                                            | An element of a kind the reader does not know is a warning and is counted, and its names are still read as `probable`. Nothing is dropped without a word.                                                                                      |
-| I can deploy a flow and cannot run one. What an element does at run time is my reading of the documentation.                        | The key marks every entry that rests on such a reading. Q6 asks for a person. The Dependency API is the second opinion where it reports.                                                                                                       |
-| The kind of record a resource holds is not always known: outputs of Apex actions and of subflows.                                   | Such a path is not followed and is counted. The count on the public codebases and on an org of yours says whether more is needed.                                                                                                              |
-| The ids of the rows the Dependency API has for a flow may be ids of versions, which the org does not list.                          | Measured in work package 1. If so, the rows of flows cannot be compared by id, and record 0045 allows a name only where there is no id. I then put the choice to you.                                                                          |
-| The public codebases cannot carry the proof (finding 1).                                                                            | The fixture, the test org, and an org of yours in the test plan.                                                                                                                                                                               |
-| A file of workflow rules can hold the user name of a person, as the user an outbound message runs as or as a recipient of an alert. | It is in the snapshot, on the machine of the user, as every file is. No reference is made of it, and the public log of the workflow "Live org" prints no name that is not of the fixture project (record 0033). The fixture uses no user name. |
-| Phase 2 grows. Approval processes and sharing rules are close, and an org of yours will show ten things.                            | The list "not in Phase 2" is the boundary. What an org shows goes to the Phase 3 plan unless it breaks an outcome of this one.                                                                                                                 |
-| Phase 1 has not been run on an org you know (finding 9).                                                                            | Work package 1 can start without it. I ask for part H of the Phase 1 test plan before work package 3 is built.                                                                                                                                 |
+| Risk                                                                                                                                | Handling                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The format of a flow is large, and Salesforce adds kinds of elements with every release.                                            | An element of a kind the reader does not know is a warning and is counted, and its names are still read as `probable`. Nothing is dropped without a word.                                                                                                                   |
+| I can deploy a flow and cannot run one. What an element does at run time is my reading of the documentation.                        | The key marks every entry that rests on such a reading. Q6 asks for a person. The Dependency API is the second opinion where it reports.                                                                                                                                    |
+| The kind of record a resource holds is not always known: outputs of Apex actions and of subflows.                                   | Such a path is not followed and is counted. The count on the public codebases and on an org of yours says whether more is needed.                                                                                                                                           |
+| The ids of the rows the Dependency API has for a flow may be ids of versions, which the org does not list.                          | Measured in work package 1: they are ids of versions, and the org lists the id of the latest version only. Record 0045 allows a name only where there is no id. I put the choice to you in work package 6, and the rows of flows are not compared until then (record 0060). |
+| The public codebases cannot carry the proof (finding 1).                                                                            | The fixture, the test org, and an org of yours in the test plan.                                                                                                                                                                                                            |
+| A file of workflow rules can hold the user name of a person, as the user an outbound message runs as or as a recipient of an alert. | It is in the snapshot, on the machine of the user, as every file is. No reference is made of it, and the public log of the workflow "Live org" prints no name that is not of the fixture project (record 0033). The fixture uses no user name.                              |
+| Phase 2 grows. Approval processes and sharing rules are close, and an org of yours will show ten things.                            | The list "not in Phase 2" is the boundary. What an org shows goes to the Phase 3 plan unless it breaks an outcome of this one.                                                                                                                                              |
+| Phase 1 has not been run on an org you know (finding 9).                                                                            | Work package 1 can start without it. I ask for part H of the Phase 1 test plan before work package 3 is built.                                                                                                                                                              |
 
 ## 9. Effort
 
@@ -466,6 +488,10 @@ components of their own. Without work packages 7 and 8 it is about 4.
 | WP9 Proof                                     | 2 days            |
 | WP10 Phase close                              | 1.5 days          |
 | **Total**                                     | **about 27 days** |
+
+The six days of work package 3 were estimated before the second answer to Q3. Fetching the active version by
+its number is not in them. I put it at one to two days more, and leave the table as it was approved: the phase
+report says what was spent.
 
 These are developer-days as the overall plan counts them. Phase 1 was estimated at 33 and was built in three
 calendar days. Elapsed time depends on how fast you can answer, review the key and run the test plans.

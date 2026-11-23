@@ -17,8 +17,9 @@
  * the latest (`FlowDefinition` and `Flow`), and whether the id on a row of
  * the Dependency API from a flow is the id of a version or of the
  * definition. The tool that deploys can send one flow once more as a
- * draft (`deploy-fixture.ts draft`). After that, the flow should have an
- * active version and a newer one, which is not verified.
+ * draft (`deploy-fixture.ts draft`). After that, the flow has an active
+ * version and a newer one: run 21 of the workflow showed it on the test
+ * org.
  *
  * Last it asks the Metadata API for the flow that has a draft, by its name
  * and by its name with the number of a version (`flow-versions.ts`): the
