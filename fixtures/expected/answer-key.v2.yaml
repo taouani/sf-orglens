@@ -953,16 +953,16 @@ references:
           - { line: 269, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: merge-field }
           - { line: 269, match: Owner, kind: reads, to: CustomField:invoice__c.ownerid, via: merge-field }
           - { line: 269, match: Email, kind: reads, to: CustomField:user.email, via: merge-field, note: "Owner:User takes the owner as a user." }
-          - { line: 276, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: path, note: "A field of the screen that is bound to a field of a record: it shows the value and stores what the user types." }
-          - { line: 276, match: Amount__c, kind: writes, to: CustomField:invoice__c.amount__c, via: path }
-          - { line: 282, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: path }
-          - { line: 288, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: merge-field }
-          - { line: 289, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: formula }
+          - { line: 275, match: Tax_Code_Name__c, kind: reads, to: CustomField:invoice__c.tax_code_name__c, via: path, note: "A field of the screen that is bound to a field of a record: it shows the value and stores what the user types." }
+          - { line: 275, match: Tax_Code_Name__c, kind: writes, to: CustomField:invoice__c.tax_code_name__c, via: path }
+          - { line: 281, match: Due_Date__c, kind: reads, to: CustomField:invoice__c.due_date__c, via: path }
+          - { line: 287, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: merge-field }
+          - { line: 288, match: CreatedDate, kind: reads, to: CustomField:invoice__c.createddate, via: formula }
       - from: "Flow:invoice_review_screen#element:confirmation"
         refs:
-          - { line: 314, match: Name, kind: reads, to: CustomField:invoice__c.name, via: merge-field }
-          - { line: 314, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: merge-field }
-          - { line: 314, match: Overdue_Notice, kind: references, to: CustomLabel:overdue_notice, via: merge-field }
+          - { line: 313, match: Name, kind: reads, to: CustomField:invoice__c.name, via: merge-field }
+          - { line: 313, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: merge-field }
+          - { line: 313, match: Overdue_Notice, kind: references, to: CustomLabel:overdue_notice, via: merge-field }
 
   - file: force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml
     phase: 2
@@ -1374,7 +1374,7 @@ negatives:
   - { file: force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml, line: 67, match: Name, not: CustomField:invoice__c.name, why: "The name of the tax code, which the choice set reads, not of the invoice." }
   - { file: force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml, line: 122, match: Invoice__c, not: CustomObject:invoice__c, why: "The lookup field of the line, not the object." }
   - { file: force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml, line: 269, match: Amount__c, not: CustomField:invoice__c.amount__c, why: "The text of a screen, outside a merge field." }
-  - { file: force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml, line: 314, match: Tax_Rate__c, not: CustomField:invoice__c.tax_rate__c, why: "The text of a text template, outside a merge field." }
+  - { file: force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml, line: 313, match: Tax_Rate__c, not: CustomField:invoice__c.tax_rate__c, why: "The text of a text template, outside a merge field." }
   - { file: force-app/main/default/flows/Invoice_Purge_Void.flow-meta.xml, line: 26, match: Status__c, not: CustomField:invoice__c.status__c, why: The description of a flow is text. }
   - { file: force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml, line: 37, match: Status__c, not: CustomField:invoice__c.status__c, why: "The formula as the Process Builder shows it, kept as a text beside the formula that runs." }
   - { file: force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml, line: 37, match: Is_Key_Account__c, not: CustomField:account.is_key_account__c, why: "The formula as the Process Builder shows it, kept as a text beside the formula that runs." }

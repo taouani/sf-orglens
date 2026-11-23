@@ -266,14 +266,13 @@
         </connector>
         <fields>
             <name>Intro</name>
-            <fieldText>&lt;p&gt;Invoice {!varInvoice.Name} of {!varInvoice.Account__r.Name} is due on {!varInvoice.Due_Date__c}.&lt;/p&gt;&lt;p&gt;It belongs to {!varInvoice.Owner:User.Email}. Change Amount__c below.&lt;/p&gt;</fieldText>
+            <fieldText>&lt;p&gt;Invoice {!varInvoice.Name} of {!varInvoice.Account__r.Name} is due on {!varInvoice.Due_Date__c}.&lt;/p&gt;&lt;p&gt;It belongs to {!varInvoice.Owner:User.Email}. Check Amount__c before you go on.&lt;/p&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
         </fields>
         <fields>
-            <name>Amount_Field</name>
             <fieldType>ObjectProvided</fieldType>
             <isRequired>false</isRequired>
-            <objectFieldReference>varInvoice.Amount__c</objectFieldReference>
+            <objectFieldReference>varInvoice.Tax_Code_Name__c</objectFieldReference>
         </fields>
         <fields>
             <name>New_Due_Date</name>
