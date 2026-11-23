@@ -280,7 +280,8 @@ Build:
   version of a flow by its number where the org handed out a version that is not active and the file of the
   `FlowDefinition` names an active one. The file that comes back, with or without the number in its name, is
   stored as the file of the flow. The snapshot keeps that the flow has a newer version that is not analysed. The
-  rows of the Dependency API from flows are counted and not compared.
+  rows of the Dependency API from flows are counted and not compared, until work package 6 compares them (record
+  0067).
 
 Accepted when:
 

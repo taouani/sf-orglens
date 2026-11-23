@@ -33,8 +33,8 @@ In short:
   run 26 compared 68 rows, those of the field updates, of the records and of the field set among them, and the
   analysis missed none either.
 - **The rows of flows are compared since a snapshot asks the org for the ids of the versions of its flows** (record
-  [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). Run 27 compared 130 rows, among them the
-  62 of the versions the snapshot holds, and the analysis missed none. The 16 rows of the draft are counted and not
+  [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). Run 27 compared 130 rows, 62 of them
+  from flows by my count of its lines, and the analysis missed none. The 16 rows of the draft are counted and not
   compared.
 - Read in parts, the rows of flows were whole before the draft and partial after it. By my reading of the code, the
   reader of the engine asked per component by the ids the org listed only, and the org does not list the id of the
@@ -332,7 +332,8 @@ with. The page does not say so.
   flows are analysed, in work package 3, their rows are counted and not compared (record 0060). Built on
   23 November 2026, as the maintainer chose (record
   [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)): a snapshot asks the org for the ids of
-  the versions, and run 27 compared the rows of flows by them (section 5).
+  the versions, so the engine queries `FlowDefinition` too, and run 27 compared the rows of flows by them
+  (section 5).
 - **The answer key does not describe `Invoice_Recalculate` as the test org hands it out for its name.** It is
   about the file of the project, which is version 1. For the name alone the org hands out version 2, which reads
   one field more.
@@ -361,10 +362,9 @@ validation rule. Run 24 read the org with the reader of workflow rules (record
 [0063](../../adr/0063-the-parts-of-a-file-of-workflow-rules.md)), so it compares the rows of the workflow rules as
 well. Run 26 read it with the readers of record types, field sets and records of custom metadata types too (record
 [0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)). Run 27 compares the rows of
-flows by their version (record [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)).
-Until run 27 the rows from a flow are not compared, and the second line of the table counts them with those of a
-type that is not analysed: 62 in run 19, before the draft, and 78 after it (section 4). The third line is new in
-run 27.
+flows by their version (record [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). In the runs
+before it the rows from a flow are not compared, and the second line of the table counts them with those of a type
+that is not analysed: 62 in run 19, before the draft, and 78 after it (section 4). The third line is new in run 27.
 
 | | Run 19 | Run 21 | Run 24 | Run 26 | Run 27 |
 | --- | --- | --- | --- | --- | --- |
@@ -401,50 +401,56 @@ run 27.
 - Read once more with every answer cut off at 30 rows, the parts gave the same 335 rows as the one query, in 72
   requests, and the engine called the reading whole `[run 19]`.
 - **After the draft the same reading lacked 30 rows, all from a flow to a custom field, and the engine called it
-  partial** `[run 21]`. That is the reader as it is built (`sources/dependency-api.ts`): a part that is at the
-  limit is asked for again per component, by the ids the org listed. If a row the cut-off answer gave comes from
-  an id that is not among them, the reader takes the ids for the wrong ones, does not ask per id and counts the
-  part as cut off. The row here is one of the active version of `Invoice_Recalculate`, whose id the org no
-  longer lists. That this is the cause is my reading of the code and of the counts, not something the log says.
-  Runs 24 and 26 gave the same: the cut-off reading lacked 30 rows from a flow to a custom field, in 68 requests,
-  and was partial `[run 24]` `[run 26]`.
-- What that means for a real org: the limit of Salesforce is 2,000 rows per query. An org whose flows give that
-  many rows or more to one type of target, and that has one flow with an active version and a newer draft, can
-  get a partial reading of the rows of its flows. It does when a row of the version the org does not list is
-  among the rows the cut-off answer gives, and the query asks for no order, so that is not fixed. When none is,
-  the reader asks per id and then once for the rows of every component that is not among the ids, which brings
-  the rows of that version. An org that lists more than 200 flows gets a reading that is not whole for another
-  reason, draft or not: that last query cannot name every id. The engine says what it could not read and
-  compares what it has. Since record 0067 the reader asks with the ids of the active and the latest version of
-  each flow as well, so a row of the active version no longer keeps it from asking per id: that is my reading of
-  the code, and the reading in parts of run 27 is whole. A row of a version that is neither active nor the latest
-  would still keep it from asking per id, if the API holds such rows: no run read a flow with more than two
-  versions. The ids of the versions count toward the 200 ids of that last query, and an active version that is
-  not the latest is one id more.
+  partial** `[run 21]`. That was the reader as it was built until record 0067 (`sources/dependency-api.ts`): a part
+  that is at the limit is asked for again per component, and it asked by the ids the org listed. If a row the
+  cut-off answer gave comes from an id that is not among them, the reader takes the ids for the wrong ones, does
+  not ask per id and counts the part as cut off, which still holds. The row here was one of the active version of
+  `Invoice_Recalculate`, whose id the org no longer lists. That this is the cause is my reading of the code and of
+  the counts, not something the log says. Runs 24 and 26 gave the same: the cut-off reading lacked 30 rows from a
+  flow to a custom field, in 68 requests, and was partial `[run 24]` `[run 26]`.
+- What that meant for a real org until record 0067: the limit of Salesforce is 2,000 rows per query. An org whose
+  flows give that many rows or more to one type of target, and that has one flow with an active version and a newer
+  draft, could get a partial reading of the rows of its flows. It did when a row of the version the org does not
+  list was among the rows the cut-off answer gave, and the query asks for no order, so that is not fixed. When none
+  was, the reader asked per id and then once for the rows of every component that is not among the ids, which
+  brought the rows of that version. Since record 0067 the reader asks with the ids of the active and the latest
+  version of each flow as well, so a row of the active version no longer keeps it from asking per id: that is my
+  reading of the code, and the reading in parts of run 27 is whole. A row of a version that is neither active nor
+  the latest would still keep it from asking per id, if the API holds such rows: no run read a flow with more than
+  two versions. An org that lists more than 200 flows gets a reading that is not whole for another reason, draft or
+  not: the last query cannot name every id. The ids of the versions count toward those 200, and an active version
+  that is not the latest is one id more. The engine says what it could not read and compares what it has.
 
 ### The rows of flows compared
 
 The maintainer chose on 23 November 2026 that a snapshot asks the org for the ids of the active and the latest
 version of each flow, and compares a row from a flow where it is from the version the snapshot holds. Record
 [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md) builds it. Run 27 read the org with it, in
-the state the step "draft" left. All of the following is `[run 27]`.
+the state the step "draft" left. All of the following is `[run 27]`. Where a number is worked out from the lines of
+the log and not printed in it, the text says so.
 
 - **The org named the active and the latest version of 7 flows, as many as it lists.** The active version of
   `Invoice_Recalculate` is not its latest. `Invoice_Purge_Void` and one flow that is not of the fixture project
   have no active version. The snapshot has no warning `FLOW_VERSIONS_NOT_READ`. The rows and the versions were read
-  with 2 requests, so with one each.
-- **Of the 78 rows from a flow, 62 are compared and 16 are counted as of another version**, as runs 21 and 26 let
-  me work out before. The 62 are the 47 of the five flows with one version and the 15 of version 1 of
-  `Invoice_Recalculate`, which the snapshot holds. The 16 are those of version 2, the draft. The row to
-  `Invoice__c.Paid_Date__c`, which only the draft reads, is among them: no row is missed, and none is counted as
-  not matched or as of a component the snapshot does not hold.
-- **The analysis has each of the 62 pairs.** Of the 130 pairs compared it has 128, has 2 through a part of the
-  object, which are the 2 of the earlier runs, and missed none. No reference of the analysis of a kind Salesforce
-  reports is without a row.
-- **The references of a flow that the API does not report are counted with their reasons**: 3 with
-  `global-variable`, 1 with `name-in-text` and 1 with `subflow`. The counts are those of section 3: the two fields
-  of the custom setting and the custom permission that a formula reads through `$Setup` or `$Permission`, the
-  record type a condition names as text, and the subflow. The log gives the counts, not the pairs.
+  with 2 requests, so with one each, since each takes at least one.
+- **16 rows are counted as of another version, and 130 rows are compared.** The log counts 78 rows from a flow, 63
+  with an id the org listed and 15 without. None of them is among the 205 rows of a type that is not analysed, and
+  no row is counted as not matched or as of a component the snapshot does not hold. So 62 rows from a flow are
+  compared, and the other 68 are as many as run 26 compared. The log does not print the 62. By the code, the 16 are
+  the rows of version 2 of `Invoice_Recalculate`, the draft, whose id the org lists: the snapshot holds the active
+  version of a flow with the note `FLOW_NEWER_VERSION`. The 62 are then the 15 of version 1 and the 47 of the other
+  five flows of the fixture project, which have one version each. The row to `Invoice__c.Paid_Date__c`, which only
+  the draft reads, is among the 16, since the analysis of version 1 does not have it and nothing is missed.
+- **The analysis misses none of the 130 pairs**: it has 128, and 2 through a part of the object. The log does not
+  name those 2. Runs 19 to 26 had 2 as well, before a row of a flow was compared, so they are most likely the same.
+  No reference of the analysis of a kind Salesforce reports is without a row.
+- **The references of a flow to what is custom that the API does not report are counted with their reasons**: 3
+  with `global-variable`, 1 with `name-in-text` and 1 with `subflow`. The counts are those of section 3: the two
+  pairs to a field of the custom setting that a formula reads through `$Setup`, the pair to the custom permission
+  that a formula reads through `$Permission`, the record type a condition names as text, and the subflow. The log
+  gives the counts, not the pairs. A reference of a flow to a standard field or a standard object counts with
+  `standard-field` or `standard-object`, as one of any other type does, and the log does not count those of flows
+  apart.
 - **Read in parts, the rows are whole again.** With every answer cut off at 30 rows, the reading took 74 requests,
   gave the 351 rows of the one query just before, and the engine called it whole. Runs 21, 24 and 26 lacked 30 rows
   from a flow to a custom field there. The reader now asks with the ids of the versions as well, among them the id
