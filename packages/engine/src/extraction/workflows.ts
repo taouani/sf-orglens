@@ -108,7 +108,9 @@ export function readWorkflowPart(
     if (active === 'true' || active === 'false') attrs['active'] = active === 'true';
   } else if (type === 'WorkflowFieldUpdate') {
     const field = reader.nameAt(childOf(element, 'field'));
-    const parent = childOf(element, 'targetObject');
+    const target = childOf(element, 'targetObject');
+    // An empty parent is none, as an empty value is none elsewhere.
+    const parent = textOf(target) === null ? null : target;
     if (parent === null) {
       if (field !== null) {
         reader.references.push({ form: 'path', start: object, names: [field], kind: 'writes', via: 'assignment' });

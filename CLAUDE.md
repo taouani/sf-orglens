@@ -118,11 +118,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
   and not compared (decision record 0060).
 - A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
   with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
-  under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). What they name is of the object the
-  file is named after, also the formula of a field update that writes on the parent. A rule says whether it is
-  active. An action of a type the reader does not know, or of none, is not read, and a warning says so. A test
-  holds the types of action and the parts against the Salesforce library. Of these files the Dependency API
-  reports only the fields the formula of a field update reads, so nothing else of them is compared.
+  under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). The file contains them, as an object
+  contains its fields (`parentKey`). What they name is of the object the file is named after, also the formula of
+  a field update that writes on the parent. A rule says whether it is active. An action of a type the reader does
+  not know, or of none, is not read, and a warning says so. A test holds the types of action and the groups of the
+  file against the Salesforce library. Of these files the Dependency API reports only the fields the formula of a
+  field update reads: any other pair of them that no row reports is counted with a reason, and not listed.
 - A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,
   means the object in an impact question, and the answer names the others (`sameName`, decision record 0064). A
   name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.

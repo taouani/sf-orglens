@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { registry } from '@salesforce/source-deploy-retrieve';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { buildKey, parentKey } from '../src/core/keys.ts';
 import type { Reference } from '../src/core/references.ts';
 import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
 import type { AnalysedComponent } from '../src/extraction/analysed.ts';
@@ -248,11 +249,16 @@ describe('small files of workflow rules that are written here', () => {
         '    <timeLength>1</timeLength>',
         '    <workflowTimeTriggerUnit>Days</workflowTimeTriggerUnit>',
         '</workflowTimeTriggers>',
+        // An action without a name and a type names nothing.
+        '<actions/>',
       ),
+      // A group that the types of the Metadata API give the file, and that the Salesforce library does not know.
+      ...group('flowAutomation', 'Run_Flow', '<flow>Recalculate</flow>', '<label>Run</label>'),
     ]);
     // An action names the alert, the field update or the message of the object of the rule. Salesforce names it
     // with that object. A flow action is a component that is not read. The source holds no knowledge action and
-    // no action that sends, and nothing of two types the Salesforce library does not know: those are not found.
+    // no action that sends, and nothing of two types the Salesforce library does not know: those are not found,
+    // also where the file has a group of that type, and nothing says so.
     expect(from(analysis, 'WorkflowRule:invoice__c.everything')).toEqual([
       '20:19 references WorkflowAlert:invoice__c.tell_owner [Tell_Owner] action confirmed',
       '24:19 references WorkflowFlowAction:invoice__c.start_flow [Start_Flow] action confirmed',
@@ -279,6 +285,7 @@ describe('small files of workflow rules that are written here', () => {
       references: [],
     });
     expect(analysis.types).not.toContain('WorkflowFlowAction');
+    expect(analysis.components.filter((one) => one.key.endsWith('.run_flow'))).toEqual([]);
   });
 
   it('write a field of the record, or of the parent that a lookup of the record leads to', async () => {
@@ -291,8 +298,9 @@ describe('small files of workflow rules that are written here', () => {
       ...update('Through_Nothing', 'Tier__c', '<targetObject>Nowhere__c</targetObject>'),
       ...update('Through_No_Name', 'Tier__c', '<targetObject>Account Id</targetObject>'),
       ...group('fieldUpdates', 'By_Formula', '<field>Limit__c</field>', '<formula>Amount__c * 2</formula>'),
+      ...update('Through_Empty', 'Status__c', '<targetObject/>'),
     ]);
-    const updates = ['own', 'through_lookup', 'through_nothing', 'through_no_name', 'by_formula'];
+    const updates = ['own', 'through_lookup', 'through_nothing', 'through_no_name', 'by_formula', 'through_empty'];
     expect(
       Object.fromEntries(updates.map((name) => [name, from(analysis, `WorkflowFieldUpdate:invoice__c.${name}`)])),
     ).toEqual({
@@ -310,6 +318,8 @@ describe('small files of workflow rules that are written here', () => {
         '28:16 writes CustomField:invoice__c.limit__c [Limit__c] assignment confirmed',
         '29:18 reads CustomField:invoice__c.amount__c [Amount__c] formula confirmed',
       ],
+      // An empty parent is none, as an empty value is none elsewhere.
+      through_empty: ['33:16 writes CustomField:invoice__c.status__c [Status__c] assignment confirmed'],
     });
     // A relationship that is no name is not read, and then nothing says which object the field is of.
     expect(issuesOf(analysis)).toEqual([
@@ -318,19 +328,36 @@ describe('small files of workflow rules that are written here', () => {
       `warning PATH_NOT_FOLLOWED WorkflowFieldUpdate:invoice__c.through_nothing ${FILE}, line 18: it is not known which object "Nowhere__c" leads to, so its field "Tier__c" was not followed.`,
     ]);
 
-    // A standard lookup is named by its field, and leads where its name says.
+    // A standard lookup is named by its field, in any case, and leads where its name says.
     const contact = await analysed(
-      update('Of_Account', 'Tier__c', '<targetObject>AccountId</targetObject>'),
+      [
+        ...update('Of_Account', 'Tier__c', '<targetObject>AccountId</targetObject>'),
+        ...update('Of_Account_Lower', 'Tier__c', '<targetObject>accountid</targetObject>'),
+      ],
       'Contact',
     );
     expect(from(contact, 'WorkflowFieldUpdate:contact.of_account')).toEqual([
       '7:23 reads CustomField:contact.accountid [AccountId] path confirmed',
       '5:16 writes CustomField:account.tier__c [Tier__c] assignment confirmed',
     ]);
+    expect(from(contact, 'WorkflowFieldUpdate:contact.of_account_lower')).toEqual([
+      '13:23 reads CustomField:contact.accountid [accountid] path confirmed',
+      '11:16 writes CustomField:account.tier__c [Tier__c] assignment confirmed',
+    ]);
     const [lookup, written] =
       contact.components.find((one) => one.key === 'WorkflowFieldUpdate:contact.of_account')?.references ?? [];
     expect([lookup?.resolution, written?.resolution]).toEqual(['external', 'resolved']);
     expect(issuesOf(contact)).toEqual([]);
+
+    // The parent of an email or a comment of a case is the case, through `ParentId`. Where a relationship would
+    // lead to the object of the record itself, where it leads is not known, and the field is not written anywhere.
+    const email = await analysed(update('Of_Case', 'Status', '<targetObject>ParentId</targetObject>'), 'EmailMessage');
+    expect(from(email, 'WorkflowFieldUpdate:emailmessage.of_case')).toEqual([
+      '7:23 reads CustomField:emailmessage.parentid [ParentId] path confirmed',
+    ]);
+    expect(issuesOf(email)).toEqual([
+      'warning PATH_NOT_FOLLOWED WorkflowFieldUpdate:emailmessage.of_case workflows/EmailMessage.workflow-meta.xml, line 7: it is not known which object "ParentId" leads to, so its field "Status" was not followed.',
+    ]);
   });
 
   it('read the fields an alert sends to and an outbound message sends, and the template of an alert', async () => {
@@ -483,11 +510,15 @@ describe('small files of workflow rules that are written here', () => {
 });
 
 describe('the names the reader of workflow rules knows', () => {
-  it('are those of the Metadata API and of the Salesforce library', () => {
-    // The library of the engine brings the types of the Metadata API, which hold the types of an action.
+  /** The types of the Metadata API, which the Salesforce library of the engine brings. */
+  const metadataTypes = (): string => {
     const library = createRequire(import.meta.url).resolve('@salesforce/source-deploy-retrieve');
-    const types = createRequire(library).resolve('@salesforce/types/metadata').replace(/\.js$/, '.d.ts');
-    const union = /^export type WorkflowActionType = (.*);$/m.exec(readFileSync(types, 'utf8'))?.[1] ?? '';
+    return readFileSync(createRequire(library).resolve('@salesforce/types/metadata').replace(/\.js$/, '.d.ts'), 'utf8');
+  };
+
+  it('are those of the Metadata API and of the Salesforce library', () => {
+    // The types of the Metadata API hold the types of an action.
+    const union = /^export type WorkflowActionType = (.*);$/m.exec(metadataTypes())?.[1] ?? '';
     const actionTypes = [...union.matchAll(/'([^']*)'/g)].map(([, value]) => String(value));
     expect([...ACTION_TYPES.keys()].sort()).toEqual(actionTypes.sort());
 
@@ -515,5 +546,18 @@ describe('the names the reader of workflow rules knows', () => {
       'WorkflowRule rules',
       'WorkflowTask tasks',
     ]);
+  });
+
+  it('make every group of the file a part of it, also the two that the library does not know', () => {
+    // The file contains its rules and actions (decision record 0063), so that an answer about the file is one
+    // about them. The types of the Metadata API give the type of each group of the file.
+    const groups = /^export type Workflow = Metadata & \{\n([^}]*)\n\};$/m.exec(metadataTypes())?.[1] ?? '';
+    const types = [...groups.matchAll(/^ *\w+\??: (\w+)\[\];$/gm)].map(([, type]) => String(type));
+    expect(types).toHaveLength(10);
+    expect(types).toEqual(expect.arrayContaining(['WorkflowFlowAutomation', 'WorkflowNotification']));
+    const outside = types.filter(
+      (type) => parentKey(buildKey({ type, fullName: 'Invoice__c.Remind' })) !== 'Workflow:invoice__c',
+    );
+    expect(outside).toEqual([]);
   });
 });

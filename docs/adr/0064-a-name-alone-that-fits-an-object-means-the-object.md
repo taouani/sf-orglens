@@ -38,8 +38,9 @@ The statements below are choices of the author of this record. The maintainer ca
 1. **An object is a component of the type `CustomObject`**, which is the type of a standard object too. An
    object that the snapshot does not hold and that something in it refers to counts as one the name fits.
 2. **Where no object is among the components the name fits, nothing changes.** A name that fits one component
-   means it, and a name that fits several is the error `COMPONENT_AMBIGUOUS`. Its words say now that no object was
-   among them, in the error, in `docs/cli.md` and in the list of the codes of the engine.
+   means it, and a name that fits several is the error `COMPONENT_AMBIGUOUS`. Its description says now that no
+   object was among them, in `docs/cli.md` and in the list of the codes of the engine. The message of the error
+   is as it was: it lists the components.
 3. **The JSON of `impact` gets the field `sameName`**: the keys of the other components the name fits, sorted. It
    is empty where the component was named by its key or by its type and name, and where the name fits one
    component. It is always there, so that a script does not have to ask whether it is.

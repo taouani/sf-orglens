@@ -305,10 +305,11 @@ its default value and the condition of a rule. It reads flows too: every element
 component of its own, named `<flow>.<element>`, with the fields and objects it reads, writes or names, in a
 value, in the name of a resource with a path, in a formula or in a merge field of a text. It reads workflow
 rules: each rule, field update, email alert, outbound message and task of a file of workflow rules is a
-component, with the fields in the criteria and the formula of a rule and the actions it starts, the field an
-update writes, also on the parent of the record, the fields in its formula, the fields an outbound message sends,
-and the fields and the email template an alert names. Every other type is stored and not analysed yet. Decision
-record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
+component that the file contains, with the fields in the criteria and the formula of a rule, the actions it
+starts and the date fields its time triggers count from, the field an update writes, also on the parent of the
+record, the fields in its formula, the fields an outbound message sends, the fields and the email template an
+alert names, and the date field the due date of a task counts from. Every other type is stored and not analysed
+yet. Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
 [0061](adr/0061-the-elements-of-a-flow.md) and [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md) say
 what is read and what is not.
@@ -495,10 +496,10 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 | `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                                      |
 
 The values of `reason` are `standard-field`, `standard-object`, `inactive-rule`, `lookup`, `lookup-filter`,
-`roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value`, `workflow-rule` (any
-reference of a workflow rule), `workflow-action` (any reference of an email alert, an outbound message or a task),
-`field-update` (a reference of a field update that is not in its formula) and `other`. A later version can add
-one.
+`roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value`, `workflow-rule` (a
+reference of a workflow rule), `workflow-action` (a reference of an email alert, an outbound message or a task),
+`field-update` (a reference of a field update that is not in its formula) and `other`. A pair to a standard field
+or a standard object has one of the first two, from any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
@@ -640,9 +641,10 @@ is neither in the snapshot nor known to OrgLens by name is not found by its name
 - One line shows one reference. If a component refers to the same target at several places, the answer shows
   one of them: the one that makes the chain most certain, and among those the first in the file. The other
   places are not listed.
-- For a component that contains others, such as an object with its fields and validation rules, the answer is
-  about everything it contains too: what refers to any of them is in the answer. The second line says how many
-  components that are. What the component contains is never a line of the answer itself.
+- For a component that contains others, such as an object with its fields and validation rules, or a file of
+  workflow rules with its rules and actions, the answer is about everything it contains too: what refers to any
+  of them is in the answer. The second line says how many components that are. What the component contains is
+  never a line of the answer itself.
 - A component that is found is followed from itself only. If a field refers to the component, the answer goes
   on with what refers to that field, not with what refers to its object or to the other fields of its object.
 - With `--depth`, the answer says whether references lead further than it goes.

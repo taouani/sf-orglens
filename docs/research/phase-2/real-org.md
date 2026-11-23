@@ -393,5 +393,7 @@ Dependency API alone is the cross-check for Apex stands.
   [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) tried it with a zip file
   written for the purpose, not with an org.
 - What "deploy" does to a flow that has a draft.
-- The analysis of the files of Phase 2: no analyser reads them yet. The numbers of section 3 are the answer key
-  against the Dependency API, not against OrgLens.
+- What the analysers of Phase 2 make of the files the test org hands out. The rows from a flow are counted and
+  not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)), and the reader of
+  workflow rules was built after run 23. The numbers of section 3 are the answer key against the Dependency API,
+  not against OrgLens.

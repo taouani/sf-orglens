@@ -4,7 +4,7 @@
  * The answers themselves are tested in the engine. Here the fixture project is asked through the command line,
  * and what is printed is held against golden files.
  */
-import { cpSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -77,6 +77,36 @@ describe('orglens impact', () => {
     for (const result of data.results) {
       expect(shown.stdout).toMatch(new RegExp(`^${String(result.depth)} +${result.key.replaceAll('.', '\\.')} `, 'm'));
     }
+  });
+
+  it('names the other components that have the name of the object, in the text and in the JSON', async () => {
+    // A custom tab of an object has the name of the object too, as the file of its workflow rules has.
+    const dir = await fixtureWorkspace((at) => {
+      const tabs = join(at, 'project/force-app/main/default/tabs');
+      mkdirSync(tabs);
+      writeFileSync(
+        join(tabs, 'Invoice__c.tab-meta.xml'),
+        [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">',
+          '    <customObject>true</customObject>',
+          '    <motif>Custom20: Airplane</motif>',
+          '</CustomTab>',
+          '',
+        ].join('\n'),
+      );
+    });
+    expect((await orglens(dir, ['impact', 'Invoice__c'])).stdout.split('\n')[1]).toBe(
+      'The name also fits CustomTab:invoice__c, Workflow:invoice__c. The answer is about the object. To ask about another, name it by its key.',
+    );
+    expect((await orglensJson(dir, ['impact', 'Invoice__c'])).data).toMatchObject({
+      component: { key: 'CustomObject:invoice__c' },
+      sameName: ['CustomTab:invoice__c', 'Workflow:invoice__c'],
+    });
+    // Named by its key, the object is all the question names, and the line is not there.
+    const byKey = await orglens(dir, ['impact', 'CustomObject:Invoice__c']);
+    expect(byKey.stdout).not.toMatch(/also fits/);
+    expect((await orglensJson(dir, ['impact', 'CustomObject:Invoice__c'])).data).toMatchObject({ sameName: [] });
   });
 
   it('says in its first lines that the answer is not complete, before the answer', async () => {

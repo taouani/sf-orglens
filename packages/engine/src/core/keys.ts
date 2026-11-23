@@ -129,6 +129,24 @@ const CHILD_OF_OBJECT: ReadonlySet<string> = new Set([
   'WebLink',
 ]);
 
+/**
+ * Types whose full name is `Object.Name`, where the parent is the file of the workflow rules of the object, which
+ * has the name of the object (decision record 0063). They are the groups of that file in the types of the Metadata
+ * API, also the two the Salesforce library does not know as its parts.
+ */
+const CHILD_OF_WORKFLOW: ReadonlySet<string> = new Set([
+  'WorkflowAlert',
+  'WorkflowFieldUpdate',
+  'WorkflowFlowAction',
+  'WorkflowFlowAutomation',
+  'WorkflowKnowledgePublish',
+  'WorkflowNotification',
+  'WorkflowOutboundMessage',
+  'WorkflowRule',
+  'WorkflowSend',
+  'WorkflowTask',
+]);
+
 function invalid(message: string, details: Record<string, string>): EngineError {
   return new EngineError('KEY_INVALID', message, { details });
 }
@@ -262,7 +280,8 @@ export function isComponentKey(text: string): text is ComponentKey {
  *
  * A sub-component is contained in the component one step up its path. A
  * field, validation rule, record type, field set or list view is contained
- * in its object. A custom metadata record is contained in its type.
+ * in its object. A custom metadata record is contained in its type. A rule
+ * or an action of a file of workflow rules is contained in the file.
  */
 export function parentKey(key: ComponentKey): ComponentKey | undefined {
   const { type, name, subs } = parseKey(key);
@@ -272,6 +291,7 @@ export function parentKey(key: ComponentKey): ComponentKey | undefined {
   if (dot < 1 || dot === name.length - 1) return undefined;
   const parent = name.slice(0, dot);
   if (CHILD_OF_OBJECT.has(type)) return formatKey('CustomObject', parent, []);
+  if (CHILD_OF_WORKFLOW.has(type)) return formatKey('Workflow', parent, []);
   if (type === 'CustomMetadata') {
     // The full name of a record is `Type.Record`, without the suffix of the type.
     return formatKey('CustomObject', parent.endsWith('__mdt') ? parent : `${parent}__mdt`, []);

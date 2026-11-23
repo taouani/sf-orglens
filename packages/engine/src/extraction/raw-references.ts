@@ -151,11 +151,11 @@ const LONGEST_PATH_SHOWN = 200;
 const MOST_NAMES_SHOWN = 20;
 
 /**
- * The relationship of a lookup field, by the name of the field: `Invoice__c` is `Invoice__r`, and `AccountId` is
- * `Account`. Any other name is taken for the name of a relationship.
+ * The relationship of a lookup field, by the name of the field, in any case: `Invoice__c` is `Invoice__r`, and
+ * `AccountId` is `Account`. Any other name is taken for the name of a relationship.
  */
 const relationshipOf = (field: string): string =>
-  /__p?c$/i.test(field) ? `${field.slice(0, -1)}r` : /[A-Za-z0-9]Id$/.test(field) ? field.slice(0, -2) : field;
+  /__p?c$/i.test(field) ? `${field.slice(0, -1)}r` : /[A-Za-z0-9]id$/i.test(field) ? field.slice(0, -2) : field;
 
 /** The component the names of a file are resolved for. */
 interface Owner {
@@ -276,8 +276,11 @@ export function resolveReferences(
       const step: Raw = { via: 'path', ...(one.tier === undefined ? {} : { tier: one.tier }) };
       const { field, leadsTo } = model.relationship(one.start, relationshipOf(one.through.name));
       add(one.through, field, 'reads', step, { object: one.start });
-      if (leadsTo === null) notFollowed(one.through, [one.at], 'leads to', true);
-      else add(one.at, model.field(leadsTo, one.at.name), 'writes', one, { object: leadsTo });
+      // The parent is never the object itself: the model takes `Parent` for it, which is wrong for the parent of
+      // a comment or an email of a case, and a hierarchy field leads there too. Then where it leads is not known.
+      if (leadsTo === null || foldName(leadsTo) === foldName(one.start)) {
+        notFollowed(one.through, [one.at], 'leads to', true);
+      } else add(one.at, model.field(leadsTo, one.at.name), 'writes', one, { object: leadsTo });
     } else if (one.form === 'record') {
       // A relationship on the way is written as in any path of a flow.
       const step: Raw = { via: 'path', ...(one.tier === undefined ? {} : { tier: one.tier }) };

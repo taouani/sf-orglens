@@ -205,7 +205,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
       expect(asked.size).toBe(164);
-      expect(results).toBe(406);
+      expect(results).toBe(407);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -592,6 +592,44 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       // A name that fits one component names nothing else.
       expect((await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c')).sameName).toEqual([]);
+    });
+
+    it('answers for a file of workflow rules with its rules and actions, which it contains', async () => {
+      // The rules and actions of a file are parts of it (decision record 0063). What refers to one of them refers
+      // to the file, what one of them refers to is what the file refers to, and they are no result of each other.
+      const { workspace } = await setUp();
+      const incoming = await workspace.impact('fixture', 'Workflow:Invoice__c');
+      expect(incoming.parts).toBe(8);
+      expect(outline(incoming)).toEqual([['Flow:invoice_after_save#element:send_overdue_alert', 1, 'confirmed']]);
+      expect(incoming.results[0]?.reference).toMatchObject({ to: 'WorkflowAlert:invoice__c.invoice_overdue_alert' });
+
+      const outgoing = await workspace.impact('fixture', 'Workflow:Invoice__c', { outgoing: true });
+      expect(outgoing.parts).toBe(8);
+      const RULE = 'WorkflowRule:invoice__c.stamp_code_when_paid';
+      const STAMP = 'WorkflowFieldUpdate:invoice__c.stamp_legacy_code';
+      const ALERT = 'WorkflowAlert:invoice__c.invoice_overdue_alert';
+      const MESSAGE = 'WorkflowOutboundMessage:invoice__c.notify_ledger';
+      expect(
+        outgoing.results
+          .filter((result) => result.depth === 1)
+          .map((result) => [result.key, result.reference.kind, result.reference.from]),
+      ).toEqual([
+        ['CustomField:account.is_key_account__c', 'reads', RULE],
+        ['CustomField:account.name', 'reads', STAMP],
+        ['CustomField:billing_settings__c.grace_days__c', 'reads', RULE],
+        ['CustomField:invoice__c.account__c', 'reads', STAMP],
+        [AMOUNT, 'reads', MESSAGE],
+        ['CustomField:invoice__c.approver__c', 'reads', ALERT],
+        ['CustomField:invoice__c.billing_contact__c', 'reads', ALERT],
+        ['CustomField:invoice__c.due_date__c', 'reads', MESSAGE],
+        ['CustomField:invoice__c.legacy_code__c', 'writes', STAMP],
+        ['CustomField:invoice__c.paid_date__c', 'reads', RULE],
+        ['CustomField:invoice__c.status__c', 'reads', STAMP],
+        ['CustomField:invoice__c.sub_status__c', 'writes', 'WorkflowFieldUpdate:invoice__c.set_sub_status_reminder'],
+        ['EmailTemplate:billing/invoice_overdue', 'references', ALERT],
+      ]);
+      expect(outgoing.results.filter((result) => result.type.startsWith('Workflow'))).toEqual([]);
+      expect(outgoing).toMatchObject({ complete: false, notCovered: { notAnalysed: [{ type: 'EmailTemplate' }] } });
     });
 
     it('refuses a snapshot that was never analysed, and says how to analyse it', async () => {

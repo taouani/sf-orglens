@@ -41,7 +41,12 @@ Components:
 
 1. **The file is a component, `Workflow:<object>`, and so is each part of it**, under the type and the name
    Salesforce gives it: `WorkflowRule:Invoice__c.Remind_When_Sent`. A part is defined by its own element of the
-   file, with a hash of its own. The file itself names nothing: its parts hold all of it. A project laid out with
+   file, with a hash of its own. **The file contains its parts**, as an object contains its fields: the file
+   itself names nothing, and an impact answer about it is about its rules and actions, which are no result of
+   each other. The key of any type that a group of the file holds in the types of the Metadata API has the file
+   for its parent, also of the two that the Salesforce library does not know as parts (point 9). The database
+   stores the parent of a component once, when its key is first named, so its migration 8 gives the rules and
+   actions it already holds their file, and adds a row for the file where there is none. A project laid out with
    the preset `decomposeWorkflowBeta`, a file for each part, gives the same components and the same references,
    each at its place in the file of its part.
 2. **Five types of part are read**: rules, field updates, email alerts, outbound messages and tasks. The three
@@ -69,20 +74,30 @@ References:
    name of the action: an action is a part of the file of the same object. The date field a time trigger counts
    from (`offsetFromField`) `reads`, with the way `time`.
 8. **An action of a type that is not among the nine, or of no type, is not read.** The warning `NAME_NOT_READ`
-   says which, and no reference is made. Salesforce refuses an action without a type.
-9. **Two of the nine are no part of a file of workflow rules that the library knows.** It knows no
+   says which, and no reference is made. Salesforce refuses an action without a type. An empty action, with
+   neither a name nor a type, names nothing and is passed over without a warning.
+9. **Two of the nine are no part of a file of workflow rules that the library knows**, though the types of the
+   Metadata API give the file a group for each, `flowAutomation` and `notifications`. The library knows no
    `WorkflowNotification` at all, and `WorkflowFlowAutomation` only as a type of its own, in a folder of its own.
-   An action of either type is a reference to a component of that type, which is not resolved where the snapshot
-   holds none. The test org lists 7 components of `WorkflowFlowAutomation` and hands out none
+   So what such a group of a file holds is no component, and nothing says so. An action of either type is a
+   reference to a component of that type, which is not resolved where the snapshot holds none, also without a
+   warning. The test org lists 7 components of `WorkflowFlowAutomation` and hands out none
    ([research note](../research/phase-2/real-org.md), section 2).
 10. **A field update `writes` its field** (`field`), with the way `assignment`. Where it names a parent
     (`targetObject`), it writes a field of the record that a relationship field of the record leads to, and
     `targetObject` is taken for the name of that relationship field: `Invoice__c` on an invoice line, or a
-    standard field such as `AccountId`. The relationship field `reads`, with the way `path`, and the field is
-    written on the object it leads to. The relationship is found by the name of the field: a custom field
-    `Invoice__c` is the relationship `Invoice__r`, and a standard field `AccountId` the relationship `Account`. A
-    name that is no relationship of the object gives the warning `PATH_NOT_FOLLOWED`, and the field is not written
-    anywhere: its object is not guessed.
+    standard field such as `AccountId`. An empty `targetObject` names no parent. The relationship field `reads`,
+    with the way `path`, and the field is written on the object it leads to. The relationship is found by the
+    name of the field, in any case: a custom field `Invoice__c` is the relationship `Invoice__r`, and a standard
+    field `AccountId` or `accountid` the relationship `Account`. Any other name is taken for the name of a
+    relationship as it stands. A name that is no relationship of the object gives the warning
+    `PATH_NOT_FOLLOWED`, and the field is not written anywhere: its object is not guessed. So does a relationship
+    that leads to the object of the record itself, for two reasons. The model of objects takes the standard
+    relationship `Parent`, of the field `ParentId`, for the hierarchy of the object, which is wrong for an email
+    message or a comment of a case, whose parent is the case. And the reader takes it that an update does not
+    write on another record of its own object. A standard name is a relationship of every object to the model:
+    `Account` on an invoice whose lookup is `Account__c` reads the field `AccountId` of the invoice, which it does
+    not have, and writes on the account, without a warning.
 11. **The formula of a field update is about the record of the object of the file**, also where the update
     writes on the parent. The fixture has such an update, and the key holds it so.
 12. **An email alert reads the fields that hold its recipients.** A recipient that names a `field`, such as a
@@ -98,11 +113,14 @@ References:
 
 The cross-check:
 
-15. **Of a file of workflow rules, only the custom fields that the formula of a field update reads are compared
-    with the rows of the Dependency API.** The rest is counted, with a reason, among the pairs the API does not
-    report: `workflow-rule` for any reference of a rule, `workflow-action` for any reference of an email alert,
-    an outbound message or a task, and `field-update` for a reference of a field update that is not in its
-    formula. The mock org of the tests reports what the test org reports.
+15. **A row of the Dependency API from a rule or an action is compared as a row of any type the analysis
+    reads, and a pair of the analysis that no row reports is excused where the API is not known to report it.**
+    Of a file of workflow rules, the API reports the custom fields that the formula of a field update reads, and
+    nothing else. Every other pair is counted, with a reason, among the pairs the API does not report:
+    `workflow-rule` for a reference of a rule, `workflow-action` for a reference of an email alert, an outbound
+    message or a task, and `field-update` for a reference of a field update that is not in its formula. A pair to
+    a standard field or a standard object has the reason it has from any component. The mock org of the tests
+    reports what the test org reports.
 
 ## Consequences
 
@@ -114,8 +132,12 @@ The cross-check:
   updates and an email alert, with 24 references. Each of them was checked by hand against the file on the day
   of this record. The plan asks for them in the note of work package 9, which does not exist yet: they are listed
   there with it.
-- The six impact answers of the golden files of the engine and of the command line change: the rules and the
-  actions that refer to a component are among the results. Each new result was checked against the key.
+- The six impact answers of the golden files of the engine and of the command line change. None of them names
+  the types of workflow rules among those that are not analysed, and four have the rules and the actions that
+  refer to the component among the results, each checked against the key. The answers about a field at the end
+  of a chain of formulas and about a field that nothing refers to gain no result.
+- The workspace database moves to schema version 8 (point 1). `orglens analyse` or `orglens snapshot` migrates a
+  database of an older version, which `impact` refuses until then, as it does for every migration.
 - The actions of a workflow rule are analysed and are not of the logic tier. Two things follow that could not
   happen before. A warning of a snapshot of an org that something of such a type is missing counts for an impact
   answer that covers the type, which every answer does: the answer says that it may miss something (`mayMiss`),
@@ -124,7 +146,9 @@ The cross-check:
   which record [0048](0048-types-a-snapshot-leaves-out.md) says cannot happen: the answer then has the type in
   `notCovered.partial` and may miss something. That rule of the answer is tested with a type of its own, and not
   with a snapshot of an org that leaves out an action. On the test org, none of the components that do not come
-  back is an action of a workflow rule, by the count of record 0058.
+  back was of a type the analysis reads, by the count of record 0058 in Phase 1. Those of
+  `WorkflowFlowAutomation`, 7 in run 23, are of a type that an action can name and the analysis does not read
+  (point 9).
 - Until work package 6 builds record 0058, what an org lists of the actions and does not hand out leaves the
   snapshot `complete`. The actions join the list of "complete" with work package 6, and the question whether
   `WorkflowFlowAutomation` joins it is settled there.
@@ -136,9 +160,14 @@ The cross-check:
   (`assignedTo`), and what a flow action, an action that publishes an article and an action that sends hold. A
   flow action names the flow it starts: a flow that only a workflow rule starts is not shown as referred to.
 - Not verified: whether Salesforce writes in `targetObject` the name of the relationship field or the name of
-  the object it leads to. In the fixture both are `Invoice__c`, and the test org accepted it. If it is the object,
-  an update that goes through a custom relationship field named otherwise gets the warning `PATH_NOT_FOLLOWED` and
-  no reference to the field it writes. A criterion with `valueField`, a flow action, the layout of
-  `decomposeWorkflowBeta` and a template in `unfiled$public` were not seen in a file that Salesforce wrote: they
-  follow the types of the library. Whether Salesforce reports through the Dependency API what the reader finds is
-  compared only for the formulas of field updates.
+  the object it leads to. In the fixture both are `Invoice__c`, and the test org accepted it. The documentation
+  of the Metadata API, as read for this record, does not say which. If it is the object, an update that goes
+  through a custom relationship field named otherwise gets the warning `PATH_NOT_FOLLOWED` and no reference to
+  the field it writes, and one to a standard object reads a field of that name on the record, as `Account` does
+  in point 10. Whether Salesforce lets an update write on another record of its own object was not looked up.
+- Not verified on an org: the test org handed both files of workflow rules of the project back changed, in a way
+  the log of the run does not show ([research note](../research/phase-2/real-org.md), section 2), and the reader
+  has not run on a file that Salesforce wrote, because run 23 was made before it was built. A run of "Live org"
+  after the merge does that. A criterion with `valueField`, a flow action, the layout of `decomposeWorkflowBeta`
+  and a template in `unfiled$public` were not seen in a file that Salesforce wrote: they follow the types of the
+  library.
