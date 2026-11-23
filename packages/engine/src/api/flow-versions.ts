@@ -55,7 +55,10 @@ export interface FlowToFetch {
 export interface FlowUnknown {
   readonly flow: string;
   readonly state: string;
-  /** `no-definition`: the snapshot holds no file of its definition. `definition-unreadable`: the file is no definition. */
+  /**
+   * `no-definition`: the snapshot holds no file of its definition. `definition-unreadable`: the file is no
+   * definition, or names a number of a version that cannot be read.
+   */
   readonly reason: 'no-definition' | 'definition-unreadable';
 }
 
@@ -85,10 +88,12 @@ export function flowsNotActive(tree: SourceTree): { fetch: FlowToFetch[]; unknow
       unknown.push({ flow, state, reason: 'definition-unreadable' });
       continue;
     }
-    // A definition that names 0, or no number, names no active version (decision record 0060).
+    // A definition that names 0, or no number, names no active version (decision record 0060). Salesforce writes
+    // a number as digits without a leading zero. Anything else is not guessed at.
     const number = textIn(root, 'activeVersionNumber');
-    if (number === null || !/^[1-9][0-9]{0,8}$/.test(number)) continue;
-    fetch.push({ flow, state, version: Number(number) });
+    if (number === null || number === '0') continue;
+    if (/^[1-9][0-9]{0,8}$/.test(number)) fetch.push({ flow, state, version: Number(number) });
+    else unknown.push({ flow, state, reason: 'definition-unreadable' });
   }
   return { fetch, unknown };
 }
@@ -100,19 +105,22 @@ export const versionName = (flow: string, version: number): string => `${flow}-$
  * The file of the active version among the files of a retrieve that asked for `versionName(flow, version)`.
  * Run 22 of "Live org" showed both names: the file of an older version is named with the number, and the file of
  * the latest without it, also when it is asked for by its number. A file is taken only if it says that it is
- * active. Returned: its content, or the states the files of the flow that came back name.
+ * active. Returned: its content, and whether it came back as the latest version, or the states the files of the
+ * flow that came back name.
  */
 export function activeVersionIn(
   tree: SourceTree,
   flow: string,
   version: number,
-): { readonly content: Uint8Array } | { readonly content: null; readonly states: readonly string[] } {
+):
+  | { readonly content: Uint8Array; readonly latest: boolean }
+  | { readonly content: null; readonly states: readonly string[] } {
   const states: string[] = [];
   for (const path of [flowPath(versionName(flow, version)), flowPath(flow)]) {
     if (!tree.files.includes(path)) continue;
     const content = tree.read(path);
     const state = stateOf(content);
-    if (state === ACTIVE) return { content };
+    if (state === ACTIVE) return { content, latest: path === flowPath(flow) };
     states.push(state ?? 'unknown');
   }
   return { content: null, states };

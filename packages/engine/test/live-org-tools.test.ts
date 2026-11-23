@@ -1354,6 +1354,9 @@ describe('reading the test org', () => {
       'Invoice_Recalculate is the flow that the step "draft" sends once more as a draft, which differs in 3 places. The file from the org is the version that was sent as active.',
     );
     expect(output).toContain('- info FLOW_NEWER_VERSION: 1 observation\n');
+    expect(output).toMatch(
+      /After \d+\.\d s: 1 flow has a latest version that is not active\. The active version of each is asked for by its number\./,
+    );
     expectNoSecret(output);
   });
 

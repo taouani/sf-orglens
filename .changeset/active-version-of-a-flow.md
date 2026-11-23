@@ -10,9 +10,8 @@ flow. The new note `FLOW_NEWER_VERSION` says that the flow has a newer version t
 active version does not come back, the flow is not in the snapshot, the snapshot is partial (`NOT_RETRIEVED`),
 and the new note `ACTIVE_FLOW_NOT_RETRIEVED` says why. A flow that is not active and has no definition, or that
 the org lists under another name than that of its file, is kept as it came, with the new warning
-`FLOW_VERSION_UNKNOWN`.
-
-A snapshot of an org now holds the definitions of its flows (`FlowDefinition`), which the org lists and hands out
-with the other types.
+`FLOW_VERSION_UNKNOWN`, which an impact answer that covers flows counts: such an answer is not complete. The
+three are the first issues of the reading that name a component, the flow. The text of `snapshot` and `coverage`
+shows one line for each of them, with the number of flows.
 
 Not verified on an org yet: the run of the test org that asks for a version by its number in a snapshot.

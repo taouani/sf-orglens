@@ -54,11 +54,6 @@ describe('the flows whose active version is asked for', () => {
       'flowDefinitions/Zero.flowDefinition-meta.xml',
       definition('<activeVersionNumber>0</activeVersionNumber>'),
     );
-    source.file('flows/Odd.flow-meta.xml', flow('Draft'));
-    source.file(
-      'flowDefinitions/Odd.flowDefinition-meta.xml',
-      definition('<activeVersionNumber>1.5</activeVersionNumber>'),
-    );
     expect(flowsNotActive(source.tree)).toEqual({ fetch: [], unknown: [] });
   });
 
@@ -72,11 +67,21 @@ describe('the flows whose active version is asked for', () => {
       'flowDefinitions/Other.flowDefinition-meta.xml',
       xml('Flow', '<activeVersionNumber>1</activeVersionNumber>'),
     );
+    // Salesforce writes a number as digits without a leading zero. Another number is not guessed at.
+    const odd = ['1.5', '01', '-1', '1e3', 'one', '1234567890'];
+    for (const [at, number] of odd.entries()) {
+      source.file(`flows/Odd${String(at)}.flow-meta.xml`, flow('Draft'));
+      source.file(
+        `flowDefinitions/Odd${String(at)}.flowDefinition-meta.xml`,
+        definition(`<activeVersionNumber>${number}</activeVersionNumber>`),
+      );
+    }
     expect(flowsNotActive(source.tree)).toEqual({
       fetch: [],
       unknown: [
         { flow: 'Alone', state: 'Draft', reason: 'no-definition' },
         { flow: 'Garbled', state: 'Draft', reason: 'definition-unreadable' },
+        ...odd.map((_, at) => ({ flow: `Odd${String(at)}`, state: 'Draft', reason: 'definition-unreadable' })),
         { flow: 'Other', state: 'Draft', reason: 'definition-unreadable' },
       ],
     });
@@ -103,10 +108,11 @@ describe('the file of the active version', () => {
     expect(versionName('Invoice_Recalculate', 1)).toBe('Invoice_Recalculate-1');
     const older = new Source();
     older.file('flows/F-1.flow-meta.xml', ACTIVE);
-    expect(activeVersionIn(older.tree, 'F', 1)).toEqual({ content: ACTIVE });
+    expect(activeVersionIn(older.tree, 'F', 1)).toEqual({ content: ACTIVE, latest: false });
+    // The latest version comes back under the name of the flow, also when it is asked for by its number.
     const latest = new Source();
     latest.file('flows/F.flow-meta.xml', ACTIVE);
-    expect(activeVersionIn(latest.tree, 'F', 1)).toEqual({ content: ACTIVE });
+    expect(activeVersionIn(latest.tree, 'F', 1)).toEqual({ content: ACTIVE, latest: true });
     // Another number, or another flow, is not taken.
     const other = new Source();
     other.file('flows/F-2.flow-meta.xml', ACTIVE);

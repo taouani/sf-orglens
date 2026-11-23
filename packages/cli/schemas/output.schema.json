@@ -711,7 +711,7 @@
               "minimum": 0
             },
             "analysisWarnings": {
-              "description": "How many warnings the analysis had: a name that was not read, a path that was not followed, a formula that was not read as a whole, or a part of a file that was not found. Each can hide a reference. They make `complete` false and leave `mayMiss` as it is.",
+              "description": "How many warnings the analysis had: a name that was not read, a path that was not followed, a formula that was not read as a whole, or a part of a file that was not found. Each can hide a reference. For an answer that covers flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading are counted too: such a flow was analysed as a version that may not be the one that runs. They make `complete` false and leave `mayMiss` as it is.",
               "type": "integer",
               "minimum": 0
             },
@@ -1044,7 +1044,7 @@
         "code": { "description": "A stable code in upper case. Codes can be added.", "type": "string" },
         "message": { "type": "string" },
         "component": {
-          "description": "The key of the component an issue of the analysis is about, such as `CustomField:invoice__c.total__c`. Null for an issue that is about no single component, and for every issue of the reading.",
+          "description": "The key of the component an issue of the analysis is about, such as `CustomField:invoice__c.total__c`. Null for an issue that is about no single component, and for every issue of the reading but `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED` and `FLOW_VERSION_UNKNOWN`, which hold the key of the flow they are about.",
           "type": ["string", "null"]
         },
         "details": { "description": "Facts about the issue. The fields depend on the code.", "type": "object" }

@@ -345,7 +345,11 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       out.file('unpackaged/package.xml', `<?xml version="1.0" encoding="UTF-8"?><Package xmlns="${NAMESPACE}"/>`);
     }
     for (const [path, text] of metadata.extraFiles) out.file(`unpackaged/${path}`, text);
-    for (const { path, text } of beside) out.file(`unpackaged/${path}`, text);
+    // What the org hands out beside the files of the project counts against the limit as they do.
+    for (const { path, text } of beside) {
+      out.file(`unpackaged/${path}`, text);
+      files += 1;
+    }
     return { zip: await out.generateAsync({ type: 'nodebuffer' }), files, problems, found };
   };
 

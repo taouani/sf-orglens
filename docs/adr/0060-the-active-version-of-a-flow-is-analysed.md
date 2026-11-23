@@ -116,7 +116,8 @@ holds how, with the choices its author made in building it.
   without such a flow costs nothing more.
 - The file of the active version comes back under a name with the number, `Invoice_Recalculate-1.flow`. The
   snapshot has to take it as the file of `Invoice_Recalculate`. What the Salesforce library makes of such a file
-  name is not looked at yet.
+  name was not looked at when this record was written. Record
+  [0062](0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) says what it does.
 - How an answer shows that a flow has a newer version that is not analysed is designed with the answers, in
   work package 6 of the plan.
 - The rows of the Dependency API from a flow carry the id of a version, and the org lists a flow with the id of

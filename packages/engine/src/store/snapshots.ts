@@ -336,7 +336,9 @@ export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
  * types `covered`: the types an answer claims to cover. While every analysed type is of the logic tier, no
  * warning does. `analysis`: the errors of the analysis.
  * `analysisWarnings`: its warnings, each of which says that a name was not turned into a reference or that a
- * part of a file was not found.
+ * part of a file was not found. A warning of the reading that says a component was read in a form that may not
+ * be the one that runs counts with them when its `details.types` names a type `covered`: a flow analysed as a
+ * version of which it is not known whether it is the active one (`FLOW_VERSION_UNKNOWN`, decision record 0062).
  */
 export function countIssues(
   store: Store,
@@ -351,6 +353,17 @@ export function countIssues(
             COALESCE(SUM(severity = 'warning' AND stage = 'analysis'), 0) AS warnings
        FROM snapshot_issue WHERE snapshot_id = ?`,
     snapshotId,
+  );
+  const unsure = store.get(
+    `SELECT COUNT(*) AS n
+       FROM snapshot_issue AS i
+      WHERE i.snapshot_id = ? AND i.severity = 'warning' AND i.stage <> 'analysis'
+        AND i.code = 'FLOW_VERSION_UNKNOWN'
+        AND json_type(i.details, '$.types') IS 'array'
+        AND EXISTS (SELECT 1 FROM json_each(i.details, '$.types') AS t
+                     WHERE t.value IN (SELECT c.value FROM json_each(?) AS c))`,
+    snapshotId,
+    JSON.stringify(covered),
   );
   const outside = store.get(
     `SELECT COUNT(*) AS n
@@ -367,7 +380,7 @@ export function countIssues(
   return {
     read: Number(row?.['read'] ?? 0) + Number(outside?.['n'] ?? 0),
     analysis: Number(row?.['analysis'] ?? 0),
-    analysisWarnings: Number(row?.['warnings'] ?? 0),
+    analysisWarnings: Number(row?.['warnings'] ?? 0) + Number(unsure?.['n'] ?? 0),
   };
 }
 

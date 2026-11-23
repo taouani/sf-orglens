@@ -307,8 +307,8 @@ with. The page does not say so.
   version. `[unverified]`: the run did not print that file. Measured on 23 November 2026 `[run 22]`: the file
   names version 1 as the active one.
 - **A snapshot can get the active version of a flow that has a newer draft.** One more retrieve, for the name
-  with the number the definition names, gives the file `[run 22]`. That is not built yet. Until it is, a
-  snapshot of such an org holds the draft.
+  with the number the definition names, gives the file `[run 22]`. That was not built when this note was
+  written. Record [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) builds it.
 - **The cross-check cannot match every row of a flow by an id the org listed.** The rows of the latest version
   can be matched that way. The rows of another version carry an id the org did not list. Record 0045 allows a
   name only where there is no id, and the engine reads no object of the Tooling API but the one of the
@@ -370,7 +370,9 @@ Dependency API alone is the cross-check for Apex stands.
 - Several flows asked for by their numbers in one retrieve, and a flow of a managed package asked for that way.
 - What the file of a `FlowDefinition` says for a flow without an active version. The Tooling API says "none" for
   `Invoice_Purge_Void`, and no run printed its file.
-- What the Salesforce library makes of a file named `Invoice_Recalculate-1.flow`.
+- What the Salesforce library makes of a file named `Invoice_Recalculate-1.flow`. Record
+  [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) tried it with a zip file
+  written for the purpose, not with an org.
 - What "deploy" does to a flow that has a draft.
 - The analysis of the files of Phase 2: no analyser reads them yet. The numbers of section 3 are the answer key
   against the Dependency API, not against OrgLens.

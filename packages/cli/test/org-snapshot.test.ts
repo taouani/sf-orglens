@@ -282,6 +282,32 @@ describe('orglens snapshot of an org', () => {
     });
   });
 
+  it('shows one row for a code of the reading that comes once for each flow, and the JSON has each issue', async () => {
+    const { dir, env } = setUp();
+    // Two flows come back whose latest version is a draft, and the org hands out no definition of either.
+    const draft = (label: string): string =>
+      `<?xml version="1.0" encoding="UTF-8"?>\n<Flow xmlns="http://soap.sforce.com/2006/04/metadata">\n    <label>${label}</label>\n    <status>Draft</status>\n</Flow>\n`;
+    mock.extraFiles = { 'flows/Alpha.flow': draft('Alpha'), 'flows/Beta.flow': draft('Beta') };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    const rows = run.stdout.split('\n').filter((line) => line.includes('FLOW_VERSION_UNKNOWN'));
+    expect(rows).toEqual([
+      expect.stringMatching(
+        /^warning +FLOW_VERSION_UNKNOWN +2 flows\. The first: The flow Alpha came back as a version that is Draft\. The snapshot holds no definition of the flow, which would name its active version\. It is analysed as it came, and it is not known whether another version of it is active\.$/,
+      ),
+    ]);
+    const { data } = await orglensJson(dir, ['coverage', 'prod']);
+    const issues = (data as { issues: { code: string; stage: string; component: string | null }[] }).issues;
+    expect(
+      issues
+        .filter((issue) => issue.code === 'FLOW_VERSION_UNKNOWN')
+        .map(({ stage, component }) => ({ stage, component })),
+    ).toEqual([
+      { stage: 'read', component: 'Flow:alpha' },
+      { stage: 'read', component: 'Flow:beta' },
+    ]);
+  });
+
   it('leaves out the types that orglens.toml names, and says in the report that they were not read', async () => {
     const { dir, env } = setUp();
     mock.extraTypes = ['Dashboard', 'Report'];

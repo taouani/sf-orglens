@@ -427,17 +427,40 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   if (shown.length < types.length) {
     lines.push('', `${count(types.length - shown.length, 'more type has', 'more types have')} no components.`);
   }
-  if (issues.length > 0) {
-    lines.push(
-      '',
-      ...table(
-        ['SEVERITY', 'CODE', 'WHAT'],
-        issues.map((issue) => [issue.severity, issue.code, issue.message]),
-      ),
-    );
-  }
+  if (issues.length > 0) lines.push('', ...table(['SEVERITY', 'CODE', 'WHAT'], readIssueRows(issues)));
   lines.push(...analysisLines(report), ...crossCheckLines(report));
   return lines;
+}
+
+/** Codes of the reading that come once for each flow they are about. An org can have hundreds of flows. */
+const ONE_PER_FLOW: ReadonlySet<string> = new Set([
+  'FLOW_NEWER_VERSION',
+  'ACTIVE_FLOW_NOT_RETRIEVED',
+  'FLOW_VERSION_UNKNOWN',
+]);
+
+/**
+ * The issues of the reading as rows: one for each issue, and one for each code that comes once per flow, with
+ * the number of flows and the first issue. `--json` has every issue.
+ */
+function readIssueRows(issues: readonly CoverageReport['issues'][number][]): string[][] {
+  const rows: string[][] = [];
+  const perFlow = new Map<string, { row: string[]; count: number; first: string }>();
+  for (const issue of issues) {
+    const id = `${issue.severity} ${issue.code}`;
+    const seen = perFlow.get(id);
+    if (!ONE_PER_FLOW.has(issue.code)) {
+      rows.push([issue.severity, issue.code, issue.message]);
+    } else if (seen === undefined) {
+      const row = [issue.severity, issue.code, issue.message];
+      perFlow.set(id, { row, count: 1, first: issue.message });
+      rows.push(row);
+    } else {
+      seen.count += 1;
+      seen.row[2] = `${String(seen.count)} flows. The first: ${seen.first}`;
+    }
+  }
+  return rows;
 }
 
 /** At most this many pairs of a list of the cross-check are shown as text. `--json` has all of them. */
@@ -599,6 +622,10 @@ function progressLines(source: string, write: (line: string) => void): (event: S
     } else if (event.step === 'retrieved') {
       write(
         `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.chunks, 'chunk is', 'chunks are')} stored.`,
+      );
+    } else if (event.step === 'flow-versions') {
+      write(
+        `Snapshot #${String(event.snapshot)}: every chunk is stored. Asking for the active version of ${count(event.flows, 'flow', 'flows')} whose latest version is not active.`,
       );
     } else if (event.step === 'cross-checking') {
       if (event.requests === 0) {

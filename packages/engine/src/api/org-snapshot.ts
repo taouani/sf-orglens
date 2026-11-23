@@ -104,6 +104,8 @@ export type SnapshotProgress =
   | { readonly step: 'planned'; readonly snapshot: number; readonly components: number; readonly chunks: number }
   | { readonly step: 'resumed'; readonly snapshot: number; readonly done: number; readonly chunks: number }
   | { readonly step: 'retrieved'; readonly snapshot: number; readonly done: number; readonly chunks: number }
+  /** Every chunk is stored, and the active versions of `flows` flows are asked for by their numbers. */
+  | { readonly step: 'flow-versions'; readonly snapshot: number; readonly flows: number }
   | { readonly step: 'cross-checking'; readonly snapshot: number; readonly requests: number; readonly rows: number }
   | { readonly step: 'analysing'; readonly snapshot: number };
 
@@ -124,6 +126,8 @@ export interface OrgSnapshotTuning {
    * `pollMaxMs` in between.
    */
   readonly startsPerChunk: number;
+  /** At most this many active versions of flows are asked for in one retrieve (decision record 0062). */
+  readonly flowsPerRetrieve: number;
   readonly requests: MetadataApiLimits;
   /** The numbers the Dependency API is read with (`sources/dependency-api.ts`). */
   readonly dependencies: Partial<DependencyLimits>;
@@ -137,6 +141,7 @@ const DEFAULT_TUNING: OrgSnapshotTuning = {
   // Halving a chunk of 3,000 members down to the one that fails takes 12 failures in a row.
   failuresInARow: 20,
   startsPerChunk: 3,
+  flowsPerRetrieve: 100,
   requests: DEFAULT_LIMITS,
   dependencies: {},
 };
@@ -403,14 +408,19 @@ const DESCRIBED_BY_ORG =
 /** Something missing in the logic tier is an error, which makes the snapshot partial. Elsewhere it is a warning. */
 const severityIn = (tier: Tier): 'error' | 'warning' => (tier === 'logic' ? 'error' : 'warning');
 
+/** A text that ends as a sentence does, so that another sentence can follow it. */
+function asSentence(text: string): string {
+  const trimmed = text.trimEnd();
+  return `${trimmed}${/[.!?]$/.test(trimmed) ? '' : '.'}`;
+}
+
 /**
  * What the message of an issue says of something that is missing, with the tier it counts against. `of` names
  * the types it is counted with, where the message does not name its type.
  */
 function missingIn(tier: Tier, message: string, of: readonly string[] = []): string {
   if (tier === 'logic') return message;
-  const text = message.trimEnd();
-  const sentence = `${text}${/[.!?]$/.test(text) ? '' : '.'}`;
+  const sentence = asSentence(message);
   if (of.length === 0) return `${sentence} This is outside the logic tier and does not make the snapshot partial.`;
   const types = of.length === 1 ? `the type ${of[0] ?? ''}, which is` : `the types ${of.join(', ')}, which are`;
   return `${sentence} It is counted with ${types} outside the logic tier, and does not make the snapshot partial.`;
@@ -581,7 +591,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
     }
 
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
-    await fetchActiveFlows(store, snapshotId, api, source.name, workDir, tuning);
+    await fetchActiveFlows(store, snapshotId, api, source.name, workDir, tuning, progress);
     if (job.crossCheck !== false) {
       // Before the snapshot ends, so that a snapshot that is interrupted here is continued here.
       const snapshot = snapshotId;
@@ -925,13 +935,82 @@ async function retrieveChunks(
   }
 }
 
-/** At most this many versions of flows are asked for in one retrieve. */
-const FLOWS_PER_RETRIEVE = 100;
+/**
+ * What became of a retrieve of members that are not chunks of the snapshot.
+ *
+ * - `got`: what came back, with the remarks Salesforce made about members it did not hand out.
+ * - `failed`: nothing that can be read came back, and asking for the same again would give nothing either:
+ *   Salesforce failed the job, or refused to start it also when it was asked again, or what it handed out cannot
+ *   be read. The members are tried in two halves.
+ * - `lost`: the job gave no result, also when it was started again: Salesforce no longer knows it, cannot be
+ *   asked about it, or did not end it in time.
+ */
+type BesideOutcome =
+  | { readonly kind: 'got'; readonly unpacked: Unpacked; readonly remarks: readonly string[] }
+  | { readonly kind: 'failed' | 'lost'; readonly said: string; readonly code: string | null };
+
+/** One retrieve of members that are not chunks of the snapshot, with one job. */
+async function retrieveOnce(
+  api: MetadataApi,
+  members: readonly ChunkMember[],
+  source: string,
+  dir: string,
+  tuning: OrgSnapshotTuning,
+): Promise<BesideOutcome> {
+  let jobId: string | null = null;
+  // A start the org refuses is asked for again after a pause, as for a chunk.
+  for (let attempt = 1; jobId === null; attempt += 1) {
+    try {
+      jobId = await api.startRetrieve(members);
+    } catch (error) {
+      if (!isRefusal(error)) throw error;
+      if (attempt >= tuning.startsPerChunk) {
+        return { kind: 'failed', said: `Salesforce did not start the retrieve. ${saidIn(error)}`, code: error.code };
+      }
+      await pause(tuning.pollMaxMs);
+    }
+  }
+  let zip: Uint8Array | null;
+  let remarks: readonly string[];
+  try {
+    const state = await ended(api, jobId, source, tuning);
+    if (!state.succeeded) return { kind: 'failed', said: saidAbout(state), code: state.errorCode };
+    remarks = state.problems.map((problem) => saidBy(problem));
+    zip = (await api.retrieveState(jobId, true)).zip;
+  } catch (error) {
+    if (isRefusal(error)) {
+      return {
+        kind: 'lost',
+        said:
+          error.code === 'INVALID_CROSS_REFERENCE_KEY'
+            ? 'Salesforce no longer knows the retrieve.'
+            : `Salesforce did not say how far the retrieve is. ${saidIn(error)}`,
+        code: error.code,
+      };
+    }
+    // The job is not kept with the snapshot, so a snapshot that is continued could not wait for it again. A job
+    // that does not end in time is started again here, where the job of a chunk stops the snapshot.
+    if (isTooSlow(error)) {
+      return { kind: 'lost', said: `The retrieve did not end within ${minutes(tuning.jobMs)}.`, code: null };
+    }
+    throw error;
+  }
+  if (zip === null)
+    return { kind: 'lost', said: 'Salesforce gave no zip file for a retrieve that succeeded.', code: null };
+  mkdirSync(dir, { recursive: true });
+  try {
+    return { kind: 'got', unpacked: await unpackRetrieve(zip, dir), remarks };
+  } catch (error) {
+    if (isEngineError(error) || isSystemFailure(error)) throw error;
+    return { kind: 'failed', said: `What Salesforce handed out could not be read. ${saidBy(error)}`, code: null };
+  }
+}
 
 /**
- * Retrieves members that are not chunks of the snapshot, and reads what came back, with the remarks Salesforce
- * made about members it did not hand out. Returns what Salesforce said when it gave nothing that can be read.
- * Throws what stops the whole snapshot, as `retrieveChunk` does.
+ * Retrieves members that are not chunks of the snapshot, with the care a chunk gets: a start the org refuses is
+ * asked for again, and a job that gives no result is started again, each up to `startsPerChunk` times. Throws
+ * what stops the whole snapshot: an org that cannot be reached, a session that is not accepted, a refusal that
+ * holds for the whole org, a failure of this machine.
  */
 async function retrieveBeside(
   api: MetadataApi,
@@ -939,45 +1018,40 @@ async function retrieveBeside(
   source: string,
   dir: string,
   tuning: OrgSnapshotTuning,
-): Promise<{ readonly unpacked: Unpacked; readonly remarks: readonly string[] } | { readonly said: string }> {
-  let jobId: string;
-  try {
-    jobId = await api.startRetrieve(members);
-  } catch (error) {
-    if (isRefusal(error)) return { said: `Salesforce did not start the retrieve. ${saidIn(error)}` };
-    throw error;
-  }
-  let zip: Uint8Array | null;
-  let remarks: readonly string[];
-  try {
-    const state = await ended(api, jobId, source, tuning);
-    if (!state.succeeded) return { said: saidAbout(state) };
-    remarks = state.problems.map((problem) => saidBy(problem));
-    zip = (await api.retrieveState(jobId, true)).zip;
-  } catch (error) {
-    if (isRefusal(error)) return { said: `Salesforce did not say how far the retrieve is. ${saidIn(error)}` };
-    throw error;
-  }
-  if (zip === null) return { said: 'Salesforce gave no zip file for a retrieve that succeeded.' };
-  mkdirSync(dir, { recursive: true });
-  try {
-    return { unpacked: await unpackRetrieve(zip, dir), remarks };
-  } catch (error) {
-    if (isEngineError(error) || isSystemFailure(error)) throw error;
-    return { said: `What Salesforce handed out could not be read. ${saidBy(error)}` };
+): Promise<BesideOutcome> {
+  for (let starts = 1; ; starts += 1) {
+    const outcome = await retrieveOnce(api, members, source, dir, tuning);
+    if (outcome.kind !== 'lost') return outcome;
+    if (starts >= tuning.startsPerChunk) {
+      const said = `The retrieve was started ${plural(starts, 'time', 'times')} and gave no result. ${outcome.said}`;
+      return { kind: 'lost', said, code: outcome.code };
+    }
   }
 }
 
+/** Why the snapshot is not asked for the active version of a flow, by the reason `FLOW_VERSION_UNKNOWN` gives. */
+const NOT_ASKED: Readonly<Record<string, string>> = {
+  'no-definition': 'The snapshot holds no definition of the flow, which would name its active version.',
+  excluded:
+    'The snapshot holds no definition of the flow, which would name its active version: the source leaves the type FlowDefinition out (exclude_types).',
+  'definition-unreadable': 'The file of its definition cannot be read, or names no number that can be read.',
+};
+
 /**
- * Puts the active version of a flow in the place of a version that is not active (decision record 0060).
+ * Puts the active version of a flow in the place of a version that is not active (decision records 0060 and
+ * 0062).
  *
  * A flow whose file says that it is not active, and whose definition names an active version, is asked for once
  * more by its name with that number. The file that comes back is taken if it says that it is active, under the
- * path of the flow. The note `FLOW_NEWER_VERSION` says that the flow has a newer version that is not analysed. If
- * no such file comes back, the file of the newer version is taken out of the snapshot too: the flow counts as
- * listed and not handed out, and the note `ACTIVE_FLOW_NOT_RETRIEVED` says why. A flow without a definition, and
- * one the org listed under another name than that of its file, is kept as it came, with the warning
- * `FLOW_VERSION_UNKNOWN`.
+ * path of the flow. The note `FLOW_NEWER_VERSION` says that the flow has a newer version that is not analysed,
+ * unless the file came back as the latest version: the flow was made active since its chunk was read. If no such
+ * file comes back, the file of the newer version is taken out of the snapshot too: the flow counts as listed and
+ * not handed out, and the note `ACTIVE_FLOW_NOT_RETRIEVED` says why. A flow without a definition, and one the org
+ * listed under another name than that of its file, is kept as it came, with the warning `FLOW_VERSION_UNKNOWN`.
+ *
+ * The retrieves are made with the care a chunk gets (`retrieveBeside`). A retrieve that fails is tried in two
+ * halves, down to the one flow, and the note `CHUNK_SPLIT` says so. After `failuresInARow` retrieves in a row
+ * that gave nothing, the snapshot stops, as it does for chunks.
  *
  * What is done is written with the file it is about, so a snapshot that is interrupted here does not do it twice:
  * the file is active then, or not there.
@@ -989,62 +1063,94 @@ async function fetchActiveFlows(
   source: string,
   workDir: string,
   tuning: OrgSnapshotTuning,
+  progress: (event: SnapshotProgress) => void,
 ): Promise<void> {
   const { fetch, unknown } = flowsNotActive(snapshotTree(store, snapshotId));
+  const leftOut = readCoverage(store, snapshotId).some(
+    (type) => type.type === 'FlowDefinition' && type.listing === 'excluded',
+  );
   const asked: FlowToFetch[] = [];
-  const notKnown: { flow: string; state: string; why: string; reason: string }[] = unknown.map((one) => ({
-    flow: one.flow,
-    state: one.state,
-    reason: one.reason,
-    why:
-      one.reason === 'no-definition'
-        ? 'The snapshot holds no definition of the flow, which would name its active version.'
-        : 'The file of its definition cannot be read.',
-  }));
+  const notKnown: { message: string; details: Record<string, JsonValue>; flow: string }[] = unknown.map((one) => {
+    const reason = one.reason === 'no-definition' && leftOut ? 'excluded' : one.reason;
+    return {
+      flow: one.flow,
+      message: `The flow ${one.flow} came back as a version that is ${one.state}. ${NOT_ASKED[reason] ?? ''} It is analysed as it came, and it is not known whether another version of it is active.`,
+      details: { flow: one.flow, state: one.state, reason },
+    };
+  });
   for (const flow of fetch) {
     // A flow of a package that came back without its prefix is asked for by no name the org was seen to answer.
     if (isListed(store, snapshotId, { type: 'Flow', fullName: flow.flow })) asked.push(flow);
     else {
       notKnown.push({
-        ...flow,
-        reason: 'not-listed',
-        why: 'The org lists no flow under the name of its file, so it is not asked for by the number of its active version.',
+        flow: flow.flow,
+        message: `The flow ${flow.flow} came back as a version that is ${flow.state}. Its definition names version ${String(flow.version)} as active, and the org lists no flow under the name of its file, so that version is not asked for by its number. The flow is analysed as it came, which is not its active version.`,
+        details: { flow: flow.flow, state: flow.state, reason: 'not-listed', version: flow.version },
       });
     }
   }
   store.write(() => {
     removeIssues(store, snapshotId, ['FLOW_VERSION_UNKNOWN']);
-    for (const { flow, state, why, reason } of notKnown) {
+    for (const { flow, message, details } of notKnown) {
       addIssue(store, snapshotId, {
         severity: 'warning',
         code: 'FLOW_VERSION_UNKNOWN',
-        message: `The flow ${flow} came back as a version that is ${state}. ${why} It is analysed as it came, and it is not known whether another version of it is active.`,
+        message,
         componentKey: buildKey({ type: 'Flow', fullName: flow }),
-        details: { flow, state, reason },
+        // The type lets an impact answer that covers flows count the warning (`countIssues`).
+        details: { ...details, types: ['Flow'] },
       });
     }
   });
+  if (asked.length === 0) return;
+  progress({ step: 'flow-versions', snapshot: snapshotId, flows: asked.length });
 
   let seq = 0;
+  let failures = 0;
+  /** Stops the snapshot after too many retrieves in a row that gave nothing, as `retrieveChunks` does. */
+  const stopIfFailing = (said: string, code: string | null): void => {
+    if (failures < tuning.failuresInARow) return;
+    throw new EngineError(
+      'SOURCE_READ_FAILED',
+      `${String(failures)} retrieves in a row from the org of the source "${source}" failed. The last: ${said}`,
+      { details: { reason: 'RETRIEVES_FAILING', source, said, code } },
+    );
+  };
   const take = async (flows: readonly FlowToFetch[]): Promise<void> => {
     seq += 1;
     const dir = join(workDir, `flows-${String(seq)}`);
     const members = flows.map(({ flow, version }) => ({ type: 'Flow', fullName: versionName(flow, version) }));
     const got = await retrieveBeside(api, members, source, dir, tuning);
-    if ('said' in got && flows.length > 1) {
+    failures = got.kind === 'got' ? 0 : failures + 1;
+    if (got.kind === 'failed' && flows.length > 1) {
       // One version that cannot be handed out fails the retrieve of all. Each half is tried, down to the one.
-      const half = Math.ceil(flows.length / 2);
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      store.write(() => {
+        issue(
+          store,
+          snapshotId,
+          'info',
+          'CHUNK_SPLIT',
+          `A retrieve of the active versions of ${plural(flows.length, 'flow', 'flows')} failed and was tried again in two halves. ${got.said}`,
+          { members: flows.length, said: got.said, code: got.code },
+        );
+      });
+      stopIfFailing(got.said, got.code);
+      const half = Math.ceil(flows.length / 2);
       await take(flows.slice(0, half));
       await take(flows.slice(half));
       return;
     }
     store.write(() => {
+      let takenOut = false;
       for (const { flow, state, version } of flows) {
-        const found = 'said' in got ? null : activeVersionIn(got.unpacked.tree, flow, version);
+        const found = got.kind === 'got' ? activeVersionIn(got.unpacked.tree, flow, version) : null;
         const componentKey = buildKey({ type: 'Flow', fullName: flow });
         if (found !== null && found.content !== null) {
           putSnapshotFile(store, snapshotId, flowPath(flow), found.content);
+          // A file that came back as the latest version is the active one: the flow was made active since its
+          // chunk was read, and has no newer version.
+          if (found.latest) continue;
           addIssue(store, snapshotId, {
             severity: 'info',
             code: 'FLOW_NEWER_VERSION',
@@ -1054,29 +1160,54 @@ async function fetchActiveFlows(
           });
           continue;
         }
-        // A remark of Salesforce names the member it is about. The one about this flow is given, if there is one.
-        const remark =
-          'said' in got ? undefined : got.remarks.find((one) => one.includes(`'${versionName(flow, version)}'`));
-        const said =
-          'said' in got
-            ? got.said
-            : found === null || found.states.length === 0
-              ? `No file of it came back.${remark === undefined ? '' : ` Salesforce remarked: ${remark}`}`
-              : `What came back is ${found.states.join(' and ')}.`;
         removeSnapshotFile(store, snapshotId, flowPath(flow));
         markNotRetrieved(store, snapshotId, { type: 'Flow', fullName: flow });
+        takenOut = true;
+        const said = got.kind === 'got' ? notActiveSaid(got, flow, version, found) : got.said;
         addIssue(store, snapshotId, {
           severity: 'info',
           code: 'ACTIVE_FLOW_NOT_RETRIEVED',
-          message: `The flow ${flow} came back as a version that is ${state}, and its active version ${String(version)} did not come back when it was asked for by its number. ${said} The flow is not in the snapshot, and the newer version is not analysed in its place.`,
+          message: `The flow ${flow} came back as a version that is ${state}, and its active version ${String(version)} did not come back when it was asked for by its number. ${asSentence(said)} The flow is not in the snapshot, and the newer version is not analysed in its place.`,
           componentKey,
           details: { flow, version, newer: state, said },
         });
       }
+      if (takenOut) refreshCoverage(store, snapshotId);
     });
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    if (got.kind !== 'got') stopIfFailing(got.said, got.code);
   };
-  for (let at = 0; at < asked.length; at += FLOWS_PER_RETRIEVE) await take(asked.slice(at, at + FLOWS_PER_RETRIEVE));
+  for (let at = 0; at < asked.length; at += tuning.flowsPerRetrieve) {
+    await take(asked.slice(at, at + tuning.flowsPerRetrieve));
+  }
+}
+
+/**
+ * What a retrieve that came back says about a flow whose active version is not among its files: the states of
+ * the files of the flow that did come back, or the remark of Salesforce about the name with the number, and the
+ * files it handed out that could not be read as metadata.
+ */
+function notActiveSaid(
+  got: Extract<BesideOutcome, { kind: 'got' }>,
+  flow: string,
+  version: number,
+  found: ReturnType<typeof activeVersionIn> | null,
+): string {
+  if (found !== null && found.content === null && found.states.length > 0) {
+    return `What came back is ${found.states.join(' and ')}.`;
+  }
+  // A remark of Salesforce names the member it is about. The one about this flow is given, if there is one.
+  const remark = got.remarks.find((one) => one.includes(`'${versionName(flow, version)}'`));
+  const [problem] = got.unpacked.problems;
+  return [
+    'No file of it came back.',
+    ...(remark === undefined ? [] : [asSentence(`Salesforce remarked: ${remark}`)]),
+    ...(problem === undefined
+      ? []
+      : [
+          `${plural(got.unpacked.problems.length, 'file', 'files')} of the retrieve could not be read as metadata. The first: ${problem.at}: ${problem.message}`,
+        ]),
+  ].join(' ');
 }
 
 /**

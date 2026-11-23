@@ -1209,6 +1209,11 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       read('warning', 'NOT_RETRIEVED', { type: 'ListView', types: ['ListView'], tier: 'other' });
       read('warning', 'ODD', { types: ['ListView'] });
       read('warning', 'ODD', { types: 'ListView', tier: 'other' });
+      // A flow analysed as a version of which it is not known whether it runs counts with the warnings of the
+      // analysis where an answer covers flows. Without the type it counts nowhere, and so does an error.
+      read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'F', state: 'Draft', reason: 'no-definition', types: ['Flow'] });
+      read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'G', state: 'Draft', reason: 'no-definition' });
+      read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'H', types: 'Flow' });
       addIssue(store, other, {
         severity: 'error',
         code: 'FOLDER_MISSING',
@@ -1222,6 +1227,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     expect(countIssues(store, id, ['CustomObject', 'ListView'])).toMatchObject({ read: 5 });
     expect(countIssues(store, id, ['ListView', 'WebLink'])).toMatchObject({ read: 6 });
     expect(countIssues(store, id, ['CustomTab', 'ListView', 'Report', 'WebLink'])).toMatchObject({ read: 7 });
+    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 1 });
+    expect(countIssues(store, id, ['ApexClass', 'Flow'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 1 });
     writeAnalysis(
       store,
       id,
@@ -1234,6 +1241,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       }),
     );
     expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
+    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 2, analysisWarnings: 2 });
     expect(countIssues(store, other, [])).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
     expect(countIssues(store, 123_456, ['ListView'])).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
     store.close();
