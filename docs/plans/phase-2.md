@@ -16,9 +16,9 @@ public codebases are read without an error and give no reference at the tier `pr
 with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
 too, and they are written there when that note is written. Run 26 of "Live org" read the test org with it. Work
 package 6 is being built: the answers for flows and elements are built (record 0066), and so is the cross-check of
-the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). The types of this phase in the
-judgement of "complete", the narrower list of what an answer does not cover and the times of the synthetic org
-follow.
+the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
+org with it. The types of this phase in the judgement of "complete", the narrower list of what an answer does not
+cover and the times of the synthetic org follow.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
@@ -280,7 +280,8 @@ Build:
   version of a flow by its number where the org handed out a version that is not active and the file of the
   `FlowDefinition` names an active one. The file that comes back, with or without the number in its name, is
   stored as the file of the flow. The snapshot keeps that the flow has a newer version that is not analysed. The
-  rows of the Dependency API from flows are counted and not compared.
+  rows of the Dependency API from flows are counted and not compared, until work package 6 compares them (record
+  0067).
 
 Accepted when:
 

@@ -20,8 +20,8 @@ compared.
 
 On the test org, with the draft of `Invoice_Recalculate` beside its active version, the Dependency API had 78 rows
 from the flows of the fixture project (runs 21 and 26 of "Live org", `docs/research/phase-2/real-org.md`): 47 from
-the five flows with one version, 15 with the id of version 1 of `Invoice_Recalculate`, which is active and which
-the org does not list, and 16 with the id of version 2, the draft, which is the id the org lists.
+the other five flows, which have one version each, 15 with the id of version 1 of `Invoice_Recalculate`, which is
+active and which the org does not list, and 16 with the id of version 2, the draft, which is the id the org lists.
 
 The question was put to the maintainer with three answers: ask the org for the ids of the active versions, so that
 62 of the 78 rows are compared; compare only the rows that carry the id the org listed, 47 of the 78, and no row of
@@ -82,7 +82,9 @@ The statements below are choices of the author of this record. The maintainer ca
    (runs 19 and 20, section 3 of `docs/research/phase-2/real-org.md`): `subflow`, a flow that the flow starts;
    `name-in-text`, a component that only a text names, such as a record type a condition compares a text with; and
    `global-variable`, a field of a custom setting or a custom permission that only formulas of the flow name,
-   through `$Setup` and `$Permission`. Every other reference of a flow that has no row is listed in `onlyOrgLens`.
+   through `$Setup` and `$Permission`. A reference of a flow to a standard field or a standard object counts as
+   `standard-field` or `standard-object`, as one of any type does. Every other reference of a flow that has no row
+   is listed in `onlyOrgLens`.
 
 ## Consequences
 
@@ -91,9 +93,10 @@ The statements below are choices of the author of this record. The maintainer ca
   draft of `Invoice_Recalculate` with the rows of both versions: the rows of the draft, also one to a field only
   the draft reads, are counted in `rowsOtherVersion`, and nothing is missed. A test takes a field out of the file of
   a flow and finds the pair as missed.
-- On the test org, 62 of the 78 rows of flows should be compared and 16 counted as of another version. That is
-  worked out from what runs 21 and 26 printed, and was not measured: the first run of "Live org" after the merge
-  measures it.
+- On the test org, 62 of the 78 rows of flows were to be compared and 16 counted as of another version, as worked
+  out from what runs 21 and 26 printed. Run 27 of "Live org" printed after the merge what that follows from: 16
+  rows of another version, 130 rows compared where run 26 compared 68, none missed, and the reading in parts whole
+  again (section 5 of the [research note of Phase 2](../research/phase-2/real-org.md)).
 - **On a real org, a flow can name what the reader of flows does not read**, such as a component of a screen or an
   action of a type other than Apex, a flow and an email alert. If the Dependency API reports such a pair, it is now
   `REFERENCE_MISSED`, and an impact answer from that snapshot says that it may miss something (exit code `5`).
@@ -111,9 +114,10 @@ The statements below are choices of the author of this record. The maintainer ca
 
 What was not measured, and what this record therefore does not know:
 
-- Any org but the one test org, which has six flows and no package. The prefix of a package in `NamespacePrefix`,
-  and an answer of more than one page, are written as the Tooling API documents them and tested on the mock org
-  only.
+- Any org but the one test org, whose flows are the six of the fixture project and one more. The org holds
+  components of a package with a namespace, and the public log does not say whether that flow is one of them. The
+  prefix of a package in `NamespacePrefix`, and an answer of more than one page, are written as the Tooling API
+  documents them and tested on the mock org only.
 - An org that changes a flow while it is read. The ids are asked for after the last chunk. A flow that is made
   active between the chunk of its file and the query has rows that are compared against another version, or
   matched to none. That was not seen.
