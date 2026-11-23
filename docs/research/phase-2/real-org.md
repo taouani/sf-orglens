@@ -22,8 +22,12 @@ In short:
 - **A row of the Dependency API from a flow carries the id of a version of the flow, not of the flow.**
 - **When a flow has an active version and a newer draft, the org hands out the draft.** The plan of Phase 2 and
   decision record 0057 expected the active version. The Dependency API holds the rows of both versions, each
-  under the id of its version, and the org lists the id of the latest one only. Which version OrgLens analyses is
-  back with the maintainer, as the plan says, before the analyser of flows is built.
+  under the id of its version, and the org lists the id of the latest one only. Which version OrgLens analyses
+  went back to the maintainer, as the plan says, who chose the active one on 23 November 2026.
+- **Asked for by the name of the flow with the number of its active version, the org hands out the active
+  version.** That is run 22, which was made after the answer of the maintainer. Decision record
+  [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md) holds the answer and what follows from the
+  run.
 - The cross-check of the engine for the types of Phase 1 holds on the larger project: of 57 pairs Salesforce
   reports, the analysis has 55, has 2 through a part of the object, and missed none.
 - Read in parts, the rows of flows are whole before the draft and partial after it. By my reading of the code,
@@ -47,6 +51,7 @@ In short:
 | [19](https://github.com/taouani/sf-orglens/actions/runs/45099692734) | deploy and read | `f563174` | green, with a warning for the partial snapshot |
 | [20](https://github.com/taouani/sf-orglens/actions/runs/45100332744) | probe | `f563174` | green |
 | [21](https://github.com/taouani/sf-orglens/actions/runs/45100823619) | draft, read and probe | `f563174` | green, with the same warning |
+| [22](https://github.com/taouani/sf-orglens/actions/runs/45120017211) | probe | `5b9fb0b` | green |
 
 Run 16 is the login the workflow makes once a week by itself.
 
@@ -252,20 +257,47 @@ The other five flows are as before. All of the following is `[run 21]`.
 - The org gave 351 rows in all, 16 more than before. The pairs between components of the project went from 227
   to 228: a pair that both versions have is two rows.
 
+### Asked for by the number of a version
+
+The maintainer chose on 23 November 2026 that the active version of a flow is analysed. The probe then got a part
+that asks the Metadata API for `Invoice_Recalculate` in every way a version of it could be named, each name in a
+retrieve of its own (`packages/engine/test/live/flow-versions.ts`). The org was in the state the step "draft"
+left: version 1 active, version 2 a draft. All of the following is `[run 22]`.
+
+| Asked for | The retrieve | What came back |
+| --- | --- | --- |
+| `Flow`, `Invoice_Recalculate` | Succeeded | `flows/Invoice_Recalculate.flow`, 11,408 bytes, state `Draft`: the draft |
+| `FlowDefinition`, `Invoice_Recalculate` | Succeeded | `flowDefinitions/Invoice_Recalculate.flowDefinition`, 171 bytes, which names version 1 as the active one |
+| `Flow`, `Invoice_Recalculate-1` | Succeeded | `flows/Invoice_Recalculate-1.flow`, 11,361 bytes, state `Active`: the version that was sent as active |
+| `Flow`, `Invoice_Recalculate-2` | Succeeded | `flows/Invoice_Recalculate.flow`, 11,408 bytes, state `Draft`: the draft |
+| `Flow`, `Invoice_Recalculate-3` | Succeeded, with the remark that it cannot be found | No file |
+
+- **The org hands out the active version when it is asked for by the name of the flow with the number of that
+  version.** The number 3, for which the org holds no version, was asked as a control and gave no file, so the
+  number plays a part: the org does not hand out the same file whatever the number is.
+- **The file of the active version has the number in its name**, `Invoice_Recalculate-1.flow`. The file of the
+  latest version has not, also when it is asked for by its number.
+- **The file of the `FlowDefinition` names the number of the active version.** It is the number the Tooling API
+  gives. So a snapshot can learn the number from a file it already reads, without the Tooling API.
+- The two sizes are the ones of run 21 and of the runs before the draft: 11,408 bytes for the draft and 11,361
+  for the active version.
+- The part took 22 requests to the Metadata API and about eleven seconds, for five retrieves.
+
+The reference of the Metadata API says of the full name of a flow that the name held the version number up to
+API version 43 and no longer holds it from version 44. The org was asked with version 68.0 and handed out
+version 1 for the name with `-1` all the same. I did not read that paragraph in full, and do not know what it
+means to say.
+
 ### What follows
 
-- **The expectation of decision record 0057 was wrong for a flow with a newer draft.** The record says that the
+- **The expectation of decision record 0057 was wrong for a flow with a newer draft.** The record said that the
   version the org hands out is analysed, and its author expected that to be the active one. With a newer draft it
-  is the draft, which does not run. The question is back with the maintainer. Nothing in the record is changed
-  before the answer.
-- **Whether the active version can be asked for by its number is not known.** The reference of the Metadata API
-  says of the full name of a flow that a version can be deployed or retrieved by its number, with a name such as
-  `Invoice_Recalculate-1`. The same paragraph says that the name held the version number up to API version 43
-  and no longer holds it from version 44. The org is read with version 68.0. `[unverified]`: no run asked that
-  way, and I did not read the paragraph in full.
-- **A snapshot can tell that it holds a draft of a flow that has an active version.** The file of the flow says
-  `Draft`, and the file of its `FlowDefinition`, which the org hands out too, names the number of the active
-  version. `[unverified]`: the run did not print that file.
+  is the draft, which does not run. The maintainer chose the active version, and record
+  [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md) replaces 0057.
+- **A snapshot can get the active version of a flow that has a newer draft.** The file of the flow says that it
+  is not active, the file of its `FlowDefinition` names the number of the active version, and one more retrieve,
+  for the name with that number, gives the file `[run 22]`. That is not built yet. Until it is, a snapshot of
+  such an org holds the draft.
 - **The cross-check cannot match every row of a flow by an id the org listed.** The rows of the latest version
   can be matched that way. The rows of another version carry an id the org did not list. Record 0045 allows a
   name only where there is no id, and the engine reads no object of the Tooling API but the one of the
@@ -319,8 +351,12 @@ Dependency API alone is the cross-check for Apex stands.
 
 - Any other org, edition or API version.
 - Why Salesforce refused the two flows, beyond the words it gave.
-- A retrieve of a flow by a version number, and the file of a `FlowDefinition`.
-- A flow with more than two versions, and one whose active version is newer than a draft.
+- A flow with more than two versions, one whose active version is the latest of several, and one with versions
+  that are obsolete.
+- Several flows asked for by their numbers in one retrieve, and a flow of a managed package asked for that way.
+- What the file of a `FlowDefinition` says for a flow without an active version. The Tooling API says "none" for
+  `Invoice_Purge_Void`, and no run printed its file.
+- What the Salesforce library makes of a file named `Invoice_Recalculate-1.flow`.
 - What "deploy" does to a flow that has a draft.
 - The analysis of the files of Phase 2: no analyser reads them yet. The numbers of section 3 are the answer key
   against the Dependency API, not against OrgLens.

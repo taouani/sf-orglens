@@ -114,7 +114,7 @@ The maintainer answered the six questions of the [Phase 2 plan](phase-2.md) and 
 | Roadmap, Phase 6 and "Later" | Email templates and reports in Phase 6, report types in no phase | Reports stay in Phase 6. Email templates and report types are analysed in Phase 2. |
 | Total to the gate | 28 to 38 weeks | 30 to 39 weeks, with Phase 2 at about 5. |
 | Managed packages | An open question | Their components are read and kept, marked with their package, and left out of an answer as the thing that refers. They stay targets, and an option of `impact` shows them (record 0056). Not retrieving them at all was not chosen. The author of that record reads that it can still be decided later, with a number from an org of the maintainer. |
-| Which version of a flow | Not asked | The one the org hands out (record [0057](../adr/0057-the-version-of-a-flow-that-is-analysed.md)). Which one that is, is measured in the first work package of Phase 2. |
+| Which version of a flow | Not asked | The active one, which a snapshot of an org asks for by its number. A newer draft is reported as present and not analysed (record [0060](../adr/0060-the-active-version-of-a-flow-is-analysed.md), which replaces 0057: the maintainer first chose the version the org hands out, and the test org handed out the draft). |
 | When a snapshot of an org is complete | The 21 types of the logic tier (record 0046) | Every type that has an analyser counts as well (record [0058](../adr/0058-a-type-counts-for-complete-once-it-is-analysed.md)). The list of record 0046 stays in force until work package 6 of Phase 2 builds the change. |
 
 Not changed by the approval: Phase 1 is closed when the maintainer has run its test plan, and that run is still open.
