@@ -69,11 +69,11 @@ The statements below are choices of the author of this record. The maintainer ca
    0045). The rows of the active version of a flow with a newer one are then asked for by their own id, and the
    reading can be `whole`. Without the ids, such rows came only from the query for the rest, and the reading was
    `partial` on the test org (`docs/research/phase-2/real-org.md`).
-7. **Three kinds of references of a flow are counted as not reported**, from what the test org reports (run 21):
-   `subflow`, a flow that the flow starts; `name-in-text`, a component that only a text names, such as a record
-   type a condition compares a text with; and `global-variable`, a field of a custom setting or a custom
-   permission that only formulas of the flow name, through `$Setup` and `$Permission`. Every other reference of a
-   flow that has no row is listed in `onlyOrgLens`.
+7. **Three kinds of references of a flow are counted as not reported**, from what the test org reports
+   (runs 19 and 20, section 3 of `docs/research/phase-2/real-org.md`): `subflow`, a flow that the flow starts;
+   `name-in-text`, a component that only a text names, such as a record type a condition compares a text with; and
+   `global-variable`, a field of a custom setting or a custom permission that only formulas of the flow name,
+   through `$Setup` and `$Permission`. Every other reference of a flow that has no row is listed in `onlyOrgLens`.
 
 ## Consequences
 
