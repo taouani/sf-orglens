@@ -451,9 +451,9 @@ the list of each text against what a regular expression finds.
   a row, one that is not closed, and a brace that is no merge field.
 - The file says what the first name of a merge field is in the probes, as a flow knows it of its resources: a
   record of `Invoice__c` or of `Invoice_Line__c`, or a value that is no record.
-- The probes are not deployed, so Salesforce has not checked them. Three things in them are not verified and
-  marked so: white space in the braces, a name outside braces in a formula of a flow, and a merge field in a text
-  of such a formula.
+- The probes are not deployed, so Salesforce has not checked them. Three things in them are not verified, and
+  each probe of them says so in a note: white space in the braces, a name outside braces in a formula of a flow,
+  and a merge field in a text of such a formula.
 - A merge field of an email template or of a page may hold a whole formula. One probe shows that it is found
   and not read. Nothing else of that kind is probed.
 

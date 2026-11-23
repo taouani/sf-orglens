@@ -104,6 +104,19 @@ describe('the merge fields of a text', () => {
     expect(mixed.notClosed).toEqual([0, 9]);
   });
 
+  it('reads a long text of merge fields that are not closed in one pass, with a brace at its end or without', () => {
+    const count = 200_000;
+    const open = '{!a '.repeat(count);
+    expect(mergeFieldsOf(open).notClosed).toHaveLength(count);
+    // The one brace at the end closes the last merge field only: a `{` stands before it for every other.
+    const closed = mergeFieldsOf(`${open}}`);
+    expect(closed.notClosed).toHaveLength(count - 1);
+    expect(closed.fields).toEqual([{ text: 'a', start: 4 * count - 2, open: 4 * count - 4, close: 4 * count + 1 }]);
+    const parsed = parseFormula('{!a+'.repeat(count), { mergeFields: true });
+    expect(parsed.problem).toEqual({ message: 'A merge field is not closed.', at: 0 });
+    expect(namesOfTokens(parsed.tokens)).toHaveLength(count);
+  });
+
   it('never throws, loses no closed merge field and agrees with a regular expression on any text', () => {
     const piece = fc.constantFrom('{!', '{', '}', '!', 'a', 'b.c', ' ', '\n', '$Record', '😀', '"');
     fc.assert(
@@ -216,6 +229,28 @@ describe('a formula as a flow writes it', () => {
     expect(namesOfTokens(words.tokens).map((name) => name.text)).toEqual(['TRUE', 'f', 'not']);
   });
 
+  it('closes a merge field at the next brace, also where that brace stands in a text or in a comment', () => {
+    // The braces are found in the text as it is written, before anything is read as a text or a comment. So the
+    // merge field that is not closed takes what stands before the brace, which is no name, and is not read.
+    //                         012345678901234567890
+    const inText = parseFormula('{!$Record.Name & "}"', { mergeFields: true });
+    expect(inText.tokens.map(tokenOf)).toEqual(['name $Record.Name & " 2-18 merge']);
+    expect(inText.problem).toEqual({ message: 'A text is not closed.', at: 19 });
+    const inComment = parseFormula('"a" & {!$Record.Name /* } */ }', { mergeFields: true });
+    expect(namesOfTokens(inComment.tokens).map((name) => name.text)).toEqual(['$Record.Name /*']);
+    // Without such a brace the name after the mark is taken, as for every merge field that is not closed.
+    const without = parseFormula('{!$Record.Name & "x"', { mergeFields: true });
+    expect(namesOfTokens(without.tokens).map((name) => name.text)).toEqual(['$Record.Name']);
+    expect(without.problem).toEqual({ message: 'A merge field is not closed.', at: 0 });
+  });
+
+  it('says of a merge field that holds nothing that it holds nothing', () => {
+    expect(parseFormula('1 {!}', { mergeFields: true }).problem).toEqual({
+      message: 'A merge field that holds nothing stands where an operator or the end of the formula is expected.',
+      at: 4,
+    });
+  });
+
   it('tells a brace that opens no merge field as a character that is no part of a formula', () => {
     expect(parseFormula('{a} + 1', { mergeFields: true }).problem).toEqual({
       message: 'The character "{" is not part of a formula.',
@@ -285,8 +320,15 @@ describe('what the name of a merge field stands for', () => {
     expect(uses('$Record')).toEqual([]);
     expect(uses('varCount')).toEqual([]);
     expect(uses('$Flow.CurrentDate')).toEqual([]);
-    // Whatever stands after such a name gives nothing, also what is no name.
-    expect(uses('$Flow.Current Date')).toEqual([]);
+    expect(uses('$Flow.Current.Date_2')).toEqual([]);
+  });
+
+  it('is not read where something that is no name stands after a first name that holds no record', () => {
+    expect(uses('$Flow.Current Date')).toBeNull();
+    expect(uses('varCount.x + varInvoice.Amount__c')).toBeNull();
+    expect(uses('varCount.')).toBeNull();
+    expect(uses('varCount..')).toBeNull();
+    expect(uses('varCount.2x')).toBeNull();
   });
 
   it('is what the global variable of a formula stands for, where the caller does not know the first name', () => {
@@ -814,7 +856,7 @@ describe('the texts of the fixture project', () => {
     const expected = new Map<string, string[]>();
     for (const one of answerKey.references) {
       if (one.phase !== 2 || (one.via !== 'formula' && one.via !== 'merge-field')) continue;
-      const lines = expected.get(`force-app/${one.file.slice('force-app/'.length)}`) ?? [];
+      const lines = expected.get(one.file) ?? [];
       lines.push(entry(one.line, one.column, one.kind, one.to, one.match, one.tier, one.via));
       expected.set(one.file, lines);
     }
@@ -844,7 +886,7 @@ describe('the texts of the fixture project', () => {
     expect(hit).toEqual([]);
     // The negatives of these files that stand in a text or a formula are there to be missed.
     const inTexts = answerKey.negatives.filter((negative) => found.has(negative.file));
-    expect(inTexts.length).toBeGreaterThan(5);
+    expect(inTexts).toHaveLength(28);
   });
 });
 

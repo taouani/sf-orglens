@@ -14,7 +14,7 @@
  */
 
 import { cut } from './analysed.ts';
-import { closeOfMergeField, insideOfMergeField } from './merge-fields.ts';
+import { closesIn, insideOfMergeField } from './merge-fields.ts';
 
 /** A part of a formula. `start` and `end` count the code units of the text of the formula, from 0. */
 interface Span {
@@ -156,6 +156,7 @@ export interface FormulaWriting {
 function tokensOf(text: string, mergeFields: boolean): { tokens: FormulaToken[]; problem: FormulaProblem | null } {
   const tokens: FormulaToken[] = [];
   let problem: FormulaProblem | null = null;
+  const closeOf = closesIn(text);
   const match = (pattern: RegExp, at: number): string | null => {
     pattern.lastIndex = at;
     return pattern.exec(text)?.[0] ?? null;
@@ -195,7 +196,7 @@ function tokensOf(text: string, mergeFields: boolean): { tokens: FormulaToken[];
       continue;
     }
     if (mergeFields && text.startsWith('{!', at)) {
-      const close = closeOfMergeField(text, at);
+      const close = closeOf(at);
       if (close === null) {
         // The name after the braces is still the name of a merge field. The first problem is the one that is told.
         problem ??= { message: 'A merge field is not closed.', at };
@@ -257,8 +258,10 @@ export function parseFormula(text: string, writing: FormulaWriting = {}): Parsed
   const stop = (expected: string): never => {
     const token = peek();
     if (token === undefined) throw new Stop(`The formula ends where ${expected} is expected.`, text.length);
+    const shown = text.slice(token.start, token.end);
     throw new Stop(
-      `"${cut(text.slice(token.start, token.end), LONGEST_TOKEN_SHOWN)}" stands where ${expected} is expected.`,
+      // A merge field that holds nothing is a name without a letter.
+      `${shown === '' ? 'A merge field that holds nothing' : `"${cut(shown, LONGEST_TOKEN_SHOWN)}"`} stands where ${expected} is expected.`,
       token.start,
     );
   };

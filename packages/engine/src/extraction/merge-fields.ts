@@ -29,14 +29,24 @@ const OPENS = '{!';
 const SPACE_BEFORE = /^\s*/;
 
 /**
- * Where the merge field that opens at `open` closes: at the next `}`. `null` if a `{` stands before that brace or
- * the text ends before it: the merge field is not closed then. The reader of formulas asks the same question.
+ * Says for a text where the merge field that opens at `open` closes: at the next `}`. `null` if a `{` stands
+ * before that brace or the text ends before it: the merge field is not closed then. The reader of formulas asks
+ * the same question.
+ *
+ * The function that is returned is asked from the start of the text to its end, never backwards. It looks for
+ * the next `}` once and keeps it until a question lies behind it, so that a text of many merge fields that are
+ * not closed is read in one pass.
  */
-export function closeOfMergeField(text: string, open: number): number | null {
-  const close = text.indexOf('}', open + OPENS.length);
-  if (close === -1) return null;
-  const brace = text.indexOf('{', open + OPENS.length);
-  return brace !== -1 && brace < close ? null : close;
+export function closesIn(text: string): (open: number) => number | null {
+  /** The next `}` at or after the last place that was asked about. -1: there is none. -2: not looked for yet. */
+  let close = -2;
+  return (open) => {
+    const from = open + OPENS.length;
+    if (close !== -1 && close < from) close = text.indexOf('}', from);
+    if (close === -1) return null;
+    // A `{` between the two: the search goes back from the `}` and ends at the `{` of this merge field at the latest.
+    return text.lastIndexOf('{', close - 1) >= from ? null : close;
+  };
 }
 
 /** What stands between the braces of a merge field that closes at `close`, and where it starts. */
@@ -54,9 +64,10 @@ export function insideOfMergeField(text: string, open: number, close: number): {
 export function mergeFieldsOf(text: string): MergeFields {
   const fields: MergeField[] = [];
   const notClosed: number[] = [];
+  const closeOf = closesIn(text);
   let open = text.indexOf(OPENS);
   while (open !== -1) {
-    const close = closeOfMergeField(text, open);
+    const close = closeOf(open);
     if (close === null) {
       notClosed.push(open);
       open = text.indexOf(OPENS, open + OPENS.length);

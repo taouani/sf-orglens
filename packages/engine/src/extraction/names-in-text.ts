@@ -41,7 +41,10 @@ export interface MergeFieldsReading {
   readonly notClosed: readonly { readonly line: number; readonly column: number }[];
 }
 
-/** What the first name of a merge field is. `undefined` for a name the caller does not know. */
+/**
+ * What the first name of a merge field is. `undefined` for a name the caller does not know. The name comes as
+ * the text writes it: a caller for whom capitals make no difference folds them itself.
+ */
 export type StartOf = (first: string) => MergeStart | undefined;
 
 /** The uses of one name as references. `start` is where the name starts in the value. */

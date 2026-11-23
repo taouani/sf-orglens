@@ -165,17 +165,21 @@ export function usesOfName(name: string, own: string): readonly NameUse[] | null
  *
  * - `{ object: 'Invoice__c' }`: a record of that object. The names after it are a path from the object.
  * - `{ object: null }`: something that holds no record and names nothing that can change, such as a number, a
- *   text or the time. Whatever stands after it gives no reference.
+ *   text or the time. The names after it give no reference. Anything after it that is no name is not read.
  */
 export interface MergeStart {
   readonly object: string | null;
 }
 
+/** A name after a dot, where nothing is known of what it names. */
+const PLAIN_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 /**
  * What the name of a merge field stands for: what stands between `{!` and `}`. `startOf` says what the first
- * name is, as it is written, and gives `undefined` for one it does not know. It is asked before anything else,
- * so that `$Record` of a flow is what the flow says. A first name it does not know is read as the global
- * variable of a formula, if it is one.
+ * name is, and gives `undefined` for one it does not know. It gets the name as the text writes it: a caller for
+ * whom capitals make no difference folds them itself. It is asked before anything else, so that `$Record` of a
+ * flow is what the flow says. A first name it does not know is read as the global variable of a formula, if it
+ * is one.
  *
  * Gives the uses of the name, as `usesOfName` does: none for a name that stands for nothing that can change,
  * and for a record that is named as a whole, and `null` for a name that is not read.
@@ -189,7 +193,9 @@ export function usesOfMergeField(
   if (first === undefined || !/^\$?[A-Za-z][A-Za-z0-9_]*$/.test(first.text)) return null;
   const start = startOf(first.text);
   if (start !== undefined) {
-    if (start.object === null || rest.length === 0) return [];
+    if (rest.length === 0) return [];
+    // What stands after a name that holds no record gives no reference, as long as it is built like names.
+    if (start.object === null) return rest.every((segment) => PLAIN_NAME.test(segment.text)) ? [] : null;
     return plain(start.object, rest);
   }
   return first.text.startsWith('$') ? usesOfVariable(first.text.toLowerCase(), rest, null) : null;

@@ -117,8 +117,8 @@ formulas:
   - { covers: "words of the language beside a merge field", formula: "IF({!$Record.Is_Mine__c}, TRUE, NULL)", names: [$Record.Is_Mine__c] }
   - { covers: "a merge field in a text", formula: "\"{!$Record.Amount__c}\" & {!$Record.Name}", names: [$Record.Name], note: "A text is a text. Whether a flow fills a merge field in a text of a formula is not verified." }
   - { covers: "a merge field in a comment", formula: "/* {!$Record.Paid_Date__c} */ {!$Record.Amount__c}", names: [$Record.Amount__c] }
-  - { covers: "a name outside braces", formula: "{!$Record.Amount__c} * Tax_Rate__c", names: [$Record.Amount__c, Tax_Rate__c], bare: [Tax_Rate__c] }
-  - { covers: "a variable outside braces", formula: "$Record.Amount__c > 0", names: [$Record.Amount__c], bare: [$Record.Amount__c] }
+  - { covers: "a name outside braces", formula: "{!$Record.Amount__c} * Tax_Rate__c", names: [$Record.Amount__c, Tax_Rate__c], bare: [Tax_Rate__c], note: "Whether a flow accepts a name outside braces is not verified." }
+  - { covers: "a variable outside braces", formula: "$Record.Amount__c > 0", names: [$Record.Amount__c], bare: [$Record.Amount__c], note: "Whether a flow accepts a name outside braces is not verified." }
 
   # ---------------------------------------------------------------- formulas that are not read as a whole
   - { covers: "a merge field that is not closed in a formula", formula: "{!$Record.Amount__c * 2", names: [$Record.Amount__c], problem: true }
@@ -126,6 +126,6 @@ formulas:
   - { covers: "not closed at the end of a formula", formula: "1 + {!", names: [], problem: true }
   - { covers: "two merge fields without an operator", formula: "{!$Record.Amount__c}{!$Record.Tax_Rate__c}", names: [$Record.Amount__c, $Record.Tax_Rate__c], problem: true }
   - { covers: "a merge field before a bracket", formula: "{!varCount}(1)", names: [varCount], problem: true, note: "A merge field is never the name of a call." }
-  - { covers: "a brace without a mark in a formula", formula: "{$Record.Amount__c} + 1", names: [$Record.Amount__c], bare: [$Record.Amount__c], problem: true }
+  - { covers: "a brace without a mark in a formula", formula: "{$Record.Amount__c} + 1", names: [$Record.Amount__c], bare: [$Record.Amount__c], problem: true, note: "Whether a flow accepts a name outside braces is not verified." }
   - { covers: "a closing brace alone in a formula", formula: "{!$Record.Amount__c}} + 1", names: [$Record.Amount__c], problem: true }
   - { covers: "an operator in the braces", formula: "{!$Record.Amount__c + 1}", names: ["$Record.Amount__c + 1"], unread: ["$Record.Amount__c + 1"], note: "The formula is read as a whole. What stands in the braces is not a name." }

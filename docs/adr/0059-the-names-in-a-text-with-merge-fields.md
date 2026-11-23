@@ -25,7 +25,7 @@ public codebases. The points marked as choices of the author are the maintainer'
 
 ## Decision
 
-The code is in five files of `extraction/`:
+The code is in six files of `extraction/`:
 
 - `values.ts`: the value of an element, and the place in the file of every part of it.
 - `raw-references.ts`: a reference as a file writes it, and `resolveReferences`, which resolves its names
@@ -55,7 +55,8 @@ What stands in a merge field:
 
 4. **In a text, a merge field holds one name.** Anything else in it, a call or an operator, is not read as a
    name, and the reader says so with its place and its first 60 characters. An email template or a page may
-   write a formula in a merge field. Such a formula is not read in this phase.
+   write a formula in a merge field. Such a formula is not read in this phase. That holds after a first name
+   that holds no record too: the names after it give no reference, and anything else after it is not read.
 5. **The first name of a merge field is something the text around it knows**, and the caller says what: a
    record of an object, so that the names after it are a path from that object, or something that holds no
    record and names nothing that can change, such as a number, a text or the time of the flow. For a flow that
@@ -83,7 +84,10 @@ The formula of a flow:
 12. **A merge field that is not closed makes the formula one that is not read as a whole.** The problem is told
     at its `{!`. The name that follows is still taken as the name of a merge field, and is `probable` like the
     other names of the formula. A merge field in a text in quotes or in a comment is not read: a text is a
-    text. Whether a flow fills a merge field in a text of a formula is not verified.
+    text. Whether a flow fills a merge field in a text of a formula is not verified. The braces are found in
+    the formula as it is written, before anything is read as a text or a comment. So a merge field that is not
+    closed ends at the next `}` also where that brace stands in a later text or comment: what it then holds is
+    no name, and is not read.
 
 Without the request of choice 9 the reader of formulas is what it was: a brace is no part of a formula.
 
@@ -106,7 +110,15 @@ Without the request of choice 9 the reader of formulas is what it was: a brace i
   project and the probes, which the author wrote.
 - Thirty-six faults were planted in the new and the moved code, one at a time. The tests noticed 35 at once and
   the other after one expectation was added. Writing them showed a special case that did nothing, which was
-  removed.
+  removed. The list of the faults is not kept in the repository. The reviewer of the pull request planted 37 of
+  their own: the new test noticed 31, the tests of Phase 1 the five that lie in moved code, and one changes
+  nothing.
+- The analyser of flows will need more of this code than it offers, and changes it then: a third answer for a
+  first name, a record whose object is not known, so that a path from it is counted and not dropped. A reason
+  on what is not read, so that a name outside braces and a first name nobody knows get codes of their own. And
+  the names a flow writes without braces, in an element such as `elementReference`, which the answer key holds
+  with other ways than `formula` and `merge-field`: they are a merge field without its braces, and no reader
+  here takes them yet.
 - A path from a resource whose object is not known is not decided here. The plan says that it is not followed
   and counted like a path a formula could not follow. The analyser of flows builds that, with the model of
   resources.
