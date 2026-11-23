@@ -1,9 +1,10 @@
 /**
  * What the XML of an object, a field, a validation rule, a record type and a field set says: the attributes later
- * steps need, and the references that are written as names in elements: the target of a lookup, the fields of a
- * lookup filter and of a roll-up summary, the controlling field and the value set of a picklist, the controlling
- * field of a relationship to a field definition, the field a validation rule shows its message at, the picklists
- * and the business process of a record type, and the fields of a field set (decision record 0065).
+ * steps need, and the references that are written as names in elements: the page or component that overrides an
+ * action of an object (decision record 0070), the target of a lookup, the fields of a lookup filter and of a
+ * roll-up summary, the controlling field and the value set of a picklist, the controlling field of a relationship
+ * to a field definition, the field a validation rule shows its message at, the picklists and the business process
+ * of a record type, and the fields of a field set (decision record 0065).
  *
  * Only the reading is done here. The names are resolved against the model of all objects, which exists only
  * once every file was read (`raw-references.ts`).
@@ -12,6 +13,7 @@
  * `names-in-text.ts` reads them, and this file says where each of them stands.
  */
 import type { JsonValue } from '../core/errors.ts';
+import { foldName } from '../core/keys.ts';
 import { cut } from './analysed.ts';
 import { GLOBAL_OBJECTS, type FieldFacts } from './model.ts';
 import { readFormula, type FormulaReading, type MergeFieldsReading } from './names-in-text.ts';
@@ -299,14 +301,47 @@ export function readFieldSet(document: XmlDocument, element: XmlElement, object:
   return { attrs: {}, facts: null, references: reader.references, unread: reader.unread, formulas: reader.formulas };
 }
 
-/** What the element of an object says. Its fields and rules are read on their own. */
-export function readObject(element: XmlElement): ElementReading {
+/**
+ * What overrides an action of an object, by the folded name of the type of the override: a Lightning page, a
+ * Visualforce page, an s-control or a Lightning component. The file does not say whether a Lightning component is
+ * an Aura component or a Lightning web component, so it is of the second type where only that is defined.
+ */
+const OVERRIDDEN_BY: ReadonlyMap<string, { readonly type: string; readonly orType?: string }> = new Map([
+  ['flexipage', { type: 'FlexiPage' }],
+  ['visualforce', { type: 'ApexPage' }],
+  ['scontrol', { type: 'Scontrol' }],
+  ['lightningcomponent', { type: 'AuraDefinitionBundle', orType: 'LightningComponentBundle' }],
+]);
+/**
+ * The types of an override that name nothing: `standard`, the behaviour of Salesforce, and `default`, which a file
+ * writes for an action that is not overridden, and which the documentation of Salesforce calls an override that an
+ * installed package provides.
+ */
+const NOT_OVERRIDDEN: ReadonlySet<string> = new Set(['standard', 'default']);
+
+/**
+ * What the element of an object says. Its fields and rules are read on their own. An object refers to the page or
+ * component that each override of one of its actions names, whatever the action and the form factor.
+ */
+export function readObject(document: XmlDocument, element: XmlElement): ElementReading {
+  const reader = new Reader(document);
+  for (const override of childrenOf(element, 'actionOverrides')) {
+    const type = childOf(override, 'type');
+    const kind = textOf(type);
+    // Salesforce writes the types in lowercase in its documentation, and files write them with capitals.
+    if (kind !== null && NOT_OVERRIDDEN.has(foldName(kind))) continue;
+    const by = kind === null ? undefined : OVERRIDDEN_BY.get(foldName(kind));
+    // An override of a type that is not known here names nothing that could be found: it is not read, and a
+    // warning says so. So does one without a type, which Salesforce refuses.
+    if (by === undefined) reader.refuse(kind === null ? childOf(override, 'content') : type, 'override-type');
+    else reader.name(childOf(override, 'content'), (at) => ({ form: 'component', ...by, at, via: 'action-override' }));
+  }
   const customSettingsType = textOf(childOf(element, 'customSettingsType'));
   return {
     attrs: customSettingsType === null ? {} : { customSettingsType },
     facts: null,
-    references: [],
-    unread: [],
-    formulas: [],
+    references: reader.references,
+    unread: reader.unread,
+    formulas: reader.formulas,
   };
 }

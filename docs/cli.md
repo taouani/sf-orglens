@@ -310,7 +310,8 @@ of three public codebases.
 
 The analysis finds the components that the files of a snapshot make up, and which component refers to which. Today
 it reads objects, fields and validation rules: the names written in their XML, and the formula of a field, its
-default value and the condition of a rule. It reads flows too: every element and resource of a flow is a component
+default value and the condition of a rule. Of an object, that is the page or component that overrides one of its
+actions, such as the Lightning page of its records, by its name: the page itself is not read. It reads flows too: every element and resource of a flow is a component
 of its own, named `<flow>.<element>`, with the fields and objects it reads, writes or names, in a value, in the
 name of a resource with a path, in a formula or in a merge field of a text. It reads workflow rules: each rule,
 field update, email alert, outbound message and task of a file of workflow rules is a component that the file
@@ -326,8 +327,9 @@ where it is a relationship to that type. It is a field, at the tier `probable`, 
 file of the snapshot defines that field. Every other type is stored and not analysed yet.
 Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
-[0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md) and
-[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) say what is read and what is not.
+[0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md),
+[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) and
+[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) say what is read and what is not.
 
 - A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
   snapshot is stored, also for a snapshot of an org that was interrupted and continued.
@@ -416,7 +418,9 @@ records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
   not active, of a file of workflow rules everything but the fields the formula of a field update reads, of a
   record of a custom metadata type everything but its type, everything of a record type, and of a flow a flow it
   starts, a name in a text, such as a record type a condition compares a text with, and a field of a custom setting
-  or a custom permission that only its formulas name.
+  or a custom permission that only its formulas name. A Visualforce page, a Lightning component or an s-control
+  that overrides an action of an object is counted too: whether the API reports it was not measured. A Lightning
+  page that does is listed: a large org reported it.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the command was not run against a real org. The test org is read by a tool of the tests, which
@@ -528,7 +532,9 @@ of a workflow rule), `workflow-action` (a reference of an email alert, an outbou
 record of a custom metadata type that is not to the type of the record), `record-type` (a reference of a record
 type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
 text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
-only its formulas name) and `other`. A pair to a standard field or a standard object has one of the first two, from
+only its formulas name), `action-override` (a reference of an object to a Visualforce page, a Lightning component or
+an s-control that overrides one of its actions) and `other`. A pair to a standard field or a standard object has one
+of the first two, from
 any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):

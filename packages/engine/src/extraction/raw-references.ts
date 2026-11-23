@@ -67,7 +67,9 @@ export type Via =
    * A value of a record of a custom metadata type in a field that is a relationship: to the definition of an
    * object, of a field, or to another custom metadata type.
    */
-  | 'value';
+  | 'value'
+  /** The page or component that overrides an action of an object, such as the Lightning page of its records. */
+  | 'action-override';
 
 /** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
 export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
@@ -95,11 +97,14 @@ export type RawReference = Raw &
       /**
        * The name of a component of another type. `fullName` is the name it is looked for under, where that is
        * more than the name at the place: the record of a custom metadata type is named with its type. `kind` is
-       * `references` where nothing else is said.
+       * `references` where nothing else is said. `orType` is a second type, where the file does not say which of
+       * the two the component is of: it is of `orType` where a file of the snapshot defines it so, and none
+       * defines it as `type`.
        */
     | {
         readonly form: 'component';
         readonly type: string;
+        readonly orType?: string;
         readonly at: NameAt;
         readonly fullName?: string;
         readonly kind?: 'references' | 'calls';
@@ -168,11 +173,12 @@ export interface Unread {
   readonly column: number;
   /**
    * Why it is not read, where the reader knows more than that it is no name: `start` for a name whose first
-   * part is nothing the text around it knows, such as a resource that a flow does not hold, and `action-type`
-   * for an action of a workflow rule of a type that is not known here (the element `type`) or of no type (the
-   * element `name`).
+   * part is nothing the text around it knows, such as a resource that a flow does not hold, `action-type` for an
+   * action of a workflow rule of a type that is not known here (the element `type`) or of no type (the element
+   * `name`), and `override-type` for an override of an action of an object of a type that is not known here (the
+   * element `type`) or of no type (the element `content`).
    */
-  readonly why?: 'start' | 'action-type';
+  readonly why?: 'start' | 'action-type' | 'override-type';
 }
 
 /** At most this many characters of a text that is not a name, or of one name, are shown in an issue. */
@@ -391,7 +397,11 @@ export function resolveReferences(
     else if (one.form === 'field') {
       add(one.at, model.field(owner.object, one.at.name), 'references', one, { object: owner.object });
     } else if (one.form === 'component') {
-      add(one.at, model.component(one.type, one.fullName ?? one.at.name), one.kind ?? 'references', one);
+      const name = one.fullName ?? one.at.name;
+      const target = model.component(one.type, name);
+      const other =
+        one.orType === undefined || target.resolution === 'resolved' ? null : model.component(one.orType, name);
+      add(one.at, other?.resolution === 'resolved' ? other : target, one.kind ?? 'references', one);
     } else if (one.form === 'parent-field') {
       const step: Raw = { via: 'path', ...(one.tier === undefined ? {} : { tier: one.tier }) };
       const { field, leadsTo } = model.relationship(one.start, relationshipOf(one.through.name));

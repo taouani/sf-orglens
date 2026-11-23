@@ -47,6 +47,11 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   and the email template of the alert. Of `listed-field`, one is a field that the outbound message of NPSP
  *   sends, and the others are a field a record gives a value or a field set lists. `record-of` is the type of
  *   each record, and `value` a value of a record that names an object, a field or another record.
+ *   `action-override` is the page or component that overrides an action of an object, read since 23 November 2026
+ *   and checked by hand that day against the files: in Nebula Logger the Lightning record pages of five objects,
+ *   each for the desktop and for the phone, in NPSP 11 overrides by four Visualforce pages and the record page of
+ *   one object, and in PMM the record pages of two objects and an Aura component that creates a record of a
+ *   third. Apex Recipes overrides nothing. Each names a page or a component that the codebase defines.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
  *   through a lookup of another package four times: no file says where that lookup leads.
  */
@@ -77,6 +82,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     analysed: 678,
     withFormula: 142,
     references: {
+      'action-override': 10,
       'controlling-field': 3,
       'display-field': 4,
       filter: 7,
@@ -96,6 +102,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     withFormula: 171,
     references: {
       action: 4,
+      'action-override': 12,
       assignment: 3,
       'controlling-field': 5,
       'display-field': 2,
@@ -117,6 +124,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     analysed: 163,
     withFormula: 38,
     references: {
+      'action-override': 3,
       'controlling-field': 1,
       filter: 4,
       formula: 133,
@@ -300,6 +308,9 @@ describe('the analysis of the public codebases', () => {
           inFormulas.length === 0 ? {} : { confirmed: inFormulas.length },
         );
         expect(inFormulas.filter((one) => one.resolution === 'unresolved')).toEqual([]);
+        // Every override of an action names a page or a component that the codebase defines.
+        const overrides = references.filter((one) => one.attrs?.['via'] === 'action-override');
+        expect(overrides.filter((one) => one.resolution !== 'resolved')).toEqual([]);
         // Every key once.
         expect(new Set(analysis.components.map((one) => one.key)).size).toBe(analysis.components.length);
       },

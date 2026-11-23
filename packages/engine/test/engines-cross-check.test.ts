@@ -657,6 +657,40 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     });
   });
 
+  it('compares the Lightning page that overrides an action of an object, and counts the other overrides', () => {
+    const PAGE = key('FlexiPage', 'Invoice_Record_Page');
+    const EDIT = key('ApexPage', 'Invoice_Edit');
+    const CREATE = key('AuraDefinitionBundle', 'createInvoice');
+    const listed: ListedId[] = [
+      ...LISTED,
+      { type: 'FlexiPage', fullName: 'Invoice_Record_Page', id: '0M0xx0000000001AAA' },
+      { type: 'ApexPage', fullName: 'Invoice_Edit', id: '066xx0000000001AAA' },
+    ];
+    const components = [
+      component(INVOICE, {}, [
+        defined(INVOICE, PAGE, 'action-override'),
+        defined(INVOICE, EDIT, 'action-override'),
+        defined(INVOICE, CREATE, 'action-override'),
+      ]),
+    ];
+    // Without a row, the page is a pair of a kind Salesforce reports. Whether it reports the other two is not known.
+    const alone = crossCheck({ ...input([], components), listed });
+    expect(alone.onlyOrgLens).toEqual([{ from: INVOICE, to: PAGE }]);
+    expect(alone.notReported).toEqual([{ reason: 'action-override', pairs: 2 }]);
+    // With the rows Salesforce writes for the two pages, both agree.
+    const rows = [
+      row(end('CustomObject', 'Invoice__c'), end('FlexiPage', 'Invoice_Record_Page', { id: '0M0xx0000000001AAA' })),
+      row(end('CustomObject', 'Invoice__c'), end('ApexPage', 'Invoice_Edit', { id: '066xx0000000001AAA' })),
+    ];
+    expect(crossCheck({ ...input(rows, components), listed })).toMatchObject({
+      rowsCompared: 2,
+      agreed: 2,
+      missed: [],
+      onlyOrgLens: [],
+      notReported: [{ reason: 'action-override', pairs: 1 }],
+    });
+  });
+
   it('leaves out of both lists what a component of a type that was not analysed refers to, and a name without a target', () => {
     const record = component(RECORD, {}, [reference(RECORD, RATE)]);
     const unresolved = validateReference({

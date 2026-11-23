@@ -47,6 +47,7 @@ export type NotReportedReason =
   | 'subflow'
   | 'name-in-text'
   | 'global-variable'
+  | 'action-override'
   | 'other';
 
 /** What the comparison of the rows of the Dependency API with an analysis found. */
@@ -309,6 +310,10 @@ function notReported(
   if (type === 'CustomMetadata') return found.vias.has('record-of') ? null : 'custom-metadata';
   if (type === 'RecordType') return 'record-type';
   if (type === 'FieldSet') return null;
+  // Of an object, a large org reported the Lightning page that overrides one of its actions. Whether the API
+  // reports a Visualforce page, a Lightning component or an s-control that does was not measured (decision record
+  // 0070).
+  if (only(found.vias, 'action-override')) return typeOf(to) === 'FlexiPage' ? null : 'action-override';
   if (found.origins.has('parser:formula')) {
     // A formula of a rule or of a formula field. A field without a formula has one in its default value, and
     // whether the API reports something custom there was not measured.

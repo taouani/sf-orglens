@@ -272,7 +272,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   ): ElementReading | null => {
     if (!ANALYSED.has(type)) return null;
     try {
-      if (type === 'CustomObject') return readObject(element);
+      if (type === 'CustomObject') return readObject(document, element);
       if (type === 'CustomField') return readField(document, element, beforeDot(fullName));
       if (type === 'ValidationRule') return readRule(document, element, beforeDot(fullName));
       if (type === 'RecordType') return readRecordType(document, element, beforeDot(fullName));
@@ -493,6 +493,20 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
         severity: 'warning',
         code: 'NAME_NOT_READ',
         message: `${place}: ${where} "${unread.element}" holds "${unread.text}", ${said}. The action is not read.`,
+        componentKey: key,
+        details,
+      };
+    }
+    if (unread.why === 'override-type') {
+      // The type of an override that is not known here, or the name in an override that has no type.
+      const said =
+        unread.element === 'type'
+          ? 'which is no type of an override of an action that is known here'
+          : 'and the override has no type';
+      return {
+        severity: 'warning',
+        code: 'NAME_NOT_READ',
+        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", ${said}. The override is not read.`,
         componentKey: key,
         details,
       };
