@@ -897,6 +897,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       'find',
       'linksFrom',
       'linksTo',
+      'partsOf',
       'referencesFrom',
       'referencesTo',
       'snapshotId',
@@ -912,9 +913,10 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     graph.referencesTo(amount);
     graph.referencesFrom(amount);
     graph.below(graph.find(INVOICE)?.id ?? 0);
+    expect(graph.partsOf([graph.find(INVOICE)?.id ?? 0]).map((part) => part.key)).toContain(AMOUNT);
     graph.components([amount]);
     graph.edges([...graph.linksTo([amount]), ...graph.linksFrom([amount])]);
-    expect(new Set(asked.map(([sql]) => sql)).size).toBe(12);
+    expect(new Set(asked.map(([sql]) => sql)).size).toBe(13);
     for (const [sql, parameters] of asked) {
       const steps = store.all(`EXPLAIN QUERY PLAN ${sql}`, ...parameters).map((row) => String(row['detail']));
       // No table is walked. What is walked is a list a statement makes for itself or is handed: what a

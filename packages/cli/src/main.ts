@@ -276,14 +276,15 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
       'Shows what refers to a component in the latest snapshot of a source, directly or through other components: ' +
         'each with its depth, the reference it is found by with file and line, and the weakest confidence on ' +
         'the shortest chain of references that leads to it. For an object, the answer is about everything it ' +
-        'contains too. ' +
-        'The component is named by its name (Account.Industry), by its type and name ' +
-        '(CustomField:Account.Industry) or by its key. ' +
+        'contains too. A flow runs its elements: where the answer finds an element, it finds the flow too, and ' +
+        'what refers to the flow. ' +
+        'The component is named by its name (Account.Industry, or Invoice_After_Save.Update_Account for an ' +
+        'element of a flow), by its type and name (CustomField:Account.Industry) or by its key. ' +
         'The first lines say whether the answer is complete, and if not, why: above all the types of the ' +
         'snapshot that are not analysed yet. Reads only. ' +
         'The exit code is 5 if something of the source was not read that the answer claims to cover: a type ' +
         'that is analysed is held only in part, or the reading or the analysis had an error. ' +
-        'It is 2 if no component has the name, or several have.',
+        'It is 2 if no component has the name, or several have and none of them is an object.',
     )
     .argument('<component>', 'the name or the key of the component')
     .option('--source <name>', 'the source to ask (default: the only source of the workspace)')

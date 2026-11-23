@@ -247,6 +247,34 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         }));
       expect(of(dir)).toEqual(of(plain));
       expect(of(dir).references.filter((one) => one.includes('paid_date__c') && one.includes(KEY))).toEqual([]);
+
+      // An impact answer is the one of the org without the draft, and names the newer version where the flow is
+      // in the answer: asked about, an element of it asked about, among what refers to a field, or among what a
+      // flow refers to (decision record 0066). The note is no gap: it changes neither `complete` nor `mayMiss`.
+      const ask = async (at: string, component: string, outgoing: boolean) => {
+        const { snapshot, newerVersions, ...rest } = await (
+          await openWorkspace({ root: at, env })
+        ).impact('prod', component, { outgoing });
+        expect(snapshot.status).toBe('complete');
+        return { newerVersions, rest };
+      };
+      for (const [component, outgoing] of [
+        [KEY, false],
+        [`${FLOW_WITH_DRAFT}.Set_Amount`, false],
+        ['Invoice__c.Amount__c', false],
+        ['Flow:invoice_after_save', true],
+      ] as const) {
+        const withDraft = await ask(dir, component, outgoing);
+        const without = await ask(plain, component, outgoing);
+        expect(withDraft.newerVersions, component).toEqual([{ flow: KEY, active: 1, newer: 'Draft' }]);
+        expect(without.newerVersions, component).toEqual([]);
+        expect(withDraft.rest, component).toEqual(without.rest);
+        expect(withDraft.rest.results.length + withDraft.rest.parts, component).toBeGreaterThan(0);
+      }
+      // A flow that has no newer version is not named, and neither is a flow that is not in the answer.
+      for (const component of ['Flow:invoice_before_save', 'Invoice__c.Legacy_Code__c']) {
+        expect((await ask(dir, component, false)).newerVersions, component).toEqual([]);
+      }
     });
 
     it('takes a file that came back as the latest version without a note: the flow was made active since', async () => {

@@ -4,12 +4,13 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
-org, take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its
-objects, fields and validation rules, with the formulas in them, and for its flows, element by element.
-`orglens impact` answers what refers to a component from those types alone. Nothing else of a snapshot is
-analysed yet, and an answer names the types it does not cover. Reading an org is tested against a mock org. The
-code that reads an org was also run against one real Developer Edition org, by a tool of the tests
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org,
+take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects,
+fields, validation rules, record types and field sets, with the formulas in them, for its flows, element by
+element, for its workflow rules with their actions, and for the records of its custom metadata types. `orglens
+impact` answers what refers to a component from those types alone. Nothing else of a snapshot is analysed yet, and
+an answer names the types it does not cover. Reading an org is tested against a mock org. The code that reads an
+org was also run against one real Developer Edition org, by a tool of the tests
 ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot` itself has not been run against
 Salesforce.
 
@@ -628,15 +629,16 @@ The example is shortened: the command prints every line and every path in full.
 
 **How the component is named.** By its name (`Account.Industry`), by its type and name
 (`CustomField:Account.Industry`) or by its key (`CustomField:account.industry`). Upper and lower case do not
-matter. A name alone is looked up among the types the snapshot holds and the types OrgLens knows by name. If it
-fits an object and other components, the answer is about the object, and the line below the first one names the
-others, which `sameName` lists. A file of workflow rules has the name of its object, so `orglens impact
-Invoice__c` answers for the object on every org with workflow rules for it. If the name fits components of
-several types and none of them is an object, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys.
-Decision record [0064](adr/0064-a-name-alone-that-fits-an-object-means-the-object.md) says why. The snapshot also
-knows a component that it does not hold and that something in it refers to, such as a standard field: `orglens
-impact Account.Name` works in a repository that has no file for that field. A component of that kind whose type
-is neither in the snapshot nor known to OrgLens by name is not found by its name alone: name it with its type.
+matter. An element of a flow is named by the name of the flow and its own, `Invoice_After_Save.Update_Account`,
+alone or after `Flow:`. A name alone is looked up among the types the snapshot holds and the types OrgLens knows by
+name. If it fits an object and other components, the answer is about the object, and the line below the first one
+names the others, which `sameName` lists. A file of workflow rules has the name of its object, so `orglens impact
+Invoice__c` answers for the object on every org with workflow rules for it. If the name fits components of several
+types and none of them is an object, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys. Decision
+record [0064](adr/0064-a-name-alone-that-fits-an-object-means-the-object.md) says why. The snapshot also knows a
+component that it does not hold and that something in it refers to, such as a standard field: `orglens impact
+Account.Name` works in a repository that has no file for that field. A component of that kind whose type is neither
+in the snapshot nor known to OrgLens by name is not found by its name alone: name it with its type.
 
 **What the answer holds.**
 
@@ -656,9 +658,29 @@ is neither in the snapshot nor known to OrgLens by name is not found by its name
   never a line of the answer itself.
 - A component that is found is followed from itself only. If a field refers to the component, the answer goes
   on with what refers to that field, not with what refers to its object or to the other fields of its object.
+- Flows are the exception, since a flow runs its elements (decision record
+  [0066](adr/0066-an-answer-takes-a-flow-with-its-elements.md)). What an element refers to, its flow refers to: a
+  field that an element writes is written whenever the flow runs, also when another flow calls it as a subflow.
+  Where the answer finds an element, it finds the flow too, at the same depth, and goes on with what refers to the
+  flow. The line of the flow shows the reference of one of its elements, the one that makes the chain most certain
+  and among those the first by key, and the element has a line of its own after it. A flow that the answer found
+  nearer keeps its line, and so does a flow that a reference of its own finds at the same depth, unless the way
+  through an element is more certain. For an element that is asked about, the answer holds what refers to its flow,
+  and the second line names the flow. The flow has no line then: where the answer finds another element of it, only
+  the element has one. With `--outgoing`, the answer goes on from a flow it finds to what the elements of the flow
+  refer to, and the elements have no lines. What an element that is asked about refers to is its own: its flow
+  plays no part in that.
+- A flow whose active version has a newer one beside it, such as a draft, is named in a line below the results when
+  it is in the answer: the flow that was asked about, the flow of an element that was asked about, or the flow of a
+  result. The snapshot holds the active version, which is the one that runs, and the newer one is not analysed
+  (decision records [0060](adr/0060-the-active-version-of-a-flow-is-analysed.md) and
+  [0062](adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md)). Only a snapshot of an org knows of a
+  newer version. The line does not make the answer incomplete: what runs is what the answer is about.
 - With `--depth`, the answer says whether references lead further than it goes.
 - With `--outgoing`, the same is shown in the other direction: what the component refers to, and what those
-  refer to. A name that has no key, so that no component stands for it, is listed in a table of its own.
+  refer to. There, `REFERRED TO BY` can name an element of a flow of the answer, which has no line: the line of its
+  flow is the next one of the chain, and a line above the table says so. A name that has no key, so that no
+  component stands for it, is listed in a table of its own.
 
 **What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
 the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
@@ -711,24 +733,29 @@ needs a complete answer reads `data.complete`: the exit code `0` does not say it
 | `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                         |
 | `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                  |
 | `sameName`      | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                    |
-| `parts`         | How many components of the snapshot it contains.                                                                                                                                                                                                |
+| `parts`         | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                       |
+| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                       |
 | `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                       |
 | `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                           |
 | `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                              |
 | `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                        |
-| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`.                                                                                                     |
-| `reference`     | The reference a result is found by, with `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result and `to` is one reference nearer. For `outgoing` it is the other way round. |
+| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`.       |
+| `reference`     | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse. |
 | `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
+| `newerVersions` | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                     |
 | `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                    |
 | `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`.                                       |
 | `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                     |
 
 **The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
-reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the
-nearer end is the component that was asked about, or something it contains, and the chain ends there. A program
-follows the chain by looking up that key among the results. An answer with every chain written out grows with
-the number of results times their depth: the largest answer that was measured had 104,760 results up to 21
-references away, and was 443 MB of JSON that way.
+reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the nearer
+end is the component that was asked about, or something it contains, or the flow of an element that was asked
+about, and the chain ends there. A program follows the chain by looking up that key among the results. Flows add
+two cases. For `incoming`, a flow that is found by one of its elements holds the reference of that element: `from`
+is the element, a result of the same depth, and `to` is the nearer end as for any result. For `outgoing`, the
+nearer end can be an element of a flow that is a result: the element is no result itself, and the chain goes on at
+its flow. An answer with every chain written out grows with the number of results times their depth: the largest
+answer that was measured had 104,760 results up to 21 references away, and was 443 MB of JSON that way.
 
 What is not done, and what a user should know:
 
@@ -898,7 +925,7 @@ with exactly and allows no other fields.
 | `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                                                                                                                                            |
 | `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `crossCheck` (how the Dependency API was read, and `comparison`), or `null` for a snapshot the API was not asked for, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
 | `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `impact`        | `snapshot`, `component`, `sameName`, `parts`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `impact`        | `snapshot`, `component`, `sameName`, `parts`, `elementOf`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `newerVersions`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 

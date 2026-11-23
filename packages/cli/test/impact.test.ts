@@ -62,6 +62,10 @@ describe('orglens impact', () => {
     ['an object', 'Invoice__c', 'object'],
     ['a field that nothing refers to', 'Invoice__c.Unused_Field__c', 'unreferenced'],
     ['a field that is reached through a chain of formulas', 'Invoice_Line__c.Quantity__c', 'chain'],
+    // A flow is found beside its elements, and what calls it after them.
+    ['a flow', 'Invoice_Recalculate', 'flow'],
+    // An element is named after its flow. What calls the flow runs the element.
+    ['an element of a flow', 'Invoice_Recalculate.Set_Amount', 'element'],
   ])('prints the answer for %s as its golden file says', async (_what, component, file) => {
     const dir = await fixtureWorkspace();
     const shown = await orglens(dir, ['impact', component]);
@@ -109,11 +113,12 @@ describe('orglens impact', () => {
   it('says in its first lines that the answer is not complete, before the answer', async () => {
     const dir = await fixtureWorkspace();
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
-    expect(lines.slice(0, 5)).toEqual([
+    expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
       '',
-      '7 components refer to it, 4 of them directly.',
+      '9 components refer to it, 5 of them directly.',
+      'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
     expect(lines.slice(-(NOT_ANALYSED.length + 4))).toEqual([
@@ -133,7 +138,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('9 components refer to it, 6 of them directly.');
+    expect(lines).toContain('13 components refer to it, 9 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -145,7 +150,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('22 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('26 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -161,6 +166,15 @@ describe('orglens impact', () => {
       `1      CustomField:invoice__c.tax_rate__c  confirmed   reads  CustomField:invoice__c.total__c  force-app/main/default/objects/Invoice__c/fields/Total__c.field-meta.xml:4`,
       '',
     ]);
+
+    // An element that calls a flow refers to what the elements of that flow refer to. They have no line.
+    const called = (await orglens(dir, ['impact', 'Invoice_After_Save.Recalculate', '--outgoing'])).stdout.split('\n');
+    expect(called).toContain(
+      'A flow refers to what its elements refer to: REFERRED TO BY can name an element of a listed flow, which is not listed itself.',
+    );
+    expect(called.some((line) => /^2 .* Flow:invoice_recalculate#element:\S+ /.test(line))).toBe(true);
+    expect(called.filter((line) => /^\d+ +Flow:invoice_recalculate#element:/.test(line))).toEqual([]);
+    expect(outgoing.stdout).not.toContain('REFERRED TO BY can name');
 
     // A class is not analysed yet. The empty answer says so, and is no finding.
     const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
@@ -250,8 +264,8 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
     );
-    // The 22 of the project without the field that could not be read, and without the one that reads it.
-    expect(lines).toContain('21 components refer to it, all of them directly.');
+    // The 28 of the project without the field that could not be read, and without the one that reads it.
+    expect(lines).toContain('26 components refer to it, 25 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',

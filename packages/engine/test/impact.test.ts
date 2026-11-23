@@ -77,6 +77,14 @@ const GOLDEN: readonly (readonly [string, string, string])[] = [
   ['an object', 'Invoice__c', 'object'],
   ['a field that nothing refers to', 'Invoice__c.Unused_Field__c', 'unreferenced'],
   ['a field that is reached through a chain of formulas', 'Invoice_Line__c.Quantity__c', 'chain'],
+  // The questions of Phase 2. A flow is found beside its elements, and what calls it after them.
+  ['a field a flow writes', 'Account.Risk_Score__c', 'risk-score'],
+  ['a field a flow reads through a relationship', 'Account.Credit_Limit__c', 'credit-limit'],
+  ['a field a field update writes', 'Invoice__c.Legacy_Code__c', 'legacy-code'],
+  ['a record type', 'Invoice__c.Credit_Note', 'record-type'],
+  ['a flow', 'Invoice_Recalculate', 'flow'],
+  // An element is named after its flow. What calls the flow runs the element.
+  ['an element of a flow', 'Invoice_Recalculate.Set_Amount', 'element'],
 ];
 
 describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
@@ -150,6 +158,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const places = new Set(keyed.map(placeOf));
       const weaker = (a: ConfidenceTier, b: ConfidenceTier): ConfidenceTier =>
         CONFIDENCE_TIERS.indexOf(a) > CONFIDENCE_TIERS.indexOf(b) ? a : b;
+      /** The flow of an element of a flow. A flow runs its elements and refers to what they refer to. */
+      const flowOf = (one: string): string | undefined =>
+        one.startsWith('Flow:') && one.includes('#element:') ? parentKey(one as ComponentKey) : undefined;
 
       // Every component a reference of the key starts from or points at, and every component the key lists
       // of the types that are analysed. An object is asked about too when the key names only a field of it.
@@ -173,6 +184,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const implied = (start: ComponentKey): unknown[] => {
         const reached = new Map<ComponentKey, { depth: number; tier: ConfidenceTier }>();
         let level = [...asked].filter((one) => one === start || parentKey(one) === start);
+        // What calls the flow of an element runs the element: the flow is part of the start.
+        const startFlow = flowOf(start);
+        if (startFlow !== undefined) level.push(startFlow as ComponentKey);
         for (const one of level) reached.set(one, { depth: 0, tier: 'confirmed' });
         for (let depth = 1; level.length > 0; depth += 1) {
           const found = new Map<ComponentKey, ConfidenceTier>();
@@ -182,6 +196,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             const tier = weaker(near.tier, reference.tier);
             const best = found.get(reference.from);
             found.set(reference.from, best === undefined || weaker(best, tier) === best ? tier : best);
+          }
+          // A flow is found beside its elements, as certain as the most certain of them.
+          for (const [one, tier] of [...found]) {
+            const of = flowOf(one) as ComponentKey | undefined;
+            if (of === undefined || reached.has(of)) continue;
+            const best = found.get(of);
+            found.set(of, best === undefined || weaker(best, tier) === best ? tier : best);
           }
           for (const [one, tier] of found) reached.set(one, { depth, tier });
           level = [...found.keys()];
@@ -197,23 +218,28 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         const report = await workspace.impact('fixture', component);
         expect([component, outline(report)]).toEqual([component, implied(component)]);
         // Every reference of every chain is one the key holds, at the place the key gives it. A chain is
-        // followed from result to result, and ends at the component or at something it contains.
+        // followed from result to result, and ends at the component, at something it contains or at the flow of
+        // the element it is. A flow is found by the reference of one of its elements.
         for (const result of report.results) {
           const chain = chainOf(report.results, result);
           expect(chain).toHaveLength(result.depth);
           expect(chain.map(placeOf).filter((step) => !places.has(step))).toEqual([]);
-          expect(result.reference.from).toBe(result.key);
+          const { from } = result.reference;
+          expect(from === result.key ? from : flowOf(from)).toBe(result.key);
           chain.forEach((step, at) => {
-            expect(step.to).toBe(chain[at + 1]?.from ?? step.to);
+            const next = chain[at + 1]?.from ?? step.to;
+            expect(next === step.to ? next : flowOf(next)).toBe(step.to);
           });
           const last = chain.at(-1)?.to;
-          expect(last === component || (last !== undefined && parentKey(last) === component)).toBe(true);
+          expect(
+            last === component || last === flowOf(component) || (last !== undefined && parentKey(last) === component),
+          ).toBe(true);
         }
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
       expect(asked.size).toBe(169);
-      expect(results).toBe(438);
+      expect(results).toBe(602);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -354,9 +380,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect((await again.snapshot('fixture')).snapshot.status).toBe('partial');
       const report = await again.impact('fixture', AMOUNT);
       expect(report.snapshot.status).toBe('partial');
-      // 8 fields and validation rules, 10 elements of flows, 2 workflow rules and an outbound message, a field set
-      // and a record of custom metadata.
-      expect(report.results).toHaveLength(23);
+      // 8 fields and validation rules, 10 elements of flows and the 4 flows they are of, an element that calls one
+      // of those flows, 2 workflow rules and an outbound message, a field set and a record of custom metadata.
+      expect(report.results).toHaveLength(28);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -372,7 +398,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(21);
+      expect(report.results).toHaveLength(26);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -552,8 +578,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 22]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 23]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 27]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 28]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -619,8 +645,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const { workspace } = await setUp();
       const incoming = await workspace.impact('fixture', 'Workflow:Invoice__c');
       expect(incoming.parts).toBe(8);
-      expect(outline(incoming)).toEqual([['Flow:invoice_after_save#element:send_overdue_alert', 1, 'confirmed']]);
-      expect(incoming.results[0]?.reference).toMatchObject({ to: 'WorkflowAlert:invoice__c.invoice_overdue_alert' });
+      // The flow is found beside its element (decision record 0066).
+      expect(outline(incoming)).toEqual([
+        ['Flow:invoice_after_save', 1, 'confirmed'],
+        ['Flow:invoice_after_save#element:send_overdue_alert', 1, 'confirmed'],
+      ]);
+      for (const result of incoming.results) {
+        expect(result.reference).toMatchObject({
+          from: 'Flow:invoice_after_save#element:send_overdue_alert',
+          to: 'WorkflowAlert:invoice__c.invoice_overdue_alert',
+        });
+      }
 
       const outgoing = await workspace.impact('fixture', 'Workflow:Invoice__c', { outgoing: true });
       expect(outgoing.parts).toBe(8);
@@ -673,7 +708,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(23);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(28);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

@@ -15,12 +15,14 @@
   },
   "sameName": [],
   "parts": 0,
+  "elementOf": null,
   "direction": "incoming",
   "depth": null,
   "beyondDepth": false,
   "minConfidence": "possible",
   "results": [],
   "unresolved": [],
+  "newerVersions": [],
   "complete": false,
   "notCovered": {
     "notAnalysed": [

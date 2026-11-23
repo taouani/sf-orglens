@@ -488,12 +488,14 @@
         "component",
         "sameName",
         "parts",
+        "elementOf",
         "direction",
         "depth",
         "beyondDepth",
         "minConfidence",
         "results",
         "unresolved",
+        "newerVersions",
         "complete",
         "notCovered",
         "mayMiss"
@@ -542,9 +544,13 @@
           "uniqueItems": true
         },
         "parts": {
-          "description": "How many components of the snapshot the component contains, at any depth: the fields and rules of an object. The answer is about them too, and none of them is a result.",
+          "description": "How many components of the snapshot the component contains, at any depth: the fields and rules of an object, the elements of a flow. The answer is about them too, and none of them is a result.",
           "type": "integer",
           "minimum": 0
+        },
+        "elementOf": {
+          "description": "For an element of a flow: the key of the flow. A flow runs its elements, so for `incoming` the answer holds what refers to the flow too. Null for any other component.",
+          "type": ["string", "null"]
         },
         "direction": {
           "description": "`incoming`: the results are what refers to the component. `outgoing`, with --outgoing: they are what the component refers to.",
@@ -564,7 +570,7 @@
           "enum": ["confirmed", "probable", "possible"]
         },
         "results": {
-          "description": "The components that were found, sorted by depth and then by key.",
+          "description": "The components that were found, sorted by depth and then by key. For `incoming`, a flow is found beside an element of it that is found, at the same depth and by the reference of that element, and the answer goes on from the flow to what calls it. A flow that was found nearer keeps that way, and so does one that a reference of its own finds at the same depth, unless the way through an element is more certain. The flow of `elementOf` is no result.",
           "type": "array",
           "items": {
             "type": "object",
@@ -597,7 +603,7 @@
                 "enum": ["confirmed", "probable", "possible"]
               },
               "reference": {
-                "description": "The reference this component is found by: the one at its end of a shortest chain of references between it and the component that was asked about. For `incoming`, `from` is this component and `to` is one reference nearer. For `outgoing` it is the other way round. The nearer end is a result of the depth before, which holds the next reference of the chain. At depth 1 it is the component that was asked about, or something that one contains, and the chain ends.",
+                "description": "The reference this component is found by: the one at its end of a shortest chain of references between it and the component that was asked about. For `incoming`, `from` is this component and `to` is one reference nearer. For `outgoing` it is the other way round. A flow refers to what its elements refer to: for `incoming`, `from` of a flow can be an element of it, and for `outgoing`, the nearer end can be an element of a flow that is a result of the depth before. The nearer end is a result of the depth before, which holds the next reference of the chain. At depth 1 it is the component that was asked about, something that one contains, or the flow of an element that was asked about, and the chain ends.",
                 "$ref": "#/$defs/impactStep"
               }
             }
@@ -679,6 +685,30 @@
                 "description": "The depth a component with this name would have.",
                 "type": "integer",
                 "minimum": 1
+              }
+            }
+          }
+        },
+        "newerVersions": {
+          "description": "The flows of the answer whose active version, which the snapshot holds, has a newer version beside it, such as a draft, sorted by flow: the flow that was asked about or the flow of the element that was, and the flows among the results. The newer version is not analysed, and the answer does not hold what it would change. Only a snapshot of an org can know of one.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["flow", "active", "newer"],
+            "additionalProperties": false,
+            "properties": {
+              "flow": {
+                "description": "The key of the flow.",
+                "type": "string"
+              },
+              "active": {
+                "description": "The number of the active version, which is the one the snapshot holds.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "newer": {
+                "description": "The state of the newer version, as its file names it, such as `Draft`.",
+                "type": "string"
               }
             }
           }

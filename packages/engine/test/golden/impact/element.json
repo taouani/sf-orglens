@@ -1,0 +1,124 @@
+{
+  "snapshot": {
+    "id": 1,
+    "source": "fixture",
+    "kind": "git",
+    "status": "complete",
+    "finishedAt": "TIME",
+    "analysedBy": "VERSION"
+  },
+  "component": {
+    "key": "Flow:invoice_recalculate#element:set_amount",
+    "type": "Flow",
+    "name": "Invoice_Recalculate.Set_Amount",
+    "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml"
+  },
+  "sameName": [],
+  "parts": 0,
+  "elementOf": "Flow:invoice_recalculate",
+  "direction": "incoming",
+  "depth": null,
+  "beyondDepth": false,
+  "minConfidence": "possible",
+  "results": [
+    {
+      "key": "Flow:invoice_after_save",
+      "type": "Flow",
+      "name": "Invoice_After_Save",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:recalculate",
+        "to": "Flow:invoice_recalculate",
+        "kind": "calls",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 251,
+        "column": 19
+      }
+    },
+    {
+      "key": "Flow:invoice_after_save#element:recalculate",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Recalculate",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:recalculate",
+        "to": "Flow:invoice_recalculate",
+        "kind": "calls",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 251,
+        "column": 19
+      }
+    }
+  ],
+  "unresolved": [],
+  "newerVersions": [],
+  "complete": false,
+  "notCovered": {
+    "notAnalysed": [
+      {
+        "type": "ApexClass",
+        "listed": 13,
+        "retrieved": 13,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexTrigger",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabel",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabels",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomPermission",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailFolder",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailTemplate",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      }
+    ],
+    "partial": [],
+    "readErrors": 0,
+    "analysisErrors": 0,
+    "analysisWarnings": 1,
+    "notHeld": 0
+  },
+  "mayMiss": false
+}
