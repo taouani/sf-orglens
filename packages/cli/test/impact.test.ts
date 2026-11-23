@@ -167,6 +167,15 @@ describe('orglens impact', () => {
       '',
     ]);
 
+    // An element that calls a flow refers to what the elements of that flow refer to. They have no line.
+    const called = (await orglens(dir, ['impact', 'Invoice_After_Save.Recalculate', '--outgoing'])).stdout.split('\n');
+    expect(called).toContain(
+      'A flow refers to what its elements refer to: REFERRED TO BY can name an element of a listed flow, which is not listed itself.',
+    );
+    expect(called.some((line) => /^2 .* Flow:invoice_recalculate#element:\S+ /.test(line))).toBe(true);
+    expect(called.filter((line) => /^\d+ +Flow:invoice_recalculate#element:/.test(line))).toEqual([]);
+    expect(outgoing.stdout).not.toContain('REFERRED TO BY can name');
+
     // A class is not analysed yet. The empty answer says so, and is no finding.
     const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
     expect(apex.stdout.split('\n')).toEqual([

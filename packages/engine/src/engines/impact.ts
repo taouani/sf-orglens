@@ -20,7 +20,7 @@
  * component refers to finds a flow, it goes on from the elements of the flow.
  */
 import { EngineError } from '../core/errors.ts';
-import { buildKey, isComponentKey, KNOWN_TYPES, type ComponentKey } from '../core/keys.ts';
+import { buildKey, canonicalType, foldName, isComponentKey, KNOWN_TYPES, type ComponentKey } from '../core/keys.ts';
 import {
   CONFIDENCE_TIERS,
   REFERENCE_KINDS,
@@ -428,9 +428,26 @@ function elementKeyOf(name: string): ComponentKey | null {
 }
 
 /**
+ * The key a text is, written in any case, or `null` for a text that is no key in any case:
+ * `Flow:Invoice_After_Save#element:Update_Account` is the key `Flow:invoice_after_save#element:update_account`.
+ */
+function keyOfText(text: string): ComponentKey | null {
+  const colon = text.indexOf(':');
+  if (colon < 1) return null;
+  try {
+    // Folding writes the escape of a slash in a key in lower case, and a key writes it in upper case.
+    const key = `${canonicalType(text.slice(0, colon))}:${foldName(text.slice(colon + 1)).replaceAll('%2f', '%2F')}`;
+    return isComponentKey(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Finds the component a person names: by its key, by its type and name (`CustomField:Account.Industry`), or
  * by its name alone (`Account.Industry`). Case plays no part. An element of a flow is named after its flow,
- * `Invoice_After_Save.Update_Account`, alone or after `Flow:`.
+ * `Invoice_After_Save.Update_Account`, alone or after `Flow:`. Written in lower case after `Flow:`, such a name
+ * is also the key of a flow with a dot in its name, which no flow has: it is looked for as an element after that.
  *
  * A name alone is looked for in every type of `types` and in every type the engine knows by name. A name that
  * fits an object and other components means the object, and the others are named with it: the file of the
@@ -446,18 +463,16 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
     });
   if (text === '') throw notFound();
 
-  if (isComponentKey(text)) {
-    const found = graph.find(text);
-    if (found === undefined) throw notFound();
-    return { component: found, sameName: [] };
-  }
+  const key = keyOfText(text);
+  const byKey = key === null ? undefined : graph.find(key);
+  if (byKey !== undefined) return { component: byKey, sameName: [] };
   const colon = text.indexOf(':');
   if (colon !== -1) {
     // A type and a name. A type that is none is said by the error of the key.
     const name = text.slice(colon + 1);
-    const key = buildKey({ type: text.slice(0, colon), fullName: name });
-    const element = typeOf(key) === 'Flow' ? elementKeyOf(name) : null;
-    const found = graph.find(key) ?? (element === null ? undefined : graph.find(element));
+    const typed = buildKey({ type: text.slice(0, colon), fullName: name });
+    const element = typeOf(typed) === 'Flow' ? elementKeyOf(name) : null;
+    const found = graph.find(typed) ?? (element === null ? undefined : graph.find(element));
     if (found === undefined) throw notFound();
     return { component: found, sameName: [] };
   }

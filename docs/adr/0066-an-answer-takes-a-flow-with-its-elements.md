@@ -32,9 +32,8 @@ What refers to a component:
 
 1. **An element that is found brings its flow.** The flow is a result of the same depth, with the confidence and
    the reference of that element, and the walk goes on from the flow to what refers to it, such as an element of
-   another flow that calls it as a subflow. This changes record 0044 in one point, for flows only: a component
-   that is found is followed from what contains it where it is an element of a flow. A field that is found is
-   still not followed from its object.
+   another flow that calls it as a subflow. A component that is found is followed from what contains it where it
+   is an element of a flow. A field that is found is still not followed from its object.
 2. **The flow has the depth of its element**, not one more. The file of the flow holds the reference, and a step
    from the element to its flow would count a reference that no file has.
 3. **The flow is shown with the reference of one of its elements**: the one that makes the chain most certain, and
@@ -67,11 +66,22 @@ Naming and the rest of the answer:
    that runs, which the snapshot holds. A flow whose version is not known (`FLOW_VERSION_UNKNOWN`) stays a warning
    that an answer about flows counts, as before.
 8. **The text of `impact` says what a reader would otherwise have to work out**: below the count of the results,
-   "A flow is listed with the reference of one of its elements, which is listed after it.", and below the results,
-   one line for each flow with a newer version.
+   "A flow is listed with the reference of one of its elements, which is listed after it.", for `--outgoing` "A
+   flow refers to what its elements refer to: REFERRED TO BY can name an element of a listed flow, which is not
+   listed itself.", and below the results, one line for each flow with a newer version.
 
 ## Consequences
 
+- This changes four rules of record 0044, for flows only, and that record says so in its header. A component that
+  is found is followed from what contains it where it is an element of a flow (item 1), and with `--outgoing` from
+  what it contains where it is a flow (item 5). The start holds the flow of an element that is asked about, which
+  the element does not contain (item 4). The reference of a result has the result at one end, and at the other a
+  result of the depth before, the start or a part of the start, except in two cases: a flow that is found through
+  an element holds the reference of that element (item 3), and with `--outgoing` the nearer end can be an element
+  of a flow of the depth before (item 5).
+- A name with one dot that found a field before can now fit an element of a flow too, and then ends with
+  `COMPONENT_AMBIGUOUS` (item 6): `Account.Name`, where a flow `Account` has an element `Name`. Named with its
+  type, such as `CustomField:Account.Name`, the field is found as before.
 - This changes the contract of the command `impact`: an answer holds more results, and the JSON has the two fields
   `elementOf` and `newerVersions`. The schema of the output, `docs/cli.md` and a changeset say so. Nothing of the
   contract is fixed before the first version without a pre-release part (record

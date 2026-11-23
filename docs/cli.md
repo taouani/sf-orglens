@@ -663,10 +663,13 @@ in the snapshot nor known to OrgLens by name is not found by its name alone: nam
   field that an element writes is written whenever the flow runs, also when another flow calls it as a subflow.
   Where the answer finds an element, it finds the flow too, at the same depth, and goes on with what refers to the
   flow. The line of the flow shows the reference of one of its elements, the one that makes the chain most certain
-  and among those the first by key, and the element has a line of its own after it. A flow that a reference of its
-  own finds at the same depth keeps that reference, unless the way through an element is more certain. For an
-  element that is asked about, the answer holds what refers to its flow, and the second line names the flow. With
-  `--outgoing`, the answer goes on from a flow it finds to what the elements of the flow refer to.
+  and among those the first by key, and the element has a line of its own after it. A flow that the answer found
+  nearer keeps its line, and so does a flow that a reference of its own finds at the same depth, unless the way
+  through an element is more certain. For an element that is asked about, the answer holds what refers to its flow,
+  and the second line names the flow. The flow has no line then: where the answer finds another element of it, only
+  the element has one. With `--outgoing`, the answer goes on from a flow it finds to what the elements of the flow
+  refer to, and the elements have no lines. What an element that is asked about refers to is its own: its flow
+  plays no part in that.
 - A flow whose active version has a newer one beside it, such as a draft, is named in a line below the results when
   it is in the answer: the flow that was asked about, the flow of an element that was asked about, or the flow of a
   result. The snapshot holds the active version, which is the one that runs, and the newer one is not analysed
@@ -675,7 +678,9 @@ in the snapshot nor known to OrgLens by name is not found by its name alone: nam
   newer version. The line does not make the answer incomplete: what runs is what the answer is about.
 - With `--depth`, the answer says whether references lead further than it goes.
 - With `--outgoing`, the same is shown in the other direction: what the component refers to, and what those
-  refer to. A name that has no key, so that no component stands for it, is listed in a table of its own.
+  refer to. There, `REFERRED TO BY` can name an element of a flow of the answer, which has no line: the line of its
+  flow is the next one of the chain, and a line above the table says so. A name that has no key, so that no
+  component stands for it, is listed in a table of its own.
 
 **What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
 the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
@@ -729,12 +734,12 @@ needs a complete answer reads `data.complete`: the exit code `0` does not say it
 | `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                  |
 | `sameName`      | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                    |
 | `parts`         | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                       |
-| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so what refers to the flow is in the answer.                                                                                      |
+| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                       |
 | `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                       |
 | `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                           |
 | `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                              |
 | `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                        |
-| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow.                                             |
+| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`.       |
 | `reference`     | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse. |
 | `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
 | `newerVersions` | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                     |

@@ -58,7 +58,8 @@ In short:
 | [24](https://github.com/taouani/sf-orglens/actions/runs/45199698754) | read | `f5bb7fe` | green, with the same warning |
 | [26](https://github.com/taouani/sf-orglens/actions/runs/45221970983) | read | `3864d3b` | green, with the same warning |
 
-Runs 16 and 25 are the logins the workflow makes once a week by itself.
+Run 25 is the login the workflow makes once a week by itself. Run 16 was started by hand on `e86de72`, with the
+code of Phase 1, and read the org before anything of Phase 2 was deployed. This note does not use it.
 
 ## 1. The deploys
 

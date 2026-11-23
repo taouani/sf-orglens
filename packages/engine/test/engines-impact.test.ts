@@ -462,6 +462,22 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       ]);
     });
 
+    it('keeps the way of a flow that a level before found, also where an element of it is found more certainly', () => {
+      const early = flow('Early');
+      const late = element('Early', 'Late');
+      const graph = graphOf([
+        holds(A),
+        holds(B, to(A, 2)),
+        holds(early, tier(A, 'probable', 1)),
+        holds(late, to(B, 7)),
+      ]);
+      expect(outline(walk(graph, A))).toEqual([
+        [B, 1, 'confirmed', `${B} > ${A}`],
+        [early, 1, 'probable', `${early} > ${A}`],
+        [late, 2, 'confirmed', `${late} > ${B} | ${B} > ${A}`],
+      ]);
+    });
+
     it('takes the flow of an element that is asked about into the start, and gives what calls the flow', () => {
       const found = walk(graphOf(flows()), SET);
       expect(found.parts).toBe(0);
@@ -474,6 +490,16 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       // What the element refers to is its own: its flow plays no part in that.
       expect(outline(walk(graphOf(flows()), SET, { direction: 'outgoing' }), true)).toEqual([
         [A, 1, 'confirmed', `${SET} > ${A}`],
+      ]);
+      // Another element of the flow is found in a circle. Its flow is in the start, and no result.
+      const back = element('Sub', 'Call_Outer');
+      const circle = walk(graphOf([...flows(), holds(back, calls(OUTER, 20))]), SET);
+      expect(circle.results.map((result) => [result.key, result.depth])).toEqual([
+        [MAIN, 1],
+        [CALL, 1],
+        [OUTER, 2],
+        [CALL_MAIN, 2],
+        [back, 3],
       ]);
     });
 
@@ -489,6 +515,20 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       expect(found.notHeld).toBe(0);
       const one = walk(graphOf(flows()), OUTER, { direction: 'outgoing', depth: 1 });
       expect([one.results.map((result) => result.key), one.beyondDepth]).toEqual([[MAIN], true]);
+    });
+
+    it('walks from the elements of a flow as certainly as the flow was found', () => {
+      const doubtful = flows().map((one) =>
+        one.key === CALL_MAIN
+          ? holds(CALL_MAIN, to(MAIN, 3, { kind: 'calls', origin: 'parser:flow', confidence: 'probable' }))
+          : one,
+      );
+      // Both elements that refer to the field now make chains as certain as each other: the first by key is kept.
+      expect(outline(walk(graphOf(doubtful), OUTER, { direction: 'outgoing' }), true)).toEqual([
+        [MAIN, 1, 'probable', `${CALL_MAIN} > ${MAIN}`],
+        [SUB, 2, 'probable', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB}`],
+        [A, 3, 'probable', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB} | ${CHECK} > ${A}`],
+      ]);
     });
   });
 
@@ -654,7 +694,12 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     expect(found('Invoice_After_Save.Update_Account')).toBe(update);
     expect(found(' invoice_after_save.UPDATE_ACCOUNT ')).toBe(update);
     expect(found('Flow:Invoice_After_Save.Update_Account')).toBe(update);
+    // In lower case after the type, the name is also the key of a flow with a dot, which no flow has.
+    expect(found('Flow:invoice_after_save.update_account')).toBe(update);
+    expect(found('flow:invoice_after_save.update_account')).toBe(update);
     expect(found(update)).toBe(update);
+    // A key is found in any case.
+    expect(found('FLOW:Invoice_After_Save#Element:Update_Account')).toBe(update);
     expect(found('Invoice_After_Save')).toBe(flow('Invoice_After_Save'));
     for (const named of [
       'Invoice_After_Save.Nope',
@@ -662,6 +707,8 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       '.Update_Account',
       'Invoice_After_Save.',
       'Flow:Invoice_After_Save.Nope',
+      'Flow:invoice_after_save.nope',
+      'Flow:Invoice_After_Save#element:Nope',
     ]) {
       expect(
         codeOf(() => found(named)),

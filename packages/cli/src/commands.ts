@@ -886,6 +886,13 @@ function impactLines(report: ImpactReport): string[] {
   if (incoming && results.some((result) => result.reference.from !== result.key)) {
     lines.push('A flow is listed with the reference of one of its elements, which is listed after it.');
   }
+  // Beyond depth 1, the nearer end of a reference is a result, or an element of a flow that is one.
+  const listed = new Set(results.map((result) => result.key));
+  if (!incoming && results.some((result) => result.depth > 1 && !listed.has(result.reference.from))) {
+    lines.push(
+      'A flow refers to what its elements refer to: REFERRED TO BY can name an element of a listed flow, which is not listed itself.',
+    );
+  }
   if (results.length > 0) {
     lines.push(
       '',
