@@ -18,6 +18,7 @@ import type { OrgSource } from '../src/core/config/config.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
+import { besidesKnownGap } from './helpers/known-gap.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { mockDependencies } from './helpers/mock-dependencies.ts';
 import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
@@ -296,8 +297,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(report.snapshot.startedAt).toMatch(UTC);
       expect(report.snapshot.finishedAt).toMatch(UTC);
-      // Neither the reading nor the analysis has anything to say about the whole project.
-      expect(report.issues).toEqual([]);
+      // Neither the reading nor the analysis has anything to say about the whole project, but for the one
+      // path of a flow that the answer key calls unknown.
+      expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
         { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null },
@@ -311,7 +313,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'Flow', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
+        // A flow is counted with its 55 elements.
+        { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'RecordType', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
         { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
@@ -416,9 +419,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(120);
+      expect(org.components).toHaveLength(175);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(112);
+      expect(org.references).toHaveLength(238);
+      // The flows among them: 6 flows with 55 elements, and the 126 references of the answer key.
+      const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
+      expect(org.components.filter(ofFlow)).toHaveLength(61);
+      expect(org.references.filter(ofFlow)).toHaveLength(126);
       // Every reference has its place in a file of its own snapshot.
       const orgFiles = new Set(stored(dir, 1));
       const folderFiles = new Set(stored(dir, 2));
@@ -433,44 +440,51 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       );
 
       // The org hands out a file for the two standard objects, which the folder does not have. So the objects
-      // are defined in the snapshot of the org, and a lookup to one of them is resolved there.
+      // are defined in the snapshot of the org, and a reference to one of them is resolved there: the lookup of
+      // a field, and the record a flow updates.
       const undefinedIn = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.path === null).map((one) => one.key);
       const lookupToAccount = (references: readonly StoredReference[]): string[] =>
         references.filter((one) => one.to === 'CustomObject:account').map((one) => one.resolution);
       expect(undefinedIn(org.components)).toEqual([]);
       expect(undefinedIn(folder.components)).toEqual(['CustomObject:account', 'CustomObject:user']);
-      expect(lookupToAccount(org.references)).toEqual(['resolved']);
-      expect(lookupToAccount(folder.references)).toEqual(['external']);
+      expect(lookupToAccount(org.references)).toEqual(['resolved', 'resolved']);
+      expect(lookupToAccount(folder.references)).toEqual(['external', 'external']);
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
       const xml = { failedFiles: 0, references: 30, unresolved: 0, pathsNotFollowed: 0 };
-      const formula = { components: 35, failedFiles: 0, references: 82, unresolved: 0, pathsNotFollowed: 0 };
+      // The formulas of 35 fields and rules and of 7 elements of flows: 82 names and 19. Of the 126 references
+      // of flows, the other 107 are of the reader of flows. One path of a flow is not followed.
+      const formula = { components: 42, failedFiles: 0, references: 101, unresolved: 0, pathsNotFollowed: 0 };
+      const flow = { components: 61, failedFiles: 0, references: 107, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 120,
-        references: 112,
+        components: 175,
+        references: 238,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 75, ...xml },
           { origin: 'parser:formula', ...formula },
+          { origin: 'parser:flow', ...flow },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 120,
-        references: 112,
+        components: 175,
+        references: 238,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 73, ...xml },
           { origin: 'parser:formula', ...formula },
+          { origin: 'parser:flow', ...flow },
         ],
       });
       const analysed = (report: CoverageReport): Record<string, number> =>
         Object.fromEntries(report.types.filter((type) => type.analysed > 0).map((type) => [type.type, type.analysed]));
-      expect(analysed(fromOrg)).toEqual({ CustomField: 57, CustomObject: 7, ValidationRule: 11 });
-      expect(analysed(fromFolder)).toEqual({ CustomField: 57, CustomObject: 5, ValidationRule: 11 });
+      // A flow is counted with its elements.
+      expect(analysed(fromOrg)).toEqual({ CustomField: 57, CustomObject: 7, Flow: 61, ValidationRule: 11 });
+      expect(analysed(fromFolder)).toEqual({ CustomField: 57, CustomObject: 5, Flow: 61, ValidationRule: 11 });
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {

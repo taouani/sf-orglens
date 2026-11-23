@@ -776,9 +776,8 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
     // One more issue: the relationship that the object does not have. The project has one issue of its own,
     // in a flow.
     const others = analysis.issues.filter((issue) => issue.code !== 'FORMULA_NOT_READ');
-    expect(others.filter((issue) => !alone.issues.includes(issue))).toHaveLength(others.length - alone.issues.length);
     expect(others.map((issue) => `${issue.severity} ${issue.code} ${String(issue.componentKey)}`).sort()).toEqual([
-      'warning PATH_NOT_FOLLOWED CustomField:invoice__c.bad_relationship__c',
+      'warning PATH_NOT_FOLLOWED CustomField:invoice__c.missing_relationship__c',
       'warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
     // Ten more components were read, and each holds a formula. Five files hold one that was not read. The

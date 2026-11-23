@@ -21,6 +21,7 @@ import { addIssue } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { fixtureDependencyRows, keyedPairs } from './helpers/fixture-dependencies.ts';
+import { besidesKnownGap } from './helpers/known-gap.ts';
 import { mockDependencies, type MockDependencies } from './helpers/mock-dependencies.ts';
 import { metadataFromSource, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
@@ -86,8 +87,11 @@ const queryPaths = (): string[] => [
 ];
 const ofReading = (report: CoverageReport): string[] =>
   report.issues.filter((issue) => issue.stage === 'read').map((issue) => `${issue.severity} ${issue.code}`);
+/** The issues of the analysis, without the one warning about a flow that every analysis of the project holds. */
 const ofAnalysis = (report: CoverageReport): string[] =>
-  report.issues.filter((issue) => issue.stage === 'analysis').map((issue) => `${issue.severity} ${issue.code}`);
+  besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis')).map(
+    (issue) => `${issue.severity} ${issue.code}`,
+  );
 
 describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
   'the cross-check of a snapshot of an org with %s',
@@ -137,7 +141,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const compared = pairs.length - apex;
 
       expect(report.snapshot.status).toBe('complete');
-      expect(report.issues).toEqual([]);
+      expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.crossCheck).toEqual({
         state: 'whole',
@@ -246,7 +250,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(ofReading(report)).toEqual([]);
       expect(report.analysis?.complete).toBe(false);
       expect(report.crossCheck?.comparison).toMatchObject({ missed: [{ from: RULE, to: TAKEN_OUT }], onlyOrgLens: [] });
-      expect(report.issues.filter((issue) => issue.stage === 'analysis')).toEqual([
+      expect(besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis'))).toEqual([
         {
           stage: 'analysis',
           severity: 'error',
@@ -276,7 +280,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await snap(dir);
       expect(report.snapshot.status).toBe('complete');
       expect(report.analysis?.complete).toBe(true);
-      expect(report.issues).toEqual([
+      expect(besidesKnownGap(report.issues)).toEqual([
         {
           stage: 'read',
           severity: 'warning',

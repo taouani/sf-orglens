@@ -1170,7 +1170,8 @@ describe('reading the test org', () => {
     expect(output).toMatch(/^CustomField +57 +57 +ok$/m);
     expect(output).toMatch(/^CustomLabel +1 +1 +ok$/m);
     expect(output).toMatch(/^GlobalValueSet +1 +1 +ok$/m);
-    expect(output).toContain('Observations: 0.');
+    // The one path of a flow that the answer key calls unknown.
+    expect(output).toContain('Observations: 1.\n- warning PATH_NOT_FOLLOWED: 1 observation\n');
     const components = fixtureComponents().length;
     expect(output).toContain(
       `Fixture project: ${String(components)} components. Listed by the org: ${String(components)}. Retrieved: ${String(components)}.`,

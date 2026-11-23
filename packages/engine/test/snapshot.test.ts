@@ -142,6 +142,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
             unresolved: 0,
             pathsNotFollowed: 0,
           },
+          { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
       // The Dependency API is of an org. A repository has none.
@@ -438,7 +439,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     const workspace = await openWorkspace({ root, env });
     const report = await workspace.snapshot('fixture');
     expect(report.snapshot.status).toBe('complete');
-    expect(report.issues.filter((issue) => issue.severity !== 'info')).toEqual([]);
+    // One path of a flow is not followed, as the answer key says. Nothing else is said.
+    expect(
+      report.issues
+        .filter((issue) => issue.severity !== 'info')
+        .map((issue) => `${issue.severity} ${issue.code} ${String(issue.component)}`),
+    ).toEqual(['warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result']);
 
     const apex = (dir: string): string[] =>
       readdirSync(join(FIXTURES_DIR, 'billing-sfdx', dir), { recursive: true })
