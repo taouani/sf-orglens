@@ -280,7 +280,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(flows).toHaveLength(6);
       const expected = [
         ...wholeFiles,
-        ...flows.map((path) => path.replace(/^flows\/(.*)\.flow-meta\.xml$/, 'flowDefinitions/$1.flowDefinition-meta.xml')),
+        ...flows.map((path) =>
+          path.replace(/^flows\/(.*)\.flow-meta\.xml$/, 'flowDefinitions/$1.flowDefinition-meta.xml'),
+        ),
         'objects/Account/Account.object-meta.xml',
         'objects/User/User.object-meta.xml',
       ].sort();

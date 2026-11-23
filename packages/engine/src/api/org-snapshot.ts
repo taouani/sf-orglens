@@ -947,8 +947,8 @@ async function retrieveBeside(
     if (isRefusal(error)) return { said: `Salesforce did not start the retrieve. ${saidIn(error)}` };
     throw error;
   }
-  let zip: Uint8Array | null = null;
-  let remarks: readonly string[] = [];
+  let zip: Uint8Array | null;
+  let remarks: readonly string[];
   try {
     const state = await ended(api, jobId, source, tuning);
     if (!state.succeeded) return { said: saidAbout(state) };

@@ -104,7 +104,7 @@ const codesOf = (report: CoverageReport): string[] =>
   report.issues.filter((issue) => issue.stage === 'read').map((issue) => `${issue.severity} ${issue.code}`);
 const aboutFlows = (report: CoverageReport): unknown[] =>
   report.issues
-    .filter((issue) => issue.stage === 'read' && /FLOW/.test(issue.code))
+    .filter((issue) => issue.stage === 'read' && issue.code.includes('FLOW'))
     .map(({ severity, code, message, component, details }) => ({ severity, code, message, component, details }));
 const flowRow = (report: CoverageReport): unknown => report.types.find((type) => type.type === 'Flow');
 
@@ -279,7 +279,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(draftPlaces(flowFile(dir, 1) ?? '')).toEqual({ ofDraft: 3, ofActive: 0, all: 3 });
       // The draft is analysed, and what it refers to says that the flow is not active.
       const fromFlow = reading(dir, (store) =>
-        storedReferences(store, 1).filter((one) => one.from.startsWith(KEY) && one.to.endsWith('paid_date__c')),
+        storedReferences(store, 1).filter((one) => one.from.startsWith(KEY) && (one.to ?? '').endsWith('paid_date__c')),
       );
       expect(fromFlow.length).toBeGreaterThan(0);
     });
@@ -307,7 +307,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         [`${FLOW_WITH_DRAFT}-1`],
       ]);
       expect(report.snapshot.status).toBe('partial');
-      const notes = report.issues.filter((issue) => /FLOW/.test(issue.code));
+      const notes = report.issues.filter((issue) => issue.code.includes('FLOW'));
       expect(notes.map((issue) => `${issue.code} ${issue.component ?? ''}`)).toEqual([
         'ACTIVE_FLOW_NOT_RETRIEVED Flow:invoice_after_save',
         `FLOW_NEWER_VERSION ${KEY}`,

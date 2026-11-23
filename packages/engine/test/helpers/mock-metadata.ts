@@ -121,10 +121,10 @@ export interface MockMetadata {
    * The versions of a flow beside the one of the folder, by the name of the flow: the file of the folder is the
    * version `latest`, and `older` holds the text of earlier versions by their numbers. A flow that is not named
    * here has one version, the one of the folder, and is known by its name alone. For a flow that is named here
-   * the org answers for a name with a number as run 22 of "Live
-   * org" showed: the latest version comes back under the name of the flow (`flows/Name.flow`), an older one under
-   * the name with its number (`flows/Name-1.flow`), and a number the flow does not have is not found. The
-   * definition of the flow names the version whose text is active.
+   * the org answers for a name with a number as run 22 of "Live org" showed: the latest version comes back under
+   * the name of the flow (`flows/Name.flow`), an older one under the name with its number (`flows/Name-1.flow`),
+   * and a number the flow does not have is not found. The definition of the flow names the version whose text is
+   * active.
    */
   readonly flowVersions: Map<string, { readonly latest: number; readonly older: ReadonlyMap<number, string> }>;
   /** What the org finds wrong in a deploy. While it holds something, a deploy fails and changes nothing. */
@@ -242,8 +242,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const flow = flows.get(name);
     const versions = metadata.flowVersions.get(name);
     const latest = versions?.latest ?? 1;
-    let active =
-      flow?.xml !== undefined && isActive(readFileSync(flow.xml, 'utf8')) ? latest : (null as number | null);
+    let active = flow?.xml !== undefined && isActive(readFileSync(flow.xml, 'utf8')) ? latest : (null as number | null);
     for (const [number, text] of versions?.older ?? []) if (active === null && isActive(text)) active = number;
     const number = active === null ? '' : `    <activeVersionNumber>${String(active)}</activeVersionNumber>\n`;
     return `<?xml version="1.0" encoding="UTF-8"?>\n<FlowDefinition xmlns="${NAMESPACE}">\n${number}</FlowDefinition>\n`;
