@@ -121,13 +121,17 @@ component, and that is all that is checked. What Salesforce may refuse, as far a
 - the field of a record on the screen of `Invoice_Review_Screen`, which has a name of its own. The one public
   example I found has none;
 - the outbound message, whose `integrationUser` is a made-up user name
-  (`integration.user@billing-fixture.invalid`) that the tool that deploys the project has to replace with the
-  user it logs in as.
+  (`integration.user@billing-fixture.invalid`). The tool that deploys the project writes the user it logs in as
+  in its place, in the copy it sends. Whether Salesforce takes that user is not verified.
 
 One thing Salesforce will accept and that is not as a person would build it: `Get_Invoice` of the screen flow
 stores five fields of the invoice, and later elements read four others of the same record. The flow would show
-nothing for them when it runs. For an analysis that reads the file it makes no difference. The deploy and what it
-showed come with the next pull request.
+nothing for them when it runs. For an analysis that reads the file it makes no difference.
+
+The tool that deploys also sends `Invoice_Recalculate` a second time, as a draft that reads `Paid_Date__c` where
+the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and a newer draft
+(`docs/live-org-setup.md`). The key is about the file here, which is the active version. What the deploy showed
+comes with the note of the run.
 
 ## The answer key
 
