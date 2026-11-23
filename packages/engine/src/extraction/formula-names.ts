@@ -26,7 +26,12 @@ export type NameUse =
   /** A component that is no field, by its type and its full name. */
   | { readonly form: 'component'; readonly type: string; readonly fullName: string; readonly part: NamePart }
   /** An object. */
-  | { readonly form: 'object'; readonly part: NamePart };
+  | { readonly form: 'object'; readonly part: NamePart }
+  /**
+   * Names after a first name of which it is not known what record it holds. Nothing can be said of them: they
+   * are counted and not followed.
+   */
+  | { readonly form: 'unfollowed'; readonly after: NamePart; readonly parts: readonly NamePart[] };
 
 /** One name between two dots: a name, and after a colon the kind of record a relationship is taken as. */
 const SEGMENT = /^([A-Za-z][A-Za-z0-9_]*)(?::([A-Za-z][A-Za-z0-9_]*))?$/;
@@ -166,9 +171,15 @@ export function usesOfName(name: string, own: string): readonly NameUse[] | null
  * - `{ object: 'Invoice__c' }`: a record of that object. The names after it are a path from the object.
  * - `{ object: null }`: something that holds no record and names nothing that can change, such as a number, a
  *   text or the time. The names after it give no reference. Anything after it that is no name is not read.
+ * - `{ object: null, notKnown: 'record' }`: a record, and nothing says of which object. The names after it are
+ *   not followed, and the reading says so.
+ * - `{ object: null, notKnown: 'outputs' }`: something that gives values back under names of its own, such as
+ *   an action or a subflow of a flow. One name after it is such a value, and gives no reference. More names are
+ *   a path from a record of which nothing says the object: they are not followed.
  */
 export interface MergeStart {
   readonly object: string | null;
+  readonly notKnown?: 'record' | 'outputs';
 }
 
 /** A name after a dot, where nothing is known of what it names. */
@@ -194,9 +205,12 @@ export function usesOfMergeField(
   const start = startOf(first.text);
   if (start !== undefined) {
     if (rest.length === 0) return [];
+    if (start.object !== null) return plain(start.object, rest);
     // What stands after a name that holds no record gives no reference, as long as it is built like names.
-    if (start.object === null) return rest.every((segment) => PLAIN_NAME.test(segment.text)) ? [] : null;
-    return plain(start.object, rest);
+    if (!rest.every((segment) => PLAIN_NAME.test(segment.text))) return null;
+    if (start.notKnown === undefined || (start.notKnown === 'outputs' && rest.length === 1)) return [];
+    const parts = rest.map((segment): NamePart => ({ name: segment.text, from: segment.from }));
+    return [{ form: 'unfollowed', after: { name: first.text, from: first.from }, parts }];
   }
   return first.text.startsWith('$') ? usesOfVariable(first.text.toLowerCase(), rest, null) : null;
 }
