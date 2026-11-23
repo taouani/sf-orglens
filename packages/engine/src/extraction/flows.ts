@@ -161,7 +161,9 @@ export function resourcesOf(root: XmlElement): StartOf {
     if (name !== null && !resources.has(fold(name))) resources.set(fold(name), holds);
   };
   const fixed = (holds: MergeStart) => (): MergeStart => holds;
-  const record = (object: string | null): MergeStart => (object === null ? SOME_RECORD : { object });
+  // A value that is not built like a name names no object: the element that holds it says that it is not read.
+  const record = (object: string | null): MergeStart =>
+    object === null || !NAME.test(object) ? SOME_RECORD : { object };
 
   /** What the list holds that an element goes over. A list that is named with a path is of no known object. */
   const resolving = new Set<string>();
@@ -189,8 +191,8 @@ export function resourcesOf(root: XmlElement): StartOf {
 
   const object = textOf(childOf(childOf(root, 'start') ?? root, 'object'));
   if (childOf(root, 'start') !== null && object !== null) {
-    set('$Record', fixed({ object }));
-    set('$Record__Prior', fixed({ object }));
+    set('$Record', fixed(record(object)));
+    set('$Record__Prior', fixed(record(object)));
   }
   set('$Flow', fixed(HOLDS_NOTHING));
 
@@ -514,7 +516,8 @@ export function readFlow(document: XmlDocument): FlowReading {
   const status = textOf(childOf(root, 'status'));
   const processType = textOf(childOf(root, 'processType'));
   const active = status === null ? {} : { active: status === 'Active' };
-  const reader = new Reader(document, startOf, start === null ? null : textOf(childOf(start, 'object')));
+  const triggering = start === null ? null : textOf(childOf(start, 'object'));
+  const reader = new Reader(document, startOf, triggering !== null && NAME.test(triggering) ? triggering : null);
 
   const own = new Sink();
   const elements: FlowElement[] = [];
