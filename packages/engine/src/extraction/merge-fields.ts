@@ -7,7 +7,7 @@
  */
 
 /** One merge field of a text. Every place counts the code units of the text, from 0. */
-export interface MergeField {
+interface MergeField {
   /** What stands between `{!` and `}`, without the white space around it. */
   readonly text: string;
   /** Where that starts. For a merge field that holds nothing, the place of its closing brace. */
