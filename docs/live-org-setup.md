@@ -162,8 +162,8 @@ The tool sends two things that are not the files of the repository as they are:
   is in no file of the repository and in no log. After the deploy it is in the outbound message of the test org,
   so a snapshot of the test org holds it, in the temporary folder of the read step, which is deleted.
 - The step "draft" sends the flow `Invoice_Recalculate` once more, as a draft that reads another field
-  (`Paid_Date__c` where the file reads `Due_Date__c`). After it the org should hold an active version of the flow
-  and a newer draft, which is what the read step and the probe then report on. It is a step of its own, so that
+  (`Paid_Date__c` where the file reads `Due_Date__c`). After it the org holds an active version of the flow and
+  a newer draft, which is what the read step and the probe then report on. It is a step of its own, so that
   the org can be read before it and after it, and so that no step waits for two deploys.
 
 What the step "draft" did on the test org, on 23 November 2026 (`docs/research/phase-2/real-org.md` has the
@@ -190,10 +190,10 @@ The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts
 describe metadata: `MetadataComponentDependency`, which it reads with the reader of the engine
 (`packages/engine/src/sources/dependency-api.ts`), `ApexClass` with its symbol table, and `CustomObject`,
 `CustomField`, `ValidationRule`, `ApexTrigger`, `FlowDefinition` and `Flow` for the names behind the ids. The last
-two also say which versions of a flow the org holds and which one is active. Whether the test org answers the
-queries for them as they are written is not verified until a run shows it: a query it refuses is said in the log,
-and the step goes on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the engine finds the components of a row by the
-ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
+two also say which versions of a flow the org holds and which one is active. The test org answered the queries
+for them as they are written on 23 November 2026. A query an org refuses is said in the log, and the step goes
+on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the
+engine finds the components of a row by the ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
 of a class in the org, which writes to the org, so the probe does not do that.
 
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in

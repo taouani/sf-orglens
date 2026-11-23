@@ -13,8 +13,8 @@ In short:
 
 - Salesforce refused the first two deploys of the larger project, each time for a flow, and accepted the third
   after two flows were corrected by reading. All 118 components are in the test org.
-- The org lists and hands out all 118. No engine code was changed for the metadata types that are new in the
-  project.
+- The org lists and hands out all 118. Nothing the engine does was changed for the metadata types that are new
+  in the project.
 - The Dependency API reports 76 of the 149 pairs of the answer key that come from the files of Phase 2, and 206
   of all 343. From a flow to a custom field it reports 47 of 49. It reports nothing from a workflow rule, from a
   record type, from an email alert, from an outbound message or from a task, and nothing a record of a custom
@@ -26,9 +26,9 @@ In short:
   back with the maintainer, as the plan says, before the analyser of flows is built.
 - The cross-check of the engine for the types of Phase 1 holds on the larger project: of 57 pairs Salesforce
   reports, the analysis has 55, has 2 through a part of the object, and missed none.
-- Read in parts, the rows of flows are whole before the draft and partial after it: the reader of the engine
-  does not ask per component once a row comes from a version the org did not list. It says so. The cross-check
-  of flows has to be designed for it.
+- Read in parts, the rows of flows are whole before the draft and partial after it. By my reading of the code,
+  the reader of the engine does not ask per component once a row it was given comes from a version the org did
+  not list. It says that the reading is partial. The cross-check of flows has to be designed for it.
 - The symbol tables are as in Phase 0 and Phase 1: no reference in any of them.
 
 ## Conditions
@@ -61,6 +61,8 @@ A deploy is all or nothing, so the org was as before until run 19.
 | 19 | 118 | 118 | none | 29 | 11 | 78 |
 
 The last three columns count the components Salesforce found no error in. Each deploy ended in under a minute.
+The project grew by 31 components, from 87 to 118, and Salesforce counted 29 as new in run 19. No log says which
+two of the 31 it counted as changed or as they were.
 
 **`Invoice_Review_Screen`** `[run 17]`. Of the problem only the everyday words came out: "field … unknown (A …
 field of type … reference the field … because its … type … supported on this object. … or … the …". The field of
@@ -99,19 +101,22 @@ flow starts by, and an outbound message that names the user of the login.
   tier are listed and do not come back, two objects, two fields and two record types, as in the last run of
   Phase 1. Outside the tier, about 215 do not come back.
 - Reading took 183 seconds, with 389 requests to the Metadata API, in three chunks.
-- The metadata types that are new in the project came back: `Flow` (7 listed, 7 retrieved, one of them not of the
-  project), `FlowDefinition` (7), `Workflow` (3) with its parts `WorkflowRule` (4), `WorkflowFieldUpdate` (4),
-  `WorkflowAlert` (1), `WorkflowOutboundMessage` (1) and `WorkflowTask` (1), `FieldSet` (1), `CustomMetadata`
-  (4), and the record types and the email template of the project among those of the org.
+- The metadata types that are new in the project came back: `Flow` (7 listed, 7 retrieved), `FlowDefinition`
+  (7), `Workflow` (3) with its parts `WorkflowRule` (4), `WorkflowFieldUpdate` (4), `WorkflowAlert` (1),
+  `WorkflowOutboundMessage` (1) and `WorkflowTask` (1), `FieldSet` (1), `CustomMetadata` (4), and the record
+  types and the email template of the project among those of the org. The counts are those of the org: one
+  `Flow`, one `FlowDefinition`, one `Workflow` and one `WorkflowFieldUpdate` are not of the project, which has
+  6, 6, 2 and 3.
 
 What Salesforce rewrote in the files of Phase 2 `[run 19]`. The log names 80 of the 91 files that differ, in the
-order of their folders, so what it did to the files of the workflow rules is not in it:
+order of their folders, so what it did to the other 11, the files of the workflow rules among them, is not in
+it:
 
 - **Every flow** got the element `areMetricsLoggedToDataCloud`. The flow that runs after the save got
   `nameSegment`, the process got `filterLogic`.
-- **The screen flow** got `styleProperties` with a vertical alignment and a width for five fields of its screens.
-  The file grew from 12,193 to 13,649 bytes. So the lines of a flow from an org are not the lines of the file
-  that was deployed.
+- **The screen flow** got `styleProperties` five times, each with a vertical alignment and a width. The log does
+  not say where they stand. The file grew from 12,193 to 13,649 bytes. So the lines of a flow from an org are
+  not the lines of the file that was deployed.
 - **The three records of the custom metadata type** that leave a field out got a `values` element for each such
   field.
 - **The two record types** each got the values of one more picklist.
@@ -132,8 +137,12 @@ The org gave 335 rows. 227 are between two components of the fixture project, an
 | From the other files | 194 | 130 |
 | All | 343 | 206 |
 
-Of the 206, 195 are matched by the ids of both ends and 11 by a name, where the probe reads no id for the type:
-an email template, a part of the workflow rules, a field set. All 11 are among the 76.
+The number 206 is in no log. The probe of run 20 counts 195 pairs as reported, each matched by the ids of both
+ends. It finds 11 more by a name alone, because it reads no id for an email template, a field set or a part of
+the workflow rules, and does not count them `[run 20]`. The read step of run 19 matched those 11 pairs by the
+ids the org listed the components with: its table of pairs has 3 of the email template, 4 of the field set, 3 of
+the field updates and 1 to the email alert as reported `[run 19]`. So 206 are reported, and all 11 are among the
+76.
 
 The pairs of the files of Phase 2, by the types of their ends:
 
@@ -173,9 +182,9 @@ What the rows say, read against the list of every pair in the log:
 - **Not reported from a flow:** every standard field and the one standard object, the subflow, and the record
   type a condition names as text.
 - **Workflow.** Nothing is reported from a rule: not the fields of its criteria or of its formula, not the
-  actions it starts. Of a field update, the three custom fields its formula reads are reported. The field it
-  writes is not, nor the relationship field that leads to the parent it writes on. Of an email alert, an outbound
-  message and a task, nothing.
+  actions it starts. Of the field updates, the three custom fields their formulas read are reported, two of one
+  and one of another. The field an update writes is not, nor the relationship field that leads to the parent it
+  writes on. Of an email alert, an outbound message and a task, nothing.
 - **A record of a custom metadata type.** The type it is a record of is reported. Nothing else is: not the fields
   of the type it gives a value for, not a field or an object named through a relationship field, not a name in a
   text.
@@ -186,14 +195,14 @@ What the rows say, read against the list of every pair in the log:
 Pairs the API reports and the key does not hold: 21 `[run 20]`. Twenty are the 20 of Phase 1, from an Apex class
 or trigger to a class or an object, and from a validation rule to the object of a field it reads. The new one is
 from the email template to the object `Invoice__c`, whose fields its merge fields name. The key holds the fields
-and not the object. Each of the 21 is a relation that exists, so no row between two components of the project is
-wrong.
+and not the object. By my reading of the files, each of the 21 is a relation that exists, so no row between two
+components of the project is wrong.
 
 Of the 13 fields the key calls unreferenced, the API reports a reference to none `[run 20]`.
 
 ## 4. Flows and their versions
 
-The probe reads two objects of the Tooling API that describe metadata, `FlowDefinition` and `Flow`. The org
+The probe reads two more objects of the Tooling API that describe metadata, `FlowDefinition` and `Flow`. The org
 answered both queries with the fields the tool names `[run 20]`, which was not verified before.
 
 ### Before the draft
@@ -249,8 +258,11 @@ The other five flows are as before. All of the following is `[run 21]`.
   version the org hands out is analysed, and its author expected that to be the active one. With a newer draft it
   is the draft, which does not run. The question is back with the maintainer. Nothing in the record is changed
   before the answer.
-- **The active version can be asked for by its number**, with a name such as `Invoice_Recalculate-1`, as the
-  reference of the Metadata API describes it. `[unverified]`: no run asked that way.
+- **Whether the active version can be asked for by its number is not known.** The reference of the Metadata API
+  says of the full name of a flow that a version can be deployed or retrieved by its number, with a name such as
+  `Invoice_Recalculate-1`. The same paragraph says that the name held the version number up to API version 43
+  and no longer holds it from version 44. The org is read with version 68.0. `[unverified]`: no run asked that
+  way, and I did not read the paragraph in full.
 - **A snapshot can tell that it holds a draft of a flow that has an active version.** The file of the flow says
   `Draft`, and the file of its `FlowDefinition`, which the org hands out too, names the number of the active
   version. `[unverified]`: the run did not print that file.
@@ -284,16 +296,18 @@ The engine analyses the types of Phase 1 only, so it compares rows from a custom
   requests, and the engine called the reading whole `[run 19]`.
 - **After the draft the same reading lacked 30 rows, all from a flow to a custom field, and the engine called it
   partial** `[run 21]`. That is the reader as it is built (`sources/dependency-api.ts`): a part that is at the
-  limit is asked for again per component, by the ids the org listed. If a row of the part comes from an id that
-  is not among them, asking per id would leave its rows out without a trace, so the reader does not ask and
-  counts the part as cut off. The row here is one of the active version of `Invoice_Recalculate`, whose id the
-  org no longer lists. That this is the cause is my reading of the code and of the counts, not something the log
-  says.
-- What that means for a real org: the limit of Salesforce is 2,000 rows per query. An org whose flows give more
-  rows than that to one type of target, and that has one flow with an active version and a newer draft, gets a
-  partial reading of the rows of its flows. The engine says so and compares what it has. To read them whole it
-  needs the ids of the versions, or another way to split. That belongs to the design of the cross-check of
-  flows.
+  limit is asked for again per component, by the ids the org listed. If a row the cut-off answer gave comes from
+  an id that is not among them, the reader takes the ids for the wrong ones, does not ask per id and counts the
+  part as cut off. The row here is one of the active version of `Invoice_Recalculate`, whose id the org no
+  longer lists. That this is the cause is my reading of the code and of the counts, not something the log says.
+- What that means for a real org: the limit of Salesforce is 2,000 rows per query. An org whose flows give that
+  many rows or more to one type of target, and that has one flow with an active version and a newer draft, can
+  get a partial reading of the rows of its flows. It does when a row of the version the org does not list is
+  among the rows the cut-off answer gives, and the query asks for no order, so that is not fixed. When none is,
+  the reader asks per id and then once for the rows of every component that is not among the ids, which brings
+  the rows of that version. An org that lists more than 200 flows gets a reading that is not whole for another
+  reason, draft or not: that last query cannot name every id. The engine says what it could not read and
+  compares what it has. That belongs to the design of the cross-check of flows.
 
 ## 6. The symbol tables
 

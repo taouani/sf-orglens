@@ -41,7 +41,9 @@ Three statements below are conclusions of the author of this record. The maintai
   "Live org"): a flow of the test org with an active version and a newer draft is handed out as the draft. A flow
   with one version is handed out as that version, active or not. So the expectation was wrong, and with the
   decision as it stands an answer about such a flow speaks of a version that does not run. The question is back
-  with the maintainer, and the analyser of flows is not built before the answer. Nothing else is changed here.
+  with the maintainer, and the analyser of flows is not built before the answer. The next statement and the
+  second consequence below rest on the same expectation: for a flow with a newer draft the snapshot holds the
+  draft and not the active version. Nothing else is changed here.
 - **The other versions are not read.** A draft that is newer than the active version is not in a snapshot, so an
   answer does not hold what the draft would change.
 
