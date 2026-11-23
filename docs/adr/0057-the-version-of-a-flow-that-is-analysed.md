@@ -21,7 +21,15 @@ several components for one flow. The maintainer chose (a) on 22 November 2026.
 **A reference from a flow that is not active says so**, as a reference from a validation rule that is not active
 does.
 
-That is all the maintainer decided.
+That is all the maintainer decided on 22 November 2026.
+
+**The maintainer changed the answer on 23 November 2026**, after the measurement that the next section tells of:
+the active version of a flow is the one that is analysed, and a newer draft is reported as present and is not
+analysed. For a flow with a newer draft that replaces the first sentence of this section, since an org hands out
+the draft for the name of the flow. How a snapshot gets the active version is not known yet. Whether Salesforce
+hands out a version that is asked for by its number is measured on the test org
+(`packages/engine/test/live/flow-versions.ts`). A record of its own follows with the result and replaces this
+one. Until then this paragraph is where the answer is written down.
 
 ## What goes further than the answer of the maintainer
 

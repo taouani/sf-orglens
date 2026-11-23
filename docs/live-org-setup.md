@@ -197,13 +197,19 @@ engine finds the components of a row by the ids the org listed them with. A symb
 of a class in the org, which writes to the org, so the probe does not do that.
 
 Last, the probe asks the Metadata API for one flow of the fixture project, the one the step "draft" sends once
-more: by its name, by the file of its `FlowDefinition`, and by its name with the number of each version the org
-holds, such as `Invoice_Recalculate-1`, each in a retrieve of its own
-(`packages/engine/test/live/flow-versions.ts`). It prints for each name whether a file came back, the state the
-file names, and whether it is the draft or the version that was sent as active. An org hands out the draft when
-it is asked for the flow by its name, and the active version is the one OrgLens analyses, so this says whether
-the active version can be asked for by its number. It is left out where the org did not say which versions of
-the flow it holds. No file is kept.
+more: by its name, by the file of its `FlowDefinition`, and by its name with the number of a version, such as
+`Invoice_Recalculate-1`, each in a retrieve of its own (`packages/engine/test/live/flow-versions.ts`). It asks for
+five numbers at most, the active version first and then from the newest down, and names the versions it left
+out. As a control it asks for one number the org holds no version for. It prints for each name whether a file
+came back, the state the file names, and whether it is the draft or the version that was sent as active. An org
+hands out the draft when it is asked for the flow by its name, and the active version is the one OrgLens
+analyses (decision record 0057), so the last lines say whether the active version can be asked for by its
+number. They can say it only while the org holds a draft that is newer than the active version: where the name
+alone gives the active version, the step says that it cannot tell. What it says holds for the test org and the
+API version of the run. The reference of the Metadata API speaks of a change at version 44, and no older version
+is asked. A retrieve that fails or does not end is said to give no answer, and after one that does not end no
+other is started. The part is left out where the org did not say which versions of the flow it holds. No file is
+kept.
 
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
 `__c`. So a field and a rule are asked for with the name of their object (`EntityDefinition.QualifiedApiName`).

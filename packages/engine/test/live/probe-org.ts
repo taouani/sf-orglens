@@ -21,7 +21,7 @@
  * active version and a newer one, which is not verified.
  *
  * Last it asks the Metadata API for the flow that has a draft, by its name
- * and by its name with the number of each version (`flow-versions.ts`): the
+ * and by its name with the number of a version (`flow-versions.ts`): the
  * active version is the one that is analysed, and an org hands out the
  * draft when it is asked by the name alone.
  *
@@ -768,14 +768,13 @@ function heldFlow(names: Names | null): HeldFlow | null {
   const found = [...definitions].find(([, flow]) => flow.name.toLowerCase() === FLOW_WITH_DRAFT.toLowerCase());
   if (found === undefined) return null;
   const [id, flow] = found;
+  const ofFlow = [...versions.values()].filter((version) => version.definition === id);
+  const numbered = ofFlow.flatMap((version) =>
+    version.number === null ? [] : [{ number: version.number, status: version.status }],
+  );
   return {
-    versions: [...versions.values()]
-      .flatMap((version) =>
-        version.definition === id && version.number !== null
-          ? [{ number: version.number, status: version.status }]
-          : [],
-      )
-      .sort((a, b) => a.number - b.number),
+    versions: numbered.sort((a, b) => a.number - b.number),
+    withoutNumber: ofFlow.length - numbered.length,
     active: flow.active === '' ? null : (versions.get(flow.active)?.number ?? null),
   };
 }
@@ -962,7 +961,15 @@ export async function probeOrg(
   // The versions of one flow, by name and by number. Only where the org said which versions it holds.
   const held = heldFlow(probed.names);
   if (held !== null) {
-    await probeFlowVersions(log, session, held, options);
+    // A side measurement: whatever goes wrong in it, the step still says what it found above.
+    try {
+      await probeFlowVersions(log, session, held, options);
+    } catch (error) {
+      const name = log.name(error instanceof Error ? error.name : undefined);
+      log.say(
+        `The part about the versions of the flow ${FLOW_WITH_DRAFT} ended with an error${name === null ? '' : ` (${name})`}. What it printed before that stands, and it comes to nothing.`,
+      );
+    }
   } else {
     log.say('');
     log.say(

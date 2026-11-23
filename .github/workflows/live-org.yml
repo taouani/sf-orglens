@@ -29,7 +29,7 @@ name: Live org
 #           nothing, and prints how much of the answer key of the fixture
 #           project each of the two reports. Last it asks the Metadata API
 #           for one flow of the fixture project by its name and by the
-#           number of each of its versions, and prints which version came
+#           number of its newest versions, and prints which version came
 #           back.
 #
 # The steps run in this order: deploy, draft, read, probe. A step that fails

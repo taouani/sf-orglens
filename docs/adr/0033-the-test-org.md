@@ -125,13 +125,14 @@ Phase 2 added to what a step may do, on 23 November 2026.
   the versions of the flows of the fixture project. A flow that is not of the fixture project is counted and
   not named. The state of a version is shown where it has the form of a name of the Metadata API.
 - The probe asks the Metadata API for the flow of the fixture project that has a draft, by its name, by its name
-  with the number of each version, and for the file of its `FlowDefinition`, each in a retrieve of its own
-  (`flow-versions.ts`, 23 November 2026). The maintainer decided that day that the active version of a flow is
+  with the number of a version, five at most, and for the file of its `FlowDefinition`, each in a retrieve of
+  its own (`flow-versions.ts`, 23 November 2026). The maintainer decided that day that the active version of a flow is
   the one that is analysed, and an org hands out the draft for the name alone, so it has to be measured whether
   the active version can be asked for. A file that comes back is read in memory and not kept. The log shows of
   it its name where that is the name of the flow with or without a number, its size, its state, which of the two
   versions of the project it is, and the number of the active version a definition names. A file with another
-  name is counted.
+  name is counted and not read. The state of a file and of a retrieve is shown only where it is one of the words
+  the Metadata API has for it.
 - The first deploy of the larger project, on 23 November 2026, was refused for two flows, and of both problems
   only the everyday words came out. The list of known forms got one for a flow in which an element is not
   supported when another element is set to a value. It is written from the everyday words of that run, not from a

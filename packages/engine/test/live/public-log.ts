@@ -35,8 +35,8 @@
  * word of the Metadata API, where it has the form of a name
  * (`probe-org.ts`), and of a file the org hands out for such a version
  * its name where that is the name of the flow with or without a number,
- * its size, and which of the two versions of the project it is
- * (`flow-versions.ts`). On top of the forms,
+ * its size, its state if it is one of the four the Metadata API knows,
+ * and which of the two versions of the project it is (`flow-versions.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */
