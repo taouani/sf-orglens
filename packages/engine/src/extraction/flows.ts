@@ -375,7 +375,7 @@ class Reader {
   /** A value that is a text. Only its merge fields are read. */
   text(sink: Sink, element: XmlElement, tier?: 'probable'): void {
     const value = valueOf(element);
-    if (value === null || !value.value.includes(OPENS)) return;
+    if (value?.value.includes(OPENS) !== true) return;
     sink.texts.push(readMergeFields(value.value, this.#startOf, element.local, this.#places(value), tier));
   }
 
