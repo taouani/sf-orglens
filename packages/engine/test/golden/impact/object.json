@@ -61,6 +61,25 @@
       }
     },
     {
+      "key": "CustomMetadata:billing_rule.invoice_amount",
+      "type": "CustomMetadata",
+      "name": "Billing_Rule.Invoice_Amount",
+      "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomMetadata:billing_rule.invoice_amount",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml",
+        "line": 11,
+        "column": 38
+      }
+    },
+    {
       "key": "Flow:invoice_after_save#element:amount_changed",
       "type": "Flow",
       "name": "Invoice_After_Save.Amount_Changed",
@@ -888,12 +907,6 @@
         "listing": "ok"
       },
       {
-        "type": "CustomMetadata",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
         "type": "CustomPermission",
         "listed": 1,
         "retrieved": 1,
@@ -912,21 +925,9 @@
         "listing": "ok"
       },
       {
-        "type": "FieldSet",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "RecordType",
-        "listed": 2,
-        "retrieved": 2,
         "listing": "ok"
       }
     ],

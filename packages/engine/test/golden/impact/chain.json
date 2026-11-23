@@ -40,6 +40,25 @@
       }
     },
     {
+      "key": "CustomMetadata:billing_rule.line_quantity",
+      "type": "CustomMetadata",
+      "name": "Billing_Rule.Line_Quantity",
+      "file": "force-app/main/default/customMetadata/Billing_Rule.Line_Quantity.md-meta.xml",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "CustomMetadata:billing_rule.line_quantity",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/customMetadata/Billing_Rule.Line_Quantity.md-meta.xml",
+        "line": 7,
+        "column": 38
+      }
+    },
+    {
       "key": "Flow:invoice_after_save#element:get_open_lines",
       "type": "Flow",
       "name": "Invoice_After_Save.Get_Open_Lines",
@@ -240,12 +259,6 @@
         "listing": "ok"
       },
       {
-        "type": "CustomMetadata",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
         "type": "CustomPermission",
         "listed": 1,
         "retrieved": 1,
@@ -264,21 +277,9 @@
         "listing": "ok"
       },
       {
-        "type": "FieldSet",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "RecordType",
-        "listed": 2,
-        "retrieved": 2,
         "listing": "ok"
       }
     ],

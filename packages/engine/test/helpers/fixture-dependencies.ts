@@ -3,15 +3,16 @@
  *
  * The rows are made from the answer key of the project, which is written by hand: every reference the key has
  * for a formula or for the filter of a roll-up summary, and every reference it has for Apex, where the target
- * is something the project defines. To these come the three rows to an object that the probe of the test org
- * saw and that are not made from the key (`docs/research/phase-1/real-org.md`, section 4). The rows are written the way
- * Salesforce writes them (`mock-dependencies.ts`).
+ * is something the project defines. To these come two rows to an object that the probe of the test org saw
+ * (`docs/research/phase-1/real-org.md`, section 4) and that the key has no entry for. The rows are written the
+ * way Salesforce writes them (`mock-dependencies.ts`).
  *
- * Of the files of Phase 2, the mock reports what the test org reports of the workflow rules: the custom fields
- * the formula of a field update reads (`docs/research/phase-2/real-org.md`, section 3), and nothing else of a
- * rule or an action. It reports nothing yet for the other files of Phase 2: flows, whose rows are counted and
- * not compared (decision record 0060), record types, field sets, records of custom metadata types and email
- * templates. Their rows come with their analysers.
+ * Of the files of Phase 2, the mock reports what the test org reports (`docs/research/phase-2/real-org.md`,
+ * section 3): of the workflow rules, the custom fields the formula of a field update reads, and nothing else of a
+ * rule or an action; of a record of a custom metadata type, the type it is a record of, and nothing else; of a
+ * field set, its custom fields; of a record type, nothing. It reports nothing yet for the other files of Phase 2:
+ * flows, whose rows are counted and not compared (decision record 0060), and email templates. Their rows come
+ * with their analysers.
  *
  * The mock reports more than Salesforce does in two places that the engine treats as "not reported": the
  * formula of a rule that is not active, and the formula in a default value. A test that needs the difference
@@ -34,6 +35,12 @@ export interface KeyedPair {
   readonly apex: boolean;
 }
 
+/** Of the references of Phase 2 in the key, those the test org reports, where their target is custom. */
+const reportedOfPhase2 = (reference: { readonly from: string; readonly via: string }): boolean =>
+  (reference.from.startsWith('WorkflowFieldUpdate:') && reference.via === 'formula') ||
+  (reference.from.startsWith('CustomMetadata:') && reference.via === 'record-of') ||
+  reference.from.startsWith('FieldSet:');
+
 /** The pairs of the answer key the mock org reports. A pair is reported once. */
 export function keyedPairs(): KeyedPair[] {
   const key = loadAnswerKey();
@@ -44,15 +51,17 @@ export function keyedPairs(): KeyedPair[] {
   };
   const pairs = new Map<string, KeyedPair>();
   for (const reference of key.references) {
-    const updateFormula = reference.from.startsWith('WorkflowFieldUpdate:') && reference.via === 'formula';
-    if (reference.phase === 2 && !updateFormula) continue;
+    if (reference.phase === 2 && !reportedOfPhase2(reference)) continue;
     // Salesforce counts a class, not a method of it.
     const whole = reference.from.includes('#') ? reference.from.slice(0, reference.from.indexOf('#')) : reference.from;
     const from = endOf(whole);
     const to = endOf(reference.to);
     if (from === undefined || to === undefined) continue;
     const apex = from[0] === 'ApexClass' || from[0] === 'ApexTrigger';
-    const reported = reference.via === 'formula' || (reference.via === 'filter' && SUMMARIES.has(reference.from));
+    const reported =
+      reference.phase === 2 ||
+      reference.via === 'formula' ||
+      (reference.via === 'filter' && SUMMARIES.has(reference.from));
     if (!apex && !reported) continue;
     if (from[0] === to[0] && from[1] === to[1]) continue;
     pairs.set(`${from.join(':')} ${to.join(':')}`, { from, to, apex });
@@ -60,10 +69,7 @@ export function keyedPairs(): KeyedPair[] {
   return [...pairs.values()];
 }
 
-/**
- * The three rows to an object that Salesforce reports and that are not made from the key. The key has no entry
- * for the first two. It has one for the third, as a reference of Phase 2, which is left out above.
- */
+/** The two rows to an object that Salesforce reports and that the key has no entry for. */
 const TO_AN_OBJECT: readonly (readonly [MockEnd, MockEnd])[] = [
   // The object behind $ObjectType in VLOOKUP, and the custom metadata type behind $CustomMetadata.
   [
@@ -72,11 +78,6 @@ const TO_AN_OBJECT: readonly (readonly [MockEnd, MockEnd])[] = [
   ],
   [
     ['ValidationRule', 'Invoice__c.Large_Amount_Needs_Permission'],
-    ['CustomObject', 'Billing_Rule__mdt'],
-  ],
-  // A record of a custom metadata type, to its type.
-  [
-    ['CustomMetadata', 'Billing_Rule.Default'],
     ['CustomObject', 'Billing_Rule__mdt'],
   ],
 ];

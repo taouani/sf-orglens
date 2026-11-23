@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-16
 - Decisions: none (the analysis of work package 4 of the Phase 1 plan)
+- Changed by: [0065](0065-record-types-field-sets-and-records-of-custom-metadata.md), in one point: of the ten kinds of parts of an object, record types and field sets are read as well
 
 ## Context
 

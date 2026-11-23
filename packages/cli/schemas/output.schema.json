@@ -1022,7 +1022,7 @@
             "additionalProperties": false,
             "properties": {
               "reason": {
-                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `workflow-rule`: it is from a workflow rule. `workflow-action`: it is from an email alert, an outbound message or a task of a workflow rule. `field-update`: it is from a field update, and not in its formula. `other`: any other reference from the definition of a component. Reasons can be added.",
+                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `workflow-rule`: it is from a workflow rule. `workflow-action`: it is from an email alert, an outbound message or a task of a workflow rule. `field-update`: it is from a field update, and not in its formula. `custom-metadata`: it is from a record of a custom metadata type, and not to the type of the record. `record-type`: it is from a record type. `other`: any other reference from the definition of a component. Reasons can be added.",
                 "type": "string"
               },
               "pairs": { "type": "integer", "minimum": 1 }

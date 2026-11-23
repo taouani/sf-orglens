@@ -1,8 +1,9 @@
 /**
- * What the XML of an object, a field and a validation rule says: the attributes later steps need, and the
- * references that are written as names in elements: the target of a lookup, the fields of a lookup filter and
- * of a roll-up summary, the controlling field and the value set of a picklist, the controlling field of a
- * relationship to a field definition, and the field a validation rule shows its message at.
+ * What the XML of an object, a field, a validation rule, a record type and a field set says: the attributes later
+ * steps need, and the references that are written as names in elements: the target of a lookup, the fields of a
+ * lookup filter and of a roll-up summary, the controlling field and the value set of a picklist, the controlling
+ * field of a relationship to a field definition, the field a validation rule shows its message at, the picklists
+ * and the business process of a record type, and the fields of a field set (decision record 0065).
  *
  * Only the reading is done here. The names are resolved against the model of all objects, which exists only
  * once every file was read (`raw-references.ts`).
@@ -58,6 +59,17 @@ export class Reader {
     return placesIn(this.#document, value)(from, to);
   }
 
+  /** The parts of a value between its dots, each with its place. */
+  #parts(value: Value): NameAt[] {
+    const names: NameAt[] = [];
+    let from = 0;
+    for (const part of value.value.split('.')) {
+      names.push(this.#at(value, from, from + part.length));
+      from += part.length + 1;
+    }
+    return names;
+  }
+
   #refuse(element: XmlElement, value: Value, why?: Unread['why']): void {
     const { name, line, column } = this.#at(value);
     const text = cut(name, LONGEST_TEXT_SHOWN);
@@ -88,6 +100,42 @@ export class Reader {
   }
 
   /**
+   * A value that is the name of a component, whatever characters it holds, such as the name of a business
+   * process, which can hold a space. A name that cannot be a key is not found, and is no reason for a warning.
+   */
+  wholeName(element: XmlElement | null, make: (at: NameAt) => RawReference): void {
+    const value = valueOf(element);
+    if (element !== null && value !== null) this.references.push(make(this.#at(value)));
+  }
+
+  /**
+   * A value that is one name or two joined by a dot, such as `Amount__c` or `Account.Amount__c`, each part with
+   * its place. `null` for no value and for anything else, which is not read and is no reason for a warning: the
+   * value of a text can be any text.
+   */
+  namesIn(element: XmlElement | null): NameAt[] | null {
+    const value = valueOf(element);
+    if (element === null || value === null) return null;
+    const names = this.#parts(value);
+    return names.length <= 2 && names.every((one) => NAME.test(one.name) && !one.name.startsWith('$')) ? names : null;
+  }
+
+  /**
+   * A value that names a field of the object `own`, by its name or through relationships: `Amount__c`,
+   * `Account__r.Tier__c`. Every name before the last is a relationship.
+   */
+  fieldPath(element: XmlElement | null, own: string, kind: 'reads' | 'references', via: Via): void {
+    const value = valueOf(element);
+    if (element === null || value === null) return;
+    const names = this.#parts(value);
+    if (names.some((one) => !NAME.test(one.name) || one.name.startsWith('$'))) {
+      this.#refuse(element, value);
+      return;
+    }
+    this.references.push({ form: 'path', start: own, names, kind, via });
+  }
+
+  /**
    * A value that names a component in a folder, such as the email template `Billing/Invoice_Overdue`. The
    * reference stands at the name after the folder. A folder can hold a `$`, as `unfiled$public` does.
    */
@@ -113,12 +161,7 @@ export class Reader {
   path(element: XmlElement | null, own: string, kind: 'reads' | 'references', via: Via): void {
     const value = valueOf(element);
     if (element === null || value === null) return;
-    const names: NameAt[] = [];
-    let from = 0;
-    for (const part of value.value.split('.')) {
-      names.push(this.#at(value, from, from + part.length));
-      from += part.length + 1;
-    }
+    const names = this.#parts(value);
     const [first, ...rest] = names;
     const variable = first?.name.startsWith('$') === true ? first.name.toLowerCase() : null;
     const start = variable === null ? first?.name : variable === '$source' ? own : GLOBAL_OBJECTS.get(variable);
@@ -184,6 +227,7 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
   reader.formula(childOf(element, 'defaultValue'), object);
 
   const relationshipName = textOf(childOf(element, 'relationshipName'));
+  const controllingField = textOf(childOf(element, 'metadataRelationshipControllingField'));
   return {
     attrs: {
       ...(type === null ? {} : { type }),
@@ -191,7 +235,7 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
       ...(relationshipName === null ? {} : { relationshipName }),
       ...(textOf(childOf(element, 'formula')) === null ? {} : { formula: true }),
     },
-    facts: { type, referenceTo },
+    facts: { type, referenceTo, ...(controllingField === null ? {} : { controllingField }) },
     references: reader.references,
     unread: reader.unread,
     formulas: reader.formulas,
@@ -211,6 +255,48 @@ export function readRule(document: XmlDocument, element: XmlElement, object: str
     unread: reader.unread,
     formulas: reader.formulas,
   };
+}
+
+/**
+ * What the element of a record type says. `object` is the name of the object the record type belongs to. A
+ * record type refers to each picklist field whose values it limits, with the values it allows as they are
+ * written, and to its business process.
+ */
+export function readRecordType(document: XmlDocument, element: XmlElement, object: string): ElementReading {
+  const reader = new Reader(document);
+  for (const group of childrenOf(element, 'picklistValues')) {
+    const values = childrenOf(group, 'values').flatMap((one) => textOf(childOf(one, 'fullName')) ?? []);
+    reader.name(childOf(group, 'picklist'), (at) => ({ form: 'field', at, via: 'listed-field', values }));
+  }
+  // A business process belongs to the object, and its name can hold a space.
+  reader.wholeName(childOf(element, 'businessProcess'), (at) => ({
+    form: 'component',
+    type: 'BusinessProcess',
+    at,
+    fullName: `${object}.${at.name}`,
+    via: 'business-process',
+  }));
+  const active = textOf(childOf(element, 'active'));
+  return {
+    attrs: active === 'true' || active === 'false' ? { active: active === 'true' } : {},
+    facts: null,
+    references: reader.references,
+    unread: reader.unread,
+    formulas: reader.formulas,
+  };
+}
+
+/**
+ * What the element of a field set says. `object` is the name of the object the field set belongs to. Each field
+ * it lists, available or shown, is read, also through relationships.
+ */
+export function readFieldSet(document: XmlDocument, element: XmlElement, object: string): ElementReading {
+  const reader = new Reader(document);
+  for (const group of element.children) {
+    if (group.local !== 'availableFields' && group.local !== 'displayedFields') continue;
+    reader.fieldPath(childOf(group, 'field'), object, 'reads', 'listed-field');
+  }
+  return { attrs: {}, facts: null, references: reader.references, unread: reader.unread, formulas: reader.formulas };
 }
 
 /** What the element of an object says. Its fields and rules are read on their own. */

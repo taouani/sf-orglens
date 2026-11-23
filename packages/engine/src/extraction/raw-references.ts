@@ -4,13 +4,14 @@
  * Reading and resolving are two steps. Reading takes the names with their places out of one file and needs
  * nothing else, so the file can be let go. Resolving needs the model of all objects, which exists only once
  * every file was read. Every reader of this layer hands its names over in this form: the reader of objects,
- * fields and rules (`objects.ts`), the reader of flows (`flows.ts`), the reader of workflow rules
- * (`workflows.ts`) and the readers of formulas and of merge fields (`names-in-text.ts`).
+ * fields, rules, record types and field sets (`objects.ts`), the reader of flows (`flows.ts`), the reader of
+ * workflow rules (`workflows.ts`), the reader of records of custom metadata types (`custom-metadata.ts`) and the
+ * readers of formulas and of merge fields (`names-in-text.ts`).
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
-import { walkPath, type ObjectModel, type PathHint, type Target } from './model.ts';
+import { walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
 import type { NameAt } from './values.ts';
 
 /**
@@ -46,12 +47,27 @@ export type Via =
   | 'action'
   /** The email template of an alert. */
   | 'template'
-  /** A field in a list: of the recipients of an alert, or of the fields an outbound message sends. */
+  /**
+   * A field in a list: of the recipients of an alert, of the fields an outbound message sends, of the picklists
+   * of a record type, of a field set, or of the fields a record of a custom metadata type gives a value.
+   */
   | 'listed-field'
-  /** A name that stands in a text and is compared with the name of a component. */
+  /**
+   * A name that stands in a text and is compared with the name of a component: in a flow, and in a value of a
+   * record of a custom metadata type that is a text.
+   */
   | 'text'
   /** In a flow: the picklist field a set of choices takes its values from. */
-  | 'picklist';
+  | 'picklist'
+  /** The business process of a record type. */
+  | 'business-process'
+  /** The type a record of a custom metadata type is of. */
+  | 'record-of'
+  /**
+   * A value of a record of a custom metadata type in a field that is a relationship: to the definition of an
+   * object, of a field, or to another custom metadata type.
+   */
+  | 'value';
 
 /** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
 export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
@@ -66,6 +82,8 @@ interface Raw {
   readonly tier?: 'probable';
   /** For a reference to an object from a record element of a flow: what the element does to its records. */
   readonly op?: RecordOp;
+  /** For a reference to a picklist field from a record type: the values it allows, as the file writes them. */
+  readonly values?: readonly string[];
 }
 
 /** A reference as a file writes it, before its names are resolved. */
@@ -125,6 +143,19 @@ export type RawReference = Raw &
      * is that name, or `null` where the element names nothing that could say it.
      */
     | { readonly form: 'unfollowed'; readonly after: NameAt | null; readonly names: readonly NameAt[] }
+    /**
+     * A value of a record of a custom metadata type that is one name, or two joined by a dot, given the field
+     * `field` of the type `start`. What it names depends on that field, which only the model knows. `record`
+     * holds every value of the same record by the folded name of its field: the object of a field is the value
+     * of another field, and a text can name a field of an object that the record names.
+     */
+    | {
+        readonly form: 'record-value';
+        readonly start: string;
+        readonly field: string;
+        readonly names: readonly NameAt[];
+        readonly record: ReadonlyMap<string, string>;
+      }
   );
 
 /** Something in a file that a reader does not read as a name. */
@@ -146,6 +177,19 @@ export interface Unread {
 
 /** At most this many characters of a text that is not a name, or of one name, are shown in an issue. */
 export const LONGEST_TEXT_SHOWN = 60;
+/** The name of an object or of a field, as a value of a record of a custom metadata type holds it. */
+const ONE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+/** The types of a field of a custom metadata type whose value is a text, by their folded names. */
+const TEXT_TYPES: ReadonlySet<string> = new Set(['text', 'textarea', 'longtextarea']);
+
+/**
+ * What a field of a custom metadata type is a relationship to, by its folded name: `entitydefinition`,
+ * `fielddefinition` or another custom metadata type. `null` for a field that is no relationship.
+ */
+const relationshipTo = (facts: FieldFacts | undefined): string | null => {
+  const [only, ...others] = facts?.referenceTo ?? [];
+  return facts?.type === 'MetadataRelationship' && only !== undefined && others.length === 0 ? foldName(only) : null;
+};
 /** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
 const LONGEST_PATH_SHOWN = 200;
 const MOST_NAMES_SHOWN = 20;
@@ -207,6 +251,7 @@ export function resolveReferences(
         attrs: {
           via: one.via,
           ...(one.op === undefined ? {} : { op: one.op }),
+          ...(one.values === undefined ? {} : { values: [...one.values] }),
           ...rest,
           ...(target.to === null && object !== undefined ? { object } : {}),
         },
@@ -245,6 +290,76 @@ export function resolveReferences(
         origin,
       },
     });
+  };
+
+  /** Says that nothing says which object the names are a field of, so that they were not followed. */
+  const nothingSays = (names: readonly NameAt[]): void => {
+    const [first] = names;
+    if (first === undefined) return;
+    issues.push({
+      severity: 'warning',
+      code: 'PATH_NOT_FOLLOWED',
+      message: `${owner.file}, line ${String(first.line)}: nothing says which object "${cut(names.map((at) => at.name).join('.'), LONGEST_PATH_SHOWN)}" is a field of, so it was not followed.`,
+      componentKey: owner.key,
+      details: {
+        path: owner.file,
+        line: first.line,
+        column: first.column,
+        notFollowed: names.slice(0, MOST_NAMES_SHOWN).map((at) => at.name),
+        origin,
+      },
+    });
+  };
+
+  /**
+   * A value of a record of a custom metadata type. The value of a relationship is a name, at the tier
+   * `confirmed`. A text is a name only where it is exactly the name of a field that a file of the snapshot
+   * defines, as `Object.Field` or as a field of an object the record names, and then `probable`.
+   */
+  const recordValue = (one: Extract<RawReference, { form: 'record-value' }>): void => {
+    const facts = model.facts(one.start, one.field);
+    const [first, second] = one.names;
+    if (facts === undefined || first === undefined) return;
+    const target = relationshipTo(facts);
+    if (target !== null) {
+      // Salesforce accepts only a name as the value of a relationship.
+      if (second !== undefined) return;
+      if (target === 'entitydefinition') add(first, model.object(first.name), 'references', one);
+      else if (target === 'fielddefinition') {
+        // The name of the field alone. The object is the value of the field the file of the relationship names.
+        const controlling = facts.controllingField ?? '';
+        const object = one.record.get(foldName(controlling.slice(controlling.lastIndexOf('.') + 1)));
+        if (object === undefined || !ONE_NAME.test(object)) nothingSays([first]);
+        else add(first, model.field(object, first.name), 'references', one, { object });
+      } else if (target.endsWith('__mdt')) {
+        // A record of another type, named without its type.
+        const type = facts.referenceTo[0] ?? '';
+        add(
+          first,
+          model.component('CustomMetadata', `${type.slice(0, -'__mdt'.length)}.${first.name}`),
+          'references',
+          one,
+        );
+      }
+      return;
+    }
+    if (!TEXT_TYPES.has(foldName(facts.type ?? ''))) return;
+    const text: Raw = { via: 'text', tier: 'probable' };
+    if (second !== undefined) {
+      const field = model.field(first.name, second.name);
+      if (field.resolution === 'resolved') add(second, field, 'references', text);
+      return;
+    }
+    const named = new Map<string, string>();
+    for (const [field, value] of one.record) {
+      if (relationshipTo(model.facts(one.start, field)) === 'entitydefinition' && ONE_NAME.test(value)) {
+        named.set(foldName(value), value);
+      }
+    }
+    for (const object of named.values()) {
+      const field = model.field(object, first.name);
+      if (field.resolution === 'resolved') add(first, field, 'references', text);
+    }
   };
 
   /**
@@ -293,23 +408,10 @@ export function resolveReferences(
       // A text is a name only where it names something: the snapshot holds the record type, or it is no reference.
       if (target?.resolution === 'resolved') add(one.at, target, 'references', one);
     } else if (one.form === 'unfollowed') {
-      const [first, ...rest] = one.names;
       if (one.after !== null) notFollowed(one.after, one.names, 'holds');
-      else if (first !== undefined) {
-        issues.push({
-          severity: 'warning',
-          code: 'PATH_NOT_FOLLOWED',
-          message: `${owner.file}, line ${String(first.line)}: nothing says which object "${cut([first, ...rest].map((at) => at.name).join('.'), LONGEST_PATH_SHOWN)}" is a field of, so it was not followed.`,
-          componentKey: owner.key,
-          details: {
-            path: owner.file,
-            line: first.line,
-            column: first.column,
-            notFollowed: one.names.slice(0, MOST_NAMES_SHOWN).map((at) => at.name),
-            origin,
-          },
-        });
-      }
+      else nothingSays(one.names);
+    } else if (one.form === 'record-value') {
+      recordValue(one);
     } else {
       const silent = one.silent ?? 0;
       const walk = walkPath(

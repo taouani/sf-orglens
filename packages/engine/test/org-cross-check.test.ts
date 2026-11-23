@@ -3,8 +3,8 @@
  * it reports is held against the analysis (decision record 0045).
  *
  * The mock org holds the fixture project. Its Dependency API reports what the answer key of the project, which
- * is written by hand, has for a formula, and what it has for Apex, which this phase does not analyse
- * (`helpers/fixture-dependencies.ts`).
+ * is written by hand, has for a formula, and what it has for Apex, which this phase does not analyse. Of the
+ * files of Phase 2, it reports what the test org reports (`helpers/fixture-dependencies.ts`).
  */
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -148,20 +148,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         readAt: expect.stringMatching(UTC) as string,
         // The org holds fewer rows than one query gives.
         requests: 1,
-        rows: pairs.length + 3,
+        rows: pairs.length + 2,
         queriesCutOff: 0,
         queriesFailed: 0,
         queriesNotProven: 0,
         code: null,
         comparison: {
-          rows: pairs.length + 3,
-          // The rows of Apex, which this phase does not analyse, and the row of the record of a custom metadata
-          // type. Its type is counted as the metadata type, not under the name the API writes.
-          rowsNotAnalysed: apex + 1,
+          rows: pairs.length + 2,
+          // The rows of Apex, which this phase does not analyse.
+          rowsNotAnalysed: apex,
           notAnalysed: [
             { type: 'ApexClass', rows: pairs.filter((pair) => pair.from[0] === 'ApexClass').length },
             { type: 'ApexTrigger', rows: pairs.filter((pair) => pair.from[0] === 'ApexTrigger').length },
-            { type: 'CustomMetadata', rows: 1 },
           ],
           // Every end of a row is a component the org listed, found by its id.
           rowsNotMatched: 0,
@@ -182,13 +180,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // What the analysis has and the API never reports is counted by its reason, and is no issue. The mock org
       // reports every formula, also the one of a rule that is not active and the one in a default value. Of the
       // workflow rules, it reports what the test org reports: the custom fields the formula of a field update
-      // reads.
+      // reads. Of the records of custom metadata types, the type, and of a record type, nothing.
       const reasons = report.crossCheck?.comparison?.notReported.map((one) => one.reason);
       expect(reasons).toEqual([
         'controlling-field',
+        'custom-metadata',
         'field-update',
         'lookup',
         'lookup-filter',
+        'record-type',
         'roll-up-summary',
         'standard-field',
         'standard-object',
@@ -205,7 +205,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(queryPaths()).toEqual(['/services/data/v66.0/tooling/query']);
 
       // The rows are kept as Salesforce wrote them, and none of them became a reference.
-      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_dependency')).toBe(pairs.length + 3);
+      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_dependency')).toBe(pairs.length + 2);
       expect(count(dir, `SELECT count(*) AS n FROM reference WHERE origin = 'dependency-api'`)).toBe(0);
       // The coverage of the snapshot says the same later.
       expect(await workspace.coverage('prod')).toEqual(report);

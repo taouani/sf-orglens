@@ -60,9 +60,10 @@ describe('the analysis of the fixture project', () => {
     tree = readFolders(project, ['force-app']).tree;
     listed = (await resolveComponents(tree, ['force-app'])).components;
     analysis = analyseSource(tree, listed);
-    // What the objects, fields and rules say. What the flows and the workflow rules say is measured in their files.
+    // What the objects, fields and rules say. What the flows, the workflow rules, the record types, the field sets
+    // and the records of custom metadata say is measured in their files.
     references = analysis.components
-      .filter((one) => !one.key.startsWith('Flow:') && !/^Workflow[A-Za-z]*:/.test(one.key))
+      .filter((one) => !/^(?:Flow|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata):/.test(one.key))
       .flatMap((one) => one.references);
   });
 
@@ -181,11 +182,12 @@ describe('the analysis of the fixture project', () => {
     expect(analysis.issues.map((issue) => `${issue.code} ${String(issue.componentKey)}`)).toEqual([
       'PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
-    // 5 objects, 57 fields and 11 rules, and 2 files of workflow rules with 4 rules and 6 actions. The two
-    // objects without a file were not looked at. 35 of the fields and rules hold a formula or a default value,
-    // and so do 7 elements of flows and 2 workflow rules and 2 field updates. The 6 flows have 55 elements.
+    // 5 objects, 57 fields and 11 rules, 2 files of workflow rules with 4 rules and 6 actions, 2 record types, a
+    // field set and 4 records of custom metadata. The two objects without a file were not looked at. 35 of the
+    // fields and rules hold a formula or a default value, and so do 7 elements of flows and 2 workflow rules and 2
+    // field updates. The 6 flows have 55 elements.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 85, failedFiles: 0 },
+      { origin: 'parser:xml', components: 92, failedFiles: 0 },
       { origin: 'parser:formula', components: 46, failedFiles: 0 },
       { origin: 'parser:flow', components: 61, failedFiles: 0 },
     ]);
@@ -236,9 +238,12 @@ describe('the analysis of the fixture project', () => {
 
   it('leaves the components of every other type without attributes and without references', () => {
     const others = analysis.components.filter(
-      (one) => !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*):/.test(one.key),
+      (one) =>
+        !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata):/.test(
+          one.key,
+        ),
     );
-    expect(others).toHaveLength(27);
+    expect(others).toHaveLength(20);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -303,8 +308,9 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      // 112 references of fields and rules, 126 of flows and 33 of workflow rules.
-      expect(written).toMatchObject({ components: 175, references: 271 });
+      // 112 references of fields and rules, 126 of flows, 33 of workflow rules and 28 of record types, a field set
+      // and records of custom metadata.
+      expect(written).toMatchObject({ components: 175, references: 299 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
@@ -323,6 +329,9 @@ describe('the analysis of the fixture project', () => {
         'Flow:invoice_before_save#element:flow-start reads formula parser:formula',
         'Flow:invoice_purge_void#element:flow-start reads filter parser:flow',
         'Flow:invoice_sent_process#element:formula_myrule_1 reads formula parser:formula',
+        // The two record types, which limit the values of the field.
+        'RecordType:invoice__c.credit_note references listed-field parser:xml',
+        'RecordType:invoice__c.standard_invoice references listed-field parser:xml',
         'ValidationRule:invoice__c.locked_when_paid reads formula parser:formula',
         // The rule names the field three times in its formula, and once as the field of its message.
         'ValidationRule:invoice__c.paid_cannot_be_reopened reads formula parser:formula',
@@ -933,8 +942,12 @@ describe('an object the source holds only parts of', () => {
         'CustomObject:other__mdt Other__mdt',
       ],
     );
-    // The snapshot knows the type of the record, so a lookup to it has a key.
-    expect(told(analysis)).toEqual(['4:18 references CustomObject:other__mdt [Other__mdt] external lookup']);
+    // The snapshot knows the type of the record, so a lookup to it has a key, and so has the record's own
+    // reference to its type.
+    expect(told(analysis)).toEqual([
+      '4:18 references CustomObject:other__mdt [Other__mdt] external lookup',
+      '2:2 references CustomObject:other__mdt [Other__mdt] external record-of',
+    ]);
   });
 
   it('is not defined either when the list names a component and gives no file for it', () => {
@@ -1246,7 +1259,8 @@ describe('the parts of the file of an object', () => {
       many.components.map((component) => component.name),
     );
     expect([...one.issues, ...many.issues]).toEqual([]);
-    // Each part of the one file is defined by its element. Only the object, the field and the rule are read.
+    // Each part of the one file is defined by its element. Only the object, the field, the field set, the record
+    // type and the rule are read.
     for (const part of PARTS) {
       const component = componentOf(one, part.type, `Parcel__c.${part.name}`);
       expect(component.definition?.path).toBe(file);
@@ -1259,6 +1273,8 @@ describe('the parts of the file of an object', () => {
     expect(read(one)).toEqual([
       'CustomField:parcel__c.weight__c',
       'CustomObject:parcel__c',
+      'FieldSet:parcel__c.sizes',
+      'RecordType:parcel__c.big',
       'ValidationRule:parcel__c.weighed',
     ]);
     expect(read(many)).toEqual(read(one));

@@ -59,6 +59,25 @@
       }
     },
     {
+      "key": "FieldSet:invoice__c.invoice_summary",
+      "type": "FieldSet",
+      "name": "Invoice__c.Invoice_Summary",
+      "file": "force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "FieldSet:invoice__c.invoice_summary",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml",
+        "line": 21,
+        "column": 27
+      }
+    },
+    {
       "key": "Flow:invoice_after_save#element:amount_changed",
       "type": "Flow",
       "name": "Invoice_After_Save.Amount_Changed",
@@ -164,12 +183,6 @@
         "listing": "ok"
       },
       {
-        "type": "CustomMetadata",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
         "type": "CustomPermission",
         "listed": 1,
         "retrieved": 1,
@@ -188,21 +201,9 @@
         "listing": "ok"
       },
       {
-        "type": "FieldSet",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "RecordType",
-        "listed": 2,
-        "retrieved": 2,
         "listing": "ok"
       }
     ],

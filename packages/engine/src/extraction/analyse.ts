@@ -1,7 +1,8 @@
 /**
  * The analysis of a source: a component for everything it holds, and for objects, fields, validation rules,
- * flows, workflow rules and their actions their attributes, the references that are written in XML and those
- * that stand in a formula or a text. A flow gets a component for each of its elements and resources as well.
+ * record types, field sets, records of custom metadata types, flows, workflow rules and their actions their
+ * attributes, the references that are written in XML and those that stand in a formula or a text. A flow gets a
+ * component for each of its elements and resources as well.
  *
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
@@ -16,9 +17,10 @@ import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
+import { readRecord } from './custom-metadata.ts';
 import { readFlow, type FlowReading } from './flows.ts';
 import { buildModel, type FieldFacts } from './model.ts';
-import { readField, readObject, readRule, type ElementReading } from './objects.ts';
+import { readField, readFieldSet, readObject, readRecordType, readRule, type ElementReading } from './objects.ts';
 import { resolveReferences, type Unread } from './raw-references.ts';
 import { readWorkflow, readWorkflowPart, WORKFLOW_PARTS } from './workflows.ts';
 import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
@@ -36,7 +38,10 @@ export interface SourceAnalysis {
 const ANALYSED: ReadonlySet<string> = new Set([
   'CustomObject',
   'CustomField',
+  'CustomMetadata',
+  'FieldSet',
   'Flow',
+  'RecordType',
   'ValidationRule',
   'Workflow',
   ...WORKFLOW_PARTS,
@@ -68,6 +73,14 @@ const messageOf = (error: unknown): string => cut(error instanceof Error ? error
 const beforeDot = (fullName: string): string => {
   const dot = fullName.indexOf('.');
   return dot === -1 ? fullName : fullName.slice(0, dot);
+};
+/**
+ * The custom metadata type of a record, by the full name of the record, which starts with the type, with or
+ * without its suffix.
+ */
+const typeOfRecord = (fullName: string): string => {
+  const type = beforeDot(fullName);
+  return /__mdt$/i.test(type) ? type : `${type}__mdt`;
 };
 
 /** The reader whose names the references of a component of this type are, outside its formulas. */
@@ -262,6 +275,9 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
       if (type === 'CustomObject') return readObject(element);
       if (type === 'CustomField') return readField(document, element, beforeDot(fullName));
       if (type === 'ValidationRule') return readRule(document, element, beforeDot(fullName));
+      if (type === 'RecordType') return readRecordType(document, element, beforeDot(fullName));
+      if (type === 'FieldSet') return readFieldSet(document, element, beforeDot(fullName));
+      if (type === 'CustomMetadata') return readRecord(document, element, typeOfRecord(fullName));
       if (type === 'Workflow') return readWorkflow();
       // The parts of a file of workflow rules are of the object the file is named after.
       if (WORKFLOW_PARTS.has(type)) return readWorkflowPart(type, document, element, beforeDot(fullName));
@@ -438,9 +454,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   for (const entry of [...entries]) {
     const parent = parentKey(entry.key);
     if (parent === undefined || registry.has(parent) || parseKey(parent).type !== 'CustomObject') continue;
-    const before = beforeDot(entry.name);
-    // The full name of a record of a custom metadata type starts with the type, with or without its suffix.
-    const name = entry.type === 'CustomMetadata' && !/__mdt$/i.test(before) ? `${before}__mdt` : before;
+    const name = entry.type === 'CustomMetadata' ? typeOfRecord(entry.name) : beforeDot(entry.name);
     registry.register({ key: parent, displayName: name });
     entries.push({ key: parent, type: 'CustomObject', name, definition: null, readings: [] });
   }
@@ -511,7 +525,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
       const references: Reference[] = [];
       const notReadAsAWhole: string[] = [];
       let formulas = 0;
-      const object = entry.type === 'CustomObject' ? name : beforeDot(name);
+      const object =
+        entry.type === 'CustomObject' ? name : entry.type === 'CustomMetadata' ? typeOfRecord(name) : beforeDot(name);
       const origin = originOf(entry.type);
       for (const { file, reading } of readings) {
         for (const unknown of reading.unknown ?? []) {
