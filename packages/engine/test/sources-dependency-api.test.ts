@@ -2,10 +2,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { OrgSource } from '../src/core/config/config.ts';
 import {
   DEPENDENCY_OBJECT,
+  FLOW_VERSION_OBJECT,
   readDependencies,
+  readFlowVersions,
   type DependencyLimits,
   type DependencyOptions,
   type DependencyReading,
+  type FlowVersionReading,
 } from '../src/sources/dependency-api.ts';
 import { connectToOrg } from '../src/sources/org.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
@@ -32,6 +35,51 @@ async function read(options: DependencyOptions = {}): Promise<DependencyReading>
   mock.requests.length = 0;
   return readDependencies(session, { ...options, limits: { ...FAST, ...options.limits } });
 }
+
+/** Asks the mock org which versions of its flows are active and latest. */
+async function readVersions(limits: Partial<DependencyLimits> = {}): Promise<FlowVersionReading> {
+  await seedCliLogin({ username: 'dev@example.com', orgId: ORG_ID, instanceUrl: mock.url, accessToken: 'the-session' });
+  mock.sessions.add('the-session');
+  const session = await connectToOrg(source, undefined, {});
+  mock.requests.length = 0;
+  return readFlowVersions(session, { limits: { ...FAST, ...limits } });
+}
+
+/** Rows of `FlowDefinition` as the Tooling API gives them. */
+const DEFINITIONS: Record<string, string | null>[] = [
+  {
+    Id: '300xx0000000001AAA',
+    DeveloperName: 'Invoice_Recalculate',
+    NamespacePrefix: null,
+    ActiveVersionId: '301xx0000000001AAA',
+    LatestVersionId: '301xx0000000002AAA',
+  },
+  {
+    Id: '300xx0000000002AAA',
+    DeveloperName: 'Renew',
+    NamespacePrefix: 'acme',
+    ActiveVersionId: '301xx0000000003AAA',
+    LatestVersionId: '301xx0000000003AAA',
+  },
+  // A flow no version of which is active, and one whose ids are not ids.
+  {
+    Id: '300xx0000000003AAA',
+    DeveloperName: 'Never_Active',
+    NamespacePrefix: null,
+    ActiveVersionId: null,
+    LatestVersionId: '301xx0000000004AAA',
+  },
+  { Id: '300xx0000000004AAA', DeveloperName: 'Odd', NamespacePrefix: '', ActiveVersionId: 'none', LatestVersionId: '' },
+  // A row without a name says nothing.
+  { Id: '300xx0000000005AAA', DeveloperName: '', NamespacePrefix: null, ActiveVersionId: null, LatestVersionId: null },
+];
+/** What the reading makes of them, sorted by flow. */
+const VERSIONS = [
+  { flow: 'Invoice_Recalculate', active: '301xx0000000001AAA', latest: '301xx0000000002AAA' },
+  { flow: 'Never_Active', active: null, latest: '301xx0000000004AAA' },
+  { flow: 'Odd', active: null, latest: null },
+  { flow: 'acme__Renew', active: '301xx0000000003AAA', latest: '301xx0000000003AAA' },
+];
 
 /** Rows from `count` components of one type to one component each of another type. */
 function rowsOf(from: string, to: string, count: number, perComponent = 1): MockDependencyRow[] {
@@ -649,6 +697,77 @@ describe('reading the Dependency API', () => {
       expect(await read(), elsewhere).toMatchObject({ code: 'NOT_DONE' });
       expect(new Set(mock.asked()), elsewhere).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
     }
+  });
+
+  it('asks one query of the versions of the flows, which names the active and the latest version of each', async () => {
+    mock.dependencies = mockDependencies([]);
+    mock.dependencies.flowDefinitions = DEFINITIONS;
+    expect(await readVersions()).toEqual({ state: 'whole', flows: VERSIONS, requests: 1, code: null });
+    expect(mock.dependencies.queries).toEqual([
+      `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`,
+    ]);
+    expect(FLOW_VERSION_OBJECT).toBe('FlowDefinition');
+    expect(new Set(mock.asked())).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
+    // An org without flows names none.
+    mock.dependencies.flowDefinitions = [];
+    expect(await readVersions()).toEqual({ state: 'whole', flows: [], requests: 1, code: null });
+  });
+
+  it('follows the versions of the flows over their pages, and keeps what came where the answer breaks off', async () => {
+    const page = (records: unknown[], next: string | null): { status: number; body: string } => ({
+      status: 200,
+      body: JSON.stringify({ done: next === null, ...(next === null ? {} : { nextRecordsUrl: next }), records }),
+    });
+    mock.intercept = (request) => {
+      if (request.path.endsWith('/tooling/query'))
+        return page(DEFINITIONS.slice(0, 2), '/services/data/v66.0/tooling/query/01gxx-2');
+      if (request.path.endsWith('/01gxx-2')) return page(DEFINITIONS.slice(2), null);
+      return undefined;
+    };
+    expect(await readVersions()).toEqual({ state: 'whole', flows: VERSIONS, requests: 2, code: null });
+    // The limit of requests is reached after the first page: what it named is right all the same.
+    expect(await readVersions({ requestsInAll: 1 })).toEqual({
+      state: 'partial',
+      flows: [VERSIONS[0], VERSIONS[3]],
+      requests: 1,
+      code: 'REQUESTS_USED_UP',
+    });
+    expect(await readVersions({ pages: 1 })).toMatchObject({ state: 'partial', requests: 1, code: 'PAGES_LEFT' });
+    // An answer that is not done and does not say where it goes on, or goes on somewhere else.
+    mock.intercept = (request) =>
+      request.path.endsWith('/tooling/query')
+        ? page(DEFINITIONS.slice(0, 1), '/services/data/v66.0/query?q=SELECT+Id+FROM+Account')
+        : undefined;
+    expect(await readVersions()).toEqual({ state: 'partial', flows: [VERSIONS[0]], requests: 1, code: 'NOT_DONE' });
+    expect(new Set(mock.asked())).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
+  });
+
+  it('gives a reading that says so when the org refuses the versions of its flows or does not answer', async () => {
+    mock.dependencies = mockDependencies([]);
+    mock.dependencies.refuse = (soql) => (soql.includes(FLOW_VERSION_OBJECT) ? 'INVALID_TYPE' : undefined);
+    expect(await readVersions()).toEqual({ state: 'none', flows: [], requests: 1, code: 'INVALID_TYPE' });
+    // A query that takes too long is not asked again.
+    mock.intercept = (request) =>
+      request.path.endsWith('/tooling/query')
+        ? { status: 200, body: JSON.stringify({ done: true, records: [] }), halfway: 'stall' }
+        : undefined;
+    expect(await readVersions({ requestMs: 300 })).toEqual({ state: 'none', flows: [], requests: 1, code: 'TIMEOUT' });
+    // Nor is one whose session the org no longer accepts.
+    mock.intercept = null;
+    mock.dependencies.refuse = null;
+    await seedCliLogin({
+      username: 'dev@example.com',
+      orgId: ORG_ID,
+      instanceUrl: mock.url,
+      accessToken: 'the-session',
+    });
+    mock.sessions.add('the-session');
+    const session = await connectToOrg(source, undefined, {});
+    mock.sessions.clear();
+    expect(await readFlowVersions(session, { limits: FAST })).toMatchObject({
+      state: 'none',
+      code: 'INVALID_SESSION_ID',
+    });
   });
 
   it('never follows a redirect', async () => {

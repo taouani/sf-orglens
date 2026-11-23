@@ -1,6 +1,7 @@
 /**
  * The Dependency API of a mock org: the rows of `MetadataComponentDependency`, and the queries of the Tooling
- * API that the engine asks for them.
+ * API that the engine asks for them. It also answers the one query of `FlowDefinition` that names the versions of
+ * the flows (decision record 0067).
  *
  * It answers the way the probe of the test org saw Salesforce answer (`docs/research/phase-1/real-org.md`):
  * a query gives at most `limit` rows and says that it is done, a field and a rule are named without their
@@ -29,8 +30,13 @@ export interface MockDependencies {
   readonly queries: string[];
   /** Set by a test to refuse a query: returns the code the org refuses it with, or `undefined` to answer it. */
   refuse: ((soql: string) => string | undefined) | null;
-  /** Answers one query of the Tooling API. */
-  answer(soql: string): { status: number; body: string };
+  /**
+   * The rows of `FlowDefinition`, or `null` for those the metadata of the mock org gives
+   * (`MockMetadata.flowDefinitionRows`), and none without it.
+   */
+  flowDefinitions: Record<string, string | null>[] | null;
+  /** Answers one query of the Tooling API, with the metadata of the mock org if it has one. */
+  answer(soql: string, metadata?: MockMetadata | null): { status: number; body: string };
 }
 
 /** The end of a row for a component, in the form Salesforce writes it. `id`: the id the org lists it with. */
@@ -77,6 +83,24 @@ const refused = (errorCode: string, message: string): { status: number; body: st
   body: JSON.stringify([{ message, errorCode }]),
 });
 
+/** The query of the versions of the flows, the one query of `FlowDefinition` the engine asks. */
+const FLOW_VERSIONS = 'SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM FlowDefinition';
+
+const answered = (entityTypeName: string, rows: readonly Readonly<Record<string, unknown>>[]) => {
+  const records = rows.map((row) => ({ attributes: { type: entityTypeName }, ...row }));
+  return {
+    status: 200,
+    body: JSON.stringify({
+      size: records.length,
+      totalSize: records.length,
+      done: true,
+      queryLocator: null,
+      entityTypeName,
+      records,
+    }),
+  };
+};
+
 const SELECT =
   /^SELECT MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType FROM (\w+)(?: WHERE (.+))?$/;
 /** A condition on the type of the target that holds `StandardEntity`, alone or in a list. */
@@ -108,10 +132,14 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
     limit: 2_000,
     queries: [],
     refuse: null,
-    answer: (soql) => {
+    flowDefinitions: null,
+    answer: (soql, metadata = null) => {
       dependencies.queries.push(soql);
       const code = dependencies.refuse?.(soql);
       if (code !== undefined) return refused(code, `The mock org refuses the query (${code}).`);
+      if (soql === FLOW_VERSIONS) {
+        return answered('FlowDefinition', dependencies.flowDefinitions ?? metadata?.flowDefinitionRows() ?? []);
+      }
       const parsed = SELECT.exec(soql);
       if (parsed === null) return refused('MALFORMED_QUERY', 'The mock org does not know this query.');
       if (parsed[1] !== 'MetadataComponentDependency') {
@@ -126,19 +154,8 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
       if (tests.includes(null)) return refused('MALFORMED_QUERY', 'The mock org does not know this condition.');
       const records = dependencies.rows
         .filter((row) => tests.every((test) => test?.(row) === true))
-        .slice(0, dependencies.limit)
-        .map((row) => ({ attributes: { type: 'MetadataComponentDependency' }, ...row }));
-      return {
-        status: 200,
-        body: JSON.stringify({
-          size: records.length,
-          totalSize: records.length,
-          done: true,
-          queryLocator: null,
-          entityTypeName: 'MetadataComponentDependency',
-          records,
-        }),
-      };
+        .slice(0, dependencies.limit);
+      return answered('MetadataComponentDependency', records);
     },
   };
   return dependencies;

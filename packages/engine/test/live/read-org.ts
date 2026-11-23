@@ -18,12 +18,12 @@
  *   in the snapshot, and how a file that came back differs from the file
  *   of the repository,
  * - the cross-check: what the Dependency API of Salesforce reports for the
- *   org, held by the engine against its analysis of the snapshot. A pair of
- *   components is named only if both are of the fixture project,
- * - the files of Phase 2 of the fixture project, of which the cross-check
- *   compares little: which of the pairs its answer key has for them the
- *   Dependency API reports, by the ids the org listed, and which version of
- *   each flow the org handed out,
+ *   org, held by the engine against its analysis of the snapshot, and how
+ *   many versions of flows the org named for it. A pair of components, and
+ *   a flow, is named only if it is of the fixture project,
+ * - the files of Phase 2 of the fixture project: which of the pairs its
+ *   answer key has for them the Dependency API reports, by the ids the org
+ *   listed, and which version of each flow the org handed out,
  * - the rows read twice more, with one query and then with every answer
  *   cut off at a few rows, to see that the parts the engine asks for then
  *   give every row, and that the org answers each way of asking. Of a
@@ -52,12 +52,12 @@ import type { CoverageReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import { listedMatcher, type CrossCheckPair } from '../../src/engines/cross-check.ts';
-import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
+import { readDependencies, type DependencyRow, type FlowVersionIds } from '../../src/sources/dependency-api.ts';
 import { notFoundIn } from '../../src/sources/metadata-api.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
-import { readDependencyRows, readListedIds, type ListedId } from '../../src/store/dependencies.ts';
+import { readDependencyRows, readFlowVersionIds, readListedIds, type ListedId } from '../../src/store/dependencies.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
 import { draftPlaces, FLOW_WITH_DRAFT } from './deploy-fixture.ts';
 import { asStep } from './own-output.ts';
@@ -90,6 +90,9 @@ const CONDITIONS_SHOWN = 40;
  * never asked for there otherwise.
  */
 const PRETENDED_LIMIT = 30;
+/** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
+const CROSS_CHECK_HEADING =
+  'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency, and FlowDefinition for the versions of flows)';
 
 const seconds = (ms: number): string => (ms / 1000).toFixed(1);
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
@@ -836,16 +839,19 @@ function fixtureKeys(): Set<string> {
 }
 
 /**
- * The roadmap phase whose files are held against the rows. The cross-check compares little of them: it does not
- * compare the rows of flows (decision record 0060), and of a file of workflow rules the API reports only the
- * fields the formula of a field update reads (decision record 0063).
+ * The roadmap phase whose files are held against the rows. Of a file of workflow rules the API reports only the
+ * fields the formula of a field update reads (decision record 0063), and a row from a flow can be from a version
+ * of it that the snapshot does not hold (decision record 0067).
  */
 const PHASE_MEASURED = 2;
 
 /**
  * What the Dependency API reports for the files of a phase of the fixture project: the pairs of components the
- * answer key has for them, held against the rows. An end of a row is matched to a component as the engine does it
- * in the cross-check: by the id the org listed the component with.
+ * answer key has for them, held against the rows. An end of a row is matched to a component by the id the org
+ * listed the component with, as the cross-check did before it asked for the versions of flows, so that the runs can
+ * be held against each other: a row from the active version of a flow that has a newer one is matched to nothing,
+ * and a row from the newer one is matched to the flow. The cross-check of the engine matches such a row by the
+ * version (decision record 0067).
  *
  * The first lines say what the id of a row is the id of. A row from a flow can carry the id of a version of the
  * flow, which the org may not list.
@@ -1016,12 +1022,52 @@ export function flowLines(log: PublicLog, fileOf: (path: string) => string | nul
 const reasonWord = (value: string): string => (/^[a-z][a-z-]{0,39}$/.test(value) ? value : '(not shown)');
 
 /**
- * Says what the cross-check of the snapshot found. A pair is named if both of its components are of the fixture
- * project, and counted otherwise. Returns what the step makes of it: `ok`, or why it fails.
+ * Says which versions of its flows the org named for the cross-check (decision record 0067): how many flows, and
+ * of how many the active version is not the latest or none is active. A flow of the fixture project is named, any
+ * other is counted. No id is shown.
  */
-export function crossCheckLines(log: PublicLog, crossCheck: CrossCheckReport | null): 'ok' | 'not compared' | 'missed' {
+export function flowVersionLines(log: PublicLog, versions: readonly FlowVersionIds[]): string[] {
+  if (versions.length === 0) {
+    return [
+      'The snapshot holds no version of a flow. A row from a flow is matched by the id the org listed the flow with.',
+    ];
+  }
+  const fixture = fixtureKeys();
+  const named = (flows: readonly FlowVersionIds[]): string => {
+    const ours = flows
+      .filter(({ flow }) => {
+        try {
+          return fixture.has(buildKey({ type: 'Flow', fullName: flow })) && log.clean(flow);
+        } catch {
+          // A name the engine has no key for is of no flow of the fixture project.
+          return false;
+        }
+      })
+      .map(({ flow }) => flow);
+    const others = flows.length - ours.length;
+    return ` (${[...ours, ...(others > 0 ? [`${plural(others, 'flow', 'flows')} not of the fixture project`] : [])].join(', ')})`;
+  };
+  const newer = versions.filter(({ active, latest }) => active !== null && latest !== null && active !== latest);
+  const inactive = versions.filter(({ active }) => active === null);
+  return [
+    `The org named the active and the latest version of ${plural(versions.length, 'flow', 'flows')}. ` +
+      `Flows whose active version is not the latest: ${String(newer.length)}${newer.length > 0 ? named(newer) : ''}. ` +
+      `Flows with no active version: ${String(inactive.length)}${inactive.length > 0 ? named(inactive) : ''}.`,
+  ];
+}
+
+/**
+ * Says what the cross-check of the snapshot found. A pair is named if both of its components are of the fixture
+ * project, and counted otherwise. `versions`: the versions of flows the snapshot holds. Returns what the step makes
+ * of it: `ok`, or why it fails.
+ */
+export function crossCheckLines(
+  log: PublicLog,
+  crossCheck: CrossCheckReport | null,
+  versions: readonly FlowVersionIds[],
+): 'ok' | 'not compared' | 'missed' {
   log.say('');
-  log.say('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)');
+  log.say(CROSS_CHECK_HEADING);
   if (crossCheck === null) {
     log.say('The snapshot holds nothing of the Dependency API: it was not asked.');
     return 'not compared';
@@ -1039,6 +1085,7 @@ export function crossCheckLines(log: PublicLog, crossCheck: CrossCheckReport | n
         ? 'No query left a row out.'
         : `Rows are missing: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off at the limit, ${String(crossCheck.queriesFailed)} failed (${log.code(crossCheck.code) ?? 'a code that is not shown'}).`),
   );
+  for (const line of flowVersionLines(log, versions)) log.say(line);
   const { comparison } = crossCheck;
   if (comparison === null) {
     log.say('The rows were not compared: the snapshot has no analysis with a comparison.');
@@ -1053,12 +1100,15 @@ export function crossCheckLines(log: PublicLog, crossCheck: CrossCheckReport | n
     byType.set(shown, (byType.get(shown) ?? 0) + rows);
   }
   log.say(
-    `Rows that are not compared, from a component of a type that is not analysed or of a flow: ${String(comparison.rowsNotAnalysed)}` +
+    `Rows that are not compared, from a component of a type that is not analysed: ${String(comparison.rowsNotAnalysed)}` +
       (byType.size > 0 ? ` (${tallied(byType)}).` : '.'),
   );
   log.say(
     `Rows with an end that is no component the org listed: ${String(comparison.rowsNotMatched)}. ` +
       `Rows from a component the snapshot does not hold or that was not analysed: ${String(comparison.rowsNotHeld)}.`,
+  );
+  log.say(
+    `Rows from a version of a flow that the snapshot does not hold, such as a draft, which are not compared: ${String(comparison.rowsOtherVersion)}.`,
   );
   log.say(
     `Rows compared: ${String(comparison.rowsCompared)}, which are ${plural(comparison.pairs, 'pair', 'pairs')} of components. ` +
@@ -1247,12 +1297,16 @@ export async function readInParts(
     log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
     return true;
   }
+  // The ids the snapshot asked with: those the org listed, and those of the versions of flows it named.
   const ids = new Map<string, string[]>();
-  for (const item of readListedIds(store, snapshotId)) {
-    if (item.id === null) continue;
-    const ofType = ids.get(item.type);
-    if (ofType === undefined) ids.set(item.type, [item.id]);
-    else ofType.push(item.id);
+  const add = (type: string, id: string): void => {
+    const ofType = ids.get(type);
+    if (ofType === undefined) ids.set(type, [id]);
+    else ofType.push(id);
+  };
+  for (const item of readListedIds(store, snapshotId)) if (item.id !== null) add(item.type, item.id);
+  for (const flow of readFlowVersionIds(store, snapshotId)) {
+    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
   }
   const failures: FailedRequest[] = [];
   const again = await readDependencies(
@@ -1403,7 +1457,7 @@ export async function readOrg(
             const rows = readDependencyRows(store, taken.id);
             for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);
           }
-          compared = crossCheckLines(log, crossCheck);
+          compared = crossCheckLines(log, crossCheck, readFlowVersionIds(store, taken.id));
           if (crossCheck?.state === 'whole') {
             sameInParts = await readInParts(log, session, store, taken.id, taken.apiVersion);
           }

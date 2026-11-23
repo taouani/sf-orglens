@@ -4,6 +4,7 @@
 - Date: 2026-11-16
 - Decisions: none (work package 8 of the Phase 1 plan. It builds the cross-check of record 0034 for the types
   this phase analyses, and follows the answer to question Q1 of that plan)
+- Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in two points: `MetadataComponentDependency` is no longer the one object that is queried, since one query of `FlowDefinition` asks for the ids of the active and the latest version of each flow; and an end of a row from a flow is matched by those ids, and a row from a version the snapshot does not hold is counted and not compared
 
 ## Context
 

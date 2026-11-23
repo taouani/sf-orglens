@@ -23,7 +23,12 @@ import { buildKey } from '../core/keys.ts';
 import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
 import { DEFAULT_CHUNK_WEIGHT, partsWithOwnFiles, planChunks, splitMembers } from '../sources/chunks.ts';
-import { readDependencies, type DependencyLimits } from '../sources/dependency-api.ts';
+import {
+  dependencyLimits,
+  readDependencies,
+  readFlowVersions,
+  type DependencyLimits,
+} from '../sources/dependency-api.ts';
 import { takeInventory, type NotExcluded } from '../sources/inventory.ts';
 import {
   DEFAULT_LIMITS,
@@ -39,7 +44,7 @@ import { loginFailed, saidBy, unreachable } from '../sources/org-errors.ts';
 import { connectToOrg, type OrgSession } from '../sources/org.ts';
 import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
 import { byCodeUnit, systemCode } from '../sources/tree.ts';
-import { readListedIds, writeDependencies } from '../store/dependencies.ts';
+import { readListedIds, writeDependencies, writeFlowVersions } from '../store/dependencies.ts';
 import {
   addChunk,
   addChunks,
@@ -1214,6 +1219,10 @@ function notActiveSaid(
  * Asks the org what its Dependency API knows about references, and stores the rows with the snapshot (decision
  * record 0045). They are a second opinion on what the analysis finds, and the snapshot does not depend on
  * them: an org that does not answer leaves a warning, and the snapshot goes on.
+ *
+ * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
+ * version only. An org that lists a flow is therefore asked first for the ids of the active and the latest version
+ * of each flow, which are stored with the rows (decision record 0067).
  */
 async function readCrossCheck(
   store: Store,
@@ -1223,25 +1232,41 @@ async function readCrossCheck(
   tuning: OrgSnapshotTuning,
   onProgress: (requests: number, rows: number) => void,
 ): Promise<void> {
+  const listed = readListedIds(store, snapshotId);
+  const limits = dependencyLimits(tuning.dependencies);
+  const versions = listed.some((item) => item.type === 'Flow')
+    ? await readFlowVersions(session, { apiVersion, limits })
+    : null;
   // With the ids the org listed its components with, a query that reaches the limit of rows can be asked again
-  // for a part of the components.
+  // for a part of the components. The ids of the versions of flows are among them: the org does not list the id
+  // of an active version that has a newer one.
   const ids = new Map<string, string[]>();
-  for (const item of readListedIds(store, snapshotId)) {
-    if (item.id === null) continue;
-    const ofType = ids.get(item.type);
-    if (ofType === undefined) ids.set(item.type, [item.id]);
-    else ofType.push(item.id);
+  const add = (type: string, id: string): void => {
+    const ofType = ids.get(type);
+    if (ofType === undefined) ids.set(type, [id]);
+    else ofType.push(id);
+  };
+  for (const item of listed) if (item.id !== null) add(item.type, item.id);
+  for (const flow of versions?.flows ?? []) {
+    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
   }
+  // Both readings count against the daily limit of requests of the org. They are counted together, and the rows
+  // are read with the requests that are left.
+  const before = versions?.requests ?? 0;
   const reading = await readDependencies(session, {
     apiVersion,
-    limits: tuning.dependencies,
+    limits: { ...limits, requestsInAll: limits.requestsInAll - before },
     idsOfType: (type) => ids.get(type) ?? [],
-    onProgress,
+    onProgress: (requests, rows) => {
+      onProgress(before + requests, rows);
+    },
   });
+  const requests = before + reading.requests;
   store.write(() => {
-    writeDependencies(store, snapshotId, reading, now());
+    writeDependencies(store, snapshotId, { ...reading, requests }, now());
+    writeFlowVersions(store, snapshotId, versions?.flows ?? []);
     // A snapshot that was interrupted after an earlier reading has the warning of that reading.
-    removeIssues(store, snapshotId, ['CROSS_CHECK_NOT_READ', 'CROSS_CHECK_PARTIAL']);
+    removeIssues(store, snapshotId, ['CROSS_CHECK_NOT_READ', 'CROSS_CHECK_PARTIAL', 'FLOW_VERSIONS_NOT_READ']);
     if (reading.state === 'none') {
       issue(
         store,
@@ -1249,9 +1274,21 @@ async function readCrossCheck(
         'warning',
         'CROSS_CHECK_NOT_READ',
         `The Dependency API of the org gave no answer (${reading.code ?? 'NO_CODE'}). What the analysis of this snapshot finds is not held against what Salesforce knows.`,
-        { code: reading.code, requests: reading.requests },
+        { code: reading.code, requests },
       );
-    } else if (reading.state === 'partial') {
+      return;
+    }
+    if (versions !== null && versions.state !== 'whole') {
+      issue(
+        store,
+        snapshotId,
+        'warning',
+        'FLOW_VERSIONS_NOT_READ',
+        `The org did not name the versions of ${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'}). A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
+        { code: versions.code, state: versions.state, flows: versions.flows.length, requests: versions.requests },
+      );
+    }
+    if (reading.state === 'partial') {
       const left = reading.cutOff + reading.failed;
       const said: string[] = [];
       if (left > 0) {

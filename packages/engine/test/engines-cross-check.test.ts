@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { JsonValue } from '../src/core/errors.ts';
 import { buildKey, type ComponentKey } from '../src/core/keys.ts';
 import { validateReference, type Reference } from '../src/core/references.ts';
-import { crossCheck, crossCheckIssues, type CrossCheckInput } from '../src/engines/cross-check.ts';
+import { crossCheck, crossCheckIssues, versionMatcher, type CrossCheckInput } from '../src/engines/cross-check.ts';
 import type { AnalysedComponent } from '../src/extraction/analysed.ts';
 import type { DependencyEnd, DependencyRow } from '../src/sources/dependency-api.ts';
 import type { ListedId } from '../src/store/dependencies.ts';
@@ -101,6 +101,8 @@ const input = (rows: readonly DependencyRow[], components: readonly AnalysedComp
   listed: LISTED,
   components,
   analysedTypes: TYPES,
+  flowVersions: [],
+  newerVersions: [],
 });
 
 describe('the comparison of the rows of the Dependency API with an analysis', () => {
@@ -125,6 +127,7 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       notAnalysed: [],
       rowsNotMatched: 0,
       rowsNotHeld: 0,
+      rowsOtherVersion: 0,
       rowsCompared: 3,
       pairs: 3,
       agreed: 2,
@@ -322,34 +325,158 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     });
   });
 
-  it('does not compare the rows of flows yet, also when the analysis reads flows', () => {
-    // A row from a flow carries the id of a version, which need not be the one that is analysed (record 0060).
-    const remind = { type: 'Flow', id: '301xx0000000001AAA', name: 'Remind', namespace: null };
-    const rows = [
-      row(remind, end('CustomField', 'Invoice__c.Amount__c')),
-      row(remind, end('CustomField', 'Invoice__c.Total__c')),
-      row(end('CustomField', 'Invoice__c.Total__c'), end('CustomField', 'Invoice__c.Amount__c')),
-    ];
-    const flow = key('Flow', 'Remind');
-    const components = [
-      component(AMOUNT, {}),
-      component(TOTAL, {}, [reference(TOTAL, AMOUNT)]),
-      // The analysis found one of the two references of the flow, and one more that no row has.
-      component(flow, {}, [reference(flow, AMOUNT), reference(flow, STATUS)]),
-    ];
-    const result = crossCheck({ ...input(rows, components), analysedTypes: [...TYPES, 'Flow'] });
-    expect(result).toMatchObject({
-      rows: 3,
-      rowsNotAnalysed: 2,
-      notAnalysed: [{ type: 'Flow', rows: 2 }],
-      rowsCompared: 1,
-      pairs: 1,
-      agreed: 1,
-      missed: [],
+  describe('of a flow', () => {
+    const REMIND = key('Flow', 'Remind');
+    const DECIDE = buildKey({ type: 'Flow', fullName: 'Remind', subs: [{ kind: 'element', name: 'Decide' }] });
+    /** The active version of the flow, whose id the org does not list, and a newer draft, which it lists. */
+    const ACTIVE_ID = '301xx0000000001AAA';
+    const DRAFT_ID = '301xx0000000002AAA';
+    const VERSIONS = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID }];
+    const version = (id: string): DependencyEnd => ({ type: 'Flow', id, name: 'Remind', namespace: null });
+    const ofFlow = (to: ComponentKey, via: string, more: Partial<Reference> = {}): Reference =>
+      reference(DECIDE, to, { origin: 'parser:flow', attrs: { via }, ...more });
+    const flowInput = (
+      rows: readonly DependencyRow[],
+      components: readonly AnalysedComponent[],
+      more: Partial<CrossCheckInput> = {},
+    ): CrossCheckInput => ({
+      ...input(rows, components),
+      listed: [...LISTED, { type: 'Flow', fullName: 'Remind', id: DRAFT_ID }],
+      analysedTypes: [...TYPES, 'Flow'],
+      ...more,
     });
-    // Nothing of the flow is in either list: not the reference without a row, and not the row without a reference.
-    expect(JSON.stringify(result)).not.toContain(flow);
-    expect(crossCheckIssues(result)).toEqual([]);
+    // The active version reads the amount. The draft reads the total as well.
+    const rows = [
+      row(version(ACTIVE_ID), end('CustomField', 'Invoice__c.Amount__c')),
+      row(version(DRAFT_ID), end('CustomField', 'Invoice__c.Amount__c')),
+      row(version(DRAFT_ID), end('CustomField', 'Invoice__c.Total__c')),
+    ];
+    // The analysis of the version the snapshot holds. Its references stand at an element, and are of the flow:
+    // Salesforce counts a flow, not an element of it.
+    const analysis = [component(REMIND, { status: 'Active' }), component(DECIDE, {}, [ofFlow(AMOUNT, 'path')])];
+
+    it('compares the rows of the version the snapshot holds, and counts those of another version', () => {
+      // The snapshot holds the active version, as the note of a newer one says.
+      const held = crossCheck(flowInput(rows, analysis, { flowVersions: VERSIONS, newerVersions: [REMIND] }));
+      expect(held).toMatchObject({
+        rows: 3,
+        rowsNotAnalysed: 0,
+        rowsNotMatched: 0,
+        rowsNotHeld: 0,
+        rowsOtherVersion: 2,
+        rowsCompared: 1,
+        pairs: 1,
+        agreed: 1,
+        missed: [],
+        onlyOrgLens: [],
+      });
+      // Without that note, the snapshot holds the version that came for the name of the flow, the latest one: here
+      // the draft. A reference of the draft that the analysis lacks is then an error of it.
+      const latest = crossCheck(flowInput(rows, analysis, { flowVersions: VERSIONS }));
+      expect(latest).toMatchObject({
+        rowsOtherVersion: 1,
+        rowsCompared: 2,
+        pairs: 2,
+        agreed: 1,
+        missed: [{ from: REMIND, to: TOTAL }],
+      });
+    });
+
+    it('takes the id the org listed a flow with for its latest version where the org named no version', () => {
+      // The rows of the active version name an id that nothing names: they cannot be matched.
+      const held = crossCheck(flowInput(rows, analysis, { newerVersions: [REMIND] }));
+      expect(held).toMatchObject({ rowsOtherVersion: 2, rowsNotMatched: 1, rowsCompared: 0, missed: [] });
+      // A flow without a newer version: the version the org listed is the one the snapshot holds.
+      expect(crossCheck(flowInput(rows.slice(1, 2), analysis))).toMatchObject({ rowsCompared: 1, agreed: 1 });
+    });
+
+    it('finds a flow by the id of any of its versions, in either length, and knows which one the snapshot holds', () => {
+      const versionOf = versionMatcher(flowInput([], []).listed, VERSIONS, [REMIND]);
+      expect(versionOf(version(ACTIVE_ID))).toEqual({ key: REMIND, held: true });
+      expect(versionOf(version(ACTIVE_ID.slice(0, 15)))).toEqual({ key: REMIND, held: true });
+      expect(versionOf(version(DRAFT_ID))).toEqual({ key: REMIND, held: false });
+      // The listed id is that of the latest version, also where the org named no version.
+      expect(versionMatcher(flowInput([], []).listed, [], [])(version(DRAFT_ID))).toEqual({ key: REMIND, held: true });
+      // Only an end of the type Flow is a version of a flow.
+      expect(versionOf({ ...version(ACTIVE_ID), type: 'ApexClass' })).toBeNull();
+      expect(versionOf(version('301xx0000000009AAA'))).toBeNull();
+      // An id the org names for two flows stands for neither.
+      const twice = [...VERSIONS, { flow: 'Other', active: ACTIVE_ID, latest: null }];
+      expect(versionMatcher([], twice, [])(version(ACTIVE_ID))).toBeNull();
+      expect(crossCheck(flowInput(rows.slice(0, 1), analysis, { flowVersions: twice }))).toMatchObject({
+        rowsNotMatched: 1,
+        rowsCompared: 0,
+      });
+    });
+
+    it('takes a row to a flow as a row to the flow, whichever version of it the row names', () => {
+      // A flow that starts the flow above as a subflow. It has one version, which the org lists.
+      const CALLER = key('Flow', 'Caller');
+      const CALL = buildKey({ type: 'Flow', fullName: 'Caller', subs: [{ kind: 'element', name: 'Call' }] });
+      const caller: DependencyEnd = { type: 'Flow', id: '301xx0000000005AAA', name: 'Caller', namespace: null };
+      const result = crossCheck(
+        flowInput(
+          [row(caller, version(ACTIVE_ID)), row(caller, version(DRAFT_ID))],
+          [
+            ...analysis,
+            component(CALLER, { status: 'Active' }),
+            component(CALL, {}, [
+              reference(CALL, REMIND, { kind: 'calls', origin: 'parser:flow', attrs: { via: 'action' } }),
+            ]),
+          ],
+          {
+            listed: [...flowInput([], []).listed, { type: 'Flow', fullName: 'Caller', id: caller.id }],
+            flowVersions: VERSIONS,
+            newerVersions: [REMIND],
+          },
+        ),
+      );
+      expect(result).toMatchObject({ rowsOtherVersion: 0, rowsCompared: 2, pairs: 1, agreed: 1, missed: [] });
+    });
+
+    it('counts the rows of a flow the snapshot does not hold as such, of whichever version', () => {
+      const result = crossCheck(
+        flowInput(rows, [component(REMIND, null, [], false)], { flowVersions: VERSIONS, newerVersions: [REMIND] }),
+      );
+      expect(result).toMatchObject({ rowsNotHeld: 3, rowsOtherVersion: 0, rowsCompared: 0, missed: [] });
+    });
+
+    it('says of every reference of a flow without a row whether Salesforce reports that kind', () => {
+      const SETTING = key('CustomObject', 'Settings__c');
+      const GRACE = key('CustomField', 'Settings__c.Grace__c');
+      const FEE = key('CustomField', 'Settings__c.Fee__c');
+      const PERMISSION = key('CustomPermission', 'Approve');
+      const CREDIT_NOTE = key('RecordType', 'Invoice__c.Credit_Note');
+      const components = [
+        component(REMIND, { status: 'Active' }),
+        component(DECIDE, {}, [
+          // A custom field in a formula, a subflow, and a record type a condition compares a text with.
+          ofFlow(AMOUNT, 'formula'),
+          ofFlow(key('Flow', 'Other'), 'action', { kind: 'calls' }),
+          ofFlow(CREDIT_NOTE, 'text', { kind: 'references', confidence: 'probable' }),
+          // A custom permission and a field of a custom setting that only a formula names.
+          ofFlow(PERMISSION, 'formula', { kind: 'references' }),
+          ofFlow(FEE, 'formula'),
+          // A field of the custom setting that a condition names as well.
+          ofFlow(GRACE, 'formula'),
+          ofFlow(GRACE, 'path'),
+          ofFlow(ACCOUNT_NAME, 'path', { resolution: 'external' }),
+        ]),
+        component(SETTING, { customSettingsType: 'Hierarchy' }),
+      ];
+      const result = crossCheck(flowInput([], components));
+      expect(result.onlyOrgLens).toEqual([
+        { from: REMIND, to: AMOUNT },
+        { from: REMIND, to: GRACE },
+      ]);
+      expect(result.notReported).toEqual([
+        { reason: 'global-variable', pairs: 2 },
+        { reason: 'name-in-text', pairs: 1 },
+        { reason: 'standard-field', pairs: 1 },
+        { reason: 'subflow', pairs: 1 },
+      ]);
+      expect(crossCheckIssues(result)).toEqual([]);
+    });
   });
 
   it('does not compare a row from a component the snapshot does not hold or that was not analysed', () => {
@@ -517,7 +644,8 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     ];
     const result = crossCheck(input(rows, [component(POSITIVE, { active: true }, [reference(POSITIVE, AMOUNT)])]));
     expect(result).toMatchObject({ rows: 6, rowsNotAnalysed: 1, rowsNotMatched: 1, rowsNotHeld: 1, rowsCompared: 3 });
-    expect(result.rowsNotAnalysed + result.rowsNotMatched + result.rowsNotHeld + result.rowsCompared).toBe(result.rows);
+    const { rowsNotAnalysed, rowsNotMatched, rowsNotHeld, rowsOtherVersion, rowsCompared } = result;
+    expect(rowsNotAnalysed + rowsNotMatched + rowsNotHeld + rowsOtherVersion + rowsCompared).toBe(result.rows);
     expect(result.agreed + result.coveredByPart + result.missed.length).toBe(result.pairs);
     expect(result).toMatchObject({ pairs: 3, agreed: 1, coveredByPart: 1, missed: [{ from: POSITIVE, to: STATUS }] });
     // The same rows in another order give the same result.
@@ -541,7 +669,14 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       ),
     ];
     expect(
-      crossCheck({ rows, listed: [...LISTED, ...listed], components: [], analysedTypes: [...TYPES, 'ApexClass'] }),
+      crossCheck({
+        rows,
+        listed: [...LISTED, ...listed],
+        components: [],
+        analysedTypes: [...TYPES, 'ApexClass'],
+        flowVersions: [],
+        newerVersions: [],
+      }),
     ).toMatchObject({
       // The class is found by its name with the prefix, and the snapshot holds no analysis of it.
       rowsNotMatched: 0,

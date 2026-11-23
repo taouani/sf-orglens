@@ -382,9 +382,16 @@ records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
   snapshot holds, without asking the org: an update of OrgLens that analyses more is measured against the same
   rows.
 - Only rows from a component of a type that is analysed are compared. A row from a class is counted and not
-  compared in this version. So is a row from a flow, although flows are analysed: such a row carries the id of a
-  version of the flow, and how it is matched is not decided
-  ([record 0060](adr/0060-the-active-version-of-a-flow-is-analysed.md)).
+  compared in this version.
+- A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
+  version. So a snapshot of an org that lists a flow asks the Tooling API once more, before the rows, for the object
+  `FlowDefinition`, which names the active and the latest version of each flow
+  ([record 0067](adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). The snapshot keeps the ids. A row is
+  compared where it is from the version the snapshot holds: the active one where the snapshot has the note
+  `FLOW_NEWER_VERSION`, and else the latest. A row from another version, such as a draft, is counted and not
+  compared. Where the org does not name the versions, the snapshot has the warning `FLOW_VERSIONS_NOT_READ`, and a
+  row from a flow is matched by the id the org listed the flow with: a row of the active version of a flow that has
+  a newer one then names a component the org did not list.
 - A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
   for a standard object, which Salesforce names in the place of an id, and for a component the org listed
   without one. A row that names a component the org did not list is counted and not compared.
@@ -399,7 +406,9 @@ records [0034](adr/0034-dependency-api-is-the-cross-check.md) and
   where the API reports nothing of the kind: a standard field or object, a lookup, the filter of a lookup, a
   roll-up summary apart from its filter, the value set and the controlling field of a picklist, a rule that is
   not active, of a file of workflow rules everything but the fields the formula of a field update reads, of a
-  record of a custom metadata type everything but its type, and everything of a record type.
+  record of a custom metadata type everything but its type, everything of a record type, and of a flow a flow it
+  starts, a name in a text, such as a record type a condition compares a text with, and a field of a custom setting
+  or a custom permission that only its formulas name.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the command was not run against a real org. The test org is read by a tool of the tests, which
@@ -449,10 +458,11 @@ which version of the engine.
 The cross-check of a snapshot of an org comes last:
 
 ```
-Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.
+Cross-check: the Dependency API of Salesforce reports 136 rows. No query left a row out.
 61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.
 1 row names a component the org did not list, and is not compared.
 2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.
+16 rows are from a version of a flow that the snapshot does not hold, such as a draft, and are not compared.
 56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.
 
 Salesforce reports these references, and the analysis has none. Each is an error of the analysis:
@@ -464,8 +474,7 @@ The analysis has 38 more references of kinds the API does not report: lookup 7, 
 ```
 
 Several rows can name the same two components, so there are fewer pairs than rows. A list of pairs shows the
-first 20, and `--json` has all of them. The line of the rows that are not compared says "or from a flow" where
-one of them is from a flow. A snapshot of an org that was taken with `--no-cross-check`, or before
+first 20, and `--json` has all of them. A snapshot of an org that was taken with `--no-cross-check`, or before
 this version, says that the API was not asked. A snapshot of a repository says nothing.
 
 Where the reading is not whole, the first line says why in the place of "No query left a row out.":
@@ -482,7 +491,7 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 | Field                            | Meaning                                                                                                                                                      |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `state`                          | `whole`: no query left a row out. `partial`: rows are missing, or may be. `none`: the org answered no query, and nothing was compared.                       |
-| `readAt`, `requests`, `rows`     | When the API was read, with how many requests, and how many different rows the snapshot holds.                                                               |
+| `readAt`, `requests`, `rows`     | When the API was read, with how many requests, those for the versions of flows among them, and how many different rows the snapshot holds.                   |
 | `queriesCutOff`, `queriesFailed` | Queries that reached the limit with no smaller part to ask for, and queries that failed and whose rows no other query gave.                                  |
 | `queriesNotProven`               | Queries at the limit that were asked again per component, for more components than one query names. Rows of a component the org did not list may be missing. |
 | `code`                           | The code of the first failure, such as `INVALID_TYPE`, `TIMEOUT` or `REQUESTS_USED_UP`, or `null`. The last is a code of OrgLens.                            |
@@ -490,34 +499,37 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 
 `comparison` holds:
 
-| Field                            | Meaning                                                                                                                                                                                                                                                                   |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rows`                           | The rows that were looked at.                                                                                                                                                                                                                                             |
-| `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, and rows from a flow, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
-| `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                                                     |
-| `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                                       |
-| `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                                              |
-| `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                                           |
-| `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                                        |
-| `missed`                         | Pairs Salesforce reports and the analysis lacks, each with the keys `from` and `to`. Each is also an issue `REFERENCE_MISSED`.                                                                                                                                            |
-| `onlyOrgLens`                    | Pairs the analysis has, of a kind the API reports, without a row that was compared.                                                                                                                                                                                       |
-| `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                                      |
+| Field                            | Meaning                                                                                                                                                                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rows`                           | The rows that were looked at.                                                                                                                                                                                                                       |
+| `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
+| `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                               |
+| `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                 |
+| `rowsOtherVersion`               | Rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version.                                                                                                                                    |
+| `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                        |
+| `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                     |
+| `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                  |
+| `missed`                         | Pairs Salesforce reports and the analysis lacks, each with the keys `from` and `to`. Each is also an issue `REFERENCE_MISSED`.                                                                                                                      |
+| `onlyOrgLens`                    | Pairs the analysis has, of a kind the API reports, without a row that was compared.                                                                                                                                                                 |
+| `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                |
 
 The values of `reason` are `standard-field`, `standard-object`, `inactive-rule`, `lookup`, `lookup-filter`,
-`roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value`, `workflow-rule` (a
-reference of a workflow rule), `workflow-action` (a reference of an email alert, an outbound message or a task),
+`roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value`, `workflow-rule` (a reference
+of a workflow rule), `workflow-action` (a reference of an email alert, an outbound message or a task),
 `field-update` (a reference of a field update that is not in its formula), `custom-metadata` (a reference of a
 record of a custom metadata type that is not to the type of the record), `record-type` (a reference of a record
-type) and `other`. A pair to a standard field or a standard object has one of the first two, from any component.
-A later version can add one.
+type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
+text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
+only its formulas name) and `other`. A pair to a standard field or a standard object has one of the first two, from
+any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
-| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                                                              |
-| --------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                                        |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL`, `FLOW_VERSION_UNKNOWN` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`, `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED`                                                                                                            |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                                                                  |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL`, `FLOW_VERSIONS_NOT_READ`, `FLOW_VERSION_UNKNOWN` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`, `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED`                                                                                                                                      |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS` and
@@ -528,8 +540,10 @@ as type and name, and carries the number of parts that are asked for in `details
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
-the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`,
-`details.unproven`, `details.code` and `details.rows`.
+the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` carries the code in `details.code`, whether
+the org named the versions of some flows or of none in `details.state` (`partial` or `none`), how many flows it
+named in `details.flows`, and the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries
+`details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
 for an error, `other` for a warning. `RETRIEVE_FAILED` carries the types of its components in `details.types`,

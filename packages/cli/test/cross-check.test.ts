@@ -85,6 +85,7 @@ const NOTHING: Engine.CrossCheck = {
   notAnalysed: [],
   rowsNotMatched: 0,
   rowsNotHeld: 0,
+  rowsOtherVersion: 0,
   rowsCompared: 40,
   pairs: 38,
   agreed: 38,
@@ -128,9 +129,9 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
     }));
     engineState.crossCheck = {
       ...READ,
-      rows: 120,
+      rows: 136,
       comparison: {
-        rows: 120,
+        rows: 136,
         rowsNotAnalysed: 61,
         notAnalysed: [
           { type: 'ApexClass', rows: 60 },
@@ -138,6 +139,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
         ],
         rowsNotMatched: 1,
         rowsNotHeld: 2,
+        rowsOtherVersion: 16,
         rowsCompared: 56,
         pairs: 50,
         agreed: 46,
@@ -154,10 +156,11 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 136 rows. No query left a row out.',
       '61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.',
       '1 row names a component the org did not list, and is not compared.',
       '2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.',
+      '16 rows are from a version of a flow that the snapshot does not hold, such as a draft, and are not compared.',
       '56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.',
       '',
       'Salesforce reports these references, and the analysis has none. Each is an error of the analysis:',
@@ -276,13 +279,14 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
     const dir = await snapshotTaken();
     engineState.crossCheck = {
       ...READ,
-      rows: 3,
+      rows: 4,
       comparison: {
         ...NOTHING,
-        rows: 3,
+        rows: 4,
         rowsNotAnalysed: 1,
-        notAnalysed: [{ type: 'Flow', rows: 1 }],
+        notAnalysed: [{ type: 'ApexClass', rows: 1 }],
         rowsNotHeld: 1,
+        rowsOtherVersion: 1,
         rowsCompared: 1,
         pairs: 1,
         agreed: 1,
@@ -291,9 +295,10 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 3 rows. No query left a row out.',
-      '1 row is from a component of a type that is not analysed, or from a flow, and is not compared: Flow 1.',
+      'Cross-check: the Dependency API of Salesforce reports 4 rows. No query left a row out.',
+      '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
       '1 row is from a component the snapshot does not hold or that was not analysed, and is not compared.',
+      '1 row is from a version of a flow that the snapshot does not hold, such as a draft, and is not compared.',
       '1 row was compared. It is 1 pair of components: the analysis has 1 of them, has 0 as a reference to a part of the object Salesforce names, and missed 0.',
       '',
       'The analysis has 1 reference of a kind Salesforce reports, without a row. Either the analysis is wrong there, or the API left it out:',

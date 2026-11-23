@@ -4,7 +4,7 @@
  * They are stored as Salesforce wrote them, beside the snapshot. They are no references: no version of a
  * component holds them, and the graph of a snapshot (`graph.ts`) does not read these tables.
  */
-import type { DependencyReading, DependencyRow } from '../sources/dependency-api.ts';
+import type { DependencyReading, DependencyRow, FlowVersionIds } from '../sources/dependency-api.ts';
 import type { Store } from './open.ts';
 
 /** How the Dependency API was read for a snapshot. */
@@ -126,4 +126,28 @@ export function readListedIds(store: Store, snapshotId: number): ListedId[] {
       fullName: String(row['full_name']),
       id: text(row['salesforce_id']),
     }));
+}
+
+/**
+ * Stores the versions of the flows the org named when the Dependency API was read for a snapshot (decision record
+ * 0067). It is called inside a write of the caller, after `writeDependencies`, which takes away what the snapshot
+ * held of them before.
+ */
+export function writeFlowVersions(store: Store, snapshotId: number, flows: readonly FlowVersionIds[]): void {
+  for (const { flow, active, latest } of flows) {
+    store.run(
+      'INSERT INTO snapshot_flow_version (snapshot_id, flow, active_id, latest_id) VALUES (?, ?, ?, ?)',
+      snapshotId,
+      flow,
+      active,
+      latest,
+    );
+  }
+}
+
+/** The versions of the flows of a snapshot, sorted by flow. Empty where the org was not asked or did not answer. */
+export function readFlowVersionIds(store: Store, snapshotId: number): FlowVersionIds[] {
+  return store
+    .all('SELECT flow, active_id, latest_id FROM snapshot_flow_version WHERE snapshot_id = ? ORDER BY flow', snapshotId)
+    .map((row) => ({ flow: String(row['flow']), active: text(row['active_id']), latest: text(row['latest_id']) }));
 }

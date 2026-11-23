@@ -403,6 +403,21 @@ well. Run 26 read it with the readers of record types, field sets and records of
   reason, draft or not: that last query cannot name every id. The engine says what it could not read and
   compares what it has. That belongs to the design of the cross-check of flows.
 
+### The rows of flows compared
+
+The maintainer chose on 23 November 2026 that a snapshot asks the org for the ids of the active and the latest
+version of each flow, and compares a row from a flow where it is from the version the snapshot holds. Record
+[0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md) builds it. What follows is worked out from
+what runs 21 and 26 printed, and was not measured. The first run of "Live org" after the merge measures it.
+
+- Of the 78 rows from a flow, 62 should be compared: the 47 of the five flows with one version and the 15 of
+  version 1 of `Invoice_Recalculate`, which the snapshot holds. The 16 of version 2, the draft, should be counted
+  as of another version, the row to `Invoice__c.Paid_Date__c` among them.
+- The analysis should have each of the 62 pairs: section 3 counts them among the pairs of the key that the API
+  reports, and none among the 21 pairs the key does not hold.
+- The rows of version 1 are asked for by the id of that version when a part is at the limit, so the reading in
+  parts should be whole again.
+
 ## 6. The symbol tables
 
 `[run 20]`. The 13 classes of the project all have a symbol table. The tables hold 0 places of use and 0

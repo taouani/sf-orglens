@@ -141,6 +141,17 @@ export interface MockMetadata {
   readonly retrieves: string[][];
   /** The id the org lists a component with, or `null` for a component it does not list. */
   idOf(type: string, fullName: string): string | null;
+  /**
+   * The id of a version of a flow of the folder: for the latest version the id the org lists the flow with, and
+   * for an older one an id of its own, which no listing holds, as the test org showed (decision record 0060).
+   * `null` for a version the flow does not have.
+   */
+  versionIdOf(flow: string, version: number): string | null;
+  /**
+   * The rows of `FlowDefinition` that the Tooling API gives for the flows of the folder: the name, the prefix of the
+   * package, the id of the definition, of the active version and of the latest one.
+   */
+  flowDefinitionRows(): Record<string, string | null>[];
   /** Answers one request to the Metadata API. */
   answer(body: string): Promise<{ status: number; body: string; type: string }>;
 }
@@ -238,12 +249,17 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     });
   }
   const isActive = (text: string): boolean => text.includes('<status>Active</status>');
-  const definitionOf = (name: string): string => {
+  /** The number of the version of a flow whose text is active, or `null`. */
+  const activeVersionOf = (name: string): number | null => {
     const flow = flows.get(name);
     const versions = metadata.flowVersions.get(name);
     const latest = versions?.latest ?? 1;
     let active = flow?.xml !== undefined && isActive(readFileSync(flow.xml, 'utf8')) ? latest : (null as number | null);
     for (const [number, text] of versions?.older ?? []) if (active === null && isActive(text)) active = number;
+    return active;
+  };
+  const definitionOf = (name: string): string => {
+    const active = activeVersionOf(name);
     const number = active === null ? '' : `    <activeVersionNumber>${String(active)}</activeVersionNumber>\n`;
     return `<?xml version="1.0" encoding="UTF-8"?>\n<FlowDefinition xmlns="${NAMESPACE}">\n${number}</FlowDefinition>\n`;
   };
@@ -381,6 +397,26 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       const index = listed.findIndex((item) => item.type === type && item.fullName === fullName);
       return index === -1 ? null : idOf(index);
     },
+    versionIdOf: (flow, version) => {
+      const index = listed.findIndex((item) => item.type === 'Flow' && item.fullName === flow);
+      const versions = metadata.flowVersions.get(flow);
+      if (index === -1) return null;
+      if (version === (versions?.latest ?? 1)) return idOf(index);
+      if (versions?.older.has(version) !== true) return null;
+      return `301xx${String(index).padStart(5, '0')}${String(version).padStart(5, '0')}AAA`;
+    },
+    flowDefinitionRows: () =>
+      [...flows.keys()].map((name) => {
+        const prefix = metadata.packaged.get(key('Flow', name)) ?? null;
+        const active = activeVersionOf(name);
+        return {
+          Id: metadata.idOf('FlowDefinition', name),
+          DeveloperName: name,
+          NamespacePrefix: prefix,
+          ActiveVersionId: active === null ? null : metadata.versionIdOf(name, active),
+          LatestVersionId: metadata.versionIdOf(name, metadata.flowVersions.get(name)?.latest ?? 1),
+        };
+      }),
     answer: async (body) => {
       const operation = /<soapenv:Body[^>]*>\s*<(\w+)/.exec(body)?.[1] ?? '';
       const one = (tag: string, text = body): string | null => {

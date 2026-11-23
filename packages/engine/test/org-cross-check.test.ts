@@ -14,7 +14,7 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { DEPENDENCY_OBJECT } from '../src/sources/dependency-api.ts';
+import { DEPENDENCY_OBJECT, FLOW_VERSION_OBJECT } from '../src/sources/dependency-api.ts';
 import { readDependencyRows, writeDependencies } from '../src/store/dependencies.ts';
 import { openStore } from '../src/store/open.ts';
 import { addIssue } from '../src/store/snapshots.ts';
@@ -22,10 +22,16 @@ import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { fixtureDependencyRows, keyedPairs } from './helpers/fixture-dependencies.ts';
 import { besidesKnownGap } from './helpers/known-gap.ts';
-import { mockDependencies, type MockDependencies } from './helpers/mock-dependencies.ts';
+import {
+  dependencyRow,
+  mockDependencies,
+  type MockDependencies,
+  type MockDependencyRow,
+} from './helpers/mock-dependencies.ts';
 import { metadataFromSource, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
+import { DRAFT_CHANGES, DRAFT_ONLY_FIELD, FLOW_WITH_DRAFT } from './live/deploy-fixture.ts';
 
 const WHOLE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
 const ORG_ID = '00Dxx0000000001EAA';
@@ -36,6 +42,12 @@ const CONFIG = `schema_version = 1\n\n[sources.prod]\nkind = "org"\norg_id = "${
 const RULE = 'ValidationRule:invoice__c.tax_rate_matches_code';
 const RULE_FILE = 'main/default/objects/Invoice__c/validationRules/Tax_Rate_Matches_Code.validationRule-meta.xml';
 const TAKEN_OUT = 'CustomField:invoice__c.tax_code_name__c';
+/** The flow whose file another org of these tests hands out without one of its fields, and that field. */
+const FLOW = 'Flow:invoice_before_save';
+const FLOW_FILE = 'main/default/flows/Invoice_Before_Save.flow-meta.xml';
+const TAKEN_FROM_FLOW = 'CustomField:invoice__c.legacy_code__c';
+/** The file of the flow that some orgs of these tests hold a draft of, beside its active version. */
+const DRAFTED_FILE = `main/default/flows/${FLOW_WITH_DRAFT}.flow-meta.xml`;
 
 const rowsOf = fixtureDependencyRows;
 
@@ -87,6 +99,38 @@ const queryPaths = (): string[] => [
 ];
 const ofReading = (report: CoverageReport): string[] =>
   report.issues.filter((issue) => issue.stage === 'read').map((issue) => `${issue.severity} ${issue.code}`);
+
+/**
+ * Makes the mock org hold a draft of a flow beside its active version, as the test org does after the step that
+ * sends the draft. The Dependency API has the rows of both versions, each with the id of its version: the rows of
+ * the draft carry the id the org lists the flow with, and one more of them names the field only the draft reads.
+ */
+async function orgWithDraft(): Promise<{
+  readonly activeId: string;
+  readonly ofActive: readonly MockDependencyRow[];
+  readonly ofDraft: readonly MockDependencyRow[];
+}> {
+  const copy = join(copies.next(), 'force-app');
+  cpSync(WHOLE, copy, { recursive: true });
+  const file = join(copy, DRAFTED_FILE);
+  const active = readFileSync(file, 'utf8');
+  writeFileSync(
+    file,
+    DRAFT_CHANGES.reduce((text, [from, to]) => text.replace(from, to), active),
+  );
+  metadata = await metadataFromSource(copy);
+  metadata.flowVersions.set(FLOW_WITH_DRAFT, { latest: 2, older: new Map([[1, active]]) });
+  mock.metadata = metadata;
+  const activeId = metadata.versionIdOf(FLOW_WITH_DRAFT, 1) ?? '';
+  const ofFlow = rowsOf(metadata).filter(
+    (row) => row['MetadataComponentType'] === 'Flow' && row['MetadataComponentName'] === FLOW_WITH_DRAFT,
+  );
+  const onlyOfDraft = dependencyRow(metadata, ['Flow', FLOW_WITH_DRAFT], ['CustomField', DRAFT_ONLY_FIELD]);
+  const ofActive = ofFlow.map((row) => ({ ...row, MetadataComponentId: activeId }));
+  dependencies = mockDependencies([...rowsOf(metadata), onlyOfDraft, ...ofActive]);
+  mock.dependencies = dependencies;
+  return { activeId, ofActive, ofDraft: [...ofFlow, onlyOfDraft] };
+}
 /** The issues of the analysis, without the one warning about a flow that every analysis of the project holds. */
 const ofAnalysis = (report: CoverageReport): string[] =>
   besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis')).map(
@@ -146,8 +190,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.crossCheck).toEqual({
         state: 'whole',
         readAt: expect.stringMatching(UTC) as string,
-        // The org holds fewer rows than one query gives.
-        requests: 1,
+        // One query for the versions of the flows, and one for the rows: the org holds fewer rows than one query
+        // gives.
+        requests: 2,
         rows: pairs.length + 2,
         queriesCutOff: 0,
         queriesFailed: 0,
@@ -164,6 +209,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           // Every end of a row is a component the org listed, found by its id.
           rowsNotMatched: 0,
           rowsNotHeld: 0,
+          // The project has one version of each flow, which is the one the snapshot holds.
+          rowsOtherVersion: 0,
           rowsCompared: compared + 2,
           pairs: compared + 2,
           agreed: compared,
@@ -177,31 +224,40 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The fixture project is made to have something of every kind.
       expect(apex).toBeGreaterThan(20);
       expect(compared).toBeGreaterThan(40);
+      expect(pairs.filter((pair) => pair.from[0] === 'Flow').length).toBeGreaterThan(40);
       // What the analysis has and the API never reports is counted by its reason, and is no issue. The mock org
       // reports every formula, also the one of a rule that is not active and the one in a default value. Of the
       // workflow rules, it reports what the test org reports: the custom fields the formula of a field update
-      // reads. Of the records of custom metadata types, the type, and of a record type, nothing.
+      // reads. Of the records of custom metadata types, the type, and of a record type, nothing. Of a flow, what
+      // the test org reports: not a flow it starts, not a record type a condition names in a text, and not a field
+      // of a custom setting or a custom permission that only a formula names.
       const reasons = report.crossCheck?.comparison?.notReported.map((one) => one.reason);
       expect(reasons).toEqual([
         'controlling-field',
         'custom-metadata',
         'field-update',
+        'global-variable',
         'lookup',
         'lookup-filter',
+        'name-in-text',
         'record-type',
         'roll-up-summary',
         'standard-field',
         'standard-object',
+        'subflow',
         'value-set',
         'workflow-action',
         'workflow-rule',
       ]);
 
-      // Only metadata is read: one object of the Tooling API is queried, and nothing else is.
-      expect(dependencies.queries).toHaveLength(1);
-      for (const soql of dependencies.queries)
-        expect(soql).toMatch(new RegExp(` FROM ${DEPENDENCY_OBJECT}(?: WHERE |$)`));
+      // Only metadata is read: two objects of the Tooling API are queried, the versions of the flows first, and
+      // nothing else is.
+      expect(dependencies.queries).toEqual([
+        `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`,
+        expect.stringMatching(new RegExp(` FROM ${DEPENDENCY_OBJECT}$`)) as string,
+      ]);
       expect(DEPENDENCY_OBJECT).toBe('MetadataComponentDependency');
+      expect(FLOW_VERSION_OBJECT).toBe('FlowDefinition');
       expect(queryPaths()).toEqual(['/services/data/v66.0/tooling/query']);
 
       // The rows are kept as Salesforce wrote them, and none of them became a reference.
@@ -279,6 +335,138 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(ofAnalysis(again)).toEqual(['error REFERENCE_MISSED']);
     });
 
+    it('finds a pair that is taken out of a flow on purpose, and calls the analysis incomplete', async () => {
+      // The org hands out the flow with an assignment to another field. Its Dependency API still reports the field
+      // the flow of the project writes, from the one version of the flow.
+      const copy = join(copies.next(), 'force-app');
+      cpSync(WHOLE, copy, { recursive: true });
+      const file = join(copy, FLOW_FILE);
+      const flow = readFileSync(file, 'utf8');
+      expect(flow.split('Legacy_Code__c')).toHaveLength(2);
+      writeFileSync(file, flow.replace('$Record.Legacy_Code__c', '$Record.Description'));
+      metadata = await metadataFromSource(copy);
+      mock.metadata = metadata;
+      dependencies = mockDependencies(rowsOf(metadata));
+      mock.dependencies = dependencies;
+
+      const dir = workspaceDir();
+      const workspace = await openWorkspace({ root: dir, env });
+      const report = await workspace.snapshot('prod');
+      expect(report.snapshot.status).toBe('complete');
+      expect(ofReading(report)).toEqual([]);
+      expect(report.analysis?.complete).toBe(false);
+      expect(report.crossCheck?.comparison).toMatchObject({
+        rowsOtherVersion: 0,
+        missed: [{ from: FLOW, to: TAKEN_FROM_FLOW }],
+        onlyOrgLens: [],
+      });
+      expect(besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis'))).toEqual([
+        {
+          stage: 'analysis',
+          severity: 'error',
+          code: 'REFERENCE_MISSED',
+          message: `Salesforce reports that ${FLOW} refers to ${TAKEN_FROM_FLOW}, and the analysis found no such reference.`,
+          component: FLOW,
+          details: { from: FLOW, to: TAKEN_FROM_FLOW, origin: 'dependency-api' },
+        },
+      ]);
+      // An answer about the field says that it can miss something, and does not show the flow as found.
+      const answer = await workspace.impact('prod', 'Invoice__c.Legacy_Code__c');
+      expect(answer.mayMiss).toBe(true);
+      expect(answer.results.map((result) => result.key)).not.toContain(FLOW);
+    });
+
+    it('compares the rows of the version of a flow the snapshot holds, and counts those of a newer one', async () => {
+      const { activeId, ofActive, ofDraft } = await orgWithDraft();
+      expect(activeId).not.toBe(metadata.idOf('Flow', FLOW_WITH_DRAFT));
+      expect(ofActive.length).toBeGreaterThan(5);
+      const pairs = keyedPairs();
+      const apex = pairs.filter((pair) => pair.apex).length;
+      const dir = workspaceDir();
+      const workspace = await openWorkspace({ root: dir, env });
+      const report = await workspace.snapshot('prod');
+
+      // The snapshot holds the active version, which the answer key describes.
+      expect(report.snapshot.status).toBe('complete');
+      expect(ofReading(report)).toEqual(['info FLOW_NEWER_VERSION']);
+      expect(report.analysis?.complete).toBe(true);
+      expect(report.crossCheck).toMatchObject({
+        state: 'whole',
+        requests: 2,
+        rows: pairs.length + 2 + ofDraft.length,
+        queriesNotProven: 0,
+        comparison: {
+          rows: pairs.length + 2 + ofDraft.length,
+          rowsNotAnalysed: apex,
+          rowsNotMatched: 0,
+          rowsNotHeld: 0,
+          // The rows of the draft, also the one to the field only the draft reads, which is no error.
+          rowsOtherVersion: ofDraft.length,
+          // The rows of the active version are compared in the place of those the project has.
+          rowsCompared: pairs.length - apex + 2,
+          missed: [],
+          onlyOrgLens: [],
+        },
+      });
+      // The ids are kept with the snapshot, so that an analysis compares again without the org.
+      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_flow_version')).toBe(metadata.flowDefinitionRows().length);
+      const again = await (await openWorkspace({ root: dir, env })).analyse('prod');
+      expect(again.crossCheck).toEqual(report.crossCheck);
+
+      // Asked in parts, the rows of the active version are asked for by the id the org named for it.
+      dependencies.limit = 20;
+      const parts = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 20 } } });
+      expect(parts.crossCheck).toMatchObject({ state: 'whole', rows: pairs.length + 2 + ofDraft.length });
+      expect(parts.crossCheck?.comparison).toEqual(report.crossCheck?.comparison);
+      expect(
+        dependencies.queries.some((soql) => soql.includes('MetadataComponentId IN (') && soql.includes(activeId)),
+      ).toBe(true);
+    });
+
+    it('says when the org does not name the versions of its flows, and compares what the listed ids allow', async () => {
+      const { ofActive, ofDraft } = await orgWithDraft();
+      dependencies.refuse = (soql) => (soql.includes(` FROM ${FLOW_VERSION_OBJECT}`) ? 'INVALID_TYPE' : undefined);
+      const report = await snap(workspaceDir());
+      expect(report.snapshot.status).toBe('complete');
+      expect(report.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message:
+            'The org did not name the versions of its flows (INVALID_TYPE). A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.',
+          component: null,
+          details: { code: 'INVALID_TYPE', state: 'none', flows: 0, requests: 1 },
+        },
+      ]);
+      // The rows of the active version carry an id the org did not list. The rows of the draft carry the listed
+      // one, and the snapshot holds the active version: neither is compared, and nothing is missed.
+      expect(report.crossCheck).toMatchObject({
+        state: 'whole',
+        requests: 2,
+        comparison: { rowsNotMatched: ofActive.length, rowsOtherVersion: ofDraft.length, missed: [] },
+      });
+      const only = report.crossCheck?.comparison?.onlyOrgLens ?? [];
+      expect(only.length).toBeGreaterThan(0);
+      expect(only.filter((pair) => pair.from !== `Flow:${FLOW_WITH_DRAFT.toLowerCase()}`)).toEqual([]);
+      expect(report.analysis?.complete).toBe(true);
+
+      // An org that holds no newer version of a flow has its rows compared by the listed ids all the same.
+      metadata = await metadataFromSource(WHOLE);
+      mock.metadata = metadata;
+      dependencies = mockDependencies(rowsOf(metadata));
+      dependencies.refuse = (soql) => (soql.includes(` FROM ${FLOW_VERSION_OBJECT}`) ? 'INVALID_TYPE' : undefined);
+      mock.dependencies = dependencies;
+      const plain = await snap(workspaceDir());
+      expect(ofReading(plain)).toEqual(['warning FLOW_VERSIONS_NOT_READ']);
+      expect(plain.crossCheck?.comparison).toMatchObject({
+        rowsNotMatched: 0,
+        rowsOtherVersion: 0,
+        missed: [],
+        onlyOrgLens: [],
+      });
+    });
+
     it('takes the snapshot of an org without the Dependency API all the same, and says that nothing was compared', async () => {
       mock.dependencies = null;
       const dir = workspaceDir();
@@ -293,14 +481,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           message:
             'The Dependency API of the org gave no answer (INVALID_TYPE). What the analysis of this snapshot finds is not held against what Salesforce knows.',
           component: null,
-          // The org refused three queries in a row from the start, and was asked no further.
-          details: { code: 'INVALID_TYPE', requests: 3 },
+          // The org refused the query for the versions of its flows, then three queries for rows in a row from the
+          // start, and was asked no further. That the versions were not named is not said as well.
+          details: { code: 'INVALID_TYPE', requests: 4 },
         },
       ]);
       expect(report.crossCheck).toEqual({
         state: 'none',
         readAt: expect.stringMatching(UTC) as string,
-        requests: 3,
+        requests: 4,
         rows: 0,
         queriesCutOff: 0,
         queriesFailed: expect.any(Number) as number,
@@ -323,8 +512,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(stalled.snapshot.status).toBe('complete');
       expect(ofReading(stalled)).toEqual(['warning CROSS_CHECK_NOT_READ']);
-      // Three queries in a row got no answer in time, each asked once.
-      expect(stalled.crossCheck).toMatchObject({ state: 'none', code: 'TIMEOUT', requests: 3, comparison: null });
+      // The query for the versions of the flows and three queries for rows in a row got no answer in time, each
+      // asked once.
+      expect(stalled.crossCheck).toMatchObject({ state: 'none', code: 'TIMEOUT', requests: 4, comparison: null });
 
       // The session ends between the retrieve and the query, and nothing renews it.
       mock.intercept = (request) =>
@@ -363,7 +553,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // component, and gives none: the org listed them all.
       expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
       expect(report.crossCheck?.requests).toBe(dependencies.queries.length);
-      for (const soql of dependencies.queries) expect(soql).toContain(` FROM ${DEPENDENCY_OBJECT}`);
+      expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
+      for (const soql of dependencies.queries.slice(1)) expect(soql).toContain(` FROM ${DEPENDENCY_OBJECT}`);
 
       // The same rows as one query gives of an org that has no limit.
       const store = openStore({ path: databaseOf(dir), driver, readOnly: true });
@@ -429,6 +620,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.analysis?.complete).toBe(true);
     });
 
+    it('reads the versions of the flows and the rows within one limit of requests', async () => {
+      dependencies.limit = 20;
+      const report = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 20, requestsInAll: 3 } } });
+      expect(report.snapshot.status).toBe('complete');
+      // The query for the versions took one of the three requests, and the rows the two that were left.
+      expect(report.crossCheck).toMatchObject({ state: 'partial', requests: 3, code: 'REQUESTS_USED_UP' });
+      expect(dependencies.queries).toHaveLength(3);
+      expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
+      expect(ofReading(report)).toEqual(['warning CROSS_CHECK_PARTIAL']);
+    });
+
     it('asks the API when a snapshot that was interrupted is continued, and not before', async () => {
       metadata.maxFiles = 1;
       const dir = workspaceDir();
@@ -439,14 +641,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const events: SnapshotProgress[] = [];
       const report = await snap(dir, { onProgress: (event) => events.push(event) });
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
-      // The step is told before the first request, and after every query with how far it is.
+      // The step is told before the first request, and after every query for rows with how far it is. The query for
+      // the versions of the flows counts with them.
       expect(events.slice(-3)).toEqual([
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
-        { step: 'cross-checking', snapshot: 1, requests: 1, rows: rowsOf(metadata).length },
+        { step: 'cross-checking', snapshot: 1, requests: 2, rows: rowsOf(metadata).length },
         { step: 'analysing', snapshot: 1 },
       ]);
-      expect(dependencies.queries).toHaveLength(1);
-      expect(report.crossCheck).toMatchObject({ state: 'whole', requests: 1, comparison: { missed: [] } });
+      expect(dependencies.queries).toHaveLength(2);
+      expect(report.crossCheck).toMatchObject({ state: 'whole', requests: 2, comparison: { missed: [] } });
     });
 
     it('replaces an earlier reading and its warning when a snapshot is continued, and keeps both without the cross-check', async () => {

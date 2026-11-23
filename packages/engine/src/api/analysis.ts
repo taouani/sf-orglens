@@ -18,9 +18,9 @@ import type { ProjectLayout } from '../sources/project.ts';
 import { resolveComponents } from '../sources/resolve.ts';
 import { pathDetails } from '../sources/tree.ts';
 import { readAnalysis, readOriginCoverage, writeAnalysis } from '../store/analysis.ts';
-import { readDependencyReading, readDependencyRows, readListedIds } from '../store/dependencies.ts';
+import { readDependencyReading, readDependencyRows, readFlowVersionIds, readListedIds } from '../store/dependencies.ts';
 import type { Store } from '../store/open.ts';
-import { snapshotTree, type StoredIssue } from '../store/snapshots.ts';
+import { readIssuesOf, snapshotTree, type StoredIssue } from '../store/snapshots.ts';
 import { asEngineError } from './boundary.ts';
 
 /** What the analyser of one origin of references looked at and found in a snapshot. */
@@ -117,6 +117,12 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
       listed: readListedIds(store, snapshot.id),
       components: analysis.components,
       analysedTypes: analysis.types,
+      // A row from a flow carries the id of a version, and only the rows of the version the snapshot holds are
+      // compared (decision record 0067). Where a newer version is noted, the snapshot holds the active one.
+      flowVersions: readFlowVersionIds(store, snapshot.id),
+      newerVersions: readIssuesOf(store, snapshot.id, 'FLOW_NEWER_VERSION').flatMap((note) =>
+        note.componentKey === null ? [] : [note.componentKey],
+      ),
     });
     for (const issue of crossCheckIssues(compared)) issues.push(issue);
   }
@@ -215,6 +221,7 @@ const COUNTS = [
   'rowsNotAnalysed',
   'rowsNotMatched',
   'rowsNotHeld',
+  'rowsOtherVersion',
   'rowsCompared',
   'pairs',
   'agreed',
@@ -248,6 +255,7 @@ function storedComparison(stored: Readonly<Record<string, JsonValue>> | null): C
     notAnalysed: (notAnalysed as unknown as CrossCheck['notAnalysed']).map(({ type, rows }) => ({ type, rows })),
     rowsNotMatched: count('rowsNotMatched'),
     rowsNotHeld: count('rowsNotHeld'),
+    rowsOtherVersion: count('rowsOtherVersion'),
     rowsCompared: count('rowsCompared'),
     pairs: count('pairs'),
     agreed: count('agreed'),

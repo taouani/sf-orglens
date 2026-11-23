@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-23
 - Decisions: none (an answer of the maintainer to the Phase 2 plan, changed after a measurement)
+- Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in one point: the rows of the Dependency API from a flow are compared where they are from the version the snapshot holds, as the maintainer decided
 
 ## Context
 
