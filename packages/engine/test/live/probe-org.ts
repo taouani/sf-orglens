@@ -198,9 +198,9 @@ const dependency = (row: DependencyRow): Dependency => ({ from: side(row.from), 
  * Finds the key of the fixture project a side of a row stands for.
  *
  * The Dependency API names a field or a rule without its object, so the id decides where the org said what the
- * id belongs to. Without that, the name decides if one component of the fixture project has it. For a field or
- * a rule that is a guess: a field of another object can have the same name. A key that rests on the name of a
- * custom object whose ending the org did not give (`built`) is a guess as well.
+ * id belongs to. Without that, the name decides if one component of the fixture project has it. For a field, a
+ * rule or an email template that is a guess: another object or folder can hold the same name. A key that rests
+ * on the name of a custom object whose ending the org did not give (`built`) is a guess as well.
  */
 function keyOf(side: Side, { byId, built }: Names, fixture: Fixture): { key: string; guessed: boolean } | null {
   if (side.namespace !== '') return null;
@@ -229,15 +229,17 @@ function keyOf(side: Side, { byId, built }: Names, fixture: Fixture): { key: str
     return fixture.keys.has(key) ? { key, guessed: false } : null;
   }
   const candidates = fixture.ofType(side.type).filter((key) => {
+    // The name of a field without its object, and of a template without its folder.
     const last =
       key
         .slice(key.indexOf(':') + 1)
-        .split('.')
+        .split(/[./]/)
         .at(-1) ?? '';
     return last === name || last === `${name}__c`;
   });
   const [key] = candidates;
-  return candidates.length === 1 && key !== undefined ? { key, guessed: key.includes('.') } : null;
+  // A name without its object or its folder is a guess: another object or folder can hold the same name.
+  return candidates.length === 1 && key !== undefined ? { key, guessed: /[./]/.test(key) } : null;
 }
 
 /** The name of the object of a row, as the org writes it, where the row was asked for with it. */

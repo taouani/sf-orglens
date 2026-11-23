@@ -136,27 +136,43 @@ sf org login jwt --client-id <consumer key> --jwt-key-file orglens-ci.key --user
 A run that is started by hand asks what it should do after the login (**Run workflow**, field "What the run does
 after it has logged in"). The weekly run always logs in only.
 
-| Choice          | What the run does                                                                                                                                                                                                                                                                                           |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| login only      | Logs in. This is the default.                                                                                                                                                                                                                                                                               |
-| deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run. Nothing else is ever deployed.                                                                                                  |
-| read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot asks the Dependency API, and the step prints how its rows compare with the analysis. The snapshot is written to a temporary folder of the runner and deleted when the step ends. |
-| deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                                                                                                                          |
-| probe           | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports. Nothing is written to the org.                                                  |
-| read and probe  | Both, in this order. The org is asked about references only if the read step did not fail.                                                                                                                                                                                                                  |
+| Choice          | What the run does                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| login only      | Logs in. This is the default.                                                                                                                                                                                                                                                                                                                                                                  |
+| deploy          | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. Then it sends one flow of the project a second time, as a draft. No Apex test is run. Nothing else is ever deployed.                                                                                                                    |
+| read            | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot asks the Dependency API, and the step prints how its rows compare with the analysis, and which pairs of the answer key they report for the files no analyser reads yet. The snapshot is written to a temporary folder of the runner and deleted when the step ends. |
+| deploy and read | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                                                                                                                                                                                                             |
+| probe           | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports, and which versions of the flows of the project the org holds. Nothing is written to the org.                                                                       |
+| read and probe  | Both, in this order. The org is asked about references only if the read step did not fail.                                                                                                                                                                                                                                                                                                     |
 
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
 the components of `fixtures/billing-sfdx`: custom objects with their fields and validation rules, a custom setting,
 a custom metadata type with a record, fields on the standard objects Account and User, a global value set, a
-custom label, a custom permission, twelve Apex classes and one trigger. It removes nothing. To take the fixture project out of the org again, delete those
-components in Setup, or start over with a new org.
+custom label, a custom permission, thirteen Apex classes and one trigger, and since Phase 2 six flows, the workflow
+rules of two objects, two record types, a field set and an email template with its folder. It removes nothing. To
+take the fixture project out of the org again, delete those components in Setup, or start over with a new org.
+
+The tool sends two things that are not the files of the repository as they are:
+
+- The outbound message of the project names the user Salesforce sends it as. The file holds a made-up user name,
+  which no org has. The tool writes the user it logs in as in its place, in the copy it sends. That name is in no
+  file and in no log.
+- The flow `Invoice_Recalculate` is sent a second time, in a deploy of its own, as a draft that reads another
+  field. So the org should hold an active version of the flow and a newer draft, which is what the read step and
+  the probe then report on. **That a deploy of a draft leaves the active version active is my reading of the
+  documentation, and not verified until a run shows it.** If Salesforce refuses the project, the draft is not sent.
+
+I expect every run of the deploy to add versions to that flow, and a flow can have 50. Old versions are deleted
+by hand, in Setup under **Flows**. Whether a run adds one version or two is not verified.
 
 The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for
 describe metadata: `MetadataComponentDependency`, which it reads with the reader of the engine
 (`packages/engine/src/sources/dependency-api.ts`), `ApexClass` with its symbol table, and `CustomObject`,
-`CustomField`, `ValidationRule` and `ApexTrigger` for the names behind the ids. No record of the data of the org is
-read. The read step asks for `MetadataComponentDependency` only: the engine finds the components of a row by the
+`CustomField`, `ValidationRule`, `ApexTrigger`, `FlowDefinition` and `Flow` for the names behind the ids. The last
+two also say which versions of a flow the org holds and which one is active. Whether the test org answers the
+queries for them as they are written is not verified until a run shows it: a query it refuses is said in the log,
+and the step goes on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the engine finds the components of a row by the
 ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
 of a class in the org, which writes to the org, so the probe does not do that.
 

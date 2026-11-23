@@ -1977,6 +1977,15 @@ describe('asking the org what Salesforce knows about references', () => {
       dependency('Flow', flowId(2), 'After an invoice is saved', 'CustomField', id('00N', 2), 'Status'),
       dependency('Flow', version(91), 'Takeover', 'CustomField', id('00N', 1), 'Amount'),
       dependency('Flow', id('301', 500), 'Takeover', 'CustomField', id('00N', 1), 'Amount'),
+      // A template is named without its folder, and the probe reads no names of templates.
+      dependency(
+        'WorkflowAlert',
+        id('01W', 1),
+        'Invoice_Overdue_Alert',
+        'EmailTemplate',
+        id('00X', 1),
+        'Invoice_Overdue',
+      ),
     ];
     const asked = tooling(org);
     const { log, text } = collected();
@@ -2012,6 +2021,10 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
     expect(output).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.status__c  (filter)');
     expect(output).toContain('- Flow:invoice_recalculate -> CustomField:invoice__c.paid_date__c\n');
+    // Found by two names alone, so not counted as reported.
+    expect(output).toContain(
+      '- by name   WorkflowAlert:invoice__c.invoice_overdue_alert -> EmailTemplate:billing/invoice_overdue  (template)',
+    );
     expect(output).toContain(
       'The rows with a component that is not of the fixture project, by type: Flow to CustomField 2',
     );

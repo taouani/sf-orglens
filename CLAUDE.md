@@ -47,7 +47,9 @@ These rules come from the maintainer and apply to every phase.
   assistant never approves a job in that environment, never reviews a deployment that waits there and never
   changes the environment, also where the access it works with would let it.
 - The fixture project is the only thing that is ever deployed to an org, and only to the test org, by a tool of
-  the tests (`packages/engine/test/live/deploy-fixture.ts`).
+  the tests (`packages/engine/test/live/deploy-fixture.ts`). The tool changes two things on the way, and nothing
+  else: the made-up user of the outbound message becomes the user it logs in as, and one flow is sent a second
+  time as a draft, so that the org holds an active version of it and a newer one.
 - OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
   the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031
   names those requests, and a test pins them. Through the Tooling API the engine queries one object,
