@@ -650,8 +650,11 @@ describe('small flows that are written here', () => {
         'Fancy',
         '<someReference>$Record.Amount__c</someReference>',
         '<assignSomethingReference>$Record.Status__c</assignSomethingReference>',
-        '<field>Amount__c</field>',
+        '<sortField>Amount__c</sortField>',
         '<note>Has {!$Record.Account__r.Tier__c}</note>',
+        // An element this reader knows, in an element of a kind it does not know.
+        '<elementReference>$Record.Amount__c</elementReference>',
+        '<stringValue>Is {!$Record.Status__c}</stringValue>',
       ),
       '<namelessThings>',
       '    <otherReference>$Record.Amount__c</otherReference>',
@@ -670,22 +673,24 @@ describe('small flows that are written here', () => {
     expect(from(analysis, 'fancy')).toEqual([
       '10:32 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
       '11:43 writes CustomField:invoice__c.status__c [Status__c] path probable',
+      '14:35 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
       '13:29 reads CustomField:invoice__c.account__c [Account__r] merge-field probable',
       '13:40 reads CustomField:account.tier__c [Tier__c] merge-field probable',
+      '15:35 reads CustomField:invoice__c.status__c [Status__c] merge-field probable',
     ]);
     // An element of a known kind can hold something this reader has no rule for.
     expect(from(analysis, 'known')).toEqual([
-      '20:35 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
-      '21:28 reads CustomField:invoice__c.status__c [Status__c] merge-field probable',
+      '22:35 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
+      '23:28 reads CustomField:invoice__c.status__c [Status__c] merge-field probable',
     ]);
     // The flow holds what its nameless element and its own settings say. The label of an interview is known.
     expect(from(analysis, '')).toEqual([
-      '16:33 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
-      '23:28 reads CustomField:invoice__c.amount__c [Amount__c] merge-field probable',
-      '24:39 reads CustomField:invoice__c.status__c [Status__c] merge-field confirmed',
+      '18:33 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
+      '25:28 reads CustomField:invoice__c.amount__c [Amount__c] merge-field probable',
+      '26:39 reads CustomField:invoice__c.status__c [Status__c] merge-field confirmed',
     ]);
     expect(issuesOf(analysis)).toEqual([
-      'warning FLOW_ELEMENT_UNKNOWN  15:5',
+      'warning FLOW_ELEMENT_UNKNOWN  17:5',
       'warning FLOW_ELEMENT_UNKNOWN fancy 8:5',
     ]);
   });
@@ -915,11 +920,52 @@ describe('small flows that are written here', () => {
     ]);
   });
 
+  it('leave alone what names no field: an outcome, the next element, and a value that is no name', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...ON_INVOICE,
+      ...group(
+        'decisions',
+        'Check',
+        // The element that comes next does not exist. That is no name of a field, and nothing is said of it.
+        '<defaultConnector>',
+        '    <targetReference>Nowhere</targetReference>',
+        '</defaultConnector>',
+        '<rules>',
+        '    <name>Big</name>',
+        ...condition('$Record.Amount__c'),
+        '</rules>',
+      ),
+      // The outcome of a decision is a name of the flow, which holds no record.
+      ...group('decisions', 'Then', '<rules>', '    <name>Was_Big</name>', ...condition('Big'), '</rules>'),
+      ...group(
+        'recordLookups',
+        'Get',
+        '<filters>',
+        '    <field>Bad Name</field>',
+        '</filters>',
+        '<object>Invoice__c</object>',
+        // The field a scheduled path counts from has a meaning in a start only.
+        '<recordField>Amount__c</recordField>',
+      ),
+    ]);
+    expect(from(analysis, 'check')).toEqual([
+      '16:41 reads CustomField:invoice__c.amount__c [Amount__c] path confirmed',
+    ]);
+    expect(from(analysis, 'then')).toEqual([]);
+    expect(from(analysis, 'get')).toEqual([
+      '34:17 references CustomObject:invoice__c [Invoice__c] object lookup confirmed',
+    ]);
+    expect(messages(analysis)).toEqual([
+      `${FILE}, line 32: the element "field" holds "Bad Name", which is not read as a name.`,
+    ]);
+  });
+
   it('take a text for the name of a record type only where the object has one of that name', () => {
-    const compared = (name: string): string[] =>
+    const compared = (name: string, left = '$Record.RecordType.DeveloperName', operator = 'EqualTo'): string[] =>
       condition(
-        '$Record.RecordType.DeveloperName',
-        '<operator>EqualTo</operator>',
+        left,
+        `<operator>${operator}</operator>`,
         '<rightValue>',
         `    <stringValue>${name}</stringValue>`,
         '</rightValue>',
@@ -935,6 +981,9 @@ describe('small flows that are written here', () => {
           '    <name>Is</name>',
           ...compared('Special'),
           ...compared('Missing'),
+          // A text that is searched for is no name, and neither is the name of something that is no record type.
+          ...compared('Special', '$Record.RecordType.DeveloperName', 'Contains'),
+          ...compared('Special', '$Record.Owner.DeveloperName'),
           '</rules>',
         ),
       ],
@@ -949,6 +998,10 @@ describe('small flows that are written here', () => {
       '16:30 references RecordType:invoice__c.special [Special] text probable',
       '20:41 reads CustomField:invoice__c.recordtypeid [RecordType] path confirmed',
       '20:52 reads CustomField:recordtype.developername [DeveloperName] path confirmed',
+      '27:41 reads CustomField:invoice__c.recordtypeid [RecordType] path confirmed',
+      '27:52 reads CustomField:recordtype.developername [DeveloperName] path confirmed',
+      '34:41 reads CustomField:invoice__c.ownerid [Owner] path confirmed',
+      '34:47 reads CustomField:user.developername [DeveloperName] path confirmed',
     ]);
     expect(analysis.issues).toEqual([]);
   });

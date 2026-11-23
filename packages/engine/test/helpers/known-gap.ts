@@ -3,7 +3,7 @@
  * subflow, which the answer key lists among its unknowns. Every analysis of the whole project holds a warning
  * for it. `extraction-flows.test.ts` holds that warning against the key, word for word.
  */
-export const KNOWN_GAP = {
+const KNOWN_GAP = {
   severity: 'warning',
   code: 'PATH_NOT_FOLLOWED',
   component: 'Flow:invoice_after_save#element:check_result',

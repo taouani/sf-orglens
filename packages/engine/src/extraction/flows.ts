@@ -27,10 +27,10 @@ import { placesIn, textOf, valueOf, type NameAt, type PlaceOf, type Value } from
 import { childOf, childrenOf, type XmlDocument, type XmlElement } from './xml.ts';
 
 /** The name of the element that stands for the start of a flow. No element of a flow can have a name like it. */
-export const START = 'flow-start';
+const START = 'flow-start';
 
 /** One element or resource of a flow. */
-export interface FlowElement {
+interface FlowElement {
   /** The name as the file spells it. The start has the name `START`. */
   readonly name: string;
   /** The element of the file that defines it. */
@@ -155,7 +155,7 @@ const fold = (name: string): string => name.toLowerCase();
  * object it declares. A lookup holds what it reads. A loop holds one of the list it goes over, and so does a
  * step that filters or sorts a list. What an action or a subflow gives back is of no known object.
  */
-export function resourcesOf(root: XmlElement): StartOf {
+function resourcesOf(root: XmlElement): StartOf {
   const resources = new Map<string, () => MergeStart>();
   const set = (name: string | null, holds: () => MergeStart): void => {
     if (name !== null && !resources.has(fold(name))) resources.set(fold(name), holds);
@@ -169,7 +169,7 @@ export function resourcesOf(root: XmlElement): StartOf {
   const resolving = new Set<string>();
   const ofList = (element: XmlElement) => (): MergeStart => {
     const list = textOf(childOf(element, 'collectionReference'));
-    if (list === null || list.includes('.') || resolving.has(fold(list))) return SOME_RECORD;
+    if (list === null || resolving.has(fold(list))) return SOME_RECORD;
     resolving.add(fold(list));
     try {
       return resources.get(fold(list))?.() ?? SOME_RECORD;
@@ -435,10 +435,7 @@ class Reader {
         if (local === 'conditions') this.#recordType(sink, child);
         continue;
       }
-      if (local === 'name' || local === 'description' || local === 'label' || local.endsWith('Label')) {
-        if (local === 'interviewLabel') this.text(sink, child, tier);
-        continue;
-      }
+      if (local === 'name' || local === 'description' || local === 'label' || local.endsWith('Label')) continue;
       if (FORMULAS.has(local)) this.formula(sink, child);
       else if (TEXTS.has(local)) this.text(sink, child, tier);
       else if (ELEMENT_NAMES.has(local)) continue;
@@ -571,7 +568,7 @@ export function readFlow(document: XmlDocument): FlowReading {
       const object = reader.object(sink, childOf(element, 'object'), { op });
       const whole = childOf(element, 'inputReference');
       // An element that names a record to write has the fields of that record, and no object of its own.
-      const written = whole === null || group === 'recordLookups' ? null : reader.record(sink, whole, op);
+      const written = whole === null ? null : reader.record(sink, whole, op);
       of = object !== null ? { start: object, through: [] } : written;
     } else if (group === 'collectionProcessors' && name !== null) {
       // The fields a step sorts a list by are fields of the records of that list.
@@ -583,10 +580,9 @@ export function readFlow(document: XmlDocument): FlowReading {
     if (actionType !== null) attrs['actionType'] = actionType;
 
     // The record an element writes as a whole was read above, with what the element does to it.
-    const rest =
-      OPS.has(group) && group !== 'recordLookups'
-        ? { ...element, children: element.children.filter((child) => child.local !== 'inputReference') }
-        : element;
+    const rest = OPS.has(group)
+      ? { ...element, children: element.children.filter((child) => child.local !== 'inputReference') }
+      : element;
     reader.inside(sink, rest, of, tier);
     if (name !== null) elements.push({ name, element, reading: sink.reading({ ...attrs, ...active }) });
   }
