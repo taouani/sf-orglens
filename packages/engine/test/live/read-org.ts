@@ -59,7 +59,7 @@ import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
 import { readDependencyRows, readListedIds, type ListedId } from '../../src/store/dependencies.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
-import { DRAFT_CHANGES, FLOW_WITH_DRAFT } from './deploy-fixture.ts';
+import { draftPlaces, FLOW_WITH_DRAFT } from './deploy-fixture.ts';
 import { asStep } from './own-output.ts';
 import { everydayWords, type PublicLog } from './public-log.ts';
 import {
@@ -995,10 +995,7 @@ export function flowLines(log: PublicLog, fileOf: (path: string) => string | nul
   }
   const lines = ['', 'The flows of the fixture project, by the state the file names:', ...table(rows)];
   if (draft !== null) {
-    const text = draft;
-    const ofDraft = DRAFT_CHANGES.filter(([, to]) => text.includes(to)).length;
-    const ofActive = DRAFT_CHANGES.filter(([from]) => text.includes(from)).length;
-    const all = DRAFT_CHANGES.length;
+    const { ofDraft, ofActive, all } = draftPlaces(draft);
     lines.push(
       `${FLOW_WITH_DRAFT} is the flow that the step "draft" sends once more as a draft, which differs in ${String(all)} places. ` +
         (ofDraft === all && ofActive === 0

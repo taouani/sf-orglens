@@ -111,6 +111,11 @@ export interface MockMetadata {
   readonly forgotten: Set<string>;
   /** Files the org puts into the zip file of every retrieve beside what was asked for: path below `unpackaged`, and content. */
   readonly extraFiles: Map<string, string>;
+  /**
+   * What the org hands out for a name beside what the folder holds, such as a version of a flow asked for by its
+   * number: `Type:FullName` to the path below `unpackaged` and the content of the one file it answers with.
+   */
+  readonly handedOut: Map<string, { readonly path: string; readonly text: string }>;
   /** What the org finds wrong in a deploy. While it holds something, a deploy fails and changes nothing. */
   readonly deployProblems: DeployProblem[];
   /** Every deploy that was started, in order: the files of its zip file, their content as text, and its options. */
@@ -235,7 +240,13 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const problems: string[] = [];
     const components: SourceComponent[] = [];
     const found: Listed[] = [];
+    const beside: { readonly path: string; readonly text: string }[] = [];
     for (const asked of job.members) {
+      const other = metadata.handedOut.get(key(asked.type, asked.fullName));
+      if (other !== undefined) {
+        beside.push(other);
+        continue;
+      }
       // A component of a package is asked for by the name the org lists it with.
       const inProject = listed.find((item) => item.type === asked.type && listedAs(item) === asked.fullName);
       const member = { type: asked.type, fullName: inProject?.fullName ?? asked.fullName };
@@ -271,6 +282,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       out.file('unpackaged/package.xml', `<?xml version="1.0" encoding="UTF-8"?><Package xmlns="${NAMESPACE}"/>`);
     }
     for (const [path, text] of metadata.extraFiles) out.file(`unpackaged/${path}`, text);
+    for (const { path, text } of beside) out.file(`unpackaged/${path}`, text);
     return { zip: await out.generateAsync({ type: 'nodebuffer' }), files, problems, found };
   };
 
@@ -292,6 +304,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     hold: false,
     forgotten: new Set(),
     extraFiles: new Map(),
+    handedOut: new Map(),
     deployProblems: [],
     deploys: [],
     calls: [],

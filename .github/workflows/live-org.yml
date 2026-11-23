@@ -27,7 +27,10 @@ name: Live org
 #           compiler, both through the Tooling API, and which versions of
 #           the flows of the fixture project the org holds. It writes
 #           nothing, and prints how much of the answer key of the fixture
-#           project each of the two reports.
+#           project each of the two reports. Last it asks the Metadata API
+#           for one flow of the fixture project by its name and by the
+#           number of its newest versions, and prints which version came
+#           back.
 #
 # The steps run in this order: deploy, draft, read, probe. A step that fails
 # ends the run.

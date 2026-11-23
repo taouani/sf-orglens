@@ -116,6 +116,12 @@ You answered all six in one message and said to start building.
 | Q5  | "ok for your recommendation" | The four pass marks as proposed. If one is missed, the phase reports the gap and we decide together.                                                                                          | Here                                                                                    |
 | Q6  | (a)                          | You read ten entries of the new key and five flows of the check by hand, in the test plan.                                                                                                    | Here                                                                                    |
 
+**Q3 changed on 23 November 2026.** Work package 1 measured that an org hands out the draft of a flow that has
+an active version and a newer draft. You were asked again and chose: the active version is analysed, and a newer
+draft is reported as present and not analysed. Record
+[0057](../adr/0057-the-version-of-a-flow-that-is-analysed.md) holds the answer until a record of its own replaces
+it, with what the test org says about asking for a version by its number.
+
 Two things I read into the answers, for you to strike:
 
 - **Q6 and work package 1.** Answer (a) puts your reading in the test plan, at the end of the phase. Work package

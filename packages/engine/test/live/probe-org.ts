@@ -20,8 +20,14 @@
  * draft (`deploy-fixture.ts draft`). After that, the flow should have an
  * active version and a newer one, which is not verified.
  *
- * All of it is read through the Tooling API, whose objects describe metadata.
- * No record of the data of the org is read, and nothing is written. A
+ * Last it asks the Metadata API for the flow that has a draft, by its name
+ * and by its name with the number of a version (`flow-versions.ts`): the
+ * active version is the one that is analysed, and an org hands out the
+ * draft when it is asked by the name alone.
+ *
+ * All but that last part is read through the Tooling API, whose objects
+ * describe metadata. No record of the data of the org is read, and nothing
+ * is written. A
  * symbol table that holds references to other classes can only be had by
  * compiling a copy of a class in the org (`ApexClassMember` in a
  * `MetadataContainer`). That writes to the org, so it is not done here.
@@ -40,6 +46,7 @@
 import { readDependencies, type DependencyEnd, type DependencyRow } from '../../src/sources/dependency-api.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { codeOf, DRAFT_ONLY_FIELD, fixtureWords, FLOW_WITH_DRAFT, PLATFORM_WORDS } from './deploy-fixture.ts';
+import { probeFlowVersions, type HeldFlow } from './flow-versions.ts';
 import { asStep } from './own-output.ts';
 import type { PublicLog } from './public-log.ts';
 import { answerKey, failureLines, loginEnvironment, SOURCE } from './test-org.ts';
@@ -751,6 +758,27 @@ function probeFlows(log: PublicLog, fixture: Fixture, { rows, names }: Probed): 
   );
 }
 
+/**
+ * What the Tooling API said of the flow that gets a draft: its versions with a number, and the number of the
+ * active one. `null` if the flows or their versions could not be read, or the org does not hold the flow.
+ */
+function heldFlow(names: Names | null): HeldFlow | null {
+  if (names === null || !names.flows.definitionsRead || !names.flows.versionsRead) return null;
+  const { definitions, versions } = names.flows;
+  const found = [...definitions].find(([, flow]) => flow.name.toLowerCase() === FLOW_WITH_DRAFT.toLowerCase());
+  if (found === undefined) return null;
+  const [id, flow] = found;
+  const ofFlow = [...versions.values()].filter((version) => version.definition === id);
+  const numbered = ofFlow.flatMap((version) =>
+    version.number === null ? [] : [{ number: version.number, status: version.status }],
+  );
+  return {
+    versions: numbered.sort((a, b) => a.number - b.number),
+    withoutNumber: ofFlow.length - numbered.length,
+    active: flow.active === '' ? null : (versions.get(flow.active)?.number ?? null),
+  };
+}
+
 /** How many entries the arrays named `references` hold, anywhere in a value. */
 function referencesIn(value: unknown): number {
   if (Array.isArray(value)) return value.reduce<number>((sum, one) => sum + referencesIn(one), 0);
@@ -910,7 +938,7 @@ async function probeSymbolTables(
 
 export async function probeOrg(
   log: PublicLog,
-  options: { env?: Readonly<Record<string, string | undefined>> } = {},
+  options: { env?: Readonly<Record<string, string | undefined>>; pollMs?: number; retrieveMs?: number } = {},
 ): Promise<void> {
   const env = loginEnvironment(log, options.env);
   if (env === undefined) return;
@@ -930,6 +958,24 @@ export async function probeOrg(
   const dependencies = probed.state;
   probeFlows(log, fixture, probed);
   const symbols = await probeSymbolTables(log, session, fixture, counter);
+  // The versions of one flow, by name and by number. Only where the org said which versions it holds.
+  const held = heldFlow(probed.names);
+  if (held !== null) {
+    // A side measurement: whatever goes wrong in it, the step still says what it found above.
+    try {
+      await probeFlowVersions(log, session, held, options);
+    } catch (error) {
+      const name = log.name(error instanceof Error ? error.name : undefined);
+      log.say(
+        `The part about the versions of the flow ${FLOW_WITH_DRAFT} ended with an error${name === null ? '' : ` (${name})`}. What it printed before that stands, and it comes to nothing.`,
+      );
+    }
+  } else {
+    log.say('');
+    log.say(
+      `The flow ${FLOW_WITH_DRAFT} was not asked for by the numbers of its versions: the org did not say that it holds the flow, or which versions of it.`,
+    );
+  }
   log.say('');
   log.say(
     `Requests to the Tooling API: ${String(counter.requests)}. A request the library sent again after an error is counted once.`,
