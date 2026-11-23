@@ -6,24 +6,32 @@
  */
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { cpSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MetadataRequestError } from '../src/sources/org-http.ts';
-import { FIXTURES_DIR } from './helpers/answer-key.ts';
+import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { fixtureDependencyRows } from './helpers/fixture-dependencies.ts';
 import { dependencyRow, mockDependencies, type MockDependencies } from './helpers/mock-dependencies.ts';
 import { metadataFromSource, soapFault, type MockMetadata } from './helpers/mock-metadata.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 import { tempDirs } from './helpers/store.ts';
-import { deployFixture, fixtureWords, shownProblem } from './live/deploy-fixture.ts';
+import {
+  deployFixture,
+  DRAFT_CHANGES,
+  fixtureWords,
+  FLOW_WITH_DRAFT,
+  MADE_UP_USER,
+  shownProblem,
+} from './live/deploy-fixture.ts';
 import { everydayWords, publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
 import {
   conditionForm,
   failedRequestLines,
   fileDifference,
+  flowLines,
   missingLines,
   nameForm,
   objectKind,
@@ -752,20 +760,24 @@ describe('deploying the fixture project', () => {
     const { log, text } = collected();
     await deployFixture(log, { env: environment(), pollMs: 5 });
     expect(log.failed).toBe(false);
-    expect(text().replace(/after \d+ seconds/, 'after N seconds')).toBe(
+    expect(text().replace(/after \d+ seconds/g, 'after N seconds')).toBe(
       [
         'The deploy of the fixture project ended as Succeeded after N seconds.',
         'Components of the fixture project: 118. Salesforce counted 37, deployed 37 and found errors in 0.',
         'Of the components Salesforce accepted, 18 are new in the org, 19 were changed, and 0 were as they are.',
         'The fixture project is in the test org. No Apex test was run.',
+        '',
+        'The deploy of a draft of the flow Invoice_Recalculate ended as Succeeded after N seconds.',
+        'Salesforce counted 1, deployed 1 and found errors in 0.',
+        'Of the components Salesforce accepted, 0 are new in the org, 1 were changed, and 0 were as they are.',
+        'Salesforce took the draft. Whether the flow Invoice_Recalculate now has an active version and a newer draft is for the step that asks the org about its flows to say.',
       ].join('\n'),
     );
-    expect(metadata.deploys).toHaveLength(1);
-    expect(metadata.deploys[0]?.options).toEqual({
-      rollbackOnError: 'true',
-      singlePackage: 'true',
-      testLevel: 'NoTestRun',
-    });
+    // The project, and one flow of it once more.
+    expect(metadata.deploys).toHaveLength(2);
+    for (const deploy of metadata.deploys) {
+      expect(deploy.options).toEqual({ rollbackOnError: 'true', singlePackage: 'true', testLevel: 'NoTestRun' });
+    }
     // The zip file holds every file of the project, in the layout of the Metadata API, and its list of contents.
     const sent = metadata.deploys[0]?.files ?? [];
     expect(sent).toContain('package.xml');
@@ -777,6 +789,114 @@ describe('deploying the fixture project', () => {
     expect(sent).toContain('customMetadata/Billing_Rule.Default.md');
     expect(sent).toContain('customPermissions/Approve_Large_Invoices.customPermission');
     expect(sent).toContain('globalValueSets/Billing_Region.globalValueSet');
+    expect(sent).toContain('flows/Invoice_Recalculate.flow');
+    expect(sent).toContain('workflows/Invoice__c.workflow');
+    expectNoSecret(text());
+  });
+
+  it('sends the outbound message with the user it logs in as, and no file with the made-up user', async () => {
+    // The project names a user that does not exist, because no user name of an org may stand in the repository.
+    const inProject = readFileSync(
+      join(FIXTURES_DIR, 'billing-sfdx/force-app/main/default/workflows/Invoice__c.workflow-meta.xml'),
+      'utf8',
+    );
+    expect(inProject).toContain(`<integrationUser>${MADE_UP_USER}</integrationUser>`);
+    expect(MADE_UP_USER).toMatch(/\.invalid$/);
+
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(false);
+    const sent = metadata.deploys[0]?.texts ?? new Map<string, string>();
+    expect(sent.get('workflows/Invoice__c.workflow')).toBe(inProject.replace(MADE_UP_USER, USERNAME));
+    for (const deploy of metadata.deploys) {
+      for (const [path, content] of deploy.texts) expect(content.includes(MADE_UP_USER), path).toBe(false);
+    }
+    // The user is in the file that is sent, and in no line of the log.
+    expectNoSecret(text());
+  });
+
+  it('sends one flow a second time as a draft that reads another field than its active version', async () => {
+    const { log } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(false);
+    const [project, draft] = metadata.deploys;
+    expect(draft?.files).toEqual(['flows/Invoice_Recalculate.flow', 'package.xml']);
+    expect(draft?.texts.get('package.xml')).toBe(
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Package xmlns="http://soap.sforce.com/2006/04/metadata">',
+        '    <types>',
+        '        <members>Invoice_Recalculate</members>',
+        '        <name>Flow</name>',
+        '    </types>',
+        '    <version>65.0</version>',
+        '</Package>',
+        '',
+      ].join('\n'),
+    );
+    const active = project?.texts.get('flows/Invoice_Recalculate.flow') ?? '';
+    const newer = draft?.texts.get('flows/Invoice_Recalculate.flow') ?? '';
+    expect(active).toContain('<status>Active</status>');
+    expect(newer).toContain('<status>Draft</status>');
+    // Line by line, the draft differs in the three places the tool names, and nowhere else.
+    const lines = active.split('\n');
+    const changed = newer.split('\n').flatMap((line, at) => (line === lines[at] ? [] : [[lines[at], line]]));
+    expect(newer.split('\n')).toHaveLength(lines.length);
+    expect(changed.map(([from, to]) => [from?.trim(), to?.trim()])).toEqual([
+      [
+        '<leftValueReference>invoice.Due_Date__c</leftValueReference>',
+        '<leftValueReference>invoice.Paid_Date__c</leftValueReference>',
+      ],
+      [
+        expect.stringMatching(/^<description>Adds up /) as string,
+        expect.stringMatching(/^<description>A draft that is newer than the active version\. Adds up /) as string,
+      ],
+      ['<status>Active</status>', '<status>Draft</status>'],
+    ]);
+    expect(DRAFT_CHANGES).toHaveLength(3);
+    // The field the draft reads is one the active version only holds in a text. So the answer key has no reference
+    // from the flow to it, and a row of the Dependency API with that pair can only be of the draft.
+    expect(active).not.toMatch(/[.>]Paid_Date__c</);
+    const key = loadAnswerKey();
+    expect(
+      key.references.filter(
+        (one) => one.from.startsWith('Flow:invoice_recalculate') && one.to === 'CustomField:invoice__c.paid_date__c',
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not send the draft when Salesforce refused the project, and says when it refuses the draft', async () => {
+    let deploys = 0;
+    mock.intercept = (request) => {
+      if (/<(?:\w+:)?deploy[\s>]/.test(request.body)) {
+        deploys += 1;
+        if (deploys === 2) {
+          metadata.deployProblems.push({
+            type: 'Flow',
+            fullName: 'Invoice_Recalculate',
+            fileName: 'flows/Invoice_Recalculate.flow',
+            problem: `The user ${USERNAME} may not change a flow`,
+          });
+        }
+      }
+      return undefined;
+    };
+    const { log, text } = collected();
+    await deployFixture(log, { env: environment(), pollMs: 5 });
+    expect(log.failed).toBe(true);
+    expect(
+      text()
+        .replace(/after \d+ seconds/g, 'after N seconds')
+        .split('\n')
+        .slice(3),
+    ).toEqual([
+      'The fixture project is in the test org. No Apex test was run.',
+      '',
+      '::error::The deploy of a draft of the flow Invoice_Recalculate ended as Failed after N seconds.',
+      'Salesforce counted 1, deployed 0 and found errors in 1.',
+      '1. Flow Invoice_Recalculate, file flows/Invoice_Recalculate.flow',
+      '   Problem: not shown, because it is not of a known form. The page "Deployment Status" in the Setup of the test org shows it. Its everyday words: The user … may not … a …',
+    ]);
     expectNoSecret(text());
   });
 
@@ -914,13 +1034,9 @@ describe('deploying the fixture project', () => {
     const { log, text } = collected();
     await deployFixture(log, { env: environment(), pollMs: 5 });
     expect(log.failed).toBe(false);
-    expect(metadata.calls.map((call) => call.operation)).toEqual([
-      'deploy',
-      'checkDeployStatus',
-      'checkDeployStatus',
-      'checkDeployStatus',
-      'checkDeployStatus',
-    ]);
+    // The project, and then the draft of one flow.
+    const asked = ['deploy', 'checkDeployStatus', 'checkDeployStatus', 'checkDeployStatus', 'checkDeployStatus'];
+    expect(metadata.calls.map((call) => call.operation)).toEqual([...asked, ...asked]);
     expect(text()).toContain('The fixture project is in the test org.');
   });
 
@@ -943,7 +1059,8 @@ describe('deploying the fixture project', () => {
     const { log, text } = collected();
     await deployFixture(log, { env: environment(), pollMs: 5 });
     expect(log.failed).toBe(false);
-    expect(asked()).toBe(5);
+    // Four times in vain and once with an answer for the project, and once for the draft that follows.
+    expect(asked()).toBe(6);
     expect(text()).toContain('The deploy of the fixture project ended as Succeeded');
   });
 
@@ -1033,6 +1150,116 @@ describe('reading the test org', () => {
     ).toBe(true);
     for (const soql of dependencies.queries) expect(soql).toContain(' FROM MetadataComponentDependency');
     expectNoSecret(output);
+  });
+
+  it('says which pairs of the files no analyser reads yet Salesforce reports, by the ids the org listed', async () => {
+    const flow = ['Flow', 'Invoice_After_Save'] as const;
+    dependencies.rows.push(
+      // In the answer key: a field the flow reads, the flow it calls, and the alert it sends.
+      dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Amount__c']),
+      dependencyRow(metadata, flow, ['Flow', 'Invoice_Recalculate']),
+      dependencyRow(metadata, flow, ['WorkflowAlert', 'Invoice__c.Invoice_Overdue_Alert']),
+      dependencyRow(
+        metadata,
+        ['WorkflowRule', 'Invoice__c.Remind_When_Sent'],
+        ['WorkflowFieldUpdate', 'Invoice__c.Set_Sub_Status_Reminder'],
+      ),
+      // Between components of the fixture project, and not in the answer key.
+      dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Paid_Date__c']),
+      // A row from the same flow with an id the org did not list, as the id of a version of a flow may be.
+      {
+        ...dependencyRow(metadata, flow, ['CustomField', 'Invoice__c.Status__c']),
+        MetadataComponentId: '301xx0000000077AAA',
+      },
+    );
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    const lines = output.split('\n');
+    const head = lines.indexOf(
+      'The files of Phase 2 of the fixture project, which no analyser reads yet, in the rows of the Dependency API',
+    );
+    const end = lines.indexOf('The cross-check with the Dependency API of Salesforce (MetadataComponentDependency)');
+    const section = lines.slice(head, end).join('\n');
+    expect(head).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(head);
+    // What the id of a row is the id of.
+    expect(section).toMatch(/^Flow +Flow +4$/m);
+    expect(section).toMatch(/^Flow +not listed +1$/m);
+    expect(section).toMatch(/^WorkflowRule +WorkflowRule +1$/m);
+    expect(section).toMatch(/^\(the name of a custom metadata type\) +CustomMetadata +1$/m);
+    expect(section).toMatch(/^WorkflowAlert +WorkflowAlert +1$/m);
+    // The pairs of the key for these files, and how many of them the rows are.
+    expect(section).toContain(
+      'The answer key holds 149 pairs of a component and a component it refers to for these files. The Dependency API reports 5 of them.',
+    );
+    expect(section).toMatch(/^Flow +CustomField +62 +1$/m);
+    expect(section).toMatch(/^Flow +Flow +1 +1$/m);
+    expect(section).toMatch(/^WorkflowRule +WorkflowFieldUpdate +3 +1$/m);
+    expect(section).toMatch(/^record-of +4 +1$/m);
+    expect(section).toMatch(/^action +9 +3$/m);
+    expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path)');
+    expect(section).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
+    // The row with an id the org did not list is no row of the flow for the engine.
+    expect(section).toContain('- missing   Flow:invoice_after_save -> CustomField:invoice__c.status__c  (filter)');
+    expect(section).toContain(
+      '- reported  WorkflowRule:invoice__c.remind_when_sent -> WorkflowFieldUpdate:invoice__c.set_sub_status_reminder  (action)',
+    );
+    expect(section).toContain(
+      '- reported  CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt  (record-of)',
+    );
+    expect(section.split('\n').slice(-3)).toEqual([
+      'Pairs the Dependency API reports from a component of the types CustomMetadata, EmailTemplate, FieldSet, Flow, RecordType, WorkflowAlert, WorkflowFieldUpdate, WorkflowOutboundMessage, WorkflowRule, WorkflowTask that the answer key does not hold: 1.',
+      '- Flow:invoice_after_save -> CustomField:invoice__c.paid_date__c',
+      '',
+    ]);
+    // The cross-check counts the rows of these types and compares none of them.
+    expect(output).toContain(
+      'Rows from a component of a type that this phase does not analyse, which are not compared: 90 (ApexClass (82), Flow (5), ApexTrigger (1), CustomMetadata (1), WorkflowRule (1)).',
+    );
+    expectNoSecret(output);
+  });
+
+  it('says which version of each flow the org handed out, and which one of the flow with a draft', async () => {
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    // The mock org hands out what the project holds: the version that is sent as active.
+    expect(output).toContain(
+      [
+        'The flows of the fixture project, by the state the file names:',
+        'FLOW                   STATE HERE  STATE FROM THE ORG',
+        'Invoice_After_Save     Active      Active',
+        'Invoice_Before_Save    Active      Active',
+        'Invoice_Purge_Void     Draft       Draft',
+        'Invoice_Recalculate    Active      Active',
+        'Invoice_Review_Screen  Active      Active',
+        'Invoice_Sent_Process   Active      Active',
+        'Invoice_Recalculate is the flow that is sent a second time as a draft, which differs in 3 places. The file from the org is the version that was sent as active.',
+        '',
+      ].join('\n'),
+    );
+
+    // The same lines for an org that hands out the draft, a file that is neither, and no file.
+    const path = `flows/${FLOW_WITH_DRAFT}.flow-meta.xml`;
+    const active = fixtureFiles().get(path)?.toString('utf8') ?? '';
+    let draft = active;
+    for (const [from, to] of DRAFT_CHANGES) draft = draft.replace(from, to);
+    const last = (file: string | null): string | undefined =>
+      flowLines(collected().log, (asked) => (asked === path ? file : null)).at(-1);
+    expect(last(draft)).toBe(
+      'Invoice_Recalculate is the flow that is sent a second time as a draft, which differs in 3 places. The file from the org is the draft.',
+    );
+    expect(last(draft.replace('<status>Draft</status>', '<status>Obsolete</status>'))).toBe(
+      'Invoice_Recalculate is the flow that is sent a second time as a draft, which differs in 3 places. The file from the org has 2 of them as the draft has them and 0 as the version that was sent as active.',
+    );
+    const lines = flowLines(collected().log, (asked) =>
+      asked === path ? draft.replace('<status>Draft</status>', '<status>Secret_Plan</status>') : null,
+    );
+    expect(lines).toContain('Invoice_Recalculate    Active      no state');
+    expect(lines).toContain('Invoice_After_Save     Active      no file');
+    expect(last(null)).toBe('Invoice_Sent_Process   Active      no file');
   });
 
   it('fails when the analysis missed a reference that Salesforce reports, and names the pair', async () => {
@@ -1654,7 +1881,7 @@ describe('asking the org what Salesforce knows about references', () => {
     );
     expect(output).not.toContain('::warning::');
     expect(output).toContain(
-      'Rows read to find the names behind the ids: CustomObject 3, CustomField 7, ValidationRule 1, ApexClass 4, ApexTrigger 1.',
+      'Rows read to find the names behind the ids: CustomObject 3, CustomField 7, ValidationRule 1, ApexClass 4, ApexTrigger 1, FlowDefinition 0, Flow 0.',
     );
     expect(output).toContain(
       'Rows between two components of the fixture project: 8, which are 8 pairs. Rows with a component that is not of it: 4.',
@@ -1685,6 +1912,128 @@ describe('asking the org what Salesforce knows about references', () => {
     );
     // Every query names a type of component, never a component.
     for (const soql of asked) for (const name of FOREIGN) expect(soql).not.toContain(name);
+    expectNothingForeign(output);
+  });
+
+  it('says which versions of its flows the org holds, and what the id of a row from a flow stands for', async () => {
+    const org = tables();
+    const flowId = (n: number): string => id('300', n);
+    const version = (n: number): string => id('301', n);
+    org['CustomField']?.push(field(7, 'Paid_Date', INVOICE, 'Invoice__c'));
+    org['FlowDefinition'] = [
+      // A flow with an active version and a newer draft, one with one version, and one of nothing but a draft.
+      {
+        Id: flowId(1),
+        DeveloperName: 'Invoice_Recalculate',
+        NamespacePrefix: null,
+        ActiveVersionId: version(11),
+        LatestVersionId: version(12),
+      },
+      {
+        Id: flowId(2),
+        DeveloperName: 'Invoice_After_Save',
+        NamespacePrefix: null,
+        ActiveVersionId: version(21),
+        LatestVersionId: version(21),
+      },
+      {
+        Id: flowId(3),
+        DeveloperName: 'Invoice_Purge_Void',
+        NamespacePrefix: null,
+        ActiveVersionId: null,
+        LatestVersionId: version(31),
+      },
+      // Not of the fixture project, and one of a package with the name of a flow of it.
+      {
+        Id: flowId(9),
+        DeveloperName: 'Takeover',
+        NamespacePrefix: null,
+        ActiveVersionId: version(91),
+        LatestVersionId: version(91),
+      },
+      {
+        Id: flowId(8),
+        DeveloperName: 'Invoice_Before_Save',
+        NamespacePrefix: 'hidden',
+        ActiveVersionId: version(81),
+        LatestVersionId: version(81),
+      },
+    ];
+    org['Flow'] = [
+      { Id: version(10), DefinitionId: flowId(1), VersionNumber: 1, Status: 'Obsolete' },
+      { Id: version(11), DefinitionId: flowId(1), VersionNumber: 2, Status: 'Active' },
+      { Id: version(12), DefinitionId: flowId(1), VersionNumber: 3, Status: 'Draft' },
+      { Id: version(21), DefinitionId: flowId(2), VersionNumber: 1, Status: 'Active' },
+      { Id: version(31), DefinitionId: flowId(3), VersionNumber: 1, Status: 'Draft' },
+      { Id: version(91), DefinitionId: flowId(9), VersionNumber: 4, Status: 'Active' },
+      { Id: version(81), DefinitionId: flowId(8), VersionNumber: 1, Status: 'Active' },
+    ];
+    org['MetadataComponentDependency'] = [
+      // The name of a row from a flow is not its API name here: the id says which flow it is.
+      dependency('Flow', version(11), 'Recalculate an invoice', 'CustomField', id('00N', 1), 'Amount'),
+      dependency('Flow', version(12), 'Recalculate an invoice', 'CustomField', id('00N', 1), 'Amount'),
+      dependency('Flow', version(12), 'Recalculate an invoice', 'CustomField', id('00N', 7), 'Paid_Date'),
+      dependency('Flow', version(21), 'After an invoice is saved', 'Flow', version(11), 'Recalculate an invoice'),
+      dependency('Flow', flowId(2), 'After an invoice is saved', 'CustomField', id('00N', 2), 'Status'),
+      dependency('Flow', version(91), 'Takeover', 'CustomField', id('00N', 1), 'Amount'),
+      dependency('Flow', id('301', 500), 'Takeover', 'CustomField', id('00N', 1), 'Amount'),
+    ];
+    const asked = tooling(org);
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(asked).toContain(
+      'SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM FlowDefinition',
+    );
+    expect(asked).toContain('SELECT Id, DefinitionId, VersionNumber, Status FROM Flow');
+    expect(output).toContain('ApexTrigger 1, FlowDefinition 5, Flow 7.');
+    const lines = output.split('\n');
+    const head = lines.indexOf('The flows of the fixture project and their versions (FlowDefinition and Flow)');
+    expect(lines.slice(head, lines.indexOf('The symbol tables of the compiler (ApexClass.SymbolTable)') - 1)).toEqual([
+      'The flows of the fixture project and their versions (FlowDefinition and Flow)',
+      'FLOW                   VERSIONS        ACTIVE  LATEST  STATE OF THE LATEST',
+      'Invoice_After_Save     1               1       1       Active',
+      'Invoice_Before_Save    not in the org',
+      'Invoice_Purge_Void     1               none    1       Draft',
+      'Invoice_Recalculate    3               2       3       Draft',
+      'Invoice_Review_Screen  not in the org',
+      'Invoice_Sent_Process   not in the org',
+      'Flows the org holds: 5, with 7 versions. Of the fixture project: 3 of 6.',
+      'Rows of the Dependency API from a flow: 7. By the type the row writes and what its id stands for: Flow, a flow, not a version: 1; Flow, a version that is not the active one (Draft): 2; Flow, no flow and no version the org named: 1; Flow, the active version of a flow: 3.',
+      'Rows to a flow: 1. By the type the row writes and what its id stands for: Flow, the active version of a flow: 1.',
+      '- Rows from Invoice_After_Save: the flow itself 1, version 1 (Active) 1',
+      '- Rows from Invoice_Purge_Void: none',
+      '- Rows from Invoice_Recalculate: version 2 (Active) 1, version 3 (Draft) 2',
+      'The draft of Invoice_Recalculate reads Invoice__c.Paid_Date__c, which its active version does not. Rows from that flow to that field: 1, with the id of a version that is not the active one (Draft).',
+    ]);
+    // A row from a version of a flow is a pair of the flow, by its id.
+    expect(output).toContain('- reported  Flow:invoice_recalculate -> CustomField:invoice__c.amount__c  (path)');
+    expect(output).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
+    expect(output).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.status__c  (filter)');
+    expect(output).toContain('- Flow:invoice_recalculate -> CustomField:invoice__c.paid_date__c\n');
+    expect(output).toContain(
+      'The rows with a component that is not of the fixture project, by type: Flow to CustomField 2',
+    );
+    expect(output).not.toContain('::warning::');
+    expect(output).not.toContain('Recalculate an invoice');
+    expectNothingForeign(output);
+  });
+
+  it('says that the flows could not be read when the org refuses the queries for them, and goes on', async () => {
+    const asked = tooling(tables(), { faults: { FlowDefinition: 'INVALID_TYPE', Flow: 'INVALID_FIELD' } });
+    const { log, text } = collected();
+    await probeOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    // A query that asks for no prefix of a package is asked once.
+    expect(asked.filter((soql) => soql.endsWith(' FROM Flow'))).toHaveLength(1);
+    expect(output).toContain('ApexTrigger 1, FlowDefinition failed (INVALID_TYPE), Flow failed (INVALID_FIELD).');
+    expect(output).toContain(
+      'The org did not answer both queries for its flows. The line about the rows read to find the names says which. What follows is counted from what it did answer.',
+    );
+    expect(output).toContain('Flows the org holds: 0, with 0 versions. Of the fixture project: 0 of 6.');
+    expect(output.split('\n').at(-1)).toMatch(/^::warning::What the Dependency API gave is not whole: /);
     expectNothingForeign(output);
   });
 
@@ -1840,7 +2189,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'Different rows in all: 13. No query was cut off or failed in a way that leaves a row out.',
     );
     expect(output).toContain(
-      'Rows read to find the names behind the ids: CustomObject 3, CustomField 8, ValidationRule 1 without NamespacePrefix (INVALID_FIELD), ApexClass 4, ApexTrigger 1.',
+      'Rows read to find the names behind the ids: CustomObject 3, CustomField 8, ValidationRule 1 without NamespacePrefix (INVALID_FIELD), ApexClass 4, ApexTrigger 1, FlowDefinition 0, Flow 0.',
     );
     // The field of the package is not the field of the fixture project.
     expect(output).toContain(
@@ -1909,7 +2258,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'SELECT Id, ValidationName, NamespacePrefix, EntityDefinitionId, EntityDefinition.QualifiedApiName FROM ValidationRule',
     );
     expect(output).toContain(
-      'Rows read to find the names behind the ids: CustomObject 5, CustomField 9, ValidationRule 2, ApexClass 4, ApexTrigger 1.',
+      'Rows read to find the names behind the ids: CustomObject 5, CustomField 9, ValidationRule 2, ApexClass 4, ApexTrigger 1, FlowDefinition 0, Flow 0.',
     );
     expect(output).toContain('Custom objects: 5. A field or a rule of the object gave the name of 5.\n');
     expect(output).toContain(
@@ -1982,7 +2331,7 @@ describe('asking the org what Salesforce knows about references', () => {
       'SELECT Id, DeveloperName, NamespacePrefix, TableEnumOrId FROM CustomField',
     ]);
     expect(output).toContain(
-      'CustomField 9 without the name of the object (INVALID_FIELD), ValidationRule 2, ApexClass 4, ApexTrigger 1.',
+      'CustomField 9 without the name of the object (INVALID_FIELD), ValidationRule 2, ApexClass 4, ApexTrigger 1, FlowDefinition 0, Flow 0.',
     );
     // The rules name the one object they sit on.
     expect(output).toContain(

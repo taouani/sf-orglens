@@ -20,6 +20,10 @@
  * - the cross-check: what the Dependency API of Salesforce reports for the
  *   org, held by the engine against its analysis of the snapshot. A pair of
  *   components is named only if both are of the fixture project,
+ * - the files of the fixture project that no analyser reads yet: which of
+ *   the pairs its answer key has for them the Dependency API reports, by
+ *   the ids the org listed, and which version of each flow the org handed
+ *   out,
  * - the rows read twice more, with one query and then with every answer
  *   cut off at a few rows, to see that the parts the engine asks for then
  *   give every row, and that the org answers each way of asking. Of a
@@ -47,14 +51,15 @@ import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
 import type { CoverageReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
-import type { CrossCheckPair } from '../../src/engines/cross-check.ts';
+import { listedMatcher, type CrossCheckPair } from '../../src/engines/cross-check.ts';
 import { readDependencies, type DependencyRow } from '../../src/sources/dependency-api.ts';
 import { notFoundIn } from '../../src/sources/metadata-api.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
-import { readListedIds } from '../../src/store/dependencies.ts';
+import { readDependencyRows, readListedIds, type ListedId } from '../../src/store/dependencies.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
+import { DRAFT_CHANGES, FLOW_WITH_DRAFT } from './deploy-fixture.ts';
 import { asStep } from './own-output.ts';
 import { everydayWords, type PublicLog } from './public-log.ts';
 import {
@@ -808,6 +813,12 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   if (differences.length > DIFFERENCES_SHOWN) {
     log.say(`- and ${String(differences.length - DIFFERENCES_SHOWN)} more files that differ.`);
   }
+  for (const line of flowLines(log, (path) => {
+    const blob = inSnapshot.get(path);
+    return blob === undefined ? null : Buffer.from(getBlob(store, blob)).toString('utf8');
+  })) {
+    log.say(line);
+  }
   return incomplete.length === 0 && missing.length === 0;
 }
 
@@ -822,6 +833,181 @@ function fixtureKeys(): Set<string> {
     }
   }
   return keys;
+}
+
+/** The roadmap phase whose files no analyser reads yet. The cross-check says nothing of them. */
+const PHASE_NOT_READ = 2;
+
+/**
+ * What the Dependency API reports for the files of the fixture project that no analyser reads yet: the pairs of
+ * components the answer key has for the files of a phase, held against the rows. An end of a row is matched to a
+ * component as the engine does it in the cross-check: by the id the org listed the component with.
+ *
+ * The first lines say what the id of a row is the id of. A row from a flow can carry the id of a version of the
+ * flow, which the org may not list.
+ */
+export function phaseLines(
+  log: PublicLog,
+  rows: readonly DependencyRow[],
+  listed: readonly ListedId[],
+  phase = PHASE_NOT_READ,
+): string[] {
+  const lines = [
+    '',
+    `The files of Phase ${String(phase)} of the fixture project, which no analyser reads yet, in the rows of the Dependency API`,
+  ];
+  const match = listedMatcher(listed);
+  const typeOf = (key: string): string => key.slice(0, key.indexOf(':'));
+  // A row writes the name of a custom metadata type as the type of a record of it. That name is not shown.
+  const shownType = (type: string): string =>
+    log.name(type) ?? (/__mdt$/i.test(type) ? '(the name of a custom metadata type)' : '(a type that is not shown)');
+  const typesOfId = new Map<string, Set<string>>();
+  for (const item of listed) {
+    if (item.id === null || item.id === '') continue;
+    const id = item.id.slice(0, 15);
+    typesOfId.set(
+      id,
+      (typesOfId.get(id) ?? new Set<string>()).add(log.name(item.type) ?? '(a type that is not shown)'),
+    );
+  }
+  const listedAs = (id: string): string =>
+    [...(typesOfId.get(id.slice(0, 15)) ?? [])].sort().join(' and ') || 'not listed';
+  for (const end of ['from', 'to'] as const) {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const group = `${shownType(row[end].type)}\u0000${listedAs(row[end].id)}`;
+      counts.set(group, (counts.get(group) ?? 0) + 1);
+    }
+    lines.push(
+      end === 'from'
+        ? 'Rows by the type the row writes for the component that refers, and by the type the org listed its id with:'
+        : 'The same for the component that is referred to. A standard object has its name in the place of an id:',
+      ...table([
+        ['TYPE OF THE ROW', 'ID LISTED AS', 'ROWS'],
+        ...[...counts]
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([group, times]) => [...group.split('\u0000'), String(times)]),
+      ]),
+    );
+  }
+
+  // The pairs of the key for the files of the phase, component to component.
+  const pairs = new Map<string, { from: string; to: string; via: Set<string> }>();
+  const types = new Set<string>();
+  const otherTypes = new Set<string>();
+  for (const file of answerKey().references ?? []) {
+    for (const member of file.members) {
+      const from = member.from.split('#')[0] ?? '';
+      (file.phase === phase ? types : otherTypes).add(typeOf(from));
+      if (file.phase !== phase) continue;
+      for (const ref of member.refs) {
+        const to = ref.to.split('#')[0] ?? '';
+        if (from === to) continue;
+        const id = `${from} -> ${to}`;
+        const pair = pairs.get(id) ?? { from, to, via: new Set<string>() };
+        pair.via.add(ref.via);
+        pairs.set(id, pair);
+      }
+    }
+  }
+  const reported = new Set<string>();
+  for (const row of rows) {
+    const from = match(row.from);
+    const to = match(row.to);
+    if (from !== null && to !== null && from !== to) reported.add(`${from} -> ${to}`);
+  }
+  const expected = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  lines.push(
+    '',
+    `The answer key holds ${plural(expected.length, 'pair', 'pairs')} of a component and a component it refers to for these files. The Dependency API reports ${String(expected.filter(([id]) => reported.has(id)).length)} of them.`,
+  );
+  const tally = (group: (pair: { from: string; to: string; via: Set<string> }) => string[]): string[][] => {
+    const groups = new Map<string, { inKey: number; reported: number }>();
+    for (const [id, pair] of expected) {
+      for (const name of group(pair)) {
+        const one = groups.get(name) ?? { inKey: 0, reported: 0 };
+        one.inKey += 1;
+        if (reported.has(id)) one.reported += 1;
+        groups.set(name, one);
+      }
+    }
+    return [...groups]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([name, one]) => [...name.split('\u0000'), String(one.inKey), String(one.reported)]);
+  };
+  lines.push(
+    ...table([
+      ['FROM', 'TO', 'IN THE KEY', 'REPORTED'],
+      ...tally((pair) => [`${typeOf(pair.from)}\u0000${typeOf(pair.to)}`]),
+    ]),
+    'By the way the source names the target. A pair is counted under every way the key has for it:',
+    ...table([['WAY', 'IN THE KEY', 'REPORTED'], ...tally((pair) => [...pair.via])]),
+    'Every pair of these files:',
+    ...expected.map(
+      ([id, pair]) => `- ${reported.has(id) ? 'reported' : 'missing '}  ${id}  (${[...pair.via].sort().join(', ')})`,
+    ),
+  );
+
+  // What Salesforce reports from a component of a type that only these files have, and the key does not hold.
+  const fixture = fixtureKeys();
+  const only = new Set([...types].filter((type) => !otherTypes.has(type)));
+  const extra = [...reported].filter((id) => !pairs.has(id) && only.has(typeOf(id))).sort();
+  const ours = extra.filter((id) => {
+    const [from = '', to = ''] = id.split(' -> ');
+    return fixture.has(from) && fixture.has(to) && log.clean(id);
+  });
+  lines.push(
+    `Pairs the Dependency API reports from a component of the types ${[...only].sort().join(', ')} that the answer key does not hold: ${String(extra.length)}.`,
+    ...ours.slice(0, PAIRS_SHOWN).map((id) => `- ${id}`),
+  );
+  if (ours.length > PAIRS_SHOWN)
+    lines.push(`- and ${String(ours.length - PAIRS_SHOWN)} more pairs of the fixture project.`);
+  if (ours.length < extra.length) {
+    lines.push(
+      `- ${plural(extra.length - ours.length, 'pair has', 'pairs have')} a component that is not of the fixture project, and ${extra.length - ours.length === 1 ? 'is' : 'are'} not named.`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Which version of each flow of the fixture project the org handed out: the state its file names, beside the
+ * state the file of the repository names. The tool that deploys sends one flow a second time as a draft
+ * (`deploy-fixture.ts`), so the org holds an active version of it and a newer draft. Of that flow it is said
+ * which of the two the file from the org is, by the places in which the draft differs.
+ *
+ * `fileOf`: the text of a file of the snapshot, or `null` if the snapshot does not hold it.
+ */
+export function flowLines(log: PublicLog, fileOf: (path: string) => string | null): string[] {
+  const flows = (answerKey().components?.['Flow'] ?? []).filter((name) => /^[A-Za-z][A-Za-z0-9_]*$/.test(name));
+  if (flows.length === 0) return [];
+  const ours = fixtureFiles();
+  const state = (text: string | null): string =>
+    text === null ? 'no file' : (log.name(/<status>([A-Za-z]+)<\/status>/.exec(text)?.[1]) ?? 'no state');
+  const rows = [['FLOW', 'STATE HERE', 'STATE FROM THE ORG']];
+  let draft: string | null = null;
+  for (const name of flows) {
+    const path = `flows/${name}.flow-meta.xml`;
+    const theirs = fileOf(path);
+    rows.push([name, state(ours.get(path)?.toString('utf8') ?? null), state(theirs)]);
+    if (name === FLOW_WITH_DRAFT) draft = theirs;
+  }
+  const lines = ['', 'The flows of the fixture project, by the state the file names:', ...table(rows)];
+  if (draft !== null) {
+    const text = draft;
+    const ofDraft = DRAFT_CHANGES.filter(([, to]) => text.includes(to)).length;
+    const ofActive = DRAFT_CHANGES.filter(([from]) => text.includes(from)).length;
+    const all = DRAFT_CHANGES.length;
+    lines.push(
+      `${FLOW_WITH_DRAFT} is the flow that is sent a second time as a draft, which differs in ${String(all)} places. ` +
+        (ofDraft === all && ofActive === 0
+          ? 'The file from the org is the draft.'
+          : ofActive === all && ofDraft === 0
+            ? 'The file from the org is the version that was sent as active.'
+            : `The file from the org has ${String(ofDraft)} of them as the draft has them and ${String(ofActive)} as the version that was sent as active.`),
+    );
+  }
+  return lines;
 }
 
 /** A word of the engine for a kind of reference, such as `lookup-filter`, or a marker. */
@@ -1206,6 +1392,11 @@ export async function readOrg(
         if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
         // The cross-check is of a snapshot that ended. One that did not end has not asked the API yet.
         if (row !== undefined && taken !== undefined) {
+          // What Salesforce reports for the files no analyser reads yet, which the cross-check leaves out.
+          if (crossCheck !== null && crossCheck.state !== 'none') {
+            const rows = readDependencyRows(store, taken.id);
+            for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);
+          }
           compared = crossCheckLines(log, crossCheck);
           if (crossCheck?.state === 'whole') {
             sameInParts = await readInParts(log, session, store, taken.id, taken.apiVersion);

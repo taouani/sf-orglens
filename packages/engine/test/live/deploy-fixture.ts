@@ -11,6 +11,12 @@
  * Apex and checks the formulas, which is what the fixture has not been
  * through yet.
  *
+ * Two things are not sent as the project holds them. The outbound message
+ * of the project names a user that does not exist, because no user name of
+ * an org may stand in the repository: it is sent with the user this step
+ * logs in as. And one flow is sent a second time, as a draft that differs
+ * from its active version, so that the org holds a flow with both.
+ *
  *   node --no-warnings packages/engine/test/live/deploy-fixture.ts
  */
 import { readFileSync } from 'node:fs';
@@ -36,6 +42,31 @@ const DEPLOY_MS = 20 * 60_000;
 const POLL_MS = 3_000;
 /** How often in a row the state of a deploy is asked for in vain before the step gives up. */
 const STATE_TRIES = 5;
+
+/**
+ * The user name the outbound message of the project is written with. No user has it: the ending `.invalid` is
+ * reserved for names that are not real. The file of the zip that holds it gets the user of the login instead.
+ */
+export const MADE_UP_USER = 'integration.user@billing-fixture.invalid';
+const FILE_WITH_USER = 'workflows/Invoice__c.workflow';
+
+/**
+ * The flow that gets a draft, and what the draft says differently, each as what the active version says once
+ * and what the draft says there. The draft reads a field that the active version only names in a text, so a row
+ * of the Dependency API from the flow to that field can only come from the draft.
+ */
+export const FLOW_WITH_DRAFT = 'Invoice_Recalculate';
+/** The field the draft reads and the active version does not. The answer key has no reference from the flow to it. */
+export const DRAFT_ONLY_FIELD = 'Invoice__c.Paid_Date__c';
+const DRAFT_FILE = `flows/${FLOW_WITH_DRAFT}.flow`;
+export const DRAFT_CHANGES: readonly (readonly [string, string])[] = [
+  ['<status>Active</status>', '<status>Draft</status>'],
+  ['<description>Adds up', '<description>A draft that is newer than the active version. Adds up'],
+  [
+    '<leftValueReference>invoice.Due_Date__c</leftValueReference>',
+    '<leftValueReference>invoice.Paid_Date__c</leftValueReference>',
+  ],
+];
 
 /** The states of a deploy, as the Metadata API names them. */
 const STATES: ReadonlySet<string> = new Set([
@@ -216,8 +247,24 @@ export function codeOf(log: PublicLog, error: unknown): string | null {
   return log.code(typeof said === 'string' ? said.replace(/^.*:/, '') : undefined) ?? log.code(networkCode(error));
 }
 
-/** The fixture project in the form the Metadata API takes: a zip file with a manifest. Returns it with the names in it. */
-async function fixtureZip(): Promise<{ zip: Buffer; entries: Set<string> }> {
+const escapeXml = (text: string): string =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** A text with one thing in it said differently. The thing has to stand there exactly once. */
+function changedOnce(text: string, from: string, to: string, where: string): string {
+  if (text.split(from).length !== 2) throw new Error(`${where} does not hold "${from}" exactly once.`);
+  return text.replace(from, () => to);
+}
+
+/**
+ * The fixture project in the form the Metadata API takes: a zip file with a manifest. Returns a function that
+ * gives the zip file for a user, the names in it, and the zip file of the draft of one flow.
+ */
+async function fixtureZip(): Promise<{
+  forUser: (username: string) => Promise<Buffer>;
+  entries: Set<string>;
+  draft: Buffer;
+}> {
   const { ComponentSet, MetadataConverter } = await loadSourceLibrary();
   const set = ComponentSet.fromSource(FIXTURE_DIR);
   const project = JSON.parse(readFileSync(join(FIXTURE_PROJECT, 'sfdx-project.json'), 'utf8')) as {
@@ -228,40 +275,68 @@ async function fixtureZip(): Promise<{ zip: Buffer; entries: Set<string> }> {
     set.sourceApiVersion = project.sourceApiVersion;
   }
   const converted = await new MetadataConverter().convert(set, 'metadata', { type: 'zip' });
-  const zip = converted.zipBuffer;
-  if (zip === undefined) throw new Error('The fixture project could not be converted.');
-  const entries = new Set(Object.keys((await JSZip.loadAsync(zip)).files));
-  return { zip, entries };
+  if (converted.zipBuffer === undefined) throw new Error('The fixture project could not be converted.');
+  const archive = await JSZip.loadAsync(converted.zipBuffer);
+  const entries = new Set(Object.keys(archive.files));
+  const textOf = async (path: string): Promise<string> => {
+    const file = archive.file(path);
+    if (file === null) throw new Error(`The fixture project has no file ${path}.`);
+    return file.async('string');
+  };
+  const packed = { type: 'nodebuffer', compression: 'DEFLATE' } as const;
+
+  // Both are worked out before the login, so that a project that does not fit fails before anything is sent.
+  const withUser = await textOf(FILE_WITH_USER);
+  changedOnce(withUser, MADE_UP_USER, '', FILE_WITH_USER);
+  let flow = await textOf(DRAFT_FILE);
+  for (const [from, to] of DRAFT_CHANGES) flow = changedOnce(flow, from, to, DRAFT_FILE);
+  const manifest =
+    '<?xml version="1.0" encoding="UTF-8"?>\n<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+    `    <types>\n        <members>${FLOW_WITH_DRAFT}</members>\n        <name>Flow</name>\n    </types>\n` +
+    `    <version>${project.sourceApiVersion ?? set.apiVersion ?? ''}</version>\n</Package>\n`;
+  const draft = await new JSZip().file('package.xml', manifest).file(DRAFT_FILE, flow).generateAsync(packed);
+
+  return {
+    forUser: async (username) => {
+      archive.file(FILE_WITH_USER, changedOnce(withUser, MADE_UP_USER, escapeXml(username), FILE_WITH_USER));
+      return archive.generateAsync(packed);
+    },
+    entries,
+    draft,
+  };
 }
 
-export async function deployFixture(
+type Metadata = Awaited<ReturnType<typeof connectToOrg>>['connection']['metadata'];
+
+/** What is known when a deploy has ended: what is said about it, and whether Salesforce took all of it. */
+interface Outcome {
+  readonly lines: string[];
+  readonly succeeded: boolean;
+}
+
+/**
+ * Sends one zip file and waits for the org to be done with it. `what` names it in every sentence. Returns
+ * nothing when the deploy did not start or its end was not seen: that is said, as a failure of the step.
+ */
+async function deploy(
   log: PublicLog,
-  options: { env?: Readonly<Record<string, string | undefined>>; pollMs?: number; deployMs?: number } = {},
-): Promise<void> {
-  const env = loginEnvironment(log, options.env);
-  if (env === undefined) return;
-
-  const { zip, entries } = await fixtureZip();
-  const fixture = new Set(fixtureComponents().map((one) => `${one.type}:${one.fullName}`));
-  const words = fixtureWords();
-
-  let session: Awaited<ReturnType<typeof connectToOrg>>;
-  try {
-    session = await connectToOrg(SOURCE, undefined, env);
-  } catch (error) {
-    log.fail(
-      failureLines(log, 'The fixture project was not deployed, because the login to the test org failed', error),
-    );
-    return;
-  }
-  log.forbid(session.instanceUrl, session.orgId, session.orgId.slice(0, 15), session.username);
-  const { metadata } = session.connection;
-
+  metadata: Metadata,
+  zip: Buffer,
+  what: string,
+  known: {
+    fixture: ReadonlySet<string>;
+    entries: ReadonlySet<string>;
+    words: ReadonlySet<string>;
+    /** What stands before the counts of Salesforce. */
+    counted: string;
+  },
+  options: { pollMs?: number; deployMs?: number },
+): Promise<Outcome | undefined> {
   const started = Date.now();
   const limit = options.deployMs ?? DEPLOY_MS;
   let id: string;
   try {
-    // The whole project or nothing, and no test: Salesforce compiles the Apex and checks the fields.
+    // All of it or nothing, and no test: Salesforce compiles the Apex and checks the fields.
     const job: { id?: unknown } = await metadata.deploy(zip, {
       rollbackOnError: true,
       singlePackage: true,
@@ -272,9 +347,9 @@ export async function deployFixture(
   } catch (error) {
     const code = codeOf(log, error);
     log.fail([
-      `The deploy of the fixture project could not be started${code === null ? '' : ` (${code})`}. What the org or the library said is not shown here.`,
+      `The deploy of ${what} could not be started${code === null ? '' : ` (${code})`}. What the org or the library said is not shown here.`,
     ]);
-    return;
+    return undefined;
   }
 
   // The deploy runs in the org from here on, whatever becomes of this step.
@@ -283,10 +358,10 @@ export async function deployFixture(
     await pause(options.pollMs ?? POLL_MS);
     if (Date.now() - started > limit) {
       log.fail([
-        `The deploy of the fixture project did not end within ${span(limit)}.`,
+        `The deploy of ${what} did not end within ${span(limit)}.`,
         'It may still be running in the test org.',
       ]);
-      return;
+      return undefined;
     }
     try {
       result = await metadata.checkDeployStatus(id, true);
@@ -295,10 +370,10 @@ export async function deployFixture(
       if (misses < STATE_TRIES) continue;
       const code = codeOf(log, error);
       log.fail([
-        `The deploy of the fixture project was started, and the org did not say ${String(STATE_TRIES)} times in a row how far it is${code === null ? '' : ` (${code})`}.`,
+        `The deploy of ${what} was started, and the org did not say ${String(STATE_TRIES)} times in a row how far it is${code === null ? '' : ` (${code})`}.`,
         'It may still be running in the test org. What the org or the library said is not shown here.',
       ]);
-      return;
+      return undefined;
     }
     misses = 0;
     if (flag(result['done'])) break;
@@ -311,8 +386,8 @@ export async function deployFixture(
   const seconds = Math.round((Date.now() - started) / 1000);
 
   const lines = [
-    `The deploy of the fixture project ended as ${state} after ${String(seconds)} seconds.`,
-    `Components of the fixture project: ${String(fixture.size)}. Salesforce counted ${log.count(number(result['numberComponentsTotal']))}, deployed ${log.count(number(result['numberComponentsDeployed']))} and found errors in ${log.count(number(result['numberComponentErrors']))}.`,
+    `The deploy of ${what} ended as ${state} after ${String(seconds)} seconds.`,
+    `${known.counted}Salesforce counted ${log.count(number(result['numberComponentsTotal']))}, deployed ${log.count(number(result['numberComponentsDeployed']))} and found errors in ${log.count(number(result['numberComponentErrors']))}.`,
   ];
   if (successes.length > 0) {
     const created = successes.filter((one) => flag(one.created)).length;
@@ -327,24 +402,72 @@ export async function deployFixture(
   failures.forEach((failure, index) => {
     const type = log.name(failure.componentType);
     const name = typeof failure.fullName === 'string' ? failure.fullName : '';
-    const known = type !== null && fixture.has(`${type}:${name}`) && log.clean(name);
-    const file = typeof failure.fileName === 'string' && entries.has(failure.fileName) ? failure.fileName : null;
+    const ours = type !== null && known.fixture.has(`${type}:${name}`) && log.clean(name);
+    const file = typeof failure.fileName === 'string' && known.entries.has(failure.fileName) ? failure.fileName : null;
     const line = number(failure.lineNumber);
     const column = number(failure.columnNumber);
     lines.push(
-      `${String(index + 1)}. ${type ?? 'a type that is not shown'} ${known ? name : '(a name that is not of the fixture project)'}` +
+      `${String(index + 1)}. ${type ?? 'a type that is not shown'} ${ours ? name : '(a name that is not of the fixture project)'}` +
         `${file === null ? '' : `, file ${file}`}${line === null ? '' : `, line ${String(line)}`}${column === null ? '' : `, column ${String(column)}`}` +
         (failure.problemType === 'Warning' ? ', a warning' : ''),
-      `   Problem: ${shownProblem(log, failure.problem, words, known)}`,
+      `   Problem: ${shownProblem(log, failure.problem, known.words, ours)}`,
     );
   });
+  return { lines, succeeded: flag(result['success']) && state === 'Succeeded' };
+}
 
-  if (flag(result['success']) && state === 'Succeeded') {
-    for (const line of lines) log.say(line);
-    log.say('The fixture project is in the test org. No Apex test was run.');
-  } else {
-    log.fail(lines);
+export async function deployFixture(
+  log: PublicLog,
+  options: { env?: Readonly<Record<string, string | undefined>>; pollMs?: number; deployMs?: number } = {},
+): Promise<void> {
+  const env = loginEnvironment(log, options.env);
+  if (env === undefined) return;
+
+  const { forUser, entries, draft } = await fixtureZip();
+  const fixture = new Set(fixtureComponents().map((one) => `${one.type}:${one.fullName}`));
+  const known = { fixture, entries, words: fixtureWords(), counted: '' };
+
+  let session: Awaited<ReturnType<typeof connectToOrg>>;
+  try {
+    session = await connectToOrg(SOURCE, undefined, env);
+  } catch (error) {
+    log.fail(
+      failureLines(log, 'The fixture project was not deployed, because the login to the test org failed', error),
+    );
+    return;
   }
+  log.forbid(session.instanceUrl, session.orgId, session.orgId.slice(0, 15), session.username);
+  const { metadata } = session.connection;
+
+  // The project, with the user of this login as the user of its outbound message.
+  const project = await deploy(
+    log,
+    metadata,
+    await forUser(session.username),
+    'the fixture project',
+    { ...known, counted: `Components of the fixture project: ${String(fixture.size)}. ` },
+    options,
+  );
+  if (project === undefined) return;
+  if (!project.succeeded) {
+    log.fail(project.lines);
+    return;
+  }
+  for (const line of project.lines) log.say(line);
+  log.say('The fixture project is in the test org. No Apex test was run.');
+
+  // One flow once more, as a draft. Whether its active version stays as it is, the org has to show.
+  log.say('');
+  const second = await deploy(log, metadata, draft, `a draft of the flow ${FLOW_WITH_DRAFT}`, known, options);
+  if (second === undefined) return;
+  if (!second.succeeded) {
+    log.fail(second.lines);
+    return;
+  }
+  for (const line of second.lines) log.say(line);
+  log.say(
+    `Salesforce took the draft. Whether the flow ${FLOW_WITH_DRAFT} now has an active version and a newer draft is for the step that asks the org about its flows to say.`,
+  );
 }
 
 if (import.meta.main) await asStep(import.meta.filename, deployFixture);
