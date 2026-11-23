@@ -28,6 +28,4 @@ where both are there. An alert that a flow names and the snapshot does not hold 
 longer as the alert of a package. The line of the cross-check about the rows that are not compared says "or from
 a flow" where one of them is from a flow.
 
-Not done: a snapshot of an org still holds the newest version of a flow, also when that is a draft and an older
-version is the active one. The rows of the Dependency API from flows are counted and not compared in the
-cross-check.
+Not done: the rows of the Dependency API from flows are counted and not compared in the cross-check.

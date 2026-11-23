@@ -155,11 +155,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   in a retrieve, with one exception (decision record 0049): when Salesforce cannot find a parent the org does
   not list, its listed parts are asked for by their own names in one more retrieve. That is done only for a
   parent the Salesforce library keeps with a file for every part, such as an object.
-  The file of custom labels is not missing when the org lists no label. A snapshot of a Git source is not judged
-  by tier. An impact answer counts such a warning when it can be about a type it covers, which no warning is
-  while every analysed type is of the tier. `exclude_types` of an org source in `orglens.toml` leaves types
-  outside the tier out of its snapshots (decision record 0048): the org is not asked for them, and the coverage
-  keeps each with the listing `excluded`, so that a report and an answer can say that it was not read.
+  The file of custom labels is not missing when the org lists no label. Where the org hands out a version of a flow
+  that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
+  under the path of the flow, with the note `FLOW_NEWER_VERSION` (`api/flow-versions.ts`, decision records 0060 and
+  0062). A snapshot of a Git source is not judged by tier. An impact answer counts such a warning when it can be
+  about a type it covers, which no warning is while every analysed type is of the tier. `exclude_types` of an org
+  source in `orglens.toml` leaves types outside the tier out of its snapshots (decision record 0048): the org is
+  not asked for them, and the coverage keeps each with the listing `excluded`, so that a report and an answer can
+  say that it was not read.
 - Component keys never contain the org, the source or the snapshot.
 - Every reference carries its origin, a confidence tier (`confirmed`, `probable`, `possible`) and a source location.
 

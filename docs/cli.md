@@ -218,6 +218,18 @@ they have below a package directory, such as `classes/Foo.cls`.
   lists: then the object is what is missing. Nor is it done for a parent whose parts stay in its one file, such
   as the rules of a workflow. On the one real org this was run against, Salesforce could not find the parts by
   their own names either, and they stayed missing. A real org that hands such a part out was not seen.
+- **The active version of a flow is fetched by its number.** An org hands out the latest version of a flow, which
+  can be a draft while an older version runs. Where the file of a flow names a state other than `Active` and the
+  file of its definition (`FlowDefinition`) names an active version, the flow is asked for once more as
+  `<flow>-<number>`, and the file that comes back is stored under the path of the flow if it says that it is
+  active (decision records [0060](adr/0060-the-active-version-of-a-flow-is-analysed.md) and
+  [0062](adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md)). The note `FLOW_NEWER_VERSION` says
+  that the flow has a newer version that is not analysed. If the active version does not come back, the flow is
+  not in the snapshot at all: the newer version is not analysed in its place, the error `NOT_RETRIEVED` makes
+  the snapshot partial, and the note `ACTIVE_FLOW_NOT_RETRIEVED` says why. A flow that is not active and has no
+  definition in the snapshot, or that the org lists under another name than that of its file, is kept as it
+  came, with the warning `FLOW_VERSION_UNKNOWN`. A flow whose definition names no active version is kept as it
+  came, without a word: it has no other version. A snapshot of a repository holds the file the repository holds.
 - **A snapshot that is interrupted is continued.** The database says at every moment how far a snapshot is. When
   the command is stopped, the network goes away, the login expires or Salesforce stops answering, the snapshot
   stays in the database as unfinished: `status` shows it, and `coverage` and "the latest snapshot" do not count it.
@@ -478,11 +490,11 @@ version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
-| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                |
-| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`                                                                                                                                       |
+| Severity  | A source of the kind `git`                                                                                          | An org or a sandbox                                                                                                                                                                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                                        |
+| `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL`, `FLOW_VERSION_UNKNOWN` |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`, `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED`                                                                                                            |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
 names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS` and
@@ -505,6 +517,13 @@ types are those the Salesforce library knows for the folder. Where it knows none
 describes with that folder, and `details.describedByOrg` is `true`. The list is empty when nothing tells the
 type. When the org was asked for its types and refused, the message says so and what the org answered. A
 snapshot taken before these fields existed has issues without them.
+
+`FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED` and `FLOW_VERSION_UNKNOWN` are about one flow: `component` is
+its key, and `details.flow` its name. `FLOW_NEWER_VERSION` carries the number of the active version in
+`details.version` and the state of the newer one, such as `Draft`, in `details.newer`. `ACTIVE_FLOW_NOT_RETRIEVED`
+carries the same and what Salesforce said or handed out in `details.said`. `FLOW_VERSION_UNKNOWN` carries the
+state of the file in `details.state` and why the active version is not known in `details.reason`:
+`no-definition`, `definition-unreadable` or `not-listed`.
 
 `TYPES_EXCLUDED` carries the types a snapshot left out in `details.types`, sorted, and their number in
 `details.count`: the types `exclude_types` names, with their parts and their folders. `TYPE_NOT_EXCLUDED` carries

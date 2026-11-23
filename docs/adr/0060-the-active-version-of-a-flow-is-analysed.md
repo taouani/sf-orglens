@@ -101,8 +101,8 @@ of it.
   analysed.** They are counted and not compared, until the maintainer has decided how they are compared (see the
   consequences). Work package 3 of the plan builds that with the analyser of flows.
 
-None of this is built yet. Until it is, a snapshot of an org holds the draft of a flow that has a newer draft.
-It is built in work package 3 of the plan.
+It is built in work package 3 of the plan. Record [0062](0062-the-active-version-of-a-flow-is-fetched-by-its-number.md)
+holds how, with the choices its author made in building it.
 
 ## Consequences
 

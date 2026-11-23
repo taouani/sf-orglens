@@ -6,8 +6,8 @@ answer to Q3 changed on 23 November 2026, after a measurement (record 0060). The
 recommended answers, which are the ones the maintainer gave, so its work packages stand as they were drafted, with
 two exceptions: when a person reads the ten entries of the key (work package 1, and the first reading below the
 answers), and what the second answer to Q3 adds to work packages 3 and 6. Work packages 1 and 2 are built. Of
-work package 3 the analyser of flows is built (record 0061). Fetching the active version of a flow from an org
-is not.
+work package 3 the analyser of flows is built (record 0061), and a snapshot of an org fetches the active version
+of a flow by its number (record 0062). The run of "Live org" that work package 3 asks for is not made yet.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

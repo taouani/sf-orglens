@@ -1184,9 +1184,10 @@ describe('reading the test org', () => {
     expect(output).toContain(
       '- objects/Invoice__c/fields/Summary__c.field-meta.xml: only how characters such as quotes are written differs (391 bytes here, 411 from the org)',
     );
-    expect(output).toMatch(/^0 +38 +10 +\d+\.\d +1 +done$/m);
+    // The org keeps a definition of each of the six flows, which is a component of its own in the chunk.
+    expect(output).toMatch(/^0 +44 +11 +\d+\.\d +1 +done$/m);
     expect(output).toMatch(
-      /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
+      /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flowDefinitions 6, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
     );
     // The cross-check: the rows of the mock org, held against the analysis by the engine.
     const rows = dependencies.rows.length;
@@ -1330,6 +1331,30 @@ describe('reading the test org', () => {
     expect(lines).toContain('Invoice_Recalculate    Active      no state');
     expect(lines).toContain('Invoice_After_Save     Active      no file');
     expect(last(null)).toBe('Invoice_Sent_Process   Active      no file');
+  });
+
+  it('says that the snapshot holds the active version, where the org hands out the draft for the name of the flow', async () => {
+    // The org of run 21: version 1 is active and version 2 is the draft, which the org hands out for the name.
+    const dir = dirs.next();
+    cpSync(FIXTURE, join(dir, 'force-app'), { recursive: true });
+    const path = `flows/${FLOW_WITH_DRAFT}.flow-meta.xml`;
+    const active = fixtureFiles().get(path)?.toString('utf8') ?? '';
+    const draft = DRAFT_CHANGES.reduce((text, [from, to]) => text.replace(from, to), active);
+    writeFileSync(join(dir, 'force-app/main/default', path), draft);
+    const withDraft = await metadataFromSource(join(dir, 'force-app'));
+    withDraft.flowVersions.set(FLOW_WITH_DRAFT, { latest: 2, older: new Map([[1, active]]) });
+    mock.metadata = withDraft;
+    mock.dependencies = mockDependencies(fixtureDependencyRows(withDraft));
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain('Invoice_Recalculate    Active      Active\n');
+    expect(output).toContain(
+      'Invoice_Recalculate is the flow that the step "draft" sends once more as a draft, which differs in 3 places. The file from the org is the version that was sent as active.',
+    );
+    expect(output).toContain('- info FLOW_NEWER_VERSION: 1 observation\n');
+    expectNoSecret(output);
   });
 
   it('fails when the analysis missed a reference that Salesforce reports, and names the pair', async () => {

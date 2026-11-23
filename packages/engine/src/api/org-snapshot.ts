@@ -929,8 +929,9 @@ async function retrieveChunks(
 const FLOWS_PER_RETRIEVE = 100;
 
 /**
- * Retrieves members that are not chunks of the snapshot, and reads what came back. Returns what Salesforce said
- * when it gave nothing that can be read. Throws what stops the whole snapshot, as `retrieveChunk` does.
+ * Retrieves members that are not chunks of the snapshot, and reads what came back, with the remarks Salesforce
+ * made about members it did not hand out. Returns what Salesforce said when it gave nothing that can be read.
+ * Throws what stops the whole snapshot, as `retrieveChunk` does.
  */
 async function retrieveBeside(
   api: MetadataApi,
@@ -938,7 +939,7 @@ async function retrieveBeside(
   source: string,
   dir: string,
   tuning: OrgSnapshotTuning,
-): Promise<{ readonly unpacked: Unpacked } | { readonly said: string }> {
+): Promise<{ readonly unpacked: Unpacked; readonly remarks: readonly string[] } | { readonly said: string }> {
   let jobId: string;
   try {
     jobId = await api.startRetrieve(members);
@@ -947,9 +948,11 @@ async function retrieveBeside(
     throw error;
   }
   let zip: Uint8Array | null = null;
+  let remarks: readonly string[] = [];
   try {
     const state = await ended(api, jobId, source, tuning);
     if (!state.succeeded) return { said: saidAbout(state) };
+    remarks = state.problems.map((problem) => saidBy(problem));
     zip = (await api.retrieveState(jobId, true)).zip;
   } catch (error) {
     if (isRefusal(error)) return { said: `Salesforce did not say how far the retrieve is. ${saidIn(error)}` };
@@ -958,7 +961,7 @@ async function retrieveBeside(
   if (zip === null) return { said: 'Salesforce gave no zip file for a retrieve that succeeded.' };
   mkdirSync(dir, { recursive: true });
   try {
-    return { unpacked: await unpackRetrieve(zip, dir) };
+    return { unpacked: await unpackRetrieve(zip, dir), remarks };
   } catch (error) {
     if (isEngineError(error) || isSystemFailure(error)) throw error;
     return { said: `What Salesforce handed out could not be read. ${saidBy(error)}` };
@@ -1051,11 +1054,14 @@ async function fetchActiveFlows(
           });
           continue;
         }
+        // A remark of Salesforce names the member it is about. The one about this flow is given, if there is one.
+        const remark =
+          'said' in got ? undefined : got.remarks.find((one) => one.includes(`'${versionName(flow, version)}'`));
         const said =
           'said' in got
             ? got.said
             : found === null || found.states.length === 0
-              ? 'No file of it came back.'
+              ? `No file of it came back.${remark === undefined ? '' : ` Salesforce remarked: ${remark}`}`
               : `What came back is ${found.states.join(' and ')}.`;
         removeSnapshotFile(store, snapshotId, flowPath(flow));
         markNotRetrieved(store, snapshotId, { type: 'Flow', fullName: flow });
