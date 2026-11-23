@@ -439,8 +439,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: true,
         notCovered: { partial: [], readErrors: 1 },
       });
-      // The actions of a workflow rule are outside the logic tier too, and the analysis reads them (decision record
-      // 0063): every answer covers them.
+      // An earlier version wrote such a warning for an action of a workflow rule, which the analysis read and which
+      // was outside the logic tier until decision record 0068 (decision record 0063): every answer covers it.
       warn(['WorkflowAlert']);
       expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({ mayMiss: true, notCovered: { readErrors: 2 } });
     });

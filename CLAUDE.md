@@ -171,11 +171,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The
   reading is `whole` only where no query could have left a row out. It never fails a snapshot and never makes it
   partial: an org that does not answer leaves a warning.
-- A snapshot of an org reads every type and is judged over the logic tier (decision records 0038 and 0046). The
-  tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. What the
-  org listed and did not hand out, a listing it refused, a retrieve that failed and a file that cannot be read
-  as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning` outside it, which
-  does not. Each such issue says which in `details.tier`. What nothing tells the type of counts against the tier.
+- A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
+  The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
+  type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it
+  does. What the org listed and did not hand out, a listing it refused, a retrieve that failed and a file that
+  cannot be read as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning`
+  outside it, which does not. Each such issue says which in `details.tier`. What nothing tells the type of counts
+  against the tier.
   Where the Salesforce library falls short, the word of the org is taken (decision record 0047): a file in a
   folder the library knows no type for is counted by the type the org describes with that folder, and a
   component of a package that comes back without the prefix of the package is the one the org listed, when the
@@ -187,8 +189,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
   under the path of the flow, with the note `FLOW_NEWER_VERSION` (`api/flow-versions.ts`, decision records 0060 and
   0062). A snapshot of a Git source is not judged by tier. An impact answer counts such a warning when it can be
-  about a type it covers, such as an action of a workflow rule, which is analysed and outside the tier (decision
-  record 0063). `exclude_types` of an org source in `orglens.toml` leaves types outside the tier out of its
+  about a type it covers, which only a snapshot an older version took can hold (decision record 0068).
+  `exclude_types` of an org source in `orglens.toml` leaves types outside the tier out of its
   snapshots (decision record 0048): the org is not asked for them, and the coverage keeps each with the listing
   `excluded`, so that a report and an answer can say that it was not read.
 - Component keys never contain the org, the source or the snapshot.

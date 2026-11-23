@@ -738,7 +738,7 @@
               }
             },
             "readErrors": {
-              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type. A warning of a snapshot of an org about something outside the logic tier (`details.tier` = `other`) is counted too if one of its `details.types` is a type the answer covers, such as an email alert or another action of a workflow rule.",
+              "description": "How many errors the reading had, without those that the coverage of their type tells: a type that could not be listed, and components that were not retrieved. A file or a folder could not be read, and what is missing may be of an analysed type. A warning of a snapshot of an org about something outside the logic tier (`details.tier` = `other`) is counted too if one of its `details.types` is a type the answer covers. Every type this version analyses is of the logic tier, so only a snapshot an earlier version took holds such a warning, about an action of a workflow rule such as an email alert, which was outside the tier then.",
               "type": "integer",
               "minimum": 0
             },

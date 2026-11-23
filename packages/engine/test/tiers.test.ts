@@ -1,15 +1,16 @@
 /**
- * The logic tier: the types a snapshot of an org is judged by (`core/tiers.ts`, decision record 0046).
+ * The logic tier: the types a snapshot of an org is judged by (`core/tiers.ts`, decision records 0046 and 0068).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RegistryAccess } from '@salesforce/source-deploy-retrieve';
 import { describe, expect, it } from 'vitest';
 import { logicTierTypes, tierOf, tierOfAny } from '../src/core/tiers.ts';
+import { analyseSource } from '../src/extraction/analyse.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 
 describe('the logic tier', () => {
-  it('is the list of record 0004 with the three types of record 0038', () => {
+  it('is the list of record 0004 with the three types of record 0038 and the four of record 0068', () => {
     expect(logicTierTypes()).toEqual([
       'ApexClass',
       'ApexTrigger',
@@ -31,8 +32,26 @@ describe('the logic tier', () => {
       'RecordType',
       'ValidationRule',
       'Workflow',
+      'WorkflowAlert',
+      'WorkflowFieldUpdate',
+      'WorkflowOutboundMessage',
       'WorkflowRule',
+      'WorkflowTask',
     ]);
+  });
+
+  it('holds every type the analysis reads', () => {
+    // Every type that has an analyser counts for the judgement of a snapshot (decision record 0058). The core
+    // knows no analyser, so the list names them, and this test fails when an analyser reads a type it lacks.
+    const nothing = {
+      files: [],
+      read: (path: string): Uint8Array => {
+        throw new Error(`The tree holds no file, and ${path} was asked for.`);
+      },
+    };
+    const read = analyseSource(nothing, []).types;
+    expect(read).toContain('WorkflowTask');
+    expect(read.filter((type) => tierOf(type) !== 'logic')).toEqual([]);
   });
 
   it('holds only names the Salesforce library knows as metadata types', () => {
