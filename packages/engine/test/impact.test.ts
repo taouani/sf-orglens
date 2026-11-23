@@ -67,7 +67,6 @@ const NOT_ANALYSED: readonly (readonly [string, number])[] = [
   ['EmailFolder', 1],
   ['EmailTemplate', 1],
   ['FieldSet', 1],
-  ['Flow', 6],
   ['GlobalValueSet', 1],
   ['RecordType', 2],
   ['Workflow', 2],
@@ -139,8 +138,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('gives every component of the fixture the answer that the answer key implies', async () => {
       const { workspace } = await setUp();
       const answers = loadAnswerKey();
-      // What the analysers of this phase must find: the references of fields and rules.
-      const keyed = answers.references.filter((reference) => reference.phase === 1);
+      // What the analysers must find so far: the references of fields and rules, and those of flows.
+      const keyed = answers.references.filter(
+        (reference) => reference.phase === 1 || reference.file.startsWith('force-app/main/default/flows/'),
+      );
       const placeOf = (step: {
         from: string;
         to: string;
@@ -159,7 +160,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const asked = new Set<ComponentKey>();
       for (const one of keyed.flatMap((reference) => [reference.from, reference.to])) asked.add(one);
       for (const one of answers.components) {
-        if (['CustomObject', 'CustomField', 'ValidationRule'].includes(one.type)) asked.add(one.key);
+        if (['CustomObject', 'CustomField', 'Flow', 'ValidationRule'].includes(one.type)) asked.add(one.key);
       }
       for (const one of [...asked]) {
         const parent = parentKey(one);
@@ -209,8 +210,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(104);
-      expect(results).toBe(148);
+      expect(asked.size).toBe(152);
+      expect(results).toBe(322);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -239,7 +240,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
-        analysisWarnings: 0,
+        // The path of a flow that is not followed, which the answer key calls unknown.
+        analysisWarnings: 1,
         notHeld: 0,
       });
     });
@@ -350,7 +352,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect((await again.snapshot('fixture')).snapshot.status).toBe('partial');
       const report = await again.impact('fixture', AMOUNT);
       expect(report.snapshot.status).toBe('partial');
-      expect(report.results).toHaveLength(8);
+      // 8 fields and rules, and 10 elements of flows.
+      expect(report.results).toHaveLength(18);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -366,7 +369,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(6);
+      expect(report.results).toHaveLength(16);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -439,8 +442,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ['CustomField:invoice__c.tax_rate__c', 1, 'confirmed'],
       ]);
       expect(total.results[0]?.reference).toMatchObject({ from: 'CustomField:invoice__c.total__c', to: AMOUNT });
-      // Both ends were analysed: what a field refers to does not depend on Apex.
-      expect(total).toMatchObject({ complete: true, mayMiss: false, notCovered: { notAnalysed: [] } });
+      // Both ends were analysed: what a field refers to does not depend on Apex. The answer is not complete
+      // all the same: the analysis has one warning, about a path of a flow, and a warning counts for every
+      // answer about its snapshot, also where it cannot be about what was asked.
+      expect(total).toMatchObject({
+        complete: false,
+        mayMiss: false,
+        notCovered: { notAnalysed: [], analysisWarnings: 1, notHeld: 0 },
+      });
 
       // What an object contains counts too: the record of a custom metadata type is of a type that is not
       // analysed, so what the type with its records refers to is not known. Two of its fields point at the
@@ -498,7 +507,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(Math.max(...near.results.map((result) => result.depth))).toBe(2);
       const all = await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c', { depth: 3 });
       expect(all).toMatchObject({ depth: 3, beyondDepth: false });
-      expect(all.results).toHaveLength(near.results.length + 1);
+      // A formula field and an element of a flow are reached at the third step.
+      expect(all.results.filter((result) => result.depth === 3).map((result) => result.key)).toEqual([
+        'CustomField:invoice__c.grand_total__c',
+        'Flow:invoice_recalculate#element:compare_totals',
+      ]);
+      expect(all.results).toHaveLength(near.results.length + 2);
       // Every reference of the fixture is confirmed, so the strictest question gives the same answer.
       const strict = await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c', { minConfidence: 'confirmed' });
       expect(strict.minConfidence).toBe('confirmed');
@@ -521,8 +535,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 7]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 8]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 17]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 18]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -596,7 +610,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(8);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(18);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

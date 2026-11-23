@@ -58,6 +58,44 @@
       }
     },
     {
+      "key": "Flow:invoice_after_save#element:amount_changed",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Amount_Changed",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:amount_changed",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 82,
+        "column": 56
+      }
+    },
+    {
+      "key": "Flow:invoice_sent_process#element:formula_myrule_1",
+      "type": "Flow",
+      "name": "Invoice_Sent_Process.formula_myRule_1",
+      "file": "force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_sent_process#element:formula_myrule_1",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml",
+        "line": 42,
+        "column": 119
+      }
+    },
+    {
       "key": "ValidationRule:account.key_account_needs_contact",
       "type": "ValidationRule",
       "name": "Account.Key_Account_Needs_Contact",
@@ -136,12 +174,6 @@
         "listing": "ok"
       },
       {
-        "type": "Flow",
-        "listed": 6,
-        "retrieved": 6,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
@@ -193,7 +225,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 1,
     "notHeld": 0
   },
   "mayMiss": false
