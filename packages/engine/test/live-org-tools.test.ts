@@ -2112,7 +2112,7 @@ describe('asking the org what Salesforce knows about references', () => {
   it('says which versions of its flows the org holds, and what the id of a row from a flow stands for', async () => {
     const asked = tooling(withFlows());
     const { log, text } = collected();
-    await probeOrg(log, { env: environment() });
+    await probeOrg(log, { env: environment(), pollMs: 5 });
     const output = text();
     expect(log.failed).toBe(false);
     expect(asked).toContain(
@@ -2250,6 +2250,167 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
     expect(output).toContain('- Flow:invoice_recalculate -> CustomField:invoice__c.paid_date__c\n');
     expectNothingForeign(output);
+  });
+
+  describe('asking for the flow with a draft by the numbers of its versions', () => {
+    /** The lines of the probe about the versions by number. */
+    const aboutVersions = (output: string): string[] => {
+      const lines = output.split('\n');
+      const head = lines.findIndex((line) => line.startsWith('The versions of the flow '));
+      return head === -1 ? [] : lines.slice(head, lines.indexOf('', head));
+    };
+    const FILE = `flows/${FLOW_WITH_DRAFT}.flow`;
+    const activeFile = (): string => fixtureFiles().get(`${FILE}-meta.xml`)?.toString('utf8') ?? '';
+    const draftFile = (): string => DRAFT_CHANGES.reduce((flow, [from, to]) => flow.replace(from, to), activeFile());
+    const definitionFile = (active: number | null): string =>
+      '<?xml version="1.0" encoding="UTF-8"?>\n<FlowDefinition xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+      (active === null ? '' : `    <activeVersionNumber>${String(active)}</activeVersionNumber>\n`) +
+      '</FlowDefinition>\n';
+    const HEAD = [
+      'The versions of the flow Invoice_Recalculate, asked for by name and by number (retrieves of the Metadata API)',
+      'The Tooling API says that the org holds 3 versions of it: 1 (Obsolete), 2 (Active), 3 (Draft). The active one: 2.',
+      'Each name is asked for in a retrieve of its own, with API version 66.0.',
+    ];
+
+    it('says which version came back for each name, where the org hands out a version by its number', async () => {
+      tooling(withFlows());
+      // The org of run 21: by the name alone it hands out the draft. Version 1 is no longer to be had.
+      metadata.handedOut.set(`Flow:${FLOW_WITH_DRAFT}`, { path: FILE, text: draftFile() });
+      metadata.handedOut.set(`FlowDefinition:${FLOW_WITH_DRAFT}`, {
+        path: `flowDefinitions/${FLOW_WITH_DRAFT}.flowDefinition`,
+        text: definitionFile(2),
+      });
+      metadata.handedOut.set(`Flow:${FLOW_WITH_DRAFT}-2`, {
+        path: `flows/${FLOW_WITH_DRAFT}-2.flow`,
+        text: activeFile(),
+      });
+      metadata.handedOut.set(`Flow:${FLOW_WITH_DRAFT}-3`, { path: FILE, text: draftFile() });
+      metadata.retrieves.length = 0;
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment(), pollMs: 5 });
+      const output = text();
+      expect(log.failed).toBe(false);
+      // One name per retrieve, the active version first.
+      expect(metadata.retrieves).toEqual([
+        ['Flow:Invoice_Recalculate'],
+        ['FlowDefinition:Invoice_Recalculate'],
+        ['Flow:Invoice_Recalculate-2'],
+        ['Flow:Invoice_Recalculate-1'],
+        ['Flow:Invoice_Recalculate-3'],
+      ]);
+      const size = (file: string): string => String(Buffer.byteLength(file));
+      expect(aboutVersions(output)).toEqual([
+        ...HEAD,
+        `- Flow Invoice_Recalculate: the retrieve ended as Succeeded. 1 file came back: flows/Invoice_Recalculate.flow, ${size(draftFile())} bytes, with the state Draft: the draft.`,
+        `- FlowDefinition Invoice_Recalculate: the retrieve ended as Succeeded. 1 file came back: flowDefinitions/Invoice_Recalculate.flowDefinition, ${size(definitionFile(2))} bytes, which names version 2 as the active one.`,
+        `- Flow Invoice_Recalculate-2: the retrieve ended as Succeeded. 1 file came back: flows/Invoice_Recalculate-2.flow, ${size(activeFile())} bytes, with the state Active: the version that was sent as active.`,
+        '- Flow Invoice_Recalculate-1: the retrieve ended as Succeeded. Salesforce remarked that it cannot find it. No file came back.',
+        `- Flow Invoice_Recalculate-3: the retrieve ended as Succeeded. 1 file came back: flows/Invoice_Recalculate.flow, ${size(draftFile())} bytes, with the state Draft: the draft.`,
+        'Asked for by its name, Salesforce handed out: the draft.',
+        'The file of the FlowDefinition names version 2 as the active one. The Tooling API says 2, which is the same.',
+        'Asked for by the number of its active version (2), Salesforce handed out: the version that was sent as active.',
+        'Requests to the Metadata API for this: 15.',
+      ]);
+      // The part stands after the symbol tables and before the count of the requests to the Tooling API.
+      expect(output.indexOf('The versions of the flow ')).toBeGreaterThan(output.indexOf('Triggers asked for'));
+      expect(output.split('\n').at(-1)).toMatch(/^Requests to the Tooling API: \d+\./);
+      expectNothingForeign(output);
+    });
+
+    it('says that nothing came back where the org knows no name with a number, and what else came back', async () => {
+      tooling(withFlows());
+      // The mock org as it is: the file of the project for the name, and no definition. The definition names
+      // another number here than the Tooling API, and the org answers a name with a file of another name.
+      metadata.handedOut.set(`FlowDefinition:${FLOW_WITH_DRAFT}`, {
+        path: `flowDefinitions/${FLOW_WITH_DRAFT}.flowDefinition`,
+        text: definitionFile(1),
+      });
+      metadata.handedOut.set(`Flow:${FLOW_WITH_DRAFT}-3`, { path: 'flows/Takeover.flow', text: draftFile() });
+      metadata.handedOut.set(`Flow:${FLOW_WITH_DRAFT}-2`, {
+        path: FILE,
+        text: draftFile().replace('<status>Draft</status>', '<status>Secret_Plan</status>'),
+      });
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment(), pollMs: 5 });
+      const output = text();
+      expect(log.failed).toBe(false);
+      const lines = aboutVersions(output);
+      expect(lines.slice(0, 3)).toEqual(HEAD);
+      expect(lines[3]).toMatch(
+        /^- Flow Invoice_Recalculate: the retrieve ended as Succeeded\. 1 file came back: flows\/Invoice_Recalculate\.flow, \d+ bytes, with the state Active: the version that was sent as active\.$/,
+      );
+      expect(lines.slice(5)).toEqual([
+        '- Flow Invoice_Recalculate-1: the retrieve ended as Succeeded. Salesforce remarked that it cannot find it. No file came back.',
+        expect.stringMatching(
+          /^- Flow Invoice_Recalculate-2: the retrieve ended as Succeeded\. 1 file came back: flows\/Invoice_Recalculate\.flow, \d+ bytes, with the state no state: neither of the two: of the 3 places the draft differs in, it has 2 as the draft has them and 0 as the version that was sent as active\.$/,
+        ),
+        expect.stringMatching(
+          /^- Flow Invoice_Recalculate-3: the retrieve ended as Succeeded\. 1 file came back: a file with another name, \d+ bytes\.$/,
+        ),
+        'Asked for by its name, Salesforce handed out: the version that was sent as active.',
+        'The file of the FlowDefinition names version 1 as the active one. The Tooling API says 2, which is another number.',
+        'Asked for by the number of its active version (1), Salesforce handed out: no file of the flow.',
+        'Requests to the Metadata API for this: 15.',
+      ]);
+      expectNothingForeign(output);
+    });
+
+    it('goes by the number of the Tooling API where no definition comes back, and says so', async () => {
+      tooling(withFlows());
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment(), pollMs: 5 });
+      const lines = aboutVersions(text());
+      expect(lines[4]).toBe(
+        '- FlowDefinition Invoice_Recalculate: the retrieve ended as Succeeded. Salesforce remarked that it cannot find it. No file came back.',
+      );
+      expect(lines.slice(-3)).toEqual([
+        'The file of the FlowDefinition names no active version, or did not come back.',
+        'Asked for by the number of its active version (2), Salesforce handed out: no file of the flow.',
+        'Requests to the Metadata API for this: 15.',
+      ]);
+      expect(log.failed).toBe(false);
+    });
+
+    it('says with a code that a retrieve was refused or did not end, and goes on', async () => {
+      tooling(withFlows());
+      const tables = mock.intercept;
+      let started = 0;
+      mock.intercept = (request) => {
+        if (!request.body.includes('<retrieve>')) return tables?.(request);
+        started += 1;
+        // The first retrieve is refused. The others are started and never end.
+        return started === 1 ? soapFault('INSUFFICIENT_ACCESS', `no access for ${USERNAME}`) : undefined;
+      };
+      metadata.hold = true;
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment(), pollMs: 2, retrieveMs: 10 });
+      const output = text();
+      expect(log.failed).toBe(false);
+      const lines = aboutVersions(output);
+      expect(lines[3]).toBe(
+        '- Flow Invoice_Recalculate: the retrieve ended as refused or not answered (INSUFFICIENT_ACCESS). No file came back.',
+      );
+      expect(lines[4]).toBe(
+        '- FlowDefinition Invoice_Recalculate: the retrieve ended as not ended in time. No file came back.',
+      );
+      expect(lines.slice(-3, -1)).toEqual([
+        'The file of the FlowDefinition names no active version, or did not come back.',
+        'Asked for by the number of its active version (2), Salesforce handed out: no file of the flow.',
+      ]);
+      expect(output.split('\n').at(-1)).toMatch(/^Requests to the Tooling API: \d+\./);
+      expectNothingForeign(output);
+    });
+
+    it('does not ask where the org did not say which versions of the flow it holds', async () => {
+      tooling(withFlows(), { faults: { Flow: 'INVALID_FIELD' } });
+      metadata.retrieves.length = 0;
+      const { log, text } = collected();
+      await probeOrg(log, { env: environment(), pollMs: 5 });
+      expect(metadata.retrieves).toEqual([]);
+      expect(text()).toContain(
+        'The flow Invoice_Recalculate was not asked for by the numbers of its versions: the org did not say that it holds the flow, or which versions of it.',
+      );
+    });
   });
 
   it('says what the symbol tables of the compiler hold for the classes of the fixture project', async () => {

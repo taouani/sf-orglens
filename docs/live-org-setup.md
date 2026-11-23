@@ -142,7 +142,7 @@ after it has logged in"). The weekly run always logs in only.
 | deploy                | Puts the fixture project `fixtures/billing-sfdx` into the org, as one deploy that is taken back as a whole if Salesforce does not accept a part of it. No Apex test is run.                                                                                                                                                                                                                    |
 | read                  | Takes a snapshot of the org with the engine, as `orglens snapshot` does, and prints what it holds in numbers. The snapshot asks the Dependency API, and the step prints how its rows compare with the analysis, and which pairs of the answer key they report for the files no analyser reads yet. The snapshot is written to a temporary folder of the runner and deleted when the step ends. |
 | deploy and read       | Both, in this order. The org is read only if the deploy succeeded.                                                                                                                                                                                                                                                                                                                             |
-| probe                 | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports, and which versions of the flows of the project the org holds. Nothing is written to the org.                                                                       |
+| probe                 | Asks the org what Salesforce itself knows about references: the rows of the Dependency API and the symbol tables of the Apex compiler. It prints how much of the answer key of the fixture project each of the two reports, which versions of the flows of the project the org holds, and what it hands out for one flow asked for by the number of a version. Nothing is written to the org.  |
 | read and probe        | Both, in this order. The org is asked about references only if the read step did not fail.                                                                                                                                                                                                                                                                                                     |
 | draft                 | Sends one flow of the fixture project once more, as a draft that differs from the version the project holds. It is meant for an org that holds the project already. Nothing but the project and this draft is ever deployed.                                                                                                                                                                   |
 | draft, read and probe | All three, in this order, each only if the one before it did not fail.                                                                                                                                                                                                                                                                                                                         |
@@ -195,6 +195,15 @@ for them as they are written on 23 November 2026. A query an org refuses is said
 on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the
 engine finds the components of a row by the ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
 of a class in the org, which writes to the org, so the probe does not do that.
+
+Last, the probe asks the Metadata API for one flow of the fixture project, the one the step "draft" sends once
+more: by its name, by the file of its `FlowDefinition`, and by its name with the number of each version the org
+holds, such as `Invoice_Recalculate-1`, each in a retrieve of its own
+(`packages/engine/test/live/flow-versions.ts`). It prints for each name whether a file came back, the state the
+file names, and whether it is the draft or the version that was sent as active. An org hands out the draft when
+it is asked for the flow by its name, and the active version is the one OrgLens analyses, so this says whether
+the active version can be asked for by its number. It is left out where the org did not say which versions of
+the flow it holds. No file is kept.
 
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
 `__c`. So a field and a rule are asked for with the name of their object (`EntityDefinition.QualifiedApiName`).

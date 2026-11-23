@@ -56,7 +56,8 @@ These rules come from the maintainer and apply to every phase.
   names those requests, and a test pins them. Through the Tooling API the engine queries one object,
   `MetadataComponentDependency`, which says which component refers to which (`sources/dependency-api.ts`), and a
   test holds every query against it. A tool of the tests asks the test org for more of the same kind
-  (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata.
+  (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool asks the
+  Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
 
 ## Architecture
 

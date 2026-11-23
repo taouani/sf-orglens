@@ -75,6 +75,22 @@ export const DRAFT_CHANGES: readonly (readonly [string, string])[] = [
   ],
 ];
 
+/**
+ * Which of the two a file of that flow is: in how many of the places the draft differs in it says what the draft
+ * says, and in how many what the active version says.
+ */
+export function draftPlaces(text: string): {
+  readonly ofDraft: number;
+  readonly ofActive: number;
+  readonly all: number;
+} {
+  return {
+    ofDraft: DRAFT_CHANGES.filter(([, to]) => text.includes(to)).length,
+    ofActive: DRAFT_CHANGES.filter(([from]) => text.includes(from)).length,
+    all: DRAFT_CHANGES.length,
+  };
+}
+
 /** The states of a deploy, as the Metadata API names them. */
 const STATES: ReadonlySet<string> = new Set([
   'Pending',
