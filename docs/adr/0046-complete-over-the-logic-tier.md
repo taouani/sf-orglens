@@ -6,6 +6,7 @@
   its author made while building it)
 - Changed by: [0047](0047-what-the-org-says-where-the-library-falls-short.md), which counts a file in a folder the Salesforce library does not know by the type the org describes with that folder, and takes a component of a package that comes back without its prefix for the one the org listed
 - Changed by: [0058](0058-a-type-counts-for-complete-once-it-is-analysed.md), in the point this record leaves undecided: a type counts for a complete snapshot once it is analysed. The list of this record stays in force until that is built, and the record written then replaces it
+- Changed by: [0068](0068-every-analysed-type-is-of-the-logic-tier.md), which replaces the list of this record: the four actions of a workflow rule that are analysed join it, and it has 25 names. Every type the engine analyses is of the tier again, so the rule of this record that counts a warning outside the tier for an impact answer is one for later again, as this record says of it
 
 ## Context
 

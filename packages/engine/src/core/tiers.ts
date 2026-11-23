@@ -6,9 +6,10 @@
  * leaves the snapshot complete (decision records 0004, 0038 and 0046).
  *
  * The names are those of the Metadata API. The list is the one of record 0004, word for word, with the three
- * types record 0038 adds: custom labels, custom permissions and global value sets. A type is on it or not by
- * its own name: a part of an object that is not named here, such as a list view, is not of the tier although
- * the object is.
+ * types record 0038 adds: custom labels, custom permissions and global value sets. Every type an analyser reads
+ * is on it too (decision records 0058 and 0068): a type joins with the version that analyses it, and a test holds
+ * the types the analysis reads against the list. A type is on it or not by its own name: a part of an object
+ * that is not named here, such as a list view, is not of the tier although the object is.
  */
 const LOGIC_TIER: ReadonlySet<string> = new Set([
   // Objects, fields including formulas, validation rules, record types and field sets. A custom metadata type
@@ -27,6 +28,11 @@ const LOGIC_TIER: ReadonlySet<string> = new Set([
   'Flow',
   'Workflow',
   'WorkflowRule',
+  // The actions of a workflow rule that are analysed (record 0068). The other actions are outside the tier.
+  'WorkflowAlert',
+  'WorkflowFieldUpdate',
+  'WorkflowOutboundMessage',
+  'WorkflowTask',
   // Profiles, permission sets and permission set groups.
   'Profile',
   'PermissionSet',

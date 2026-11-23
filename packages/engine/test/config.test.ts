@@ -309,6 +309,13 @@ describe('readConfig', () => {
       /"CustomField" is a type of the logic tier/,
     ],
     [
+      // The actions of a workflow rule joined the tier with their analyser (decision record 0068).
+      'an action of a workflow rule among the types to leave out',
+      changed('sandbox_name = "uat"', 'exclude_types = ["WorkflowAlert"]'),
+      '23:1: sources.uat.exclude_types[0]',
+      /"WorkflowAlert" is a type of the logic tier/,
+    ],
+    [
       'a type to leave out that is no name of a type',
       changed('description = "EMEA production"', 'exclude_types = ["Report", "Email Template"]'),
       '14:1: sources.prod.exclude_types[1]',

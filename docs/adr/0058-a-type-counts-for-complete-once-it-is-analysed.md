@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-22
 - Decisions: none (an answer of the maintainer to the Phase 2 plan)
+- Changed by: [0068](0068-every-analysed-type-is-of-the-logic-tier.md), which builds it in work package 6: the four actions of a workflow rule that are analysed join the list, `WorkflowFlowAutomation` does not, the list keeps its name, `exclude_types` refuses the four, and a snapshot that an older version took keeps its judgement
 
 ## Context
 

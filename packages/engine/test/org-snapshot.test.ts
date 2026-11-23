@@ -730,6 +730,29 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(stored(dir, 1)).toEqual(expectedFiles().filter((path) => !path.startsWith('classes/InvoiceService.')));
     });
 
+    it('calls the snapshot partial when an action of a workflow rule that the org listed does not come back', async () => {
+      // The actions of a workflow rule are analysed, and so are of the logic tier (decision record 0068). This org
+      // lists the task of the workflow rules of Invoice__c and hands out their file without it.
+      metadata = await metadataFromSource(WHOLE);
+      mock.metadata = metadata;
+      const file = readFileSync(join(WHOLE, 'main/default/workflows/Invoice__c.workflow-meta.xml'), 'utf8');
+      const withoutTask = file.replace(/ {4}<tasks>[\s\S]*<\/tasks>\n/, '');
+      expect(withoutTask).not.toContain('Follow_Up_On_Void</fullName>');
+      metadata.handedOut.set('Workflow:Invoice__c', { path: 'workflows/Invoice__c.workflow', text: withoutTask });
+      const report = await snap(workspaceDir());
+
+      expect(report.snapshot.status).toBe('partial');
+      expect(typeOf(report, 'WorkflowTask')).toMatchObject({ listed: 1, retrieved: 0 });
+      expect(codes(report).filter((code) => code.startsWith('error'))).toEqual(['error NOT_RETRIEVED']);
+      expect(ofReading(report)).toContainEqual({
+        severity: 'error',
+        code: 'NOT_RETRIEVED',
+        message:
+          '1 component of the type WorkflowTask that the org listed did not come back. The first: Invoice__c.Follow_Up_On_Void',
+        details: { type: 'WorkflowTask', count: 1, components: ['Invoice__c.Follow_Up_On_Void'], tier: 'logic' },
+      });
+    });
+
     it('retrieves a parent the org does not list for the sake of its parts, and says that it came back unlisted', async () => {
       metadata.unlistedParents.add('CustomObject:Account');
       const dir = workspaceDir();

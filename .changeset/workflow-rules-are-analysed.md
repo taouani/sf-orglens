@@ -21,9 +21,7 @@ several components and no object is still that error.
 What a file of workflow rules does not say is reported and not guessed. An action of a type that is not known, or
 of none, and an email template named without its folder are the warning `NAME_NOT_READ`. A field update that
 writes on a parent through a relationship that leads nowhere known, or that would lead to the object of the record
-itself, such as `ParentId` of an email message, is the warning `PATH_NOT_FOLLOWED`. The actions of a workflow rule
-are outside the logic tier, and are the first analysed types that are: a warning of a snapshot of an org that one
-of them is missing counts for every impact answer, which then says that it may miss something.
+itself, such as `ParentId` of an email message, is the warning `PATH_NOT_FOLLOWED`.
 
 Of these files, the Dependency API reports only the custom fields the formula of a field update reads. The
 cross-check compares its rows as for every analysed type, and counts the other references of these files with the

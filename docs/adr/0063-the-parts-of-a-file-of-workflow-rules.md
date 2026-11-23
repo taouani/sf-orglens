@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-23
 - Decisions: none (the analyser of workflow rules of work package 4 of the Phase 2 plan)
+- Changed by: [0068](0068-every-analysed-type-is-of-the-logic-tier.md): the field updates, email alerts, outbound messages and tasks are of the logic tier, as the rules are, so what an org lists of them and does not hand out makes a snapshot partial, and `exclude_types` refuses their names
 
 ## Context
 
