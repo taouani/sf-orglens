@@ -1160,7 +1160,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toContain(
-      'Components: 120 listed by the org, 120 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+      'Components: 126 listed by the org, 126 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
     );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
@@ -2254,6 +2254,10 @@ describe('asking the org what Salesforce knows about references', () => {
   });
 
   describe('asking for the flow with a draft by the numbers of its versions', () => {
+    // The mock org makes a definition of every flow. Here the org hands out the one a test gives it, or none.
+    beforeEach(() => {
+      metadata.withheld.add(`FlowDefinition:${FLOW_WITH_DRAFT}`);
+    });
     /** The lines of the probe about the versions by number. */
     const aboutVersions = (output: string): string[] => {
       const lines = output.split('\n');
@@ -2386,7 +2390,7 @@ describe('asking the org what Salesforce knows about references', () => {
 
     it('says that it cannot tell, where the org hands out the active version for the name alone', async () => {
       tooling(withFlows());
-      // The mock org as it is: the file of the project for the name, and no definition. It answers one number
+      // The mock org with the file of the project for the name, and without a definition. It answers one number
       // with a file of another name, one with a file whose state is no word of the Metadata API, and the
       // number of the active version with the file of the project.
       hands(`${NAME}-2`, FILE, activeFile());

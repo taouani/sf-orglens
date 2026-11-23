@@ -494,6 +494,8 @@ describe('the inventory of the mock org', () => {
       'CustomPermission',
       'EmailTemplate',
       'Flow',
+      // The mock org keeps a definition of every flow, as an org does.
+      'FlowDefinition',
       'GlobalValueSet',
       'Workflow',
     ]);
@@ -510,6 +512,7 @@ describe('the inventory of the mock org', () => {
       CustomPermission: 1,
       EmailTemplate: 1,
       Flow: 6,
+      FlowDefinition: 6,
       GlobalValueSet: 1,
       Workflow: 2,
     });

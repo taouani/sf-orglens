@@ -273,11 +273,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
     it('stores the files of every component the org lists, in the form a repository holds them', async () => {
       // This org holds the whole project, with every type it has. The project has only fields of two standard
-      // objects, and the org hands out the file of each of them.
+      // objects, and the org hands out the file of each of them. It keeps a definition of each of the six flows.
       metadata = await metadataFromSource(WHOLE);
       mock.metadata = metadata;
+      const flows = wholeFiles.filter((path) => path.startsWith('flows/'));
+      expect(flows).toHaveLength(6);
       const expected = [
         ...wholeFiles,
+        ...flows.map((path) => path.replace(/^flows\/(.*)\.flow-meta\.xml$/, 'flowDefinitions/$1.flowDefinition-meta.xml')),
         'objects/Account/Account.object-meta.xml',
         'objects/User/User.object-meta.xml',
       ].sort();
@@ -315,6 +318,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         // A flow is counted with its 55 elements.
         { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null },
+        { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'RecordType', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
         { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
@@ -344,7 +348,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       expect(events.slice(-5)).toEqual([
-        { step: 'planned', snapshot: 1, components: 120, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 126, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
         // Before the first request to the Dependency API, and after its one query, which gave no row here.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
@@ -369,7 +373,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 120, listed: 120, retrieved: 120, ids: 120, dates: 120 });
+        ).toEqual({ items: 126, listed: 126, retrieved: 126, ids: 126, dates: 126 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -407,8 +411,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The analysis is the last thing a snapshot of an org says it does.
       expect(events.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
 
+      // An org keeps a definition of every flow, which the folder of the project does not have. It is a component
+      // of a type that is not analysed, and refers to nothing.
+      const definitions = reading(dir, (store) => storedComponents(store, 1))
+        .map((one) => one.key)
+        .filter((key) => key.startsWith('FlowDefinition:'));
+      expect(definitions).toHaveLength(6);
       const org = reading(dir, (store) => ({
-        components: storedComponents(store, 1),
+        components: storedComponents(store, 1).filter((one) => !one.key.startsWith('FlowDefinition:')),
         references: storedReferences(store, 1),
       }));
       const folder = reading(dir, (store) => ({
@@ -461,7 +471,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 175,
+        components: 181,
         references: 238,
         complete: true,
         origins: [

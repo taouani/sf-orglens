@@ -146,6 +146,34 @@ export function markRetrieved(
   return withoutPrefix;
 }
 
+/**
+ * True if the org listed a component of this type under exactly this name. A name with the prefix of a package
+ * is another name.
+ */
+export function isListed(store: Store, snapshotId: number, member: ChunkMember): boolean {
+  return (
+    store.get(
+      'SELECT 1 FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ? AND listed = 1',
+      snapshotId,
+      member.type,
+      member.fullName,
+    ) !== undefined
+  );
+}
+
+/**
+ * Notes that a component the org listed is not in the snapshot after all, although a retrieve handed out a
+ * file for it: the file was not the one the snapshot is to hold.
+ */
+export function markNotRetrieved(store: Store, snapshotId: number, member: ChunkMember): void {
+  store.run(
+    'UPDATE inventory_item SET retrieved = 0 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+    snapshotId,
+    member.type,
+    member.fullName,
+  );
+}
+
 /** Per type: how many components the org listed, how many of those came back, and how many came back unlisted. */
 export function countInventory(
   store: Store,

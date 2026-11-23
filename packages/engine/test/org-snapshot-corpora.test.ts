@@ -131,9 +131,17 @@ describe('a snapshot of an org that holds a public codebase', () => {
         expect(stored.some((path) => path.endsWith('.labels-meta.xml'))).toBe(
           onDisk.tree.files.some((path) => path.endsWith('.labels-meta.xml')),
         );
-        // What the org holds beyond the project: the objects whose parts the project has without the object.
+        // What the org holds beyond the project: the objects whose parts the project has without the object, and
+        // the definition of a flow, which an org keeps of every flow.
         const expected = new Set(onDisk.tree.files.map(nameOf));
-        expect(stored.filter((path) => !expected.has(nameOf(path)) && !path.endsWith('.object-meta.xml'))).toEqual([]);
+        expect(
+          stored.filter(
+            (path) =>
+              !expected.has(nameOf(path)) &&
+              !path.endsWith('.object-meta.xml') &&
+              !path.endsWith('.flowDefinition-meta.xml'),
+          ),
+        ).toEqual([]);
         // Every component of the project came back, by the name the org listed it under.
         const absent = onDisk.components
           .filter((component) => !component.files.every(inUnknownFolder))

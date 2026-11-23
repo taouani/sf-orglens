@@ -19,6 +19,7 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { basename, dirname, join } from 'node:path';
 import type { OrgSource, SandboxSource } from '../core/config/config.ts';
 import { EngineError, isEngineError, type JsonValue } from '../core/errors.ts';
+import { buildKey } from '../core/keys.ts';
 import { tierOf, tierOfAny, type Tier } from '../core/tiers.ts';
 import { engineVersion } from '../core/version.ts';
 import { DEFAULT_CHUNK_WEIGHT, partsWithOwnFiles, planChunks, splitMembers } from '../sources/chunks.ts';
@@ -48,6 +49,8 @@ import {
   chunkStarted,
   countChunks,
   countInventory,
+  isListed,
+  markNotRetrieved,
   markRetrieved,
   missingComponents,
   missingPartsOf,
@@ -71,8 +74,11 @@ import {
   readIssues,
   readRunningSnapshot,
   removeIssues,
+  removeSnapshotFile,
+  snapshotTree,
 } from '../store/snapshots.ts';
 import { analyseStored } from './analysis.ts';
+import { activeVersionIn, flowPath, flowsNotActive, versionName, type FlowToFetch } from './flow-versions.ts';
 import type { WorkspacePaths } from './layout.ts';
 import { snapshotReport, type CoverageReport } from './snapshot.ts';
 
@@ -575,6 +581,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
     }
 
     await retrieveChunks(store, snapshotId, api, source.name, workDir, tuning, progress);
+    await fetchActiveFlows(store, snapshotId, api, source.name, workDir, tuning);
     if (job.crossCheck !== false) {
       // Before the snapshot ends, so that a snapshot that is interrupted here is continued here.
       const snapshot = snapshotId;
@@ -916,6 +923,154 @@ async function retrieveChunks(
     const counts = countChunks(store, snapshotId);
     progress({ step: 'retrieved', snapshot: snapshotId, done: counts.done + counts.failed, chunks: counts.total });
   }
+}
+
+/** At most this many versions of flows are asked for in one retrieve. */
+const FLOWS_PER_RETRIEVE = 100;
+
+/**
+ * Retrieves members that are not chunks of the snapshot, and reads what came back. Returns what Salesforce said
+ * when it gave nothing that can be read. Throws what stops the whole snapshot, as `retrieveChunk` does.
+ */
+async function retrieveBeside(
+  api: MetadataApi,
+  members: readonly ChunkMember[],
+  source: string,
+  dir: string,
+  tuning: OrgSnapshotTuning,
+): Promise<{ readonly unpacked: Unpacked } | { readonly said: string }> {
+  let jobId: string;
+  try {
+    jobId = await api.startRetrieve(members);
+  } catch (error) {
+    if (isRefusal(error)) return { said: `Salesforce did not start the retrieve. ${saidIn(error)}` };
+    throw error;
+  }
+  let zip: Uint8Array | null = null;
+  try {
+    const state = await ended(api, jobId, source, tuning);
+    if (!state.succeeded) return { said: saidAbout(state) };
+    zip = (await api.retrieveState(jobId, true)).zip;
+  } catch (error) {
+    if (isRefusal(error)) return { said: `Salesforce did not say how far the retrieve is. ${saidIn(error)}` };
+    throw error;
+  }
+  if (zip === null) return { said: 'Salesforce gave no zip file for a retrieve that succeeded.' };
+  mkdirSync(dir, { recursive: true });
+  try {
+    return { unpacked: await unpackRetrieve(zip, dir) };
+  } catch (error) {
+    if (isEngineError(error) || isSystemFailure(error)) throw error;
+    return { said: `What Salesforce handed out could not be read. ${saidBy(error)}` };
+  }
+}
+
+/**
+ * Puts the active version of a flow in the place of a version that is not active (decision record 0060).
+ *
+ * A flow whose file says that it is not active, and whose definition names an active version, is asked for once
+ * more by its name with that number. The file that comes back is taken if it says that it is active, under the
+ * path of the flow. The note `FLOW_NEWER_VERSION` says that the flow has a newer version that is not analysed. If
+ * no such file comes back, the file of the newer version is taken out of the snapshot too: the flow counts as
+ * listed and not handed out, and the note `ACTIVE_FLOW_NOT_RETRIEVED` says why. A flow without a definition, and
+ * one the org listed under another name than that of its file, is kept as it came, with the warning
+ * `FLOW_VERSION_UNKNOWN`.
+ *
+ * What is done is written with the file it is about, so a snapshot that is interrupted here does not do it twice:
+ * the file is active then, or not there.
+ */
+async function fetchActiveFlows(
+  store: Store,
+  snapshotId: number,
+  api: MetadataApi,
+  source: string,
+  workDir: string,
+  tuning: OrgSnapshotTuning,
+): Promise<void> {
+  const { fetch, unknown } = flowsNotActive(snapshotTree(store, snapshotId));
+  const asked: FlowToFetch[] = [];
+  const notKnown: { flow: string; state: string; why: string; reason: string }[] = unknown.map((one) => ({
+    flow: one.flow,
+    state: one.state,
+    reason: one.reason,
+    why:
+      one.reason === 'no-definition'
+        ? 'The snapshot holds no definition of the flow, which would name its active version.'
+        : 'The file of its definition cannot be read.',
+  }));
+  for (const flow of fetch) {
+    // A flow of a package that came back without its prefix is asked for by no name the org was seen to answer.
+    if (isListed(store, snapshotId, { type: 'Flow', fullName: flow.flow })) asked.push(flow);
+    else {
+      notKnown.push({
+        ...flow,
+        reason: 'not-listed',
+        why: 'The org lists no flow under the name of its file, so it is not asked for by the number of its active version.',
+      });
+    }
+  }
+  store.write(() => {
+    removeIssues(store, snapshotId, ['FLOW_VERSION_UNKNOWN']);
+    for (const { flow, state, why, reason } of notKnown) {
+      addIssue(store, snapshotId, {
+        severity: 'warning',
+        code: 'FLOW_VERSION_UNKNOWN',
+        message: `The flow ${flow} came back as a version that is ${state}. ${why} It is analysed as it came, and it is not known whether another version of it is active.`,
+        componentKey: buildKey({ type: 'Flow', fullName: flow }),
+        details: { flow, state, reason },
+      });
+    }
+  });
+
+  let seq = 0;
+  const take = async (flows: readonly FlowToFetch[]): Promise<void> => {
+    seq += 1;
+    const dir = join(workDir, `flows-${String(seq)}`);
+    const members = flows.map(({ flow, version }) => ({ type: 'Flow', fullName: versionName(flow, version) }));
+    const got = await retrieveBeside(api, members, source, dir, tuning);
+    if ('said' in got && flows.length > 1) {
+      // One version that cannot be handed out fails the retrieve of all. Each half is tried, down to the one.
+      const half = Math.ceil(flows.length / 2);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      await take(flows.slice(0, half));
+      await take(flows.slice(half));
+      return;
+    }
+    store.write(() => {
+      for (const { flow, state, version } of flows) {
+        const found = 'said' in got ? null : activeVersionIn(got.unpacked.tree, flow, version);
+        const componentKey = buildKey({ type: 'Flow', fullName: flow });
+        if (found !== null && found.content !== null) {
+          putSnapshotFile(store, snapshotId, flowPath(flow), found.content);
+          addIssue(store, snapshotId, {
+            severity: 'info',
+            code: 'FLOW_NEWER_VERSION',
+            message: `The flow ${flow} has a version that is newer than its active version ${String(version)}, and is ${state}. The snapshot holds the active version, and the newer one is not analysed.`,
+            componentKey,
+            details: { flow, version, newer: state },
+          });
+          continue;
+        }
+        const said =
+          'said' in got
+            ? got.said
+            : found === null || found.states.length === 0
+              ? 'No file of it came back.'
+              : `What came back is ${found.states.join(' and ')}.`;
+        removeSnapshotFile(store, snapshotId, flowPath(flow));
+        markNotRetrieved(store, snapshotId, { type: 'Flow', fullName: flow });
+        addIssue(store, snapshotId, {
+          severity: 'info',
+          code: 'ACTIVE_FLOW_NOT_RETRIEVED',
+          message: `The flow ${flow} came back as a version that is ${state}, and its active version ${String(version)} did not come back when it was asked for by its number. ${said} The flow is not in the snapshot, and the newer version is not analysed in its place.`,
+          componentKey,
+          details: { flow, version, newer: state, said },
+        });
+      }
+    });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  };
+  for (let at = 0; at < asked.length; at += FLOWS_PER_RETRIEVE) await take(asked.slice(at, at + FLOWS_PER_RETRIEVE));
 }
 
 /**

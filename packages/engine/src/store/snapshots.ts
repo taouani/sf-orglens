@@ -148,6 +148,16 @@ export function putSnapshotFile(store: Store, snapshotId: number, path: string, 
   return held !== undefined;
 }
 
+/**
+ * Takes a file out of a snapshot that is still being taken. Its content stays in the store of contents, where
+ * another file can share it. Returns true if the snapshot held a file at the path.
+ */
+export function removeSnapshotFile(store: Store, snapshotId: number, path: string): boolean {
+  const held = store.get('SELECT 1 FROM snapshot_file WHERE snapshot_id = ? AND path = ?', snapshotId, path);
+  store.run('DELETE FROM snapshot_file WHERE snapshot_id = ? AND path = ?', snapshotId, path);
+  return held !== undefined;
+}
+
 export interface TypeCoverage {
   readonly type: string;
   /** How many components of the type the source says it has. */

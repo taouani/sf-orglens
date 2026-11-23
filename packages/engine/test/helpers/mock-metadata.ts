@@ -12,6 +12,7 @@
  * component it does not hand out, refuse a retrieve that is too large, or
  * never finish one.
  */
+import { readFileSync } from 'node:fs';
 import type * as SourceLibrary from '@salesforce/source-deploy-retrieve';
 import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
@@ -116,6 +117,16 @@ export interface MockMetadata {
    * number: `Type:FullName` to the path below `unpackaged` and the content of the one file it answers with.
    */
   readonly handedOut: Map<string, { readonly path: string; readonly text: string }>;
+  /**
+   * The versions of a flow beside the one of the folder, by the name of the flow: the file of the folder is the
+   * version `latest`, and `older` holds the text of earlier versions by their numbers. A flow that is not named
+   * here has one version, the one of the folder, and is known by its name alone. For a flow that is named here
+   * the org answers for a name with a number as run 22 of "Live
+   * org" showed: the latest version comes back under the name of the flow (`flows/Name.flow`), an older one under
+   * the name with its number (`flows/Name-1.flow`), and a number the flow does not have is not found. The
+   * definition of the flow names the version whose text is active.
+   */
+  readonly flowVersions: Map<string, { readonly latest: number; readonly older: ReadonlyMap<number, string> }>;
   /** What the org finds wrong in a deploy. While it holds something, a deploy fails and changes nothing. */
   readonly deployProblems: DeployProblem[];
   /** Every deploy that was started, in order: the files of its zip file, their content as text, and its options. */
@@ -209,6 +220,35 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     }
   }
 
+  // An org keeps a definition of every flow, and lists it and hands it out: run 19 of "Live org" saw 7 flows and 7
+  // definitions. A flow of the folder without the file of its definition gets one here. What the org writes in it
+  // for a flow without an active version was not seen: here it names no number then.
+  const flows = new Map(top.filter((one) => one.type.name === 'Flow').map((one) => [one.fullName, one]));
+  const defined = new Set(top.filter((one) => one.type.name === 'FlowDefinition').map((one) => one.fullName));
+  const madeDefinitions = new Set<string>();
+  for (const name of flows.keys()) {
+    if (defined.has(name)) continue;
+    describe('FlowDefinition');
+    madeDefinitions.add(name);
+    listed.push({
+      type: 'FlowDefinition',
+      fullName: name,
+      fileName: `flowDefinitions/${name}.flowDefinition`,
+      folder: null,
+    });
+  }
+  const isActive = (text: string): boolean => text.includes('<status>Active</status>');
+  const definitionOf = (name: string): string => {
+    const flow = flows.get(name);
+    const versions = metadata.flowVersions.get(name);
+    const latest = versions?.latest ?? 1;
+    let active =
+      flow?.xml !== undefined && isActive(readFileSync(flow.xml, 'utf8')) ? latest : (null as number | null);
+    for (const [number, text] of versions?.older ?? []) if (active === null && isActive(text)) active = number;
+    const number = active === null ? '' : `    <activeVersionNumber>${String(active)}</activeVersionNumber>\n`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<FlowDefinition xmlns="${NAMESPACE}">\n${number}</FlowDefinition>\n`;
+  };
+
   let issued = 0;
   const jobs = new Map<string, RetrieveJob>();
   const deployJobs = new Map<string, { readonly files: string[]; polls: number }>();
@@ -241,11 +281,35 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     const components: SourceComponent[] = [];
     const found: Listed[] = [];
     const beside: { readonly path: string; readonly text: string }[] = [];
-    for (const asked of job.members) {
+    for (let asked of job.members) {
       const other = metadata.handedOut.get(key(asked.type, asked.fullName));
       if (other !== undefined) {
         beside.push(other);
         continue;
+      }
+      if (asked.type === 'FlowDefinition' && madeDefinitions.has(asked.fullName)) {
+        if (metadata.withheld.has(key(asked.type, asked.fullName))) {
+          problems.push(`Entity of type '${asked.type}' named '${asked.fullName}' cannot be found`);
+        } else {
+          beside.push({ path: `flowDefinitions/${asked.fullName}.flowDefinition`, text: definitionOf(asked.fullName) });
+          found.push(...listed.filter((item) => item.type === asked.type && item.fullName === asked.fullName));
+        }
+        continue;
+      }
+      // A name of a flow holds no hyphen, so what follows the last one is the number of a version.
+      const [, flow, number] = asked.type === 'Flow' ? (/^(.+)-([1-9][0-9]*)$/.exec(asked.fullName) ?? []) : [];
+      const versions = flow === undefined ? undefined : metadata.flowVersions.get(flow);
+      if (flow !== undefined && number !== undefined && versions !== undefined && flows.has(flow)) {
+        const older = versions.older.get(Number(number));
+        if (Number(number) === versions.latest) {
+          asked = { type: 'Flow', fullName: flow };
+        } else if (older === undefined) {
+          problems.push(`Entity of type '${asked.type}' named '${asked.fullName}' cannot be found`);
+          continue;
+        } else {
+          beside.push({ path: `flows/${asked.fullName}.flow`, text: older });
+          continue;
+        }
       }
       // A component of a package is asked for by the name the org lists it with.
       const inProject = listed.find((item) => item.type === asked.type && listedAs(item) === asked.fullName);
@@ -305,6 +369,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     forgotten: new Set(),
     extraFiles: new Map(),
     handedOut: new Map(),
+    flowVersions: new Map(),
     deployProblems: [],
     deploys: [],
     calls: [],
