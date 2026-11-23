@@ -37,7 +37,11 @@ Three statements below are conclusions of the author of this record. The maintai
   Metadata API says of a flow that is named without a version number that it "is the latest version", and
   Gearset reports that an org with an active version and a newer draft hands out the draft. So the expectation
   of the author is most likely wrong for a flow with a newer draft. The measurement decides, and nothing is
-  changed here before it.
+  changed here before it. **Measured on 23 November 2026** ([note](../research/phase-2/real-org.md), run 21 of
+  "Live org"): a flow of the test org with an active version and a newer draft is handed out as the draft. A flow
+  with one version is handed out as that version, active or not. So the expectation was wrong, and with the
+  decision as it stands an answer about such a flow speaks of a version that does not run. The question is back
+  with the maintainer, and the analyser of flows is not built before the answer. Nothing else is changed here.
 - **The other versions are not read.** A draft that is newer than the active version is not in a snapshot, so an
   answer does not hold what the draft would change.
 
@@ -50,5 +54,8 @@ Three statements below are conclusions of the author of this record. The maintai
 - The rows of the Dependency API for a flow may carry the id of a version, which the org does not list. Work
   package 1 measures that too. If so, the rows of flows cannot be compared by id, and record
   [0045](0045-the-cross-check-of-a-snapshot.md) allows a name only where there is no id. That choice is then put
-  to the maintainer.
+  to the maintainer. Measured on 23 November 2026: every row from a flow carries the id of a version. The org
+  lists a flow with the id of its latest version, so the rows of that version can be compared by id, and the rows
+  of another version cannot. The choice is put to the maintainer with the design of the cross-check of flows,
+  once the version that is analysed is decided.
 - A process of the Process Builder is a flow to the Metadata API, and falls under the same rule.

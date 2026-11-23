@@ -135,17 +135,17 @@ words came out (`docs/live-org-setup.md` says why).
   at a time. The formula now reads `Tax_Code_Name__c`, a text field of the invoice itself, which the first two
   readings allow, and the flow no longer refers to `Account.Is_Key_Account__c`. A formula of a flow that crosses a
   relationship is left in the process only (`Invoice_Sent_Process`). Three other paths across a relationship stand
-  in the flow, in two assignments and in a decision, none of them to a formula field. Salesforce did not name
-  them, nor the custom error, nor the formula the flow starts by. Whether it accepts them, I do not know: the
-  third deploy says. If it refuses the paths, the flow has to get the account with an element of its own.
+  in the flow, in two assignments and in a decision, none of them to a formula field. The third deploy accepted
+  them, with the custom error and the formula the flow starts by, so the third reading is ruled out.
 
-The second deploy counted 118 components, found no error in 117 and refused that one flow, so the org is still as
-it was. What Salesforce found no error in, as far as that says anything: the process of the Process Builder and
-the workflow rules, which the setup pages no longer create, the time trigger of a workflow rule and the scheduled
-path of a flow, and the outbound message with the user of the login in the place of the made-up user name
-(`integration.user@billing-fixture.invalid`).
+The second deploy counted 118 components, found no error in 117 and refused that one flow. **The third deploy, on
+the same day, took all 118, and the project is in the test org.** What Salesforce accepted with it, as far as one
+org says anything: the process of the Process Builder and the workflow rules, which the setup pages no longer
+create, the time trigger of a workflow rule and the scheduled path of a flow, and the outbound message with the
+user of the login in the place of the made-up user name (`integration.user@billing-fixture.invalid`).
+`docs/research/phase-2/real-org.md` has the runs and what the org says about the project.
 
-Three things are not as a person would build them, and I expect Salesforce to accept them. `Get_Invoice` of the
+Three things are not as a person would build them, and Salesforce accepted them. `Get_Invoice` of the
 screen flow stores five fields of the invoice, and later elements read four others of the same record. The flow
 would show nothing for them when it runs. The screen has a field of the record and a choice for the same thing,
 the tax code, of which the update takes the choice. And `Save_Invoice` writes `Amount__c` back as `Get_Invoice`
@@ -155,9 +155,9 @@ a difference.
 The tool that deploys can also send `Invoice_Recalculate` once more, in a step of its own, as a draft that reads
 `Paid_Date__c` where the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and
 a newer draft (`docs/live-org-setup.md`). The key is about the file here, which the project sends as the active
-version. If the org hands out the draft after that step, as the documentation suggests, the key does not describe
-that flow as the test org hands it out: it lacks the reference to `Paid_Date__c`. What the deploy showed comes
-with the note of the run.
+version. The org hands out the draft after that step, so the key does not describe that flow as the test org
+hands it out since 23 November 2026: it lacks the reference to `Paid_Date__c`
+(`docs/research/phase-2/real-org.md`).
 
 ## The answer key
 
