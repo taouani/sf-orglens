@@ -162,22 +162,24 @@ The tool sends two things that are not the files of the repository as they are:
   is in no file of the repository and in no log. After the deploy it is in the outbound message of the test org,
   so a snapshot of the test org holds it, in the temporary folder of the read step, which is deleted.
 - The step "draft" sends the flow `Invoice_Recalculate` once more, as a draft that reads another field
-  (`Paid_Date__c` where the file reads `Due_Date__c`). After it the org should hold an active version of the flow
-  and a newer draft, which is what the read step and the probe then report on. It is a step of its own, so that
+  (`Paid_Date__c` where the file reads `Due_Date__c`). After it the org holds an active version of the flow and
+  a newer draft, which is what the read step and the probe then report on. It is a step of its own, so that
   the org can be read before it and after it, and so that no step waits for two deploys.
 
-What follows about the draft is from the documentation and from what others report. None of it is verified until
-a run shows it.
+What the step "draft" did on the test org, on 23 November 2026 (`docs/research/phase-2/real-org.md` has the
+runs):
 
-- **A deploy of a draft should add a version and leave the active version active.** The reference of the Metadata
-  API says that a deploy of changes to an active flow makes a new version. I found nothing in it about a draft.
-- **A read after the step "draft" will most likely hold the draft, and not the active version.** The reference
-  says of the name of the file of a flow: "If you don't specify a version number, the flow is the latest
-  version." Gearset writes of exactly this case that Salesforce hands out the later draft and not the active
-  version. The plan of Phase 2 and decision record 0057 expected the active version. The run measures it, and if
-  it is the draft, that goes to the maintainer before the analyser of flows is built, as the plan says. From then
-  on the answer key, which is about the file of the repository, does not describe that flow as the test org hands
-  it out: it is off by the reference to `Paid_Date__c`.
+- **The deploy of the draft added a version and left the active version active.** The flow has version 1, which
+  is active, and version 2, which is a draft.
+- **A read after the step "draft" holds the draft, and not the active version.** The reference of the Metadata
+  API says of the name of the file of a flow: "If you don't specify a version number, the flow is the latest
+  version." The plan of Phase 2 and decision record 0057 expected the active version. That went to the
+  maintainer before the analyser of flows is built, as the plan says. Since that step the answer key, which is
+  about the file of the repository, does not describe that flow as the test org hands it out: it is off by the
+  reference to `Paid_Date__c`.
+
+What follows is not verified:
+
 - **No tool takes the draft out again.** A version of a flow is deleted by hand, in Setup under **Flows**. I
   expect that a run of "deploy" after it makes the version of the project the latest one again, as a new version
   or in the place of the draft, and did not see it.
@@ -188,10 +190,10 @@ The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts
 describe metadata: `MetadataComponentDependency`, which it reads with the reader of the engine
 (`packages/engine/src/sources/dependency-api.ts`), `ApexClass` with its symbol table, and `CustomObject`,
 `CustomField`, `ValidationRule`, `ApexTrigger`, `FlowDefinition` and `Flow` for the names behind the ids. The last
-two also say which versions of a flow the org holds and which one is active. Whether the test org answers the
-queries for them as they are written is not verified until a run shows it: a query it refuses is said in the log,
-and the step goes on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the engine finds the components of a row by the
-ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
+two also say which versions of a flow the org holds and which one is active. The test org answered the queries
+for them as they are written on 23 November 2026. A query an org refuses is said in the log, and the step goes
+on. No record of the data of the org is read. The read step asks for `MetadataComponentDependency` only: the
+engine finds the components of a row by the ids the org listed them with. A symbol table with references to other classes can only be had by compiling a copy
 of a class in the org, which writes to the org, so the probe does not do that.
 
 The row of a custom object holds its name without the ending, and a custom metadata type ends in `__mdt`, not in
