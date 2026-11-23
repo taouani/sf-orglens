@@ -17,9 +17,11 @@ a text or a formula: `{!$Record.Amount__c}`. Record [0059](0059-the-names-in-a-t
 the reader of the third. The second and the third need to know what a resource holds.
 
 Salesforce publishes the type of a flow in the reference of the Metadata API. The names of the elements were
-not taken from that page. They are those of the types the Salesforce library holds for a flow, which end with
-API version 48, those of the six flows of the fixture project, which the test org accepted, and for five names
-the memory of the author. Choice 3 says which is which.
+not taken from that page. They are those of the type of a flow in `@salesforce/types` 1.9.0, which the Salesforce
+library of the engine brings, and which holds the groups of the Metadata API of today. The six flows of the
+fixture project, which the test org accepted, hold some of them. The first draft of this record took the names
+from the types of another library, which end with API version 48, and five names from the memory of the author.
+The review of its pull request found the newer list: the five names were right, and six groups were missing.
 
 What follows under "Decision" are choices of the author. The maintainer can strike any of them.
 
@@ -37,20 +39,25 @@ Components:
    answer names the decision or the assignment and not only the flow.
 2. **An outcome of a decision, an event of a wait, a field of a screen and a scheduled path are no
    components.** They are names of the flow. What they hold belongs to the element they stand in.
-3. **The kind of an element is told by the name of the group of the file that holds it.** `actionCalls`,
-   `apexPluginCalls`, `assignments`, `choices`, `constants`, `decisions`, `dynamicChoiceSets`, `formulas`,
-   `loops`, `recordCreates`, `recordDeletes`, `recordLookups`, `recordUpdates`, `screens`, `stages`, `start`,
-   `steps`, `subflows`, `textTemplates`, `variables` and `waits` are names of the types of the Salesforce
-   library. `customErrors` is in the fixture project. `collectionProcessors`, `orchestratedStages`,
-   `recordRollbacks` and `transforms` are written as the author knows them: no file here holds one.
-   `processMetadataValues` and `customProperties` hold values of the builder and no element, and the second is
-   from memory too.
+3. **The kind of an element is told by the name of the group of the file that holds it**, as the type of a flow
+   in `@salesforce/types` names it: `actionCalls`, `apexPluginCalls`, `assignments`, `choices`,
+   `collectionFilterCriteria`, `collectionProcessors`, `constants`, `customErrors`, `dataLookups`, `decisions`,
+   `dynamicChoiceSets`, `ends`, `exitRules`, `experiments`, `formulas`, `groups`, `loops`, `orchestratedStages`,
+   `recordCreates`, `recordDeletes`, `recordLookups`, `recordRollbacks`, `recordUpdates`, `screens`, `stages`,
+   `start`, `steps`, `subflows`, `textTemplates`, `transforms`, `variables` and `waits`. `processMetadataValues`
+   and `customProperties` hold values of the builder and no element. A test holds these names against that type,
+   with the types of trigger, of process and of action that the choices below name, so that a newer version of
+   the library that adds a group fails it.
 4. **A group that is not in that list is an element of a kind that is not known.** It is a component with the
-   kind `unknown` and the name of the group, and the warning `FLOW_ELEMENT_UNKNOWN` says so. The names of
-   resources and the merge fields in it are read at the tier `probable`. A bare name of a field in it is not
-   read: nothing says which element of an unknown kind holds one. Where such a group has no name, what is read
-   of it belongs to the flow.
-5. **An element of a known kind without a name is the error `METADATA_UNEXPECTED`**, and nothing of it is read.
+   kind `unknown` and the name of the group, and the warning `FLOW_ELEMENT_UNKNOWN` says so. What is in it is
+   read by the rules below, as in an element of a known kind, at the tier `probable`: the names of resources,
+   the merge fields, the formulas and the names of fields. The object it names in `object` is a reference at
+   the tier `probable`, and the names of fields in it are of that object. Where it names none, a name of a field
+   in it gives the warning `PATH_NOT_FOLLOWED`. Where such a group has no name, what is read of it belongs to
+   the flow. The first draft of this record did not read a name of a field there, which departed from the plan
+   without saying so. The review of its pull request found that.
+5. **An element of a known kind without a name, also one that holds nothing, is the error
+   `METADATA_UNEXPECTED`**, and nothing of it is read.
    Two elements whose names differ only in capitals give one key: the first is kept, and the error
    `KEY_COLLISION` names both.
 6. **A flow says whether it is active, and each of its elements says it too** (`active`), as a validation rule
@@ -60,31 +67,60 @@ Components:
 What a resource holds:
 
 7. **A record of a known object**: `$Record` and `$Record__Prior` of the object of the start, a record variable
-   of the object it declares, a lookup of the object it reads, a loop of the list it goes over, and a step that
-   filters or sorts a list of the list it is given. A list is followed through the resources that hand it on.
-   Two loops that go over each other hold a record of no known object.
+   of the object it declares, a lookup of the object it reads, a loop of the list it goes over, a step that
+   filters or sorts a list of the list it is given, and a step that makes records of another object out of a
+   list (`outputSObjectType`) of that object. A list is followed through the resources that hand it on. Two
+   loops that go over each other hold a record of no known object.
 8. **Values under names of its own**: an action, an Apex plug-in, a subflow, a component of a screen, a variable
-   of an Apex type and an element of an unknown kind. One name after such a resource is such a value and gives
-   no reference. More names are a path from a record of which nothing says the object.
-9. **No record**: everything else, such as a text variable, a constant, a formula, a decision, and `$Flow`.
-   Names after it give no reference.
+   of an Apex type, a stage of an orchestration and each of its steps, a lookup of data (`dataLookups`), a
+   filter of a list of the newer kind (`collectionFilterCriteria`) and an element of an unknown kind. One name
+   after such a resource is such a value and gives no reference. More names are a path from a record of which
+   nothing says the object.
+9. **No record**: everything else, such as a text variable, a constant, a formula, a decision, `$Flow` and
+   `$GlobalConstant`, which holds the empty text, true and false. Names after it give no reference.
 10. **A value that is not built like a name names no object.** A project that writes a token of its build tool
-    where a name should stand, such as `%%%NAMESPACE%%%Thing__c`, gets a warning for that value, and a resource
-    that would be of that object holds a record of no known object.
+    where a name should stand, such as `%%%NAMESPACE%%%Thing__c`, gets the warning `NAME_NOT_READ` where the
+    value is read as the name of an object or of a field, as the object of a record element or of a start. The
+    object a variable declares is not read, so a variable that declares such a value gets no warning: it holds a
+    record of no known object, and a path from it gets the warning `PATH_NOT_FOLLOWED` where it is used.
 
 References:
 
-11. **The object of a start is `triggers-on`** where a record sets the flow off. A start on a schedule reads the
-    records of its object: `references` with `op: lookup`. A process of the Process Builder has no start and
-    names its object in a value of the builder (`ObjectType`): the reference starts at the flow, and is
-    `triggers-on` for the process type `Workflow` and `references` for any other.
+11. **The object of a start is `triggers-on`** where a change of its records or an event sets the flow off: the
+    types of trigger `RecordBeforeSave`, `RecordAfterSave`, `RecordBeforeDelete` and `PlatformEvent`. A start on
+    a schedule (`Scheduled`) reads the records of its object: `references` with `op: lookup`. The object of a
+    start of any other type is `references` and nothing more: the type of a flow names more than twenty types of
+    trigger, and what most of them do with records is not known here. A process of the Process Builder has no
+    start and names its object in a value of the builder (`ObjectType`): the reference starts at the flow, and
+    is `triggers-on` for the process types `Workflow` and `CustomEvent`, which a record and an event set off, and
+    `references` for any other. The first draft of this record took every type but a schedule for `triggers-on`,
+    and a process of the type `CustomEvent` for `references`. The review of its pull request found both.
 12. **The object of a record element is `references`, with what the element does to its records** in `op`:
-    `lookup`, `create`, `update` or `delete`. A set of choices that reads records is a lookup.
+    `lookup`, `create`, `update`, `upsert` or `delete`. A create that can also update (`doesUpsert`) is an
+    `upsert`. A set of choices that reads records is a lookup. One that is made of a list (`collectionReference`)
+    or of the values of a picklist reads none, and its object is `references` without `op`. The records of
+    another object that a lookup reads with its own (`relatedRecords`) are a lookup of their object
+    (`relatedObject`). The object an event of a wait names, and the object of the records a step makes, are
+    `references` without `op`.
 13. **A name of a field beside an object**: in a filter `reads`, in `inputAssignments` `writes`, and in
     `outputAssignments`, `queriedFields`, `displayField`, `valueField`, `sortField` and the `recordField` of a
-    scheduled path `reads`. The `fieldSelection` of a custom error and the `picklistField` of a set of choices
-    are `references`. The object of a picklist is named for its field only and gets no reference of its own.
-    The fields of a step that sorts a list are fields of the records of that list.
+    scheduled path `reads`. The field an upsert finds its records by (`upsertExternalIdField`,
+    `upsertStandardIdField`) `reads`. The `fieldSelection` of a custom error and the `picklistField` of a set of
+    choices are `references`. The object of a picklist is named for its field only and gets no reference of its
+    own. What a step that makes records sets (`assignToFieldReference` in `mapItems`) and what a transform that
+    makes a record sets (`outputFieldApiName`) `writes`, at the tier `probable`: no file here holds either. A
+    transform that makes a value of an Apex type sets a property, which is no field and is not read.
+    **Which object the field is of follows the group it stands in.** The fields in `filters`,
+    `inputAssignments`, `outputAssignments`, `sortOptions` and the values of a transform are of the object of
+    the element. Those of a scheduled path and of a custom error are of the object of the start, those of related
+    records of their `relatedObject`, those of an event of a wait of the `object` it names, and those a step
+    that makes records sets of the object it makes. The fields of a step that sorts a list are fields of the
+    records of that list. In any other group nothing says which object a field is of, and the warning
+    `PATH_NOT_FOLLOWED` says so. The field that relates records of another object to those of a lookup
+    (`relationshipField`) is read as a field of the other object, at the tier `probable`: it is not known on
+    which side Salesforce writes it. The first draft of this record read every group of an element against the
+    object of the element, and took the fields of related records for fields of the object of the lookup. The
+    review of its pull request found that.
 14. **The record an element writes as a whole** (`inputReference` of a create, an update or a delete) is a
     reference to its object, with `via: record` and the `op`. A relationship on the way is a read of the field
     behind it, and the fields the element sets are fields of the object at the end.
@@ -97,15 +133,23 @@ References:
 16. **Any other element whose name ends with `Reference` or `References`** is read as the name of a resource at
     the tier `probable`, also in an element of a known kind. Five names are left out, because they hold the name
     of an element and never a field: `targetReference`, `choiceReferences`, `defaultSelectedChoiceReference`,
-    `fieldReference` and `startElementReference`.
+    `fieldReference` and `startElementReference`. `setupReference` is left out too: it names an item of the
+    setup, such as a record type, and is not read. `assignToFieldReference` in `mapItems` is a field (choice
+    13).
 17. **A formula stands in `expression`, `filterFormula`, `formulaExpression` or `formula`**, and is read by the
     reader of formulas. Its references have the origin `parser:formula`. A text with merge fields stands in
     `stringValue`, `fieldText`, `errorMessage`, `text`, `helpText`, `pausedText`, `choiceText`, `promptText` or
-    `interviewLabel`. A merge field in any other element is read at the tier `probable`. A label, a description
-    and a name are not read.
+    `interviewLabel`. A merge field in any other element is read at the tier `probable`, and so is a formula in an
+    element of a kind that is not known. A label, a description and a name are not read.
 18. **What an element starts**: an action of the type `apex` and an Apex plug-in `calls` the class, an action of
     the type `flow` and a subflow `calls` the flow, and an action of the type `emailAlert` `references` the
-    alert, at its name behind the object. An action of any other type gets no reference for what it starts.
+    alert, at its name behind the object. An action is read wherever an element names one with its type: an
+    action element, an action of a screen, a step of an orchestration, and an action that a transform or a start
+    runs. An element also names the actions it runs when it starts or ends (`entryActionName`, `exitActionName`,
+    `autoApprovalActionName`). A step of an orchestration of the type `stepInteractive` or `stepBackground`, and
+    a condition of a step that an `evaluationFlow` decides, `calls` the flow at the tier `probable`: no file here
+    holds one. An action of any other type gets no reference for what it starts. The first draft of this record
+    read the action element alone.
 19. **A text that a condition compares `RecordType.DeveloperName` of a record with** is a reference to the
     record type of that name, at the tier `probable`, only where the snapshot holds such a record type of the
     object of the record.
@@ -153,14 +197,24 @@ The rows of the Dependency API from flows are counted and not compared, as recor
   empty prefix. That is not built, and is not in the plan.
 - Not read, and no reference: a quick action or another action that is no Apex class, no flow and no alert, the
   component of a screen (`extensionName`), the type of an Apex variable (`apexClass`), the object a variable
-  declares (`objectType`), the object of a picklist, a bare name of a field in an element of an unknown kind,
-  and what a subflow or an action gives back. A value of the builder (`processMetadataValues`) is not read
-  beyond the object of a process.
+  declares (`objectType`), the object of a picklist, and what a subflow or an action gives back. Nor the event
+  an event of a wait or an exit rule waits for (`eventType`, `automationEventName`), the name of an item of the
+  setup (`setupReference`), the field and the source of a lookup of data (`lookupField`, `sourceApiName`), the
+  names in a filter of a list of the newer kind (`objectFieldName`, `objectReferencePath`), and the property a
+  transform of an Apex type sets. A value of the builder (`processMetadataValues`) is not read beyond the object
+  of a process. A scheduled action of a process names the object and the date field it counts from as texts,
+  which the author remembers as values of a wait (`TimeTableColumnEnumOrId`, `TimeFieldColumnEnumOrId`): they
+  are not read.
+- A path that ends with a relationship, such as `$Record.Account__r` in `elementReference`, is read as a field of
+  that name, which nothing defines, and the reference has no target. It is not known whether Salesforce writes
+  such a path where a record is meant.
 - An element that names a variable of a text where a record should stand gets the warning `NAME_NOT_READ`, whose
   words say that the value is no name. It is one, of a resource that holds no record. The words are not
   corrected.
 - The file a snapshot of an org holds for a flow with a newer draft is still the draft. Fetching the active
   version is the second part of the work package, in a pull request of its own.
 - Not verified: anything against Salesforce beyond the deploy of the six flows of the fixture project in work
-  package 1. The five names of elements from memory. Whether Salesforce reports through the Dependency API what
-  the reader finds is not compared.
+  package 1. The forms that no file here holds, such as related records, an upsert, a step that makes records,
+  a transform or a step of an orchestration, follow the type of a flow in the library and were not seen in a
+  file that Salesforce wrote. Whether Salesforce reports through the Dependency API what the reader finds is not
+  compared.

@@ -101,7 +101,10 @@ function referencesOf(uses: readonly NameUse[], start: number, at: PlaceOf, said
   });
 }
 
-/** Reads a formula whose names `usesOf` knows. `whyOf` says why a name it does not know is not read. */
+/**
+ * Reads a formula whose names `usesOf` knows. `whyOf` says why a name it does not know is not read. `given` is
+ * the tier of every name, where the caller knows that they are less certain.
+ */
 function reading(
   text: string,
   mergeFields: boolean,
@@ -109,11 +112,12 @@ function reading(
   element: string,
   at: PlaceOf,
   whyOf: (name: FormulaName) => { readonly why?: 'start' } = () => ({}),
+  given?: 'probable',
 ): FormulaReading {
   const parsed = parseFormula(text, { mergeFields });
   const references: RawReference[] = [];
   const unread: Unread[] = [];
-  const tier = parsed.tree === null ? { tier: 'probable' as const } : {};
+  const tier = parsed.tree === null || given !== undefined ? { tier: 'probable' as const } : {};
   for (const name of parsed.tree === null ? namesOfTokens(parsed.tokens) : namesOfTree(parsed.tree)) {
     const uses = usesOf(name);
     if (uses === null) {
@@ -148,14 +152,21 @@ export function readFormula(text: string, own: string, element: string, at: Plac
 /**
  * Reads a formula as a flow writes it, with merge fields where the formula of a field has names. `startOf` says
  * what the first name of a merge field is. A name outside braces is no name of such a formula: it is not read,
- * and the reading says so.
+ * and the reading says so. `tier` is given where every name of the formula is less certain, as in an element of
+ * a kind the reader of flows does not know.
  */
-export function readFormulaOfMergeFields(text: string, startOf: StartOf, element: string, at: PlaceOf): FormulaReading {
+export function readFormulaOfMergeFields(
+  text: string,
+  startOf: StartOf,
+  element: string,
+  at: PlaceOf,
+  tier?: 'probable',
+): FormulaReading {
   const usesOf = (name: FormulaName): readonly NameUse[] | null =>
     name.mergeField === true ? usesOfMergeField(name.text, startOf) : null;
-  return reading(text, true, usesOf, element, at, (name) =>
-    name.mergeField === true ? whyNot(name.text, startOf) : {},
-  );
+  const whyOf = (name: FormulaName): { readonly why?: 'start' } =>
+    name.mergeField === true ? whyNot(name.text, startOf) : {};
+  return reading(text, true, usesOf, element, at, whyOf, tier);
 }
 
 /**

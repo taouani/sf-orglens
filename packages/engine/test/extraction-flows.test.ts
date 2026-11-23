@@ -7,6 +7,7 @@
  * runs on small flows that are written here, for what the fixtures do not have.
  */
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -14,6 +15,7 @@ import { parentKey } from '../src/core/keys.ts';
 import type { Reference } from '../src/core/references.ts';
 import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
 import type { AnalysedComponent } from '../src/extraction/analysed.ts';
+import { KINDS, NO_ELEMENTS, ON_RECORDS, ON_SCHEDULE, PROCESS_ON_RECORDS, STARTS } from '../src/extraction/flows.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents } from '../src/sources/resolve.ts';
 import type { SourceTree } from '../src/sources/tree.ts';
@@ -295,7 +297,7 @@ describe('the flows that cannot be deployed', () => {
     expect(issues.map((issue) => `${issue.severity} ${String(issue.componentKey)} ${issue.message}`)).toEqual(
       unknown.map(
         (one) =>
-          `warning ${one.element} ${inProject(one.file)}, line ${String(one.line)}: "${one.match}" is no kind of element of a flow that is known here. The names of resources and the merge fields in it are recorded as probable.`,
+          `warning ${one.element} ${inProject(one.file)}, line ${String(one.line)}: "${one.match}" is no kind of element of a flow that is known here. The names in it are read as in the kinds that are known, and recorded as probable.`,
       ),
     );
     const beam = analysis.components.find((one) => one.key === unknown[0]?.element);
@@ -667,9 +669,20 @@ describe('small flows that are written here', () => {
       ),
       '<someSetting>{!$Record.Amount__c}</someSetting>',
       '<interviewLabel>Run for {!$Record.Status__c}</interviewLabel>',
+      ...group(
+        'otherNewThings',
+        'Other',
+        '<object>Invoice__c</object>',
+        '<filters>',
+        '    <field>Status__c</field>',
+        '</filters>',
+        '<queriedFields>Amount__c</queriedFields>',
+        '<expression>{!$Record.Amount__c} &gt; 0</expression>',
+      ),
     ]);
     expect(attrsOf(analysis, 'fancy')).toEqual({ kind: 'unknown', element: 'fancyNewThings', active: true });
-    // A bare name of a field is not read there: nothing says which element of an unknown kind holds one.
+    // A name of a field is read as in an element of a known kind. This element names no object, so the field it
+    // sorts by is not followed.
     expect(from(analysis, 'fancy')).toEqual([
       '10:32 reads CustomField:invoice__c.amount__c [Amount__c] path probable',
       '11:43 writes CustomField:invoice__c.status__c [Status__c] path probable',
@@ -689,9 +702,18 @@ describe('small flows that are written here', () => {
       '25:28 reads CustomField:invoice__c.amount__c [Amount__c] merge-field probable',
       '26:39 reads CustomField:invoice__c.status__c [Status__c] merge-field confirmed',
     ]);
+    // The names of fields of an element that names an object are fields of it, and a formula is less certain too.
+    expect(from(analysis, 'other')).toEqual([
+      '29:17 references CustomObject:invoice__c [Invoice__c] object probable',
+      '31:20 reads CustomField:invoice__c.status__c [Status__c] filter probable',
+      '33:24 reads CustomField:invoice__c.amount__c [Amount__c] output probable',
+      '34:31 reads CustomField:invoice__c.amount__c [Amount__c] formula probable',
+    ]);
     expect(issuesOf(analysis)).toEqual([
       'warning FLOW_ELEMENT_UNKNOWN  17:5',
       'warning FLOW_ELEMENT_UNKNOWN fancy 8:5',
+      'warning PATH_NOT_FOLLOWED fancy 12:20',
+      'warning FLOW_ELEMENT_UNKNOWN other 27:5',
     ]);
   });
 
@@ -1087,6 +1109,300 @@ describe('small flows that are written here', () => {
     expect(new Set(codes(analysis.issues))).toEqual(new Set(['warning PATH_NOT_FOLLOWED', 'warning NAME_NOT_READ']));
   });
 
+  it('read the records a lookup reads with its own as records of their object, and a field elsewhere as of none', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...group(
+        'recordLookups',
+        'Get_Invoices',
+        '<object>Invoice__c</object>',
+        '<queriedFields>Amount__c</queriedFields>',
+        '<relatedRecords>',
+        '    <filters>',
+        '        <field>Quantity__c</field>',
+        '        <operator>GreaterThan</operator>',
+        '    </filters>',
+        '    <queriedFields>Quantity__c</queriedFields>',
+        '    <relatedObject>Invoice_Line__c</relatedObject>',
+        '    <relationshipField>Invoice__c</relationshipField>',
+        '    <sortField>Quantity__c</sortField>',
+        '</relatedRecords>',
+        '<somethingNew>',
+        '    <queriedFields>Status__c</queriedFields>',
+        '</somethingNew>',
+      ),
+    ]);
+    // The field that relates the two is less certain: it is not known on which side Salesforce writes it.
+    expect(from(analysis, 'get_invoices')).toEqual([
+      '6:17 references CustomObject:invoice__c [Invoice__c] object lookup confirmed',
+      '7:24 reads CustomField:invoice__c.amount__c [Amount__c] output confirmed',
+      '14:28 references CustomObject:invoice_line__c [Invoice_Line__c] object lookup confirmed',
+      '10:24 reads CustomField:invoice_line__c.quantity__c [Quantity__c] filter confirmed',
+      '13:28 reads CustomField:invoice_line__c.quantity__c [Quantity__c] output confirmed',
+      '15:32 reads CustomField:invoice_line__c.invoice__c [Invoice__c] filter probable',
+      '16:24 reads CustomField:invoice_line__c.quantity__c [Quantity__c] sort confirmed',
+    ]);
+    // A group this reader has no rule for can hold fields of another object: nothing says which.
+    expect(messages(analysis)).toEqual([
+      `${FILE}, line 19: nothing says which object "Status__c" is a field of, so it was not followed.`,
+    ]);
+  });
+
+  it('take $GlobalConstant for something that names nothing', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...ON_INVOICE,
+      ...group(
+        'assignments',
+        'Clear',
+        '<assignmentItems>',
+        '    <assignToReference>$Record.Status__c</assignToReference>',
+        '    <operator>Assign</operator>',
+        '    <value>',
+        '        <elementReference>$GlobalConstant.EmptyString</elementReference>',
+        '    </value>',
+        '</assignmentItems>',
+      ),
+      ...group('decisions', 'D', '<rules>', '    <name>R</name>', ...condition('$GlobalConstant.True'), '</rules>'),
+      ...group('formulas', 'Fm', '<dataType>Boolean</dataType>', '<expression>{!$GlobalConstant.False}</expression>'),
+      ...group('textTemplates', 'T', '<text>Is {!$GlobalConstant.EmptyString}</text>'),
+    ]);
+    expect(from(analysis, 'clear')).toEqual([
+      '11:40 writes CustomField:invoice__c.status__c [Status__c] path confirmed',
+    ]);
+    expect(['d', 'fm', 't'].flatMap((name) => from(analysis, name))).toEqual([]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('know the kinds of element of the type of a flow, and say of an empty one that it has no name', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...ON_INVOICE,
+      ...group('ends', 'End_1', '<locationX>0</locationX>'),
+      ...group('groups', 'Group_1', '<groupType>generic</groupType>', '<sourceReference>Set_Status</sourceReference>'),
+      '<variables/>',
+      ...group(
+        'assignments',
+        'Set_Status',
+        '<assignmentItems>',
+        '    <assignToReference>$Record.Status__c</assignToReference>',
+        '    <operator>Assign</operator>',
+        '    <value>',
+        '        <setupReference>Special</setupReference>',
+        '        <setupReferenceType>RecordType</setupReferenceType>',
+        '    </value>',
+        '</assignmentItems>',
+      ),
+    ]);
+    expect(attrsOf(analysis, 'end_1')).toEqual({ kind: 'end', active: true });
+    expect(attrsOf(analysis, 'group_1')).toEqual({ kind: 'group', active: true });
+    expect(from(analysis, 'group_1')).toEqual([]);
+    // The name of an item of the setup is no resource of the flow, and is not read.
+    expect(from(analysis, 'set_status')).toEqual([
+      '21:40 writes CustomField:invoice__c.status__c [Status__c] path confirmed',
+    ]);
+    expect(messages(analysis)).toEqual([`${FILE}, line 17: an element "variables" has no name.`]);
+    expect(codes(analysis.issues)).toEqual(['error METADATA_UNEXPECTED']);
+  });
+
+  it('read the object of a start as set off by a record only where a change of records or an event sets it off', () => {
+    const started = (trigger: string): string[] =>
+      from(
+        analysed([
+          ACTIVE,
+          '<start>',
+          '    <object>Invoice__c</object>',
+          `    <triggerType>${trigger}</triggerType>`,
+          '</start>',
+        ]),
+        'flow-start',
+      );
+    const set = '5:17 triggers-on CustomObject:invoice__c [Invoice__c] object confirmed';
+    expect(['RecordBeforeSave', 'RecordAfterSave', 'RecordBeforeDelete', 'PlatformEvent'].map(started)).toEqual([
+      [set],
+      [set],
+      [set],
+      [set],
+    ]);
+    // A schedule reads the records of the object. Of a start of another kind, nothing more is said.
+    expect(started('Scheduled')).toEqual([
+      '5:17 references CustomObject:invoice__c [Invoice__c] object lookup confirmed',
+    ]);
+    expect(started('Segment')).toEqual(['5:17 references CustomObject:invoice__c [Invoice__c] object confirmed']);
+    // A process of the Process Builder that an event of the platform sets off, as a flow on such an event.
+    const process = analysed([
+      '<processType>CustomEvent</processType>',
+      ACTIVE,
+      ...group(
+        'processMetadataValues',
+        'ObjectType',
+        '<value>',
+        '    <stringValue>Invoice__c</stringValue>',
+        '</value>',
+      ),
+    ]);
+    expect(from(process, '')).toEqual(['8:26 triggers-on CustomObject:invoice__c [Invoice__c] object confirmed']);
+  });
+
+  it('read a set of choices made of a list as reading no records, and a step that makes records of another object', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...group('recordLookups', 'Get_Lines', '<object>Invoice_Line__c</object>'),
+      ...group(
+        'dynamicChoiceSets',
+        'Of_Lines',
+        '<collectionReference>Get_Lines</collectionReference>',
+        '<dataType>String</dataType>',
+        '<displayField>Quantity__c</displayField>',
+        '<object>Invoice_Line__c</object>',
+      ),
+      ...group(
+        'collectionProcessors',
+        'Make_Invoices',
+        '<assignNextValueToReference>currentItem_Make_Invoices</assignNextValueToReference>',
+        '<collectionProcessorType>RecommendationMapCollectionProcessor</collectionProcessorType>',
+        '<collectionReference>Get_Lines</collectionReference>',
+        '<mapItems>',
+        '    <assignToFieldReference>Amount__c</assignToFieldReference>',
+        '    <operator>Assign</operator>',
+        '    <value>',
+        '        <elementReference>currentItem_Make_Invoices.Quantity__c</elementReference>',
+        '    </value>',
+        '</mapItems>',
+        '<outputSObjectType>Invoice__c</outputSObjectType>',
+      ),
+      ...group('loops', 'Each', '<collectionReference>Make_Invoices</collectionReference>'),
+      ...group('decisions', 'D', '<rules>', '    <name>R</name>', ...condition('Each.Amount__c'), '</rules>'),
+    ]);
+    expect(from(analysis, 'of_lines')).toEqual([
+      '13:17 references CustomObject:invoice_line__c [Invoice_Line__c] object confirmed',
+      '12:23 reads CustomField:invoice_line__c.quantity__c [Quantity__c] output confirmed',
+    ]);
+    // What the step sets is a field of the records it makes, and it holds those. No file here holds such a step.
+    expect(from(analysis, 'make_invoices')).toEqual([
+      '27:28 references CustomObject:invoice__c [Invoice__c] object confirmed',
+      '21:37 writes CustomField:invoice__c.amount__c [Amount__c] assignment probable',
+      '24:61 reads CustomField:invoice_line__c.quantity__c [Quantity__c] path confirmed',
+    ]);
+    expect(from(analysis, 'd')).toEqual(['38:38 reads CustomField:invoice__c.amount__c [Amount__c] path confirmed']);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('read what the actions of a screen and the steps of an orchestration start', () => {
+    const analysis = analysed(
+      [
+        ACTIVE,
+        ...group(
+          'screens',
+          'Scr',
+          '<actions>',
+          '    <name>Act</name>',
+          '    <actionName>Other_Flow</actionName>',
+          '    <actionType>flow</actionType>',
+          '</actions>',
+        ),
+        ...group(
+          'orchestratedStages',
+          'Stage_1',
+          '<stageSteps>',
+          '    <name>Step_1</name>',
+          '    <actionName>Other_Flow</actionName>',
+          '    <actionType>stepBackground</actionType>',
+          '    <entryActionName>Other_Flow</entryActionName>',
+          '    <entryActionType>evaluationFlow</entryActionType>',
+          '</stageSteps>',
+        ),
+        ...group(
+          'decisions',
+          'D',
+          '<rules>',
+          '    <name>R</name>',
+          ...condition('Step_1.Outputs'),
+          ...condition('Stage_1.Step_1.Outputs.rec'),
+          '</rules>',
+        ),
+      ],
+      (source) => source.flow('Other_Flow', ACTIVE),
+    );
+    expect(from(analysis, 'scr')).toEqual(['8:25 calls Flow:other_flow [Other_Flow] action confirmed']);
+    // No file here holds a step of an orchestration, so what it runs is less certain.
+    expect(from(analysis, 'stage_1')).toEqual([
+      '16:25 calls Flow:other_flow [Other_Flow] action probable',
+      '18:30 calls Flow:other_flow [Other_Flow] action probable',
+    ]);
+    // A stage and a step give values back under names of their own, as an action does.
+    expect(from(analysis, 'd')).toEqual([]);
+    expect(messages(analysis)).toEqual([
+      `${FILE}, line 30: it is not known which object "Stage_1" holds, so "Step_1.Outputs.rec" after it was not followed.`,
+    ]);
+  });
+
+  it('read the records a wait waits for, the field an upsert finds records by, and the fields a transform sets', () => {
+    const analysis = analysed([
+      ACTIVE,
+      ...group(
+        'waits',
+        'Wait_For_Line',
+        '<waitEvents>',
+        '    <name>Changed</name>',
+        '    <filters>',
+        '        <field>Quantity__c</field>',
+        '        <operator>GreaterThan</operator>',
+        '    </filters>',
+        '    <object>Invoice_Line__c</object>',
+        '</waitEvents>',
+      ),
+      ...group(
+        'recordCreates',
+        'Upsert_Invoice',
+        '<doesUpsert>true</doesUpsert>',
+        '<inputAssignments>',
+        '    <field>Amount__c</field>',
+        '</inputAssignments>',
+        '<object>Invoice__c</object>',
+        '<upsertExternalIdField>Status__c</upsertExternalIdField>',
+      ),
+      ...group(
+        'transforms',
+        'To_Invoice',
+        '<dataType>SObject</dataType>',
+        '<objectType>Invoice__c</objectType>',
+        '<transformValues>',
+        '    <transformValueActions>',
+        '        <outputFieldApiName>Amount__c</outputFieldApiName>',
+        '        <transformType>Map</transformType>',
+        '    </transformValueActions>',
+        '</transformValues>',
+      ),
+      ...group(
+        'transforms',
+        'To_Apex',
+        '<apexClass>InvoiceDto</apexClass>',
+        '<dataType>Apex</dataType>',
+        '<transformValues>',
+        '    <transformValueActions>',
+        '        <outputFieldApiName>total</outputFieldApiName>',
+        '    </transformValueActions>',
+        '</transformValues>',
+      ),
+    ]);
+    expect(from(analysis, 'wait_for_line')).toEqual([
+      '12:21 references CustomObject:invoice_line__c [Invoice_Line__c] object confirmed',
+      '9:24 reads CustomField:invoice_line__c.quantity__c [Quantity__c] filter confirmed',
+    ]);
+    expect(from(analysis, 'upsert_invoice')).toEqual([
+      '21:17 references CustomObject:invoice__c [Invoice__c] object upsert confirmed',
+      '19:20 writes CustomField:invoice__c.amount__c [Amount__c] assignment confirmed',
+      '22:32 reads CustomField:invoice__c.status__c [Status__c] filter confirmed',
+    ]);
+    // No file here holds a transform. One that makes a value of an Apex type sets a property, which is no field.
+    expect(from(analysis, 'to_invoice')).toEqual([
+      '30:37 writes CustomField:invoice__c.amount__c [Amount__c] assignment probable',
+    ]);
+    expect(from(analysis, 'to_apex')).toEqual([]);
+    expect(analysis.issues).toEqual([]);
+  });
+
   it('give a file that is no flow its row, and an error', () => {
     const source = project();
     const path = source.file('flows/Not_A_Flow.flow-meta.xml', xml('CustomObject', '<label>x</label>'));
@@ -1101,5 +1417,29 @@ describe('small flows that are written here', () => {
     expect(codes(analysis.issues)).toEqual(['error METADATA_UNEXPECTED']);
     // The file was read, and holds no flow: it is no file that failed.
     expect(analysis.work[2]).toEqual({ origin: 'parser:flow', components: 0, failedFiles: 0 });
+  });
+});
+
+describe('the names the reader of flows knows', () => {
+  it('are those of the type of a flow that the Salesforce library brings', () => {
+    // The library of the engine brings the types, which hold the type of a flow as the Metadata API has it.
+    const library = createRequire(import.meta.url).resolve('@salesforce/source-deploy-retrieve');
+    const types = createRequire(library).resolve('@salesforce/types/metadata').replace(/\.js$/, '.d.ts');
+    const text = readFileSync(types, 'utf8');
+    const block = /^export type Flow = Metadata & \{\n([\s\S]*?)\n\};$/m.exec(text)?.[1] ?? '';
+    // A list of something that is no list of values, such as the environments of a flow, is a group of elements.
+    const groups = [...block.matchAll(/^ {4}(\w+)\??: (\w+)\[\];$/gm)]
+      .filter(([, , type]) => new RegExp(`^export type ${String(type)} = [A-Z{]`, 'm').test(text))
+      .map(([, name]) => String(name));
+    expect(new Set(groups)).toEqual(new Set([...KINDS.keys(), ...NO_ELEMENTS].filter((one) => one !== 'start')));
+    expect(block).toMatch(/^ {4}start\?: FlowStart;$/m);
+
+    const values = (type: string): string[] => {
+      const union = new RegExp(`^export type ${type} = (.*);$`, 'm').exec(text)?.[1] ?? '';
+      return [...union.matchAll(/'([^']*)'/g)].map(([, value]) => String(value));
+    };
+    expect(values('FlowTriggerType')).toEqual(expect.arrayContaining([...ON_RECORDS, ON_SCHEDULE]));
+    expect(values('FlowProcessType')).toEqual(expect.arrayContaining([...PROCESS_ON_RECORDS]));
+    expect(values('InvocableActionType')).toEqual(expect.arrayContaining([...STARTS.keys()]));
   });
 });

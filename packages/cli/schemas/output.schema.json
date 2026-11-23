@@ -858,16 +858,16 @@
             "additionalProperties": false,
             "properties": {
               "origin": {
-                "description": "Where the references come from, such as `parser:xml` or `parser:formula`.",
+                "description": "Where the references come from, such as `parser:xml`, `parser:formula` or `parser:flow`.",
                 "type": "string"
               },
               "components": {
-                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value.",
+                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value. For `parser:flow`: the flows and their elements.",
                 "type": "integer",
                 "minimum": 0
               },
               "failedFiles": {
-                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`.",
+                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`. For `parser:flow`: the files of flows.",
                 "type": "integer",
                 "minimum": 0
               },
@@ -960,7 +960,7 @@
       "properties": {
         "rows": { "description": "The rows of the API the snapshot holds.", "type": "integer", "minimum": 0 },
         "rowsNotAnalysed": {
-          "description": "The rows from a component of a type this analysis did not read. They are not compared.",
+          "description": "The rows from a component of a type this analysis did not read, and the rows from a flow. They are not compared.",
           "type": "integer",
           "minimum": 0
         },

@@ -510,8 +510,10 @@ function crossCheckLines(report: CoverageReport): string[] {
     return lines;
   }
   if (comparison.rowsNotAnalysed > 0) {
+    // Flows are analysed, and their rows are not compared yet (decision record 0060).
+    const orFlow = comparison.notAnalysed.some(({ type }) => type === 'Flow') ? ', or from a flow,' : ',';
     lines.push(
-      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed, or from a flow, and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
+      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed${orFlow} and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
     );
   }
   if (comparison.rowsNotMatched > 0) {

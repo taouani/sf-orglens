@@ -6,11 +6,12 @@ The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exi
 
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an
 org, take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its
-objects, fields and validation rules, with the formulas in them. `orglens impact` answers what refers to a
-component from those types alone. Nothing else of a snapshot is analysed yet, and an answer names the types it
-does not cover. Reading an org is tested against a mock org. The code that reads an org was also run against one real Developer Edition
-org, by a tool of the tests ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot`
-itself has not been run against Salesforce.
+objects, fields and validation rules, with the formulas in them, and for its flows, element by element.
+`orglens impact` answers what refers to a component from those types alone. Nothing else of a snapshot is
+analysed yet, and an answer names the types it does not cover. Reading an org is tested against a mock org. The
+code that reads an org was also run against one real Developer Edition org, by a tool of the tests
+([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot` itself has not been run against
+Salesforce.
 
 ## Commands
 
@@ -403,11 +404,11 @@ There is one line for each origin of references that this version analyses. `COM
 the analyser looked at: for `parser:formula`, those with a formula or a default value, and for `parser:flow`,
 the flows and their elements. A formula of a flow is counted for `parser:formula`. `NOT RESOLVED` are the
 references that are `unresolved`: a custom name that no file of the snapshot defines and that is not of a
-package. A standard name, such as a field of `Account`, and a name of a package are `external` and not counted. `PATHS NOT FOLLOWED` are the paths of names
-that could not be walked to their end. `FILES NOT READ` are the files the analyser tried to read and could not:
-for `parser:formula`, the files with a formula that was not read as a whole, whose names are recorded as
-`probable`, and for `parser:flow`, the files of flows. The number of components includes the parts found inside files, and the objects that are only
-named.
+package. A standard name, such as a field of `Account`, and a name of a package are `external` and not
+counted. `PATHS NOT FOLLOWED` are the paths of names that could not be walked to their end. `FILES NOT READ`
+are the files the analyser tried to read and could not: for `parser:formula`, the files with a formula that
+was not read as a whole, whose names are recorded as `probable`, and for `parser:flow`, the files of flows.
+The number of components includes the parts found inside files, and the objects that are only named.
 
 The issues of the analysis follow, one line per code with their number and the first of them: an org can have
 hundreds. `--json` has every issue. A snapshot without an analysis says so, and names the command that analyses
@@ -418,7 +419,7 @@ The cross-check of a snapshot of an org comes last:
 
 ```
 Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.
-61 rows are from a component of a type that is not analysed, or from a flow, and are not compared: ApexClass 60, CustomMetadata 1.
+61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.
 1 row names a component the org did not list, and is not compared.
 2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.
 56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.
@@ -432,7 +433,8 @@ The analysis has 38 more references of kinds the API does not report: lookup 7, 
 ```
 
 Several rows can name the same two components, so there are fewer pairs than rows. A list of pairs shows the
-first 20, and `--json` has all of them. A snapshot of an org that was taken with `--no-cross-check`, or before
+first 20, and `--json` has all of them. The line of the rows that are not compared says "or from a flow" where
+one of them is from a flow. A snapshot of an org that was taken with `--no-cross-check`, or before
 this version, says that the API was not asked. A snapshot of a repository says nothing.
 
 Where the reading is not whole, the first line says why in the place of "No query left a row out.":
@@ -534,7 +536,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), or which object a resource of a flow holds (`details.resource`), so the names after it have no reference (`details.origin` says whose).                                            |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
-| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names of resources and the merge fields in it are recorded as `probable`.                                                                                                                 |
+| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                          |
 | `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow is not closed. Nothing is read of it.                                                                                                                                                                                 |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one

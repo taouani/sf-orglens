@@ -492,7 +492,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
           found.push({
             severity: 'warning',
             code: 'FLOW_ELEMENT_UNKNOWN',
-            message: `${file}, line ${String(unknown.line)}: "${cut(unknown.element, 60)}" is no kind of element of a flow that is known here. The names of resources and the merge fields in it are recorded as probable.`,
+            message: `${file}, line ${String(unknown.line)}: "${cut(unknown.element, 60)}" is no kind of element of a flow that is known here. The names in it are read as in the kinds that are known, and recorded as probable.`,
             componentKey: key,
             details: { path: file, line: unknown.line, column: unknown.column, element: cut(unknown.element, 60) },
           });

@@ -46,8 +46,8 @@ export type Via =
   /** In a flow: the picklist field a set of choices takes its values from. */
   | 'picklist';
 
-/** What a record element of a flow does to the records of an object. */
-export type RecordOp = 'lookup' | 'create' | 'update' | 'delete';
+/** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
+export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
 
 /** What every reference says before its names are resolved. */
 interface Raw {

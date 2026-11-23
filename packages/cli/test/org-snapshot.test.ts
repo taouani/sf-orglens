@@ -98,7 +98,7 @@ const classesAnalysed = (components: string): string[] => [
  */
 const CROSS_CHECKED = [
   'Cross-check: the Dependency API of Salesforce reports 1 row. No query left a row out.',
-  '1 row is from a component of a type that is not analysed, or from a flow, and is not compared: ApexClass 1.',
+  '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
   'No row was compared.',
   '',
 ];

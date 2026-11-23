@@ -48,23 +48,28 @@ export interface FlowReading {
 }
 
 /**
- * The kinds of element and resource, by the name of the element of the file that holds one. The names up to
- * API version 48 are those of the types the Salesforce library has for a flow. `customErrors` is in the fixture
- * project, which a test org accepted. `collectionProcessors`, `orchestratedStages`, `recordRollbacks` and
- * `transforms` are written as the author knows them, and no file here holds one.
+ * The kinds of element and resource, by the name of the element of the file that holds one. The names are those
+ * of the type of a flow in `@salesforce/types` 1.9.0, which the Salesforce library brings, and a test holds them
+ * against it. The six flows of the fixture project, which a test org accepted, hold some of them.
  */
-const KINDS: ReadonlyMap<string, string> = new Map(
+export const KINDS: ReadonlyMap<string, string> = new Map(
   Object.entries({
     actionCalls: 'action',
     apexPluginCalls: 'apex-plugin',
     assignments: 'assignment',
     choices: 'choice',
+    collectionFilterCriteria: 'collection-filter',
     collectionProcessors: 'collection-processor',
     constants: 'constant',
     customErrors: 'custom-error',
+    dataLookups: 'data-lookup',
     decisions: 'decision',
     dynamicChoiceSets: 'choice-set',
+    ends: 'end',
+    exitRules: 'exit-rule',
+    experiments: 'experiment',
     formulas: 'formula',
+    groups: 'group',
     loops: 'loop',
     orchestratedStages: 'orchestrated-stage',
     recordCreates: 'create',
@@ -92,9 +97,43 @@ const OPS: ReadonlyMap<string, RecordOp> = new Map([
   ['recordUpdates', 'update'],
   ['recordDeletes', 'delete'],
 ]);
+/** What a record element does to the records of the object it names. A create that can also update is an upsert. */
+const opOf = (group: string, element: XmlElement): RecordOp =>
+  group === 'recordCreates' && textOf(childOf(element, 'doesUpsert')) === 'true'
+    ? 'upsert'
+    : (OPS.get(group) ?? 'lookup');
 
 /** Groups of the file that hold values of the builder and no element. Nothing in them is a name. */
-const NO_ELEMENTS: ReadonlySet<string> = new Set(['processMetadataValues', 'customProperties']);
+export const NO_ELEMENTS: ReadonlySet<string> = new Set(['processMetadataValues', 'customProperties']);
+
+/**
+ * The groups inside an element that hold names of fields of the object of the element. A group that names an
+ * object of its own is read in `fieldsIn`. In any other group, a name of a field stands where no object is named.
+ */
+const SAME_OBJECT: ReadonlySet<string> = new Set([
+  'filters',
+  'inputAssignments',
+  'outputAssignments',
+  'sortOptions',
+  'transformValues',
+  'transformValueActions',
+]);
+
+/**
+ * What an action starts, by the type of the action: an Apex class, a flow or an email alert. A step of an
+ * orchestration runs a flow, and so does the condition of a step that an evaluation flow decides. Those three
+ * types are written as the author knows them, and no file here holds one.
+ */
+export const STARTS: ReadonlyMap<string, { type: string; kind: 'calls' | 'references'; tier?: 'probable' }> = new Map([
+  ['apex', { type: 'ApexClass', kind: 'calls' }],
+  ['flow', { type: 'Flow', kind: 'calls' }],
+  ['emailAlert', { type: 'WorkflowAlert', kind: 'references' }],
+  ['stepInteractive', { type: 'Flow', kind: 'calls', tier: 'probable' }],
+  ['stepBackground', { type: 'Flow', kind: 'calls', tier: 'probable' }],
+  ['evaluationFlow', { type: 'Flow', kind: 'calls', tier: 'probable' }],
+]);
+/** The beginnings of the names of the elements that hold an action and its type, as `actionName` and `actionType`. */
+const ACTIONS = ['action', 'entryAction', 'exitAction', 'autoApprovalAction'] as const;
 
 /** The elements that hold a formula of a flow. */
 const FORMULAS: ReadonlySet<string> = new Set(['expression', 'filterFormula', 'formulaExpression', 'formula']);
@@ -129,11 +168,25 @@ const ELEMENT_NAMES: ReadonlySet<string> = new Set([
   'fieldReference',
   'startElementReference',
 ]);
+/**
+ * Elements whose names end as those of the elements that hold a resource, and that hold none: the name of an
+ * item of the setup, such as a record type, of the type `setupReferenceType` names. They are not read.
+ */
+const NO_RESOURCES: ReadonlySet<string> = new Set(['setupReference']);
 /** The operators of an assignment that write a value and do not read the one that was there. */
 const ONLY_WRITES: ReadonlySet<string> = new Set(['Assign', 'AssignCount']);
 
-/** The kinds of trigger of a start that a record of its object sets off, and the one that reads records on a schedule. */
-const ON_SCHEDULE: ReadonlySet<string> = new Set(['Scheduled', 'ScheduledJourney']);
+/** The kinds of trigger of a start that a record of its object sets off: a change of records, or an event. */
+export const ON_RECORDS: ReadonlySet<string> = new Set([
+  'RecordBeforeSave',
+  'RecordAfterSave',
+  'RecordBeforeDelete',
+  'PlatformEvent',
+]);
+/** The kind of trigger of a start that reads the records of its object on a schedule. */
+export const ON_SCHEDULE = 'Scheduled';
+/** The types of a process of the Process Builder that a record of its object sets off, as `ON_RECORDS`. */
+export const PROCESS_ON_RECORDS: ReadonlySet<string> = new Set(['Workflow', 'CustomEvent']);
 
 /** A name of an object or a field. */
 const NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -153,7 +206,9 @@ const fold = (name: string): string => name.toLowerCase();
  *
  * `$Record` and `$Record__Prior` are a record of the object of the start. A record variable is one of the
  * object it declares. A lookup holds what it reads. A loop holds one of the list it goes over, and so does a
- * step that filters or sorts a list. What an action or a subflow gives back is of no known object.
+ * step that filters or sorts a list. A step that makes records of another object out of a list holds those.
+ * What an action or a subflow gives back is of no known object, and neither is what a stage of an orchestration,
+ * a step of it, a lookup of data or a filter of a list of the newer kinds holds.
  */
 function resourcesOf(root: XmlElement): StartOf {
   const resources = new Map<string, () => MergeStart>();
@@ -195,6 +250,8 @@ function resourcesOf(root: XmlElement): StartOf {
     set('$Record__Prior', fixed(record(object)));
   }
   set('$Flow', fixed(HOLDS_NOTHING));
+  // The empty text, true and false.
+  set('$GlobalConstant', fixed(HOLDS_NOTHING));
 
   for (const element of root.children) {
     const group = element.local;
@@ -208,12 +265,16 @@ function resourcesOf(root: XmlElement): StartOf {
     } else if (group === 'recordLookups') {
       set(name, fixed(record(textOf(childOf(element, 'object')))));
     } else if (group === 'loops' || group === 'collectionProcessors') {
-      set(name, ofList(element));
+      const made = group === 'collectionProcessors' ? textOf(childOf(element, 'outputSObjectType')) : null;
+      set(name, made === null ? ofList(element) : fixed(record(made)));
       // The name under which a step that filters a list knows the record it looks at.
       if (group === 'collectionProcessors')
         set(textOf(childOf(element, 'assignNextValueToReference')), ofList(element));
     } else if (group === 'actionCalls' || group === 'apexPluginCalls' || group === 'subflows') {
       set(name, fixed(OUTPUTS));
+    } else if (group === 'orchestratedStages' || group === 'dataLookups' || group === 'collectionFilterCriteria') {
+      set(name, fixed(OUTPUTS));
+      for (const step of childrenOf(element, 'stageSteps')) set(textOf(childOf(step, 'name')), fixed(OUTPUTS));
     } else if (!KINDS.has(group)) {
       // An element of a kind that is not known: what it holds is not known either.
       set(name, fixed(OUTPUTS));
@@ -235,6 +296,10 @@ type FieldsOf =
   | { readonly start: string; readonly through: readonly NameAt[] }
   /** Not known. `after` is the name that would have said it. */
   | { readonly after: NameAt | null };
+
+/** The object a value names, as the object of the names of fields that follow. `null` for a value that is no name. */
+const fieldsOf = (object: string | null): FieldsOf | null =>
+  object === null || !NAME.test(object) ? null : { start: object, through: [] };
 
 /** What is read of one element, while it is read. */
 class Sink {
@@ -290,7 +355,14 @@ class Reader {
   }
 
   /** A value that is the name of a field of the object `of`. */
-  field(sink: Sink, element: XmlElement, of: FieldsOf | null, kind: 'reads' | 'writes' | 'references', via: Via): void {
+  field(
+    sink: Sink,
+    element: XmlElement,
+    of: FieldsOf | null,
+    said: { kind: 'reads' | 'writes' | 'references'; via: Via; tier?: 'probable' | undefined },
+  ): void {
+    const { kind, via, tier } = said;
+    const more = tier === undefined ? {} : { tier };
     const value = valueOf(element);
     if (value === null) return;
     const at = this.#places(value);
@@ -302,10 +374,11 @@ class Reader {
     }
     if (names.some((one) => !NAME.test(one.name))) this.#refuse(sink, element, value);
     else if (of === null || !('start' in of)) {
-      sink.references.push({ form: 'unfollowed', after: of?.after ?? null, names, via });
+      sink.references.push({ form: 'unfollowed', after: of?.after ?? null, names, via, ...more });
     } else {
       const silent = of.through.length;
-      sink.references.push({ form: 'path', start: of.start, names: [...of.through, ...names], kind, via, silent });
+      const path = [...of.through, ...names];
+      sink.references.push({ form: 'path', start: of.start, names: path, kind, via, silent, ...more });
     }
   }
 
@@ -366,10 +439,11 @@ class Reader {
   }
 
   /** A value that is a formula of a flow. */
-  formula(sink: Sink, element: XmlElement): void {
+  formula(sink: Sink, element: XmlElement, tier?: 'probable'): void {
     const value = valueOf(element);
     if (value === null) return;
-    sink.formulas.push(readFormulaOfMergeFields(value.value, this.#startOf, element.local, this.#places(value)));
+    const at = this.#places(value);
+    sink.formulas.push(readFormulaOfMergeFields(value.value, this.#startOf, element.local, at, tier));
   }
 
   /** A value that is a text. Only its merge fields are read. */
@@ -415,30 +489,25 @@ class Reader {
   }
 
   /**
-   * Reads what stands inside an element. `of` is the object the field names in it are of, and `undefined`
-   * where the kind of the element is not known: nothing says then which element holds the name of a field.
+   * Reads what stands inside an element. `of` is the object the names of fields in it are of, as far as the
+   * element says it. `tier` is given for an element of a kind this reader does not know: everything in it is
+   * read by the same rules, and is less certain.
    */
-  inside(sink: Sink, element: XmlElement, of: FieldsOf | null | undefined, tier?: 'probable'): void {
+  inside(sink: Sink, element: XmlElement, of: FieldsOf | null, tier?: 'probable'): void {
     const more = tier === undefined ? {} : { tier };
+    this.#actions(sink, element, tier);
     for (const child of element.children) {
       const local = child.local;
       if (NO_ELEMENTS.has(local)) continue;
       if (!isLeaf(child)) {
-        // The fields of a scheduled path and of a custom error are fields of the record that started the flow.
-        const own =
-          of !== undefined && (local === 'scheduledPaths' || local === 'customErrorMessages')
-            ? this.#triggering === null
-              ? null
-              : { start: this.#triggering, through: [] }
-            : of;
-        this.inside(sink, child, own, tier);
+        this.inside(sink, child, this.#fieldsIn(sink, element, child, of, tier), tier);
         if (local === 'conditions') this.#recordType(sink, child);
         continue;
       }
       if (local === 'name' || local === 'description' || local === 'label' || local.endsWith('Label')) continue;
-      if (FORMULAS.has(local)) this.formula(sink, child);
+      if (FORMULAS.has(local)) this.formula(sink, child, tier);
       else if (TEXTS.has(local)) this.text(sink, child, tier);
-      else if (ELEMENT_NAMES.has(local)) continue;
+      else if (ELEMENT_NAMES.has(local) || NO_RESOURCES.has(local)) continue;
       else if (READS.has(local)) this.resource(sink, child, { kind: 'reads', ...more });
       else if (local === 'assignToReference' && element.local === 'assignmentItems') {
         const operator = textOf(childOf(element, 'operator'));
@@ -448,54 +517,123 @@ class Reader {
       // A field of a screen that is bound to a field of a record shows the value and stores what is typed.
       else if (local === 'objectFieldReference') this.resource(sink, child, { kind: 'reads', and: 'writes', ...more });
       else if (local === 'inputReference') this.resource(sink, child, { kind: 'reads', ...more });
-      else if (/References?$/.test(local)) {
+      // The field of a record that a step which makes records sets. No file here holds one.
+      else if (local === 'assignToFieldReference' && element.local === 'mapItems') {
+        this.field(sink, child, of, { kind: 'writes', via: 'assignment', tier: 'probable' });
+      } else if (/References?$/.test(local)) {
         // The name of a resource in an element this reader has no rule for.
         const kind = local.startsWith('assign') ? 'writes' : 'reads';
         this.resource(sink, child, { kind, tier: 'probable' });
-      } else if (of !== undefined && this.#fieldName(sink, element, child, of)) continue;
+      } else if (this.#fieldName(sink, element, child, of, tier)) continue;
       else this.text(sink, child, 'probable');
     }
   }
 
+  /**
+   * The object the names of fields in the group `group` of the element `parent` are of. A group that holds
+   * fields of the object of the element has its object `of`, and a group that names an object of its own has
+   * that one. In any other group, a name of a field stands where no object is named.
+   */
+  #fieldsIn(
+    sink: Sink,
+    parent: XmlElement,
+    group: XmlElement,
+    of: FieldsOf | null,
+    tier: 'probable' | undefined,
+  ): FieldsOf | null {
+    const more = tier === undefined ? {} : { tier };
+    switch (group.local) {
+      // The fields of a scheduled path and of a custom error are fields of the record that started the flow.
+      case 'scheduledPaths':
+      case 'customErrorMessages':
+        return fieldsOf(this.#triggering);
+      // The records of another object that a lookup reads with its own, through a relationship.
+      case 'relatedRecords':
+        return fieldsOf(this.object(sink, childOf(group, 'relatedObject'), { op: 'lookup', ...more }));
+      // An event of a wait that waits for a change of the records of an object.
+      case 'waitEvents':
+        return fieldsOf(this.object(sink, childOf(group, 'object'), more));
+      // What a step that makes records sets is a field of the records it makes. Their object is read with the step.
+      case 'mapItems':
+        return fieldsOf(textOf(childOf(parent, 'outputSObjectType')));
+      default:
+        return SAME_OBJECT.has(group.local) ? of : null;
+    }
+  }
+
   /** Reads `child` as the name of a field, if it is an element that holds one. */
-  #fieldName(sink: Sink, parent: XmlElement, child: XmlElement, of: FieldsOf | null): boolean {
+  #fieldName(sink: Sink, parent: XmlElement, child: XmlElement, of: FieldsOf | null, tier?: 'probable'): boolean {
     const local = child.local;
+    const field = (kind: 'reads' | 'writes' | 'references', via: Via, sure: 'probable' | undefined = tier): void => {
+      this.field(sink, child, of, { kind, via, tier: sure });
+    };
     if (local === 'field') {
-      if (parent.local === 'filters') this.field(sink, child, of, 'reads', 'filter');
-      else if (parent.local === 'inputAssignments') this.field(sink, child, of, 'writes', 'assignment');
-      else if (parent.local === 'outputAssignments') this.field(sink, child, of, 'reads', 'output');
+      if (parent.local === 'filters') field('reads', 'filter');
+      else if (parent.local === 'inputAssignments') field('writes', 'assignment');
+      else if (parent.local === 'outputAssignments') field('reads', 'output');
       else return false;
-    } else if (local === 'queriedFields' || local === 'displayField' || local === 'valueField') {
-      this.field(sink, child, of, 'reads', 'output');
-    } else if (local === 'sortField') this.field(sink, child, of, 'reads', 'sort');
-    else if (local === 'recordField' && parent.local === 'scheduledPaths') this.field(sink, child, of, 'reads', 'time');
-    else if (local === 'fieldSelection') this.field(sink, child, of, 'references', 'display-field');
-    else if (local === 'picklistField') {
-      const object = textOf(childOf(parent, 'picklistObject'));
-      this.field(sink, child, object === null ? null : { start: object, through: [] }, 'references', 'picklist');
+    } else if (local === 'queriedFields' || local === 'displayField' || local === 'valueField')
+      field('reads', 'output');
+    else if (local === 'sortField') field('reads', 'sort');
+    else if (local === 'recordField' && parent.local === 'scheduledPaths') field('reads', 'time');
+    else if (local === 'fieldSelection') field('references', 'display-field');
+    // The field an upsert finds its records by.
+    else if (local === 'upsertExternalIdField' || local === 'upsertStandardIdField') field('reads', 'filter');
+    // The field that relates the records of another object to those of a lookup. No file here holds one, and it is
+    // not known on which side Salesforce writes it: it is read as a field of the other object.
+    else if (local === 'relationshipField' && parent.local === 'relatedRecords') field('reads', 'filter', 'probable');
+    else if (local === 'outputFieldApiName') {
+      // What a transform sets. Where it makes no record, it is a property of an Apex type and no field.
+      if (of !== null && 'start' in of) field('writes', 'assignment', 'probable');
+    } else if (local === 'picklistField') {
+      const picklist = fieldsOf(textOf(childOf(parent, 'picklistObject')));
+      this.field(sink, child, picklist, { kind: 'references', via: 'picklist', tier });
     } else return false;
     return true;
   }
 
-  /** What an action starts: an Apex class, another flow or an email alert. */
+  /**
+   * What the actions an element names start: an Apex class, another flow or an email alert. An element can name
+   * an action, and also one it runs when it starts or ends, each with its type.
+   */
+  #actions(sink: Sink, element: XmlElement, tier: 'probable' | undefined): void {
+    for (const action of ACTIONS) {
+      const type = textOf(childOf(element, `${action}Type`));
+      const starts = type === null ? undefined : STARTS.get(type);
+      const holder = childOf(element, `${action}Name`);
+      if (starts !== undefined && holder !== null) this.#started(sink, holder, starts, tier);
+    }
+  }
+
+  /** The name of what an action starts, in `holder`. */
+  #started(
+    sink: Sink,
+    holder: XmlElement,
+    starts: { type: string; kind: 'calls' | 'references'; tier?: 'probable' },
+    tier: 'probable' | undefined,
+  ): void {
+    const { type, kind } = starts;
+    const sure = tier ?? starts.tier;
+    const value = valueOf(holder);
+    if (value === null) return;
+    // The name of an alert starts with its object. The reference stands at the name of the alert.
+    const from = type === 'WorkflowAlert' ? value.value.lastIndexOf('.') + 1 : 0;
+    const at = this.#places(value)(from, value.value.length);
+    if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(value.value) || at.name === '') this.#refuse(sink, holder, value);
+    else {
+      const more = sure === undefined ? {} : { tier: sure };
+      sink.references.push({ form: 'component', type, at, fullName: value.value, kind, via: 'action', ...more });
+    }
+  }
+
+  /** What a subflow and an Apex plug-in start: another flow and an Apex class. */
   started(sink: Sink, element: XmlElement, group: string): void {
-    const named = (type: string, kind: 'calls' | 'references', holder: XmlElement | null): void => {
-      const value = valueOf(holder);
-      if (holder === null || value === null) return;
-      // The name of an alert starts with its object. The reference stands at the name of the alert.
-      const from = type === 'WorkflowAlert' ? value.value.lastIndexOf('.') + 1 : 0;
-      const at = this.#places(value)(from, value.value.length);
-      if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(value.value) || at.name === '') this.#refuse(sink, holder, value);
-      else sink.references.push({ form: 'component', type, at, fullName: value.value, kind, via: 'action' });
-    };
-    if (group === 'subflows') named('Flow', 'calls', childOf(element, 'flowName'));
-    else if (group === 'apexPluginCalls') named('ApexClass', 'calls', childOf(element, 'apexClass'));
-    else if (group === 'actionCalls') {
-      const type = textOf(childOf(element, 'actionType'));
-      const name = childOf(element, 'actionName');
-      if (type === 'apex') named('ApexClass', 'calls', name);
-      else if (type === 'flow') named('Flow', 'calls', name);
-      else if (type === 'emailAlert') named('WorkflowAlert', 'references', name);
+    if (group === 'subflows') {
+      const holder = childOf(element, 'flowName');
+      if (holder !== null) this.#started(sink, holder, { type: 'Flow', kind: 'calls' }, undefined);
+    } else if (group === 'apexPluginCalls') {
+      const holder = childOf(element, 'apexClass');
+      if (holder !== null) this.#started(sink, holder, { type: 'ApexClass', kind: 'calls' }, undefined);
     }
   }
 }
@@ -503,8 +641,8 @@ class Reader {
 /**
  * Reads the file of a flow. `document` is the file, whose root element is `Flow`.
  *
- * An element of a kind this reader does not know is read all the same: the names of resources and the merge
- * fields in it are recorded as less certain, and the reading says of which kind it is.
+ * An element of a kind this reader does not know is read all the same, by the rules of the elements it knows:
+ * the names in it are recorded as less certain, and the reading says of which kind it is.
  */
 export function readFlow(document: XmlDocument): FlowReading {
   const root = document.root;
@@ -526,6 +664,11 @@ export function readFlow(document: XmlDocument): FlowReading {
 
   for (const element of root.children) {
     const group = element.local;
+    // An element of a known kind that holds nothing has no name either.
+    if (isLeaf(element) && KINDS.has(group) && group !== 'start') {
+      nameless.push({ group, ...placeOf(element) });
+      continue;
+    }
     if (isLeaf(element)) {
       // A setting of the flow. The label of an interview is a text with merge fields.
       if (group === 'interviewLabel') reader.text(own, element);
@@ -536,8 +679,8 @@ export function readFlow(document: XmlDocument): FlowReading {
       // A process of the Process Builder has no start. It names its object in a value of the builder.
       if (textOf(childOf(element, 'name')) !== 'ObjectType') continue;
       const value = childOf(element, 'value');
-      const said = processType === 'Workflow' ? { kind: 'triggers-on' as const } : {};
-      reader.object(own, value === null ? null : childOf(value, 'stringValue'), said);
+      const sets = processType !== null && PROCESS_ON_RECORDS.has(processType);
+      reader.object(own, value === null ? null : childOf(value, 'stringValue'), sets ? { kind: 'triggers-on' } : {});
       continue;
     }
     if (NO_ELEMENTS.has(group)) continue;
@@ -552,28 +695,44 @@ export function readFlow(document: XmlDocument): FlowReading {
       continue;
     }
 
-    let of: FieldsOf | null | undefined = kind === undefined ? undefined : null;
+    let of: FieldsOf | null = null;
     const attrs: Record<string, JsonValue> = {
       kind: kind ?? 'unknown',
       ...(kind === undefined ? { element: group } : {}),
     };
     if (group === 'start') {
       const trigger = textOf(childOf(element, 'triggerType'));
+      // Where neither a record nor a schedule sets the flow off, nothing more is said of the object.
       const said =
-        trigger !== null && ON_SCHEDULE.has(trigger) ? { op: 'lookup' as const } : { kind: 'triggers-on' as const };
-      const object = reader.object(sink, childOf(element, 'object'), said);
-      of = object === null ? null : { start: object, through: [] };
+        trigger === ON_SCHEDULE
+          ? { op: 'lookup' as const }
+          : trigger !== null && ON_RECORDS.has(trigger)
+            ? { kind: 'triggers-on' as const }
+            : {};
+      of = fieldsOf(reader.object(sink, childOf(element, 'object'), said));
     } else if (OPS.has(group)) {
-      const op = OPS.get(group) ?? 'lookup';
-      const object = reader.object(sink, childOf(element, 'object'), { op });
+      const op = opOf(group, element);
+      // A set of choices that is made of a list or of the values of a picklist reads no records.
+      const reads =
+        group !== 'dynamicChoiceSets' ||
+        ['collectionReference', 'picklistField'].every((one) => childOf(element, one) === null);
+      const object = reader.object(sink, childOf(element, 'object'), reads ? { op } : {});
       const whole = childOf(element, 'inputReference');
       // An element that names a record to write has the fields of that record, and no object of its own.
       const written = whole === null ? null : reader.record(sink, whole, op);
       of = object !== null ? { start: object, through: [] } : written;
-    } else if (group === 'collectionProcessors' && name !== null) {
-      // The fields a step sorts a list by are fields of the records of that list.
-      const held = startOf(name)?.object ?? null;
-      of = held === null ? null : { start: held, through: [] };
+    } else if (group === 'collectionProcessors') {
+      // The fields a step sorts a list by are fields of the records of that list. A step that makes records of
+      // another object names it.
+      const list = textOf(childOf(element, 'collectionReference'));
+      of = fieldsOf(list === null ? null : (startOf(list)?.object ?? null));
+      reader.object(sink, childOf(element, 'outputSObjectType'), {});
+    } else if (group === 'transforms' && textOf(childOf(element, 'dataType')) === 'SObject') {
+      // A transform that makes a record sets fields of the object it declares.
+      of = fieldsOf(textOf(childOf(element, 'objectType')));
+    } else if (kind === undefined) {
+      // The object an element of an unknown kind names is the one the names of fields in it are of.
+      of = fieldsOf(reader.object(sink, childOf(element, 'object'), { tier: 'probable' }));
     }
     if (kind !== undefined) reader.started(sink, element, group);
     const actionType = group === 'actionCalls' ? textOf(childOf(element, 'actionType')) : null;
