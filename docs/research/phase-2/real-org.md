@@ -52,6 +52,7 @@ In short:
 | [20](https://github.com/taouani/sf-orglens/actions/runs/45100332744) | probe | `f563174` | green |
 | [21](https://github.com/taouani/sf-orglens/actions/runs/45100823619) | draft, read and probe | `f563174` | green, with the same warning |
 | [22](https://github.com/taouani/sf-orglens/actions/runs/45120017211) | probe | `5b9fb0b` | green |
+| [23](https://github.com/taouani/sf-orglens/actions/runs/45182733256) | read and probe | `3732f2d` | green, with the same warning |
 
 Run 16 is the login the workflow makes once a week by itself.
 
@@ -112,6 +113,9 @@ flow starts by, and an outbound message that names the user of the login.
   types and the email template of the project among those of the org. The counts are those of the org: one
   `Flow`, one `FlowDefinition`, one `Workflow` and one `WorkflowFieldUpdate` are not of the project, which has
   6, 6, 2 and 3.
+- The org lists 7 components of `WorkflowFlowAutomation` and hands out none `[run 23]`. The Salesforce library
+  knows the type apart from the file of workflow rules, in a folder of its own. The note of Phase 1 counted 1 of
+  them. The fixture project holds none, and why there are more is not known.
 
 What Salesforce rewrote in the files of Phase 2 `[run 19]`. The log names 80 of the 91 files that differ, in the
 order of their folders, so what it did to the other 11, the files of the workflow rules among them, is not in
@@ -321,6 +325,21 @@ with. The page does not say so.
 - **No tool takes the draft out.** A version of a flow is deleted by hand, in Setup under Flows. What a later
   run of "deploy" does to the two versions is `[unverified]`.
 
+### After the fetch was built
+
+Run 23 read the org with the engine of `main` once record 0062 was built, in the state the step "draft" left:
+version 1 of `Invoice_Recalculate` active, version 2 a draft. All of the following is `[run 23]`.
+
+- **The snapshot holds the active version.** After the last chunk it found one flow whose latest version is not
+  active, and asked for the active version of it by its number. The file it holds for `Invoice_Recalculate` is
+  the version that was sent as active, and the note `FLOW_NEWER_VERSION` is there once.
+- The other five flows of the project came back in the state their files name: four active, and
+  `Invoice_Purge_Void` a draft. The org holds 7 flows with 8 versions, so the draft is its only version.
+- The snapshot is partial, with the error `NOT_RETRIEVED` for 6 components of the org of the types `CustomField`,
+  `CustomObject` and `RecordType`. The fixture project is whole in it.
+- The cross-check of the types of Phase 1 is as in run 21: of 57 pairs Salesforce reports, the analysis has 55,
+  has 2 through a part of the object, and missed none.
+
 ## 5. The cross-check of the engine
 
 The engine analyses the types of Phase 1 only, so it compares rows from a custom field or a validation rule.
@@ -374,5 +393,7 @@ Dependency API alone is the cross-check for Apex stands.
   [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) tried it with a zip file
   written for the purpose, not with an org.
 - What "deploy" does to a flow that has a draft.
-- The analysis of the files of Phase 2: no analyser reads them yet. The numbers of section 3 are the answer key
-  against the Dependency API, not against OrgLens.
+- What the analysers of Phase 2 make of the files the test org hands out. The rows from a flow are counted and
+  not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)), and the reader of
+  workflow rules was built after run 23. The numbers of section 3 are the answer key against the Dependency API,
+  not against OrgLens.

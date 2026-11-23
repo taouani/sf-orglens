@@ -20,10 +20,10 @@
  * - the cross-check: what the Dependency API of Salesforce reports for the
  *   org, held by the engine against its analysis of the snapshot. A pair of
  *   components is named only if both are of the fixture project,
- * - the files of the fixture project that no analyser reads yet: which of
- *   the pairs its answer key has for them the Dependency API reports, by
- *   the ids the org listed, and which version of each flow the org handed
- *   out,
+ * - the files of Phase 2 of the fixture project, of which the cross-check
+ *   compares little: which of the pairs its answer key has for them the
+ *   Dependency API reports, by the ids the org listed, and which version of
+ *   each flow the org handed out,
  * - the rows read twice more, with one query and then with every answer
  *   cut off at a few rows, to see that the parts the engine asks for then
  *   give every row, and that the org answers each way of asking. Of a
@@ -835,13 +835,17 @@ function fixtureKeys(): Set<string> {
   return keys;
 }
 
-/** The roadmap phase whose files no analyser reads yet. The cross-check says nothing of them. */
-const PHASE_NOT_READ = 2;
+/**
+ * The roadmap phase whose files are held against the rows. The cross-check compares little of them: it does not
+ * compare the rows of flows (decision record 0060), and of a file of workflow rules the API reports only the
+ * fields the formula of a field update reads (decision record 0063).
+ */
+const PHASE_MEASURED = 2;
 
 /**
- * What the Dependency API reports for the files of the fixture project that no analyser reads yet: the pairs of
- * components the answer key has for the files of a phase, held against the rows. An end of a row is matched to a
- * component as the engine does it in the cross-check: by the id the org listed the component with.
+ * What the Dependency API reports for the files of a phase of the fixture project: the pairs of components the
+ * answer key has for them, held against the rows. An end of a row is matched to a component as the engine does it
+ * in the cross-check: by the id the org listed the component with.
  *
  * The first lines say what the id of a row is the id of. A row from a flow can carry the id of a version of the
  * flow, which the org may not list.
@@ -850,11 +854,11 @@ export function phaseLines(
   log: PublicLog,
   rows: readonly DependencyRow[],
   listed: readonly ListedId[],
-  phase = PHASE_NOT_READ,
+  phase = PHASE_MEASURED,
 ): string[] {
   const lines = [
     '',
-    `The files of Phase ${String(phase)} of the fixture project, which no analyser reads yet, in the rows of the Dependency API`,
+    `The files of Phase ${String(phase)} of the fixture project in the rows of the Dependency API, held against the pairs of its answer key`,
   ];
   const match = listedMatcher(listed);
   const typeOf = (key: string): string => key.slice(0, key.indexOf(':'));
@@ -1049,7 +1053,7 @@ export function crossCheckLines(log: PublicLog, crossCheck: CrossCheckReport | n
     byType.set(shown, (byType.get(shown) ?? 0) + rows);
   }
   log.say(
-    `Rows from a component of a type that this phase does not analyse, which are not compared: ${String(comparison.rowsNotAnalysed)}` +
+    `Rows that are not compared, from a component of a type that is not analysed or of a flow: ${String(comparison.rowsNotAnalysed)}` +
       (byType.size > 0 ? ` (${tallied(byType)}).` : '.'),
   );
   log.say(
@@ -1394,7 +1398,7 @@ export async function readOrg(
         if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
         // The cross-check is of a snapshot that ended. One that did not end has not asked the API yet.
         if (row !== undefined && taken !== undefined) {
-          // What Salesforce reports for the files no analyser reads yet, which the cross-check leaves out.
+          // What Salesforce reports for the files of Phase 2, most of which the cross-check leaves out.
           if (crossCheck !== null && crossCheck.state !== 'none') {
             const rows = readDependencyRows(store, taken.id);
             for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);

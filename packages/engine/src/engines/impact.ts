@@ -325,14 +325,26 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   return { parts, startTypes: [...startTypes].sort(compareText), notHeld, results, unresolved, beyondDepth };
 }
 
+/** The component a person named, and the other components its name alone fits. */
+export interface FoundComponent {
+  readonly component: GraphComponent;
+  /**
+   * The keys of the other components that the name fits, sorted, where it was a name alone that fits an object
+   * and more. Empty for a name that fits one component, and for a key or a type with a name.
+   */
+  readonly sameName: readonly ComponentKey[];
+}
+
 /**
  * Finds the component a person names: by its key, by its type and name (`CustomField:Account.Industry`), or
  * by its name alone (`Account.Industry`). Case plays no part.
  *
  * A name alone is looked for in every type of `types` and in every type the engine knows by name. A name that
- * fits components of several types is an error that lists them: the engine does not choose.
+ * fits an object and other components means the object, and the others are named with it: the file of the
+ * workflow rules of an object has the name of the object (decision record 0064). A name that fits components of
+ * several types and no object is an error that lists them: the engine does not choose.
  */
-export function findComponent(graph: SnapshotGraph, named: string, types: readonly string[]): GraphComponent {
+export function findComponent(graph: SnapshotGraph, named: string, types: readonly string[]): FoundComponent {
   const text = named.trim();
   const notFound = (): EngineError =>
     new EngineError('COMPONENT_NOT_FOUND', `The snapshot knows no component "${text}".`, {
@@ -344,30 +356,34 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
   if (isComponentKey(text)) {
     const found = graph.find(text);
     if (found === undefined) throw notFound();
-    return found;
+    return { component: found, sameName: [] };
   }
   const colon = text.indexOf(':');
   if (colon !== -1) {
     // A type and a name. A type that is none is said by the error of the key.
     const found = graph.find(buildKey({ type: text.slice(0, colon), fullName: text.slice(colon + 1) }));
     if (found === undefined) throw notFound();
-    return found;
+    return { component: found, sameName: [] };
   }
 
-  const candidates: GraphComponent[] = [];
+  const candidates: { readonly type: string; readonly found: GraphComponent }[] = [];
   for (const type of [...new Set([...types, ...KNOWN_TYPES])].sort(compareText)) {
     const found = graph.find(buildKey({ type, fullName: text }));
-    if (found !== undefined) candidates.push(found);
+    if (found !== undefined) candidates.push({ type, found });
   }
   const [first, second] = candidates;
   if (first === undefined) throw notFound();
-  if (second === undefined) return first;
-  const keys = candidates.map((one) => one.key);
+  if (second === undefined) return { component: first.found, sameName: [] };
+  const keys = candidates.map((one) => one.found.key);
+  const object = candidates.find((one) => one.type === 'CustomObject');
+  if (object !== undefined) {
+    return { component: object.found, sameName: keys.filter((key) => key !== object.found.key).sort(compareText) };
+  }
   throw new EngineError(
     'COMPONENT_AMBIGUOUS',
     `"${text}" names ${String(keys.length)} components: ${keys.join(', ')}.`,
     {
-      hint: `Name the one you mean by its key, such as ${first.key}.`,
+      hint: `Name the one you mean by its key, such as ${first.found.key}.`,
       details: { component: text, snapshot: graph.snapshotId, candidates: keys },
     },
   );

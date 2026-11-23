@@ -5,6 +5,7 @@
  * has no analysis, and puts next to the answer what the answer does not cover.
  */
 import { EngineError } from '../core/errors.ts';
+import type { ComponentKey } from '../core/keys.ts';
 import { isConfidenceTier, type ConfidenceTier } from '../core/references.ts';
 import {
   coversEverything,
@@ -50,6 +51,12 @@ export interface ImpactReport {
   };
   /** The component that was asked about. */
   readonly component: ImpactComponent;
+  /**
+   * The keys of the other components of the same name, sorted, where the component was named by its name alone
+   * and the name fits an object and more: the answer is about the object (decision record 0064). Empty for a
+   * name that fits one component, and for a key or a type with a name.
+   */
+  readonly sameName: readonly ComponentKey[];
   /** How many components of the snapshot it contains. The answer is about them too. */
   readonly parts: number;
   /** `incoming`: `results` holds what refers to the component. `outgoing`: what the component refers to. */
@@ -142,7 +149,7 @@ export function impactOf(store: Store, source: string, component: string, query:
 
   const types = readCoverage(store, snapshot.id);
   const graph = sqlGraph(store, snapshot.id);
-  const start = findComponent(
+  const { component: start, sameName } = findComponent(
     graph,
     component,
     types.map((one) => one.type),
@@ -151,7 +158,8 @@ export function impactOf(store: Store, source: string, component: string, query:
   const minConfidence = query.minConfidence ?? 'possible';
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
   // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
-  // component. Today these are types of the logic tier only, so no warning outside the tier is counted yet.
+  // component. The actions of a workflow rule are among them and outside the logic tier (decision record 0063),
+  // so a warning of the reading about one of them counts.
   const covered = [
     ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
   ];
@@ -175,6 +183,7 @@ export function impactOf(store: Store, source: string, component: string, query:
       analysedBy: analysis.engineVersion,
     },
     component: impactComponent(start),
+    sameName,
     parts: walk.parts,
     direction,
     depth: depth ?? null,

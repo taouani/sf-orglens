@@ -1,7 +1,7 @@
 /**
- * The analysis of a source: a component for everything it holds, and for objects, fields, validation rules and
- * flows their attributes, the references that are written in XML and those that stand in a formula or a text.
- * A flow gets a component for each of its elements and resources as well.
+ * The analysis of a source: a component for everything it holds, and for objects, fields, validation rules,
+ * flows, workflow rules and their actions their attributes, the references that are written in XML and those
+ * that stand in a formula or a text. A flow gets a component for each of its elements and resources as well.
  *
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
@@ -20,6 +20,7 @@ import { readFlow, type FlowReading } from './flows.ts';
 import { buildModel, type FieldFacts } from './model.ts';
 import { readField, readObject, readRule, type ElementReading } from './objects.ts';
 import { resolveReferences, type Unread } from './raw-references.ts';
+import { readWorkflow, readWorkflowPart, WORKFLOW_PARTS } from './workflows.ts';
 import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
 
 export interface SourceAnalysis {
@@ -32,7 +33,14 @@ export interface SourceAnalysis {
 }
 
 /** The types that are read. A component of another type gets a row and nothing else. */
-const ANALYSED: ReadonlySet<string> = new Set(['CustomObject', 'CustomField', 'Flow', 'ValidationRule']);
+const ANALYSED: ReadonlySet<string> = new Set([
+  'CustomObject',
+  'CustomField',
+  'Flow',
+  'ValidationRule',
+  'Workflow',
+  ...WORKFLOW_PARTS,
+]);
 
 /**
  * The elements of the file of an object that are components of their own, each with the type of those. An org
@@ -253,7 +261,11 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     try {
       if (type === 'CustomObject') return readObject(element);
       if (type === 'CustomField') return readField(document, element, beforeDot(fullName));
-      return readRule(document, element, beforeDot(fullName));
+      if (type === 'ValidationRule') return readRule(document, element, beforeDot(fullName));
+      if (type === 'Workflow') return readWorkflow();
+      // The parts of a file of workflow rules are of the object the file is named after.
+      if (WORKFLOW_PARTS.has(type)) return readWorkflowPart(type, document, element, beforeDot(fullName));
+      return null;
     } catch (error) {
       failed(key, type, file, error);
       return null;
@@ -457,6 +469,20 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   const notRead = (key: ComponentKey, file: string, unread: Unread, where: string): AnalysisIssue => {
     const details = { path: file, line: unread.line, column: unread.column, element: unread.element };
     const place = `${file}, line ${String(unread.line)}`;
+    if (unread.why === 'action-type') {
+      // The type of an action that is not known here, or the name of an action that has no type.
+      const said =
+        unread.element === 'type'
+          ? 'which is no type of action of a workflow rule that is known here'
+          : 'and the action has no type';
+      return {
+        severity: 'warning',
+        code: 'NAME_NOT_READ',
+        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", ${said}. The action is not read.`,
+        componentKey: key,
+        details,
+      };
+    }
     if (unread.why === 'start') {
       const [first = ''] = unread.text.split('.', 1);
       return {

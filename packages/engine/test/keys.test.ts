@@ -331,8 +331,14 @@ describe('parentKey', () => {
     expect(parentOf({ type: 'Profile', fullName: 'Sales v1.2' })).toBeUndefined();
     expect(parentOf({ type: 'CustomField', fullName: '.Odd' })).toBeUndefined();
     expect(parentOf({ type: 'CustomField', fullName: 'Account.' })).toBeUndefined();
-    // A workflow rule is named after its object, and it belongs to the workflow file of that object.
-    expect(parentOf({ type: 'WorkflowRule', fullName: 'Account.Notify owner' })).toBeUndefined();
+    expect(parentOf({ type: 'Workflow', fullName: 'Account' })).toBeUndefined();
+  });
+
+  it('places a rule or an action under the file of the workflow rules of its object, which has its name', () => {
+    // Decision record 0063. `extraction-workflows.test.ts` holds the types against the Salesforce library.
+    expect(parentOf({ type: 'WorkflowRule', fullName: 'Account.Notify owner' })).toBe('Workflow:account');
+    expect(parentOf({ type: 'WorkflowFieldUpdate', fullName: 'ns__Invoice__c.Stamp' })).toBe('Workflow:ns__invoice__c');
+    expect(parentOf({ type: 'WorkflowAlert', fullName: 'Account.' })).toBeUndefined();
   });
 
   it('ends the parent at the first dot', () => {

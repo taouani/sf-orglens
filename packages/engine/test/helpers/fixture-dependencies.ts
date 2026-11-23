@@ -7,9 +7,11 @@
  * saw and that are not made from the key (`docs/research/phase-1/real-org.md`, section 4). The rows are written the way
  * Salesforce writes them (`mock-dependencies.ts`).
  *
- * The mock reports nothing yet for what Phase 2 reads: flows, workflow rules, record types, field sets, records
- * of custom metadata types and email templates. Which of their pairs Salesforce reports is measured in the test
- * org first. Their rows come with their analysers.
+ * Of the files of Phase 2, the mock reports what the test org reports of the workflow rules: the custom fields
+ * the formula of a field update reads (`docs/research/phase-2/real-org.md`, section 3), and nothing else of a
+ * rule or an action. It reports nothing yet for the other files of Phase 2: flows, whose rows are counted and
+ * not compared (decision record 0060), record types, field sets, records of custom metadata types and email
+ * templates. Their rows come with their analysers.
  *
  * The mock reports more than Salesforce does in two places that the engine treats as "not reported": the
  * formula of a rule that is not active, and the formula in a default value. A test that needs the difference
@@ -42,7 +44,8 @@ export function keyedPairs(): KeyedPair[] {
   };
   const pairs = new Map<string, KeyedPair>();
   for (const reference of key.references) {
-    if (reference.phase === 2) continue;
+    const updateFormula = reference.from.startsWith('WorkflowFieldUpdate:') && reference.via === 'formula';
+    if (reference.phase === 2 && !updateFormula) continue;
     // Salesforce counts a class, not a method of it.
     const whole = reference.from.includes('#') ? reference.from.slice(0, reference.from.indexOf('#')) : reference.from;
     const from = endOf(whole);

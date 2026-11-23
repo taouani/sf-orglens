@@ -1,5 +1,5 @@
 What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture".
-The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 11 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
 10 components refer to it, 5 of them directly.
 
@@ -16,23 +16,17 @@ DEPTH  COMPONENT                                         CONFIDENCE  KIND    REF
 3      Flow:invoice_recalculate#element:compare_totals   confirmed   reads   CustomField:invoice__c.lines_total__c       force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:98
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE                     LISTED  RETRIEVED
-ApexClass                13      13
-ApexTrigger              1       1
-CustomLabel              1       1
-CustomLabels             1       1
-CustomMetadata           4       4
-CustomPermission         1       1
-EmailFolder              1       1
-EmailTemplate            1       1
-FieldSet                 1       1
-GlobalValueSet           1       1
-RecordType               2       2
-Workflow                 2       2
-WorkflowAlert            1       1
-WorkflowFieldUpdate      3       3
-WorkflowOutboundMessage  1       1
-WorkflowRule             4       4
-WorkflowTask             1       1
+TYPE              LISTED  RETRIEVED
+ApexClass         13      13
+ApexTrigger       1       1
+CustomLabel       1       1
+CustomLabels      1       1
+CustomMetadata    4       4
+CustomPermission  1       1
+EmailFolder       1       1
+EmailTemplate     1       1
+FieldSet          1       1
+GlobalValueSet    1       1
+RecordType        2       2
 
 The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

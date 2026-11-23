@@ -14,4 +14,5 @@ the org lists under another name than that of its file, is kept as it came, with
 three are the first issues of the reading that name a component, the flow. The text of `snapshot` and `coverage`
 shows one line for each of them, with the number of flows.
 
-Not verified on an org yet: the run of the test org that asks for a version by its number in a snapshot.
+On the test org, a snapshot of a flow with an active version and a newer draft holds the active version, with
+the note.

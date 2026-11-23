@@ -3,6 +3,7 @@ import { chmodSync, copyFileSync, existsSync, readFileSync, statSync, writeFileS
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EngineError } from '../src/core/errors.ts';
+import { parentKey, type ComponentKey } from '../src/core/keys.ts';
 import type { SqlDatabase, SqlDriver } from '../src/store/driver.ts';
 import { APPLICATION_ID, MIGRATIONS, type Migration } from '../src/store/migrate.ts';
 import { openStore } from '../src/store/open.ts';
@@ -794,6 +795,55 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       expect(store.all("SELECT name FROM sqlite_schema WHERE name LIKE 'snapshot_type_coverage%'")).toEqual([
         { name: 'snapshot_type_coverage' },
       ]);
+      store.close();
+    });
+
+    it('puts every rule and action in the file of the workflow rules of its object with the eighth migration', () => {
+      // Before the eighth version, a rule or an action had no parent (decision record 0063). The migration gives
+      // each the one that `parentKey` gives now, and adds the file where the database holds no row for it.
+      const path = newFile();
+      const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 7) });
+      const insert = (key: string, parent: string | null = null): void => {
+        old.run(
+          'INSERT INTO component (key, parent_id) VALUES (?, (SELECT id FROM component WHERE key = ?))',
+          key,
+          parent,
+        );
+      };
+      insert('CustomObject:invoice__c');
+      insert('CustomField:invoice__c.amount__c', 'CustomObject:invoice__c');
+      insert('Workflow:invoice__c');
+      insert('WorkflowRule:invoice__c.remind');
+      insert('WorkflowFieldUpdate:invoice__c.stamp');
+      // A sub-component has its parent already, whatever its type.
+      insert('WorkflowRule:invoice__c.remind#element:x', 'WorkflowRule:invoice__c.remind');
+      // The database holds no file of workflow rules for these, also of a type the library does not know.
+      insert('WorkflowAlert:account.notify');
+      insert('WorkflowTask:account.call v1.2');
+      insert('WorkflowNotification:ns__order__c.ping');
+      // A name without a dot, or with nothing before or after its first dot, has no parent.
+      insert('WorkflowRule:odd');
+      insert('WorkflowRule:.odd');
+      insert('WorkflowRule:odd.');
+      old.close();
+
+      const store = openStore({ path, driver });
+      expect(store.migrated).toEqual({ from: 7, to: MIGRATIONS.length });
+      const rows = store.all(
+        'SELECT c.key AS key, p.key AS parent FROM component c LEFT JOIN component p ON p.id = c.parent_id ORDER BY c.key',
+      );
+      expect(rows).toEqual(rows.map(({ key }) => ({ key, parent: parentKey(key as ComponentKey) ?? null })));
+      expect(rows.filter(({ parent }) => parent !== null).map(({ key }) => key)).toEqual([
+        'CustomField:invoice__c.amount__c',
+        'WorkflowAlert:account.notify',
+        'WorkflowFieldUpdate:invoice__c.stamp',
+        'WorkflowNotification:ns__order__c.ping',
+        'WorkflowRule:invoice__c.remind',
+        'WorkflowRule:invoice__c.remind#element:x',
+        'WorkflowTask:account.call v1.2',
+      ]);
+      expect(rows).toHaveLength(14);
+      expect(rows.map(({ key }) => key)).toEqual(expect.arrayContaining(['Workflow:account', 'Workflow:ns__order__c']));
       store.close();
     });
 

@@ -15,6 +15,7 @@ import { migration0004 } from './migrations/0004-snapshot-layout.ts';
 import { migration0005 } from './migrations/0005-analysed-types.ts';
 import { migration0006 } from './migrations/0006-dependency-rows.ts';
 import { migration0007 } from './migrations/0007-excluded-types.ts';
+import { migration0008 } from './migrations/0008-workflow-parts.ts';
 import type { Migration } from './migrations/migration.ts';
 
 export type { Migration } from './migrations/migration.ts';
@@ -28,6 +29,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0005,
   migration0006,
   migration0007,
+  migration0008,
 ];
 
 /** Marks a SQLite file as an OrgLens workspace database: the bytes "OLNS". */

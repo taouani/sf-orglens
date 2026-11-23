@@ -13,6 +13,9 @@
     "name": "Invoice__c",
     "file": "force-app/main/default/objects/Invoice__c/Invoice__c.object-meta.xml"
   },
+  "sameName": [
+    "Workflow:invoice__c"
+  ],
   "parts": 44,
   "direction": "incoming",
   "depth": null,
@@ -571,6 +574,196 @@
       }
     },
     {
+      "key": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+      "type": "WorkflowAlert",
+      "name": "Invoice__c.Invoice_Overdue_Alert",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "to": "CustomField:invoice__c.approver__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 8,
+        "column": 20
+      }
+    },
+    {
+      "key": "WorkflowFieldUpdate:invoice__c.set_sub_status_reminder",
+      "type": "WorkflowFieldUpdate",
+      "name": "Invoice__c.Set_Sub_Status_Reminder",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowFieldUpdate:invoice__c.set_sub_status_reminder",
+        "to": "CustomField:invoice__c.sub_status__c",
+        "kind": "writes",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 24,
+        "column": 16
+      }
+    },
+    {
+      "key": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
+      "type": "WorkflowFieldUpdate",
+      "name": "Invoice__c.Stamp_Legacy_Code",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
+        "to": "CustomField:invoice__c.account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 34,
+        "column": 18
+      }
+    },
+    {
+      "key": "WorkflowFieldUpdate:invoice_line__c.stamp_tax_code_of_invoice",
+      "type": "WorkflowFieldUpdate",
+      "name": "Invoice_Line__c.Stamp_Tax_Code_Of_Invoice",
+      "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowFieldUpdate:invoice_line__c.stamp_tax_code_of_invoice",
+        "to": "CustomField:invoice__c.tax_code_name__c",
+        "kind": "writes",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+        "line": 6,
+        "column": 16
+      }
+    },
+    {
+      "key": "WorkflowOutboundMessage:invoice__c.notify_ledger",
+      "type": "WorkflowOutboundMessage",
+      "name": "Invoice__c.Notify_Ledger",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowOutboundMessage:invoice__c.notify_ledger",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 45,
+        "column": 17
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.follow_up_when_void",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Follow_Up_When_Void",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.follow_up_when_void",
+        "to": "CustomField:invoice__c.status__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 63,
+        "column": 31
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.remind_when_sent",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Remind_When_Sent",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.remind_when_sent",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 87,
+        "column": 31
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.stamp_code_when_paid",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Stamp_Code_When_Paid",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.stamp_code_when_paid",
+        "to": "CustomField:invoice__c.account__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 114,
+        "column": 3
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice_line__c.stamp_when_billed",
+      "type": "WorkflowRule",
+      "name": "Invoice_Line__c.Stamp_When_Billed",
+      "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice_line__c.stamp_when_billed",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+        "line": 21,
+        "column": 75
+      }
+    },
+    {
+      "key": "WorkflowTask:invoice__c.follow_up_on_void",
+      "type": "WorkflowTask",
+      "name": "Invoice__c.Follow_Up_On_Void",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowTask:invoice__c.follow_up_on_void",
+        "to": "CustomField:invoice__c.due_date__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 125,
+        "column": 37
+      }
+    },
+    {
       "key": "Flow:invoice_after_save#element:get_open_lines",
       "type": "Flow",
       "name": "Invoice_After_Save.Get_Open_Lines",
@@ -587,6 +780,25 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 164,
         "column": 20
+      }
+    },
+    {
+      "key": "Flow:invoice_after_save#element:send_overdue_alert",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Send_Overdue_Alert",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:send_overdue_alert",
+        "to": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "kind": "references",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 8,
+        "column": 32
       }
     },
     {
@@ -715,42 +927,6 @@
         "type": "RecordType",
         "listed": 2,
         "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "Workflow",
-        "listed": 2,
-        "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowAlert",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowFieldUpdate",
-        "listed": 3,
-        "retrieved": 3,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowOutboundMessage",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowRule",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowTask",
-        "listed": 1,
-        "retrieved": 1,
         "listing": "ok"
       }
     ],

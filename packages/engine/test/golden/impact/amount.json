@@ -13,6 +13,7 @@
     "name": "Invoice__c.Amount__c",
     "file": "force-app/main/default/objects/Invoice__c/fields/Amount__c.field-meta.xml"
   },
+  "sameName": [],
   "parts": 0,
   "direction": "incoming",
   "depth": null,
@@ -343,6 +344,63 @@
       }
     },
     {
+      "key": "WorkflowOutboundMessage:invoice__c.notify_ledger",
+      "type": "WorkflowOutboundMessage",
+      "name": "Invoice__c.Notify_Ledger",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowOutboundMessage:invoice__c.notify_ledger",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 45,
+        "column": 17
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.remind_when_sent",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Remind_When_Sent",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.remind_when_sent",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 87,
+        "column": 31
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice_line__c.stamp_when_billed",
+      "type": "WorkflowRule",
+      "name": "Invoice_Line__c.Stamp_When_Billed",
+      "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice_line__c.stamp_when_billed",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
+        "line": 21,
+        "column": 75
+      }
+    },
+    {
       "key": "CustomField:invoice__c.grand_total__c",
       "type": "CustomField",
       "name": "Invoice__c.Grand_Total__c",
@@ -430,42 +488,6 @@
         "type": "RecordType",
         "listed": 2,
         "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "Workflow",
-        "listed": 2,
-        "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowAlert",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowFieldUpdate",
-        "listed": 3,
-        "retrieved": 3,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowOutboundMessage",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowRule",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowTask",
-        "listed": 1,
-        "retrieved": 1,
         "listing": "ok"
       }
     ],

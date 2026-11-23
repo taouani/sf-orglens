@@ -4,8 +4,8 @@
  * Reading and resolving are two steps. Reading takes the names with their places out of one file and needs
  * nothing else, so the file can be let go. Resolving needs the model of all objects, which exists only once
  * every file was read. Every reader of this layer hands its names over in this form: the reader of objects,
- * fields and rules (`objects.ts`), the reader of flows (`flows.ts`) and the readers of formulas and of merge
- * fields (`names-in-text.ts`).
+ * fields and rules (`objects.ts`), the reader of flows (`flows.ts`), the reader of workflow rules
+ * (`workflows.ts`) and the readers of formulas and of merge fields (`names-in-text.ts`).
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
@@ -30,17 +30,24 @@ export type Via =
   | 'object'
   /** In a flow: the resource a record element writes or deletes. The reference is to the object it is of. */
   | 'record'
-  /** In a flow: a name of a resource with a path, written without braces. */
+  /**
+   * In a flow: a name of a resource with a path, written without braces. Of a field update: the relationship
+   * field it goes through to the parent it writes on.
+   */
   | 'path'
-  /** In a flow: the field a record element sets by its name. */
+  /** In a flow: the field a record element sets by its name. The field a field update writes. */
   | 'assignment'
   /** In a flow: a field a query asks for or stores. */
   | 'output'
   | 'sort'
-  /** The date field a scheduled path counts from. */
+  /** The date field a scheduled path, a time trigger or the due date of a task counts from. */
   | 'time'
-  /** What a flow starts: an Apex class, a subflow, an alert. */
+  /** What a flow starts: an Apex class, a subflow, an alert. What a workflow rule starts: an action of its object. */
   | 'action'
+  /** The email template of an alert. */
+  | 'template'
+  /** A field in a list: of the recipients of an alert, or of the fields an outbound message sends. */
+  | 'listed-field'
   /** A name that stands in a text and is compared with the name of a component. */
   | 'text'
   /** In a flow: the picklist field a set of choices takes its values from. */
@@ -96,6 +103,13 @@ export type RawReference = Raw &
         readonly silent?: number;
       }
     /**
+     * A field of the parent of a record, as a field update that writes on the parent names it: the relationship
+     * field of the object `start` by its own name, such as `Invoice__c` and not `Invoice__r`, and the field of
+     * the object that relationship leads to. The relationship field is a read, with the via of a path, and the
+     * field at the end is written.
+     */
+    | { readonly form: 'parent-field'; readonly start: string; readonly through: NameAt; readonly at: NameAt }
+    /**
      * A record that is written or deleted as a whole: a path of relationships from an object, which can be
      * empty. Every relationship is a read of the field behind it, and the reference goes to the object at the
      * end, at the place `at`.
@@ -123,9 +137,11 @@ export interface Unread {
   readonly column: number;
   /**
    * Why it is not read, where the reader knows more than that it is no name: `start` for a name whose first
-   * part is nothing the text around it knows, such as a resource that a flow does not hold.
+   * part is nothing the text around it knows, such as a resource that a flow does not hold, and `action-type`
+   * for an action of a workflow rule of a type that is not known here (the element `type`) or of no type (the
+   * element `name`).
    */
-  readonly why?: 'start';
+  readonly why?: 'start' | 'action-type';
 }
 
 /** At most this many characters of a text that is not a name, or of one name, are shown in an issue. */
@@ -133,6 +149,13 @@ export const LONGEST_TEXT_SHOWN = 60;
 /** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
 const LONGEST_PATH_SHOWN = 200;
 const MOST_NAMES_SHOWN = 20;
+
+/**
+ * The relationship of a lookup field, by the name of the field, in any case: `Invoice__c` is `Invoice__r`, and
+ * `AccountId` is `Account`. Any other name is taken for the name of a relationship.
+ */
+const relationshipOf = (field: string): string =>
+  /__p?c$/i.test(field) ? `${field.slice(0, -1)}r` : /[A-Za-z0-9]id$/i.test(field) ? field.slice(0, -2) : field;
 
 /** The component the names of a file are resolved for. */
 interface Owner {
@@ -192,13 +215,22 @@ export function resolveReferences(
   };
 
   /** Says that the names after `last` were not followed, because nothing says which object `last` leads to. */
-  const notFollowed = (last: NameAt, rest: readonly NameAt[], leads: 'leads to' | 'holds'): void => {
+  const notFollowed = (
+    last: NameAt,
+    rest: readonly NameAt[],
+    leads: 'leads to' | 'holds',
+    /** The names are a field of the object at the end, which the file names apart from the relationship. */
+    apart = false,
+  ): void => {
     // A formula can hold a path of any length. The issue shows the start of what was not followed.
     const names = rest.slice(0, MOST_NAMES_SHOWN).map((at) => at.name);
+    const shown = `"${cut(names.join('.'), LONGEST_PATH_SHOWN)}"`;
     const what =
       names.length === 0
         ? 'the record it names is of no known object'
-        : `"${cut(names.join('.'), LONGEST_PATH_SHOWN)}" after it was not followed`;
+        : apart
+          ? `its field ${shown} was not followed`
+          : `${shown} after it was not followed`;
     issues.push({
       severity: 'warning',
       code: 'PATH_NOT_FOLLOWED',
@@ -240,6 +272,15 @@ export function resolveReferences(
       add(one.at, model.field(owner.object, one.at.name), 'references', one, { object: owner.object });
     } else if (one.form === 'component') {
       add(one.at, model.component(one.type, one.fullName ?? one.at.name), one.kind ?? 'references', one);
+    } else if (one.form === 'parent-field') {
+      const step: Raw = { via: 'path', ...(one.tier === undefined ? {} : { tier: one.tier }) };
+      const { field, leadsTo } = model.relationship(one.start, relationshipOf(one.through.name));
+      add(one.through, field, 'reads', step, { object: one.start });
+      // The parent is never the object itself: the model takes `Parent` for it, which is wrong for the parent of
+      // a comment or an email of a case, and a hierarchy field leads there too. Then where it leads is not known.
+      if (leadsTo === null || foldName(leadsTo) === foldName(one.start)) {
+        notFollowed(one.through, [one.at], 'leads to', true);
+      } else add(one.at, model.field(leadsTo, one.at.name), 'writes', one, { object: leadsTo });
     } else if (one.form === 'record') {
       // A relationship on the way is written as in any path of a flow.
       const step: Raw = { via: 'path', ...(one.tier === undefined ? {} : { tier: one.tier }) };

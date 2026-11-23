@@ -13,6 +13,7 @@
     "name": "Invoice__c.Unused_Field__c",
     "file": "force-app/main/default/objects/Invoice__c/fields/Unused_Field__c.field-meta.xml"
   },
+  "sameName": [],
   "parts": 0,
   "direction": "incoming",
   "depth": null,
@@ -87,42 +88,6 @@
         "type": "RecordType",
         "listed": 2,
         "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "Workflow",
-        "listed": 2,
-        "retrieved": 2,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowAlert",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowFieldUpdate",
-        "listed": 3,
-        "retrieved": 3,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowOutboundMessage",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowRule",
-        "listed": 4,
-        "retrieved": 4,
-        "listing": "ok"
-      },
-      {
-        "type": "WorkflowTask",
-        "listed": 1,
-        "retrieved": 1,
         "listing": "ok"
       }
     ],
