@@ -200,6 +200,9 @@ describe('a problem of a deploy, as it is printed', () => {
     'Field Status__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Illegal assignment from Decimal to String',
     'Entity is not org-accessible',
+    // A flow, with names of elements of its file and one of their values. The apostrophe comes in two forms.
+    "field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the customErrors field isn't supported.)",
+    'field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the filterFormula field isn’t supported.)',
   ])('shows the known form: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(problem);
   });
@@ -244,6 +247,7 @@ describe('a problem of a deploy, as it is printed', () => {
     'Field $User.Secret_Plan__c does not exist. Check spelling.',
     'Field Secret_Plan__c is a picklist field. Picklist fields are only supported in certain functions.',
     'Method does not exist or incorrect signature: void post(List<Secret_Plan__c>) from the type InvoiceService',
+    "field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the SecretPlan field isn't supported.)",
   ])('does not show a known form that names something the fixture project does not hold: %s', (problem) => {
     expect(shownProblem(log, problem, words)).toBe(
       `not shown, because it names something that is not in the fixture project. ${where}`,

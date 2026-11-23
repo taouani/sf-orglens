@@ -156,6 +156,13 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   form("Can not specify 'NAME' for a CustomField of type SIG"),
   form('Entity is not org-accessible'),
   form('Not available for deploy for this organization'),
+  // A flow with an element that does not go with the way the flow starts. The deploy of 23 November 2026 was
+  // refused with a problem of which only the everyday words came out: "field … unknown (When the … field is set
+  // to … the … field … supported.)". This form is written from those words, so it is a guess until a run prints
+  // a problem with it. The three places hold names of elements of a flow file and one of their values.
+  form(
+    "field integrity exception: unknown \\(When the NAME field is set to NAME, the NAME field isn['’]t supported\\.\\)",
+  ),
 ];
 
 /**

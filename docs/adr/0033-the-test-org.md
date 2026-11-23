@@ -124,3 +124,8 @@ Phase 2 added to what a step may do, on 23 November 2026.
   flows of the org and their versions, for the names behind the ids of rows and for the number and the state of
   the versions of the flows of the fixture project. A flow that is not of the fixture project is counted and
   not named. The state of a version is shown where it has the form of a name of the Metadata API.
+- The first deploy of the larger project, on 23 November 2026, was refused for two flows, and of both problems
+  only the everyday words came out. The list of known forms got one for a flow with an element that does not go
+  with the way the flow starts. It is written from the everyday words of that run, not from a message that was
+  seen, so it shows nothing until a problem has exactly that form. Its three places take names of elements of a
+  flow file, which are words of the fixture project. The rule above is not changed by this.

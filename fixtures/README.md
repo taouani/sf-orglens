@@ -110,23 +110,29 @@ to now. The new files are these cases:
 - an email template with merge fields of the record, of the recipient, of the user and of the organisation, and
   with the name of a field as plain text.
 
-**None of the 31 components was ever sent to Salesforce.** The Salesforce source library resolves every file to a
-component, and that is all that is checked. What Salesforce may refuse, as far as I can tell:
+**The 31 components went to Salesforce for the first time on 23 November 2026**, with the rest of the project in
+one deploy. Salesforce counted all 118 components, found no error in 116 and refused two flows, so nothing was
+deployed. Whether it names every error of a deploy in one go, I do not know. Of the two messages only the everyday
+words came out (`docs/live-org-setup.md` says why).
 
-- the process of the Process Builder, and new workflow rules, which the setup pages no longer create. I believe
-  that a deploy still creates both;
-- the time trigger of a workflow rule, and perhaps the scheduled path of a flow, in an org without a default
-  workflow user;
-- the custom error in the flow that runs before the save;
-- the field of a record on the screen of `Invoice_Review_Screen`, which has a name of its own. The one public
-  example I found has none;
-- the outbound message, whose `integrationUser` is a made-up user name
-  (`integration.user@billing-fixture.invalid`). The tool that deploys the project writes the user it logs in as
-  in its place, in the copy it sends. Whether Salesforce takes that user is not verified.
+- `Invoice_Review_Screen`: the field of a record on its screen was bound to `Amount__c`, a currency field, and had
+  a name of its own. The words say that a field of the screen cannot refer to the field because its type is not
+  supported. The field is now bound to `Tax_Code_Name__c`, a text field, and has no name, as the one public
+  example I found, which binds two text fields. That the type was the reason is my reading of those words.
+- `Invoice_Before_Save`: the words say that an element is not supported when another element is set to a value.
+  Which element, they do not say. It may be the custom error, which I doubted before, or the formula the flow
+  starts by. The flow is not changed until the message is known. The tool that deploys knows the form of such a
+  message now, so the next run prints it, if I wrote the form right.
 
-One thing Salesforce will accept and that is not as a person would build it: `Get_Invoice` of the screen flow
+So the next deploy is refused again, for that flow at least. What Salesforce found no error in, as far as that
+says anything: the process of the Process Builder and the workflow rules, which the setup pages no longer create,
+the time trigger of a workflow rule and the scheduled path of a flow, and the outbound message with the user of
+the login in the place of the made-up user name (`integration.user@billing-fixture.invalid`).
+
+Two things Salesforce will accept and that are not as a person would build them. `Get_Invoice` of the screen flow
 stores five fields of the invoice, and later elements read four others of the same record. The flow would show
-nothing for them when it runs. For an analysis that reads the file it makes no difference.
+nothing for them when it runs. And the screen has a field of the record and a choice for the same thing, the tax
+code, of which the update takes the choice. For an analysis that reads the file neither makes a difference.
 
 The tool that deploys can also send `Invoice_Recalculate` once more, in a step of its own, as a draft that reads
 `Paid_Date__c` where the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and
