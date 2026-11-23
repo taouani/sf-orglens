@@ -14,7 +14,10 @@ note of work package 9, are listed there when that note is written. Run 24 of "L
 Work package 5 is built but for the same thing (record 0065): the 335 records of custom metadata types of the
 public codebases are read without an error and give no reference at the tier `probable`, and record 0065 says why,
 with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
-too, and they are written there when that note is written.
+too, and they are written there when that note is written. Run 26 of "Live org" read the test org with it. Work
+package 6 is being built: the answers for flows and elements are built (record 0066), and the cross-check of the
+rows of flows, the types of this phase in the judgement of "complete", the narrower list of what an answer does not
+cover and the times of the synthetic org follow.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

@@ -29,7 +29,9 @@ In short:
   [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md) holds the answer and what follows from the
   run.
 - The cross-check of the engine for the types of Phase 1 holds on the larger project: of 57 pairs Salesforce
-  reports, the analysis has 55, has 2 through a part of the object, and missed none.
+  reports, the analysis has 55, has 2 through a part of the object, and missed none. With the readers of Phase 2,
+  run 26 compared 68 rows, those of the field updates, of the records and of the field set among them, and the
+  analysis missed none either.
 - Read in parts, the rows of flows are whole before the draft and partial after it. By my reading of the code,
   the reader of the engine does not ask per component once a row it was given comes from a version the org did
   not list. It says that the reading is partial. The cross-check of flows has to be designed for it.
@@ -54,8 +56,9 @@ In short:
 | [22](https://github.com/taouani/sf-orglens/actions/runs/45120017211) | probe | `5b9fb0b` | green |
 | [23](https://github.com/taouani/sf-orglens/actions/runs/45182733256) | read and probe | `3732f2d` | green, with the same warning |
 | [24](https://github.com/taouani/sf-orglens/actions/runs/45199698754) | read | `f5bb7fe` | green, with the same warning |
+| [26](https://github.com/taouani/sf-orglens/actions/runs/45221970983) | read | `3864d3b` | green, with the same warning |
 
-Run 16 is the login the workflow makes once a week by itself.
+Runs 16 and 25 are the logins the workflow makes once a week by itself.
 
 ## 1. The deploys
 
@@ -347,26 +350,36 @@ version 1 of `Invoice_Recalculate` active, version 2 a draft. All of the followi
 In runs 19 and 21 the engine analyses the types of Phase 1 only, so it compares rows from a custom field or a
 validation rule. Run 24 read the org with the reader of workflow rules (record
 [0063](../../adr/0063-the-parts-of-a-file-of-workflow-rules.md)), so it compares the rows of the workflow rules as
-well.
+well. Run 26 read it with the readers of record types, field sets and records of custom metadata types too (record
+[0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)).
 
-| | Run 19 | Run 21 | Run 24 |
-| --- | --- | --- | --- |
-| Rows of the org | 335 | 351 | 351 |
-| Rows from a component of a type that is not analysed, or of a flow | 278 | 294 | 291 |
-| Rows compared, which are as many pairs | 57 | 57 | 60 |
-| The analysis has the pair | 55 | 55 | 58 |
-| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 |
-| Missed by the analysis | 0 | 0 | 0 |
-| Rows with an end the org did not list | 0 | 0 | 0 |
+| | Run 19 | Run 21 | Run 24 | Run 26 |
+| --- | --- | --- | --- | --- |
+| Rows of the org | 335 | 351 | 351 | 351 |
+| Rows from a component of a type that is not analysed, or of a flow | 278 | 294 | 291 | 283 |
+| Rows compared, which are as many pairs | 57 | 57 | 60 | 68 |
+| The analysis has the pair | 55 | 55 | 58 | 66 |
+| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 | 2 |
+| Missed by the analysis | 0 | 0 | 0 | 0 |
+| Rows with an end the org did not list | 0 | 0 | 0 | 0 |
 
 - **The three rows of the workflow rules, from the formulas of field updates, are compared, and the analysis has
   all three** `[run 24]`. Of the pairs the analysis has and no row reports, it counts 18 with the reason
   `workflow-rule`, 7 with `workflow-action` and 4 with `field-update`. Those are the pairs of the key for these
   files that the API does not report (section 3): the 18 of the rules, the 7 of the alert, the outbound message
   and the task, and 5 of the field updates, of which one is to a standard field and counted as one.
-- The rows from records of the custom metadata type and from the field set, 4 each, are still counted as not
-  compared in run 24: their readers were built after it (record
-  [0065](../../adr/0065-record-types-field-sets-and-records-of-custom-metadata.md)).
+- **The rows from the records of the custom metadata type and from the field set, 4 each, are compared, and the
+  analysis has all eight** `[run 26]`: the four from a record to its type, and the four from the field set to
+  `Account.Tier__c`, `Invoice__c.Account__c`, `Invoice__c.Amount__c` and `Invoice__c.Due_Date__c`. Salesforce
+  reports no row from the field set to the standard field `Name`, which the field set lists too. In run 24 these
+  rows were counted as not compared: their readers were built after it.
+- **The readers of Phase 2 read the files the test org handed out without an issue of their own** `[run 26]`. The
+  analysis had one warning, `PATH_NOT_FOLLOWED`, which the analysis of the fixture project has too. Of the pairs
+  the analysis has and no row reports, it counts 15 with the reason `custom-metadata`, as many as the key has from
+  a record to a field (13) and to the object a relationship names (2), and 6 with `record-type`, where the key has
+  4. Each record type the org handed out lists the values of one more picklist (section 2), and the log does not
+  name the field. The six `values` elements the org added to three records, one for each field a record leaves out,
+  gave no pair, so what Salesforce writes in them has no text. The log does not show it.
 
 - The rows from a flow are not compared, so the 15 rows of a version the org did not list are not counted as
   rows with an end the org did not list `[run 21]`.
@@ -378,8 +391,8 @@ well.
   an id that is not among them, the reader takes the ids for the wrong ones, does not ask per id and counts the
   part as cut off. The row here is one of the active version of `Invoice_Recalculate`, whose id the org no
   longer lists. That this is the cause is my reading of the code and of the counts, not something the log says.
-  Run 24 gave the same: the cut-off reading lacked 30 rows from a flow to a custom field, in 68 requests, and was
-  partial `[run 24]`.
+  Runs 24 and 26 gave the same: the cut-off reading lacked 30 rows from a flow to a custom field, in 68 requests,
+  and was partial `[run 24]` `[run 26]`.
 - What that means for a real org: the limit of Salesforce is 2,000 rows per query. An org whose flows give that
   many rows or more to one type of target, and that has one flow with an active version and a newer draft, can
   get a partial reading of the rows of its flows. It does when a row of the version the org does not list is
@@ -409,8 +422,7 @@ Dependency API alone is the cross-check for Apex stands.
   [0062](../../adr/0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) tried it with a zip file
   written for the purpose, not with an org.
 - What "deploy" does to a flow that has a draft.
-- What the analysers of Phase 2 make of the files the test org hands out. The rows from a flow are counted and
-  not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)), and the reader of
-  workflow rules was built after run 23. Run 24 read the org with it (section 5). The readers of record types,
-  field sets and records of custom metadata types were built after run 24. The numbers of section 3 are the
-  answer key against the Dependency API, not against OrgLens.
+- What the analyser of flows makes of the files the test org hands out, held against the rows: the rows from a flow
+  are counted and not compared (record [0060](../../adr/0060-the-active-version-of-a-flow-is-analysed.md)). The
+  readers of workflow rules, record types, field sets and records of custom metadata types read the org in runs 24
+  and 26 (section 5). The numbers of section 3 are the answer key against the Dependency API, not against OrgLens.

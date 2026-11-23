@@ -13,6 +13,11 @@
  *
  * Each level is one question to the graph for all its components together. A walk from a field that half of an
  * org refers to asks a handful of questions, not one per component.
+ *
+ * A flow runs its elements, so a walk takes a flow and its elements together (decision record 0066). What an
+ * element refers to, its flow refers to: where the walk finds an element, it finds the flow beside it, by the
+ * same reference, and goes on from the flow to what calls it. The other way round, where a walk of what a
+ * component refers to finds a flow, it goes on from the elements of the flow.
  */
 import { EngineError } from '../core/errors.ts';
 import { buildKey, isComponentKey, KNOWN_TYPES, type ComponentKey } from '../core/keys.ts';
@@ -62,8 +67,13 @@ export interface ImpactResult extends ImpactComponent {
    * and the component that was asked about. For what refers to a component, `from` is this component and `to`
    * is one reference nearer. For what a component refers to, it is the other way round.
    *
+   * A flow is found by a reference of one of its elements, so for a flow `from` can be that element, which is a
+   * result too. For what a component refers to, the nearer end can be an element of a flow that is a result of
+   * the depth before.
+   *
    * The nearer end is a result of the depth before. At depth 1 it is the component that was asked about, or
-   * something it contains. Going from result to result gives the whole chain.
+   * something it contains, or the flow of an element that was asked about. Going from result to result gives
+   * the whole chain.
    */
   readonly reference: ImpactStep;
 }
@@ -115,6 +125,11 @@ export interface ImpactWalk {
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const typeOf = (key: ComponentKey): string => key.slice(0, key.indexOf(':'));
+/** True for an element of a flow, which the key writes `Flow:<flow>#element:<name>`. */
+const isElementOfFlow = (component: GraphComponent): boolean =>
+  component.parentId !== null && typeOf(component.key) === 'Flow' && component.key.includes('#element:');
+/** True for a flow, and not for an element of one. */
+const isFlow = (component: GraphComponent): boolean => typeOf(component.key) === 'Flow' && !component.key.includes('#');
 
 /** A component of the graph, as an answer names it. */
 export const impactComponent = (component: GraphComponent): ImpactComponent => ({
@@ -169,7 +184,10 @@ interface Candidate {
  * Walks the references of a snapshot from a component and everything it contains.
  *
  * A component that is found is continued from itself, not from what it contains. What the start contains is
- * part of the start and never a result.
+ * part of the start and never a result. A flow and its elements are taken together: for what refers to a
+ * component, an element that is found brings its flow, which is a result beside it, and an element that is
+ * asked about brings its flow into the start. For what a component refers to, a flow that is found brings its
+ * elements, which are walked from and are no results.
  *
  * A level reads the two ends and the confidence of every reference it meets, which is enough to say what is
  * found and how certain the way to it is. The rest of a reference is read for the references that are kept,
@@ -193,6 +211,12 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
     parts += 1;
     startTypes.add(typeOf(component.key));
   }
+  // What calls the flow of an element runs the element. The flow is no part of the element, and no result.
+  if (incoming && isElementOfFlow(start) && start.parentId !== null && !reached.has(start.parentId)) {
+    reached.set(start.parentId, origin);
+    frontier.push(start.parentId);
+    for (const component of graph.components([start.parentId])) known.set(component.id, component);
+  }
 
   const componentOf = (id: number | null): GraphComponent => {
     const component = id === null ? undefined : known.get(id);
@@ -202,6 +226,57 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   const keyOf = (id: number | null): ComponentKey => componentOf(id).key;
   const nameless: { link: GraphLink; depth: number }[] = [];
   let beyondDepth = false;
+
+  /**
+   * The flows of the elements a level found, which the level finds as well. A flow is found by the most certain
+   * of its elements, and among those by the one whose key comes first, with the way and the reference of that
+   * element. A flow that an earlier level found keeps its way. One that this level found by a reference of its
+   * own keeps it, unless the way through an element is more certain. Gives the flows that are new to the walk.
+   */
+  const flowsOfElements = (level: readonly number[], depth: number): number[] => {
+    const ways = new Map<number, { readonly element: ComponentKey; readonly how: Reached }>();
+    for (const id of level) {
+      const element = known.get(id);
+      const how = reached.get(id);
+      if (element === undefined || how === undefined || !isElementOfFlow(element)) continue;
+      const flow = element.parentId;
+      if (flow === null) continue;
+      const before = reached.get(flow);
+      if (before !== undefined && (before.depth < depth || before.confidence <= how.confidence)) continue;
+      const best = ways.get(flow);
+      if (
+        best === undefined ||
+        how.confidence < best.how.confidence ||
+        (how.confidence === best.how.confidence && compareText(element.key, best.element) < 0)
+      ) {
+        ways.set(flow, { element: element.key, how });
+      }
+    }
+    const added = [...ways.keys()].filter((flow) => !reached.has(flow));
+    for (const [flow, { how }] of ways) reached.set(flow, how);
+    for (const component of graph.components(added)) known.set(component.id, component);
+    return added;
+  };
+
+  /**
+   * The elements of the flows a level found. What they refer to, their flow refers to, so the next level walks
+   * from them, with the depth and the confidence of their flow. They are no results.
+   */
+  const elementsOfFlows = (level: readonly number[], depth: number): number[] => {
+    const flows = level.filter((id) => {
+      const component = known.get(id);
+      return component !== undefined && isFlow(component);
+    });
+    const added: number[] = [];
+    for (const element of graph.partsOf(flows)) {
+      const flow = element.parentId === null ? undefined : reached.get(element.parentId);
+      if (flow === undefined || reached.has(element.id)) continue;
+      reached.set(element.id, { depth, confidence: flow.confidence, link: null, near: element.parentId });
+      known.set(element.id, element);
+      added.push(element.id);
+    }
+    return added;
+  };
 
   for (let depth = 1; frontier.length > 0; depth += 1) {
     const links = incoming ? graph.linksTo(frontier, weakest) : graph.linksFrom(frontier, weakest);
@@ -255,6 +330,8 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
       reached.set(id, { depth, confidence, link: link ?? null, near });
     }
     for (const component of graph.components(frontier)) known.set(component.id, component);
+    if (incoming) frontier.push(...flowsOfElements(frontier, depth));
+    else frontier.push(...elementsOfFlows(frontier, depth));
   }
 
   // The rest of the references that are part of the answer, read once.
@@ -336,8 +413,24 @@ export interface FoundComponent {
 }
 
 /**
+ * The key of an element of a flow that is named after its flow, `Invoice_After_Save.Update_Account`, or `null`
+ * for a name of another form. Neither the name of a flow nor that of an element can hold a dot.
+ */
+function elementKeyOf(name: string): ComponentKey | null {
+  const parts = name.split('.');
+  const [flow = '', element = ''] = parts;
+  if (parts.length !== 2 || flow === '' || element === '') return null;
+  try {
+    return buildKey({ type: 'Flow', fullName: flow, subs: [{ kind: 'element', name: element }] });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Finds the component a person names: by its key, by its type and name (`CustomField:Account.Industry`), or
- * by its name alone (`Account.Industry`). Case plays no part.
+ * by its name alone (`Account.Industry`). Case plays no part. An element of a flow is named after its flow,
+ * `Invoice_After_Save.Update_Account`, alone or after `Flow:`.
  *
  * A name alone is looked for in every type of `types` and in every type the engine knows by name. A name that
  * fits an object and other components means the object, and the others are named with it: the file of the
@@ -361,7 +454,10 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
   const colon = text.indexOf(':');
   if (colon !== -1) {
     // A type and a name. A type that is none is said by the error of the key.
-    const found = graph.find(buildKey({ type: text.slice(0, colon), fullName: text.slice(colon + 1) }));
+    const name = text.slice(colon + 1);
+    const key = buildKey({ type: text.slice(0, colon), fullName: name });
+    const element = typeOf(key) === 'Flow' ? elementKeyOf(name) : null;
+    const found = graph.find(key) ?? (element === null ? undefined : graph.find(element));
     if (found === undefined) throw notFound();
     return { component: found, sameName: [] };
   }
@@ -371,6 +467,10 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
     const found = graph.find(buildKey({ type, fullName: text }));
     if (found !== undefined) candidates.push({ type, found });
   }
+  const element = elementKeyOf(text);
+  const ofFlow = element === null ? undefined : graph.find(element);
+  if (ofFlow !== undefined) candidates.push({ type: 'Flow', found: ofFlow });
+  candidates.sort((a, b) => compareText(a.found.key, b.found.key));
   const [first, second] = candidates;
   if (first === undefined) throw notFound();
   if (second === undefined) return { component: first.found, sameName: [] };

@@ -3,30 +3,36 @@ The name also fits Workflow:invoice__c. The answer is about the object. To ask a
 It contains 44 components of the snapshot. The answer is about them too.
 The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-45 components refer to it, 40 of them directly.
+51 components refer to it, 45 of them directly.
+A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                      CONFIDENCE  KIND         REFERS TO                                       WHERE
 1      CustomField:invoice_line__c.account_owner_email__c             confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/objects/Invoice_Line__c/fields/Account_Owner_Email__c.field-meta.xml:4
 1      CustomField:invoice_line__c.invoice__c                         confirmed   references   CustomObject:invoice__c                         force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml:5
 1      CustomMetadata:billing_rule.invoice_amount                     confirmed   references   CustomField:invoice__c.amount__c                force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml:11
+1      Flow:invoice_after_save                                        confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:amount_changed                 confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:check_result                   confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:107
 1      Flow:invoice_after_save#element:flow-start                     confirmed   reads        CustomField:invoice__c.due_date__c              force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:237
 1      Flow:invoice_after_save#element:update_account                 confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:210
+1      Flow:invoice_before_save                                       confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:44
 1      Flow:invoice_before_save#element:block_large_invoice           confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:44
 1      Flow:invoice_before_save#element:default_tax_rate              confirmed   reads        CustomField:invoice__c.tax_code_name__c         force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:86
 1      Flow:invoice_before_save#element:flow-start                    confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:116
 1      Flow:invoice_before_save#element:is_above_limit                confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:65
 1      Flow:invoice_before_save#element:set_defaults                  confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:13
+1      Flow:invoice_purge_void                                        confirmed   references   CustomObject:invoice__c                         force-app/main/default/flows/Invoice_Purge_Void.flow-meta.xml:54
 1      Flow:invoice_purge_void#element:delete_invoice                 confirmed   references   CustomObject:invoice__c                         force-app/main/default/flows/Invoice_Purge_Void.flow-meta.xml:54
 1      Flow:invoice_purge_void#element:flow-start                     confirmed   reads        CustomField:invoice__c.status__c                force-app/main/default/flows/Invoice_Purge_Void.flow-meta.xml:64
 1      Flow:invoice_purge_void#element:was_never_paid                 confirmed   reads        CustomField:invoice__c.paid_date__c             force-app/main/default/flows/Invoice_Purge_Void.flow-meta.xml:14
+1      Flow:invoice_recalculate                                       confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
 1      Flow:invoice_recalculate#element:compare_totals                confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
 1      Flow:invoice_recalculate#element:flag_for_approval             confirmed   writes       CustomField:invoice__c.sub_status__c            force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:33
 1      Flow:invoice_recalculate#element:flag_late                     confirmed   writes       CustomField:invoice__c.sub_status__c            force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:49
 1      Flow:invoice_recalculate#element:is_late                       confirmed   reads        CustomField:invoice__c.due_date__c              force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:189
 1      Flow:invoice_recalculate#element:save_invoice                  confirmed   references   CustomObject:invoice__c                         force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:272
 1      Flow:invoice_recalculate#element:set_amount                    confirmed   writes       CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:72
+1      Flow:invoice_review_screen                                     confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:313
 1      Flow:invoice_review_screen#element:confirmation                confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:313
 1      Flow:invoice_review_screen#element:fee                         confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:89
 1      Flow:invoice_review_screen#element:get_invoice                 confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:195
@@ -47,6 +53,7 @@ DEPTH  COMPONENT                                                      CONFIDENCE
 1      WorkflowRule:invoice_line__c.stamp_when_billed                 confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml:21
 1      WorkflowTask:invoice__c.follow_up_on_void                      confirmed   reads        CustomField:invoice__c.due_date__c              force-app/main/default/workflows/Invoice__c.workflow-meta.xml:125
 2      Flow:invoice_after_save#element:get_open_lines                 confirmed   reads        CustomField:invoice_line__c.invoice__c          force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:164
+2      Flow:invoice_after_save#element:recalculate                    confirmed   calls        Flow:invoice_recalculate                        force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 2      Flow:invoice_after_save#element:send_overdue_alert             confirmed   references   WorkflowAlert:invoice__c.invoice_overdue_alert  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:8
 2      Flow:invoice_recalculate#element:get_lines                     confirmed   reads        CustomField:invoice_line__c.invoice__c          force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:250
 2      Flow:invoice_review_screen#element:add_fee_line                confirmed   writes       CustomField:invoice_line__c.invoice__c          force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:122

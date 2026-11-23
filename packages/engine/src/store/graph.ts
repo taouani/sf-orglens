@@ -78,6 +78,11 @@ export interface SnapshotGraph {
   below(id: number): number[];
   /** The components the snapshot knows that this one contains directly, sorted by key. */
   childrenOf(id: number): GraphComponent[];
+  /**
+   * The components the snapshot holds that any of these contain directly, in no order. A walk reads the
+   * elements of the flows of a level with it.
+   */
+  partsOf(ids: readonly number[]): GraphComponent[];
   /** The references of the snapshot that point at the component, sorted by the key they start from, then by place. */
   referencesTo(id: number): GraphReference[];
   /** The references that start from the component, sorted by place. */
@@ -176,6 +181,15 @@ const COMPONENTS = `SELECT json_group_array(
   CROSS JOIN component c ON c.id = j.value
   LEFT JOIN snapshot_component m ON m.component_id = c.id AND m.snapshot_id = ?
   LEFT JOIN component_version v ON v.id = m.version_id
+  LEFT JOIN file_path p ON p.id = v.path_id`;
+
+/** From the components to what the snapshot holds of the components they contain directly. */
+const PARTS = `SELECT json_group_array(
+         json_array(c.id, c.key, c.parent_id, m.version_id, v.name, p.path, json(v.attrs))) AS list
+  FROM json_each(?) j
+  CROSS JOIN component c ON c.parent_id = j.value
+  CROSS JOIN snapshot_component m ON m.snapshot_id = ? AND m.component_id = c.id
+  CROSS JOIN component_version v ON v.id = m.version_id
   LEFT JOIN file_path p ON p.id = v.path_id`;
 
 const LINK = 'json_group_array(json_array(m.component_id, r.target_id, r.confidence, r.version_id, r.seq)) AS list';
@@ -363,6 +377,8 @@ export function sqlGraph(store: Store, snapshotId: number): SnapshotGraph {
     referencesFrom: (id) => store.all(REFERENCES_FROM, snapshotId, id).map(referenceOf),
     components: (ids) =>
       inParts(ids, (list) => listOf<ComponentValues>(store.all(COMPONENTS, list, snapshotId)).map(componentOfValues)),
+    partsOf: (ids) =>
+      inParts(ids, (list) => listOf<ComponentValues>(store.all(PARTS, list, snapshotId)).map(componentOfValues)),
     linksTo: (ids, weakest = 'possible') =>
       inParts(ids, (list) =>
         listOf<LinkValues>(store.all(LINKS_TO, list, snapshotId, REFERENCE_CODES.confidence[weakest])).map(linkOf),

@@ -1,0 +1,162 @@
+{
+  "snapshot": {
+    "id": 1,
+    "source": "fixture",
+    "kind": "git",
+    "status": "complete",
+    "finishedAt": "TIME",
+    "analysedBy": "VERSION"
+  },
+  "component": {
+    "key": "CustomField:invoice__c.legacy_code__c",
+    "type": "CustomField",
+    "name": "Invoice__c.Legacy_Code__c",
+    "file": "force-app/main/default/objects/Invoice__c/fields/Legacy_Code__c.field-meta.xml"
+  },
+  "sameName": [],
+  "parts": 0,
+  "elementOf": null,
+  "direction": "incoming",
+  "depth": null,
+  "beyondDepth": false,
+  "minConfidence": "possible",
+  "results": [
+    {
+      "key": "Flow:invoice_before_save",
+      "type": "Flow",
+      "name": "Invoice_Before_Save",
+      "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_before_save#element:set_defaults",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "writes",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+        "line": 31,
+        "column": 40
+      }
+    },
+    {
+      "key": "Flow:invoice_before_save#element:set_defaults",
+      "type": "Flow",
+      "name": "Invoice_Before_Save.Set_Defaults",
+      "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_before_save#element:set_defaults",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "writes",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+        "line": 31,
+        "column": 40
+      }
+    },
+    {
+      "key": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
+      "type": "WorkflowFieldUpdate",
+      "name": "Invoice__c.Stamp_Legacy_Code",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "writes",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 33,
+        "column": 16
+      }
+    },
+    {
+      "key": "WorkflowRule:invoice__c.stamp_code_when_paid",
+      "type": "WorkflowRule",
+      "name": "Invoice__c.Stamp_Code_When_Paid",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowRule:invoice__c.stamp_code_when_paid",
+        "to": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 106,
+        "column": 19
+      }
+    }
+  ],
+  "unresolved": [],
+  "newerVersions": [],
+  "complete": false,
+  "notCovered": {
+    "notAnalysed": [
+      {
+        "type": "ApexClass",
+        "listed": 13,
+        "retrieved": 13,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexTrigger",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabel",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomLabels",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "CustomPermission",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailFolder",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "EmailTemplate",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "GlobalValueSet",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      }
+    ],
+    "partial": [],
+    "readErrors": 0,
+    "analysisErrors": 0,
+    "analysisWarnings": 1,
+    "notHeld": 0
+  },
+  "mayMiss": false
+}

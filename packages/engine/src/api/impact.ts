@@ -5,7 +5,7 @@
  * has no analysis, and puts next to the answer what the answer does not cover.
  */
 import { EngineError } from '../core/errors.ts';
-import type { ComponentKey } from '../core/keys.ts';
+import { parentKey, type ComponentKey } from '../core/keys.ts';
 import { isConfidenceTier, type ConfidenceTier } from '../core/references.ts';
 import {
   coversEverything,
@@ -22,7 +22,7 @@ import {
 import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import type { Store } from '../store/open.ts';
-import { countIssues, readCoverage, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
+import { countIssues, readCoverage, readIssuesOf, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
 import { noSnapshot } from './snapshot.ts';
 
 export interface ImpactQuery {
@@ -59,6 +59,11 @@ export interface ImpactReport {
   readonly sameName: readonly ComponentKey[];
   /** How many components of the snapshot it contains. The answer is about them too. */
   readonly parts: number;
+  /**
+   * For an element of a flow, the flow. A flow runs its elements, so an answer about what refers to the element
+   * holds what refers to the flow (decision record 0066). `null` for any other component.
+   */
+  readonly elementOf: ComponentKey | null;
   /** `incoming`: `results` holds what refers to the component. `outgoing`: what the component refers to. */
   readonly direction: 'incoming' | 'outgoing';
   /** The depth that was asked for. `null`: no limit. */
@@ -68,11 +73,20 @@ export interface ImpactReport {
   readonly minConfidence: ConfidenceTier;
   /**
    * Sorted by depth, then by key. What the component contains is never among them. Each holds the reference it
-   * is found by, whose other end is a result of the depth before, or the component and what it contains.
+   * is found by, whose other end is a result of the depth before, or the component and what it contains. A flow
+   * is found beside its element, by the reference of the element: `ImpactResult.reference` says what that does to
+   * the two ends (decision record 0066).
    */
   readonly results: readonly ImpactResult[];
   /** For `outgoing`: the references to a name that has no key, so that no component stands for it. */
   readonly unresolved: readonly ImpactUnresolved[];
+  /**
+   * The flows of the answer whose active version, which the snapshot holds, has a newer version beside it, such
+   * as a draft, sorted by flow: the flow that was asked about or the flow of the element that was, and the flows
+   * among the results. The newer version is not analysed, and the answer does not hold what it would change
+   * (decision record 0060). Only a snapshot of an org can know of one.
+   */
+  readonly newerVersions: readonly NewerVersion[];
   /**
    * True if nothing is known that the answer could miss: every type of the snapshot was analysed, the snapshot
    * holds every component of them, and the reading and the analysis had neither an error nor, for the
@@ -92,6 +106,37 @@ export interface ImpactReport {
    * true, and neither does a warning of the analysis.
    */
   readonly mayMiss: boolean;
+}
+
+/** A flow whose active version the snapshot holds, and which has a newer version that is not analysed. */
+export interface NewerVersion {
+  readonly flow: ComponentKey;
+  /** The number of the active version. */
+  readonly active: number;
+  /** The state of the newer version, as its file names it, such as `Draft`. */
+  readonly newer: string;
+}
+
+/** The flow a key is of: the flow itself, or the flow of an element. `null` for a key of another type. */
+function flowOf(key: ComponentKey): ComponentKey | null {
+  if (!key.startsWith('Flow:')) return null;
+  return key.includes('#') ? (parentKey(key) ?? null) : key;
+}
+
+/**
+ * The flows among these that have a newer version than the active one the snapshot holds, from the notes the
+ * snapshot keeps of them (decision record 0062).
+ */
+function newerVersionsOf(store: Store, snapshotId: number, flows: ReadonlySet<ComponentKey>): NewerVersion[] {
+  const found = new Map<ComponentKey, NewerVersion>();
+  for (const note of readIssuesOf(store, snapshotId, 'FLOW_NEWER_VERSION')) {
+    const flow = note.componentKey as ComponentKey | null;
+    const active = note.details?.['version'];
+    const newer = note.details?.['newer'];
+    if (flow === null || !flows.has(flow) || typeof active !== 'number' || typeof newer !== 'string') continue;
+    found.set(flow, { flow, active, newer });
+  }
+  return [...found.values()].sort((a, b) => (a.flow < b.flow ? -1 : a.flow > b.flow ? 1 : 0));
 }
 
 /**
@@ -173,6 +218,11 @@ export function impactOf(store: Store, source: string, component: string, query:
       ? gaps
       : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)), notHeld: walk.notHeld };
 
+  const flows = new Set(
+    [start.key, ...walk.results.map((result) => result.key)].map(flowOf).filter((flow) => flow !== null),
+  );
+  const isElement = start.key.startsWith('Flow:') && start.key.includes('#element:');
+
   return {
     snapshot: {
       id: snapshot.id,
@@ -185,12 +235,14 @@ export function impactOf(store: Store, source: string, component: string, query:
     component: impactComponent(start),
     sameName,
     parts: walk.parts,
+    elementOf: isElement ? (flowOf(start.key) ?? null) : null,
     direction,
     depth: depth ?? null,
     beyondDepth: walk.beyondDepth,
     minConfidence,
     results: walk.results,
     unresolved: walk.unresolved,
+    newerVersions: newerVersionsOf(store, snapshot.id, flows),
     complete: coversEverything(notCovered),
     notCovered,
     mayMiss: mayMissSomething(notCovered),

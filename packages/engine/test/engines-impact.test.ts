@@ -33,6 +33,9 @@ const sha = (text: string): Uint8Array => new Uint8Array(createHash('sha256').up
 const field = (name: string): ComponentKey => buildKey({ type: 'CustomField', fullName: name });
 const rule = (name: string): ComponentKey => buildKey({ type: 'ValidationRule', fullName: name });
 const object = (name: string): ComponentKey => buildKey({ type: 'CustomObject', fullName: name });
+const flow = (name: string): ComponentKey => buildKey({ type: 'Flow', fullName: name });
+const element = (of: string, name: string): ComponentKey =>
+  buildKey({ type: 'Flow', fullName: of, subs: [{ kind: 'element', name }] });
 const fileOf = (key: ComponentKey): string => `files/${key.replace(':', '/')}.xml`;
 
 /** A reference from one component to another, on a line of the file of the first. */
@@ -121,7 +124,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       analysedAt: T0,
       types: ['CustomField', 'CustomObject', 'ValidationRule'],
       components,
-      work: (['parser:xml', 'parser:formula', 'dependency-api'] as const).map((origin) => ({
+      work: (['parser:xml', 'parser:formula', 'parser:flow', 'dependency-api'] as const).map((origin) => ({
         origin,
         components: components.length,
         failedFiles: 0,
@@ -399,6 +402,96 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     ]);
   });
 
+  describe('a flow and its elements, which are taken together', () => {
+    const SUB = flow('Sub');
+    const SET = element('Sub', 'Set_A');
+    const CHECK = element('Sub', 'Check_A');
+    const MAIN = flow('Main');
+    const CALL = element('Main', 'Call_Sub');
+    const OUTER = flow('Outer');
+    const CALL_MAIN = element('Outer', 'Call_Main');
+    const calls = (target: ComponentKey, line: number): ((from: ComponentKey) => Reference) =>
+      to(target, line, { kind: 'calls', origin: 'parser:flow' });
+    /** A flow that two others call, one through the other, with two elements that refer to the field A. */
+    const flows = (): AnalysedComponent[] => [
+      holds(A),
+      holds(SUB),
+      holds(SET, to(A, 4, { kind: 'writes', origin: 'parser:flow' })),
+      holds(CHECK, tier(A, 'probable', 9)),
+      holds(MAIN),
+      holds(CALL, calls(SUB, 12)),
+      holds(OUTER),
+      holds(CALL_MAIN, calls(MAIN, 3)),
+    ];
+
+    it('finds a flow beside an element that refers to the component, and what calls the flow after it', () => {
+      expect(outline(walk(graphOf(flows()), A))).toEqual([
+        // The flow refers to the field through its most certain element, by the reference of that element.
+        [SUB, 1, 'confirmed', `${SET} > ${A}`],
+        [CHECK, 1, 'probable', `${CHECK} > ${A}`],
+        [SET, 1, 'confirmed', `${SET} > ${A}`],
+        [MAIN, 2, 'confirmed', `${CALL} > ${SUB} | ${SET} > ${A}`],
+        [CALL, 2, 'confirmed', `${CALL} > ${SUB} | ${SET} > ${A}`],
+        [OUTER, 3, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB} | ${SET} > ${A}`],
+        [CALL_MAIN, 3, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB} | ${SET} > ${A}`],
+      ]);
+      // A depth stops at a flow as it stops at its elements.
+      const two = walk(graphOf(flows()), A, { depth: 2 });
+      expect([two.results.map((result) => result.key), two.beyondDepth]).toEqual([[SUB, CHECK, SET, MAIN, CALL], true]);
+    });
+
+    it('finds a flow by an element that is as certain as another by the first key, and by its own reference before', () => {
+      const tied = element('Sub', 'A_First');
+      const own = flow('Own');
+      const ownPart = element('Own', 'Part');
+      const graph = graphOf([
+        ...flows(),
+        holds(tied, to(A, 2)),
+        // A flow that refers to the field itself, as certain as its element: its own reference is kept.
+        holds(own, to(A, 1)),
+        holds(ownPart, to(A, 5)),
+      ]);
+      const found = walk(graph, A).results;
+      expect(found.find((result) => result.key === SUB)?.reference.from).toBe(tied);
+      expect(found.find((result) => result.key === own)?.reference.from).toBe(own);
+      // A flow less certain on its own than through an element is found through the element.
+      const weak = graphOf([holds(A), holds(own, tier(A, 'probable', 1)), holds(ownPart, to(A, 5))]);
+      expect(outline(walk(weak, A))).toEqual([
+        [own, 1, 'confirmed', `${ownPart} > ${A}`],
+        [ownPart, 1, 'confirmed', `${ownPart} > ${A}`],
+      ]);
+    });
+
+    it('takes the flow of an element that is asked about into the start, and gives what calls the flow', () => {
+      const found = walk(graphOf(flows()), SET);
+      expect(found.parts).toBe(0);
+      expect(outline(found)).toEqual([
+        [MAIN, 1, 'confirmed', `${CALL} > ${SUB}`],
+        [CALL, 1, 'confirmed', `${CALL} > ${SUB}`],
+        [OUTER, 2, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB}`],
+        [CALL_MAIN, 2, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB}`],
+      ]);
+      // What the element refers to is its own: its flow plays no part in that.
+      expect(outline(walk(graphOf(flows()), SET, { direction: 'outgoing' }), true)).toEqual([
+        [A, 1, 'confirmed', `${SET} > ${A}`],
+      ]);
+    });
+
+    it('goes on from the elements of a flow that a component refers to, which are no results', () => {
+      const found = walk(graphOf(flows()), OUTER, { direction: 'outgoing' });
+      expect(found.parts).toBe(1);
+      expect(outline(found, true)).toEqual([
+        [MAIN, 1, 'confirmed', `${CALL_MAIN} > ${MAIN}`],
+        [SUB, 2, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB}`],
+        // Of the two elements that refer to the field, the more certain one is kept.
+        [A, 3, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB} | ${SET} > ${A}`],
+      ]);
+      expect(found.notHeld).toBe(0);
+      const one = walk(graphOf(flows()), OUTER, { direction: 'outgoing', depth: 1 });
+      expect([one.results.map((result) => result.key), one.beyondDepth]).toEqual([[MAIN], true]);
+    });
+  });
+
   it('stops at the depth that was asked for, and says whether references lead further', () => {
     const graph = graphOf([holds(A), holds(B, to(A)), holds(C, to(B)), holds(D, to(C))]);
     const keys = (depth: number | undefined): unknown => {
@@ -552,6 +645,35 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       component: { key: workflow },
       sameName: [],
     });
+  });
+
+  it('finds an element of a flow by the name of the flow and its own, alone or after the type', () => {
+    const update = element('Invoice_After_Save', 'Update_Account');
+    const graph = graphOf([holds(flow('Invoice_After_Save')), holds(update)]);
+    const found = (named: string): string => findComponent(graph, named, []).component.key;
+    expect(found('Invoice_After_Save.Update_Account')).toBe(update);
+    expect(found(' invoice_after_save.UPDATE_ACCOUNT ')).toBe(update);
+    expect(found('Flow:Invoice_After_Save.Update_Account')).toBe(update);
+    expect(found(update)).toBe(update);
+    expect(found('Invoice_After_Save')).toBe(flow('Invoice_After_Save'));
+    for (const named of [
+      'Invoice_After_Save.Nope',
+      'Invoice_After_Save.Update_Account.More',
+      '.Update_Account',
+      'Invoice_After_Save.',
+      'Flow:Invoice_After_Save.Nope',
+    ]) {
+      expect(
+        codeOf(() => found(named)),
+        named,
+      ).toBe('COMPONENT_NOT_FOUND');
+    }
+    // A field of the same name makes the name fit two components, and neither is an object.
+    const same = field('Invoice_After_Save.Update_Account');
+    const both = graphOf([holds(update), holds(same)]);
+    expect(codeOf(() => findComponent(both, 'Invoice_After_Save.Update_Account', []))).toBe('COMPONENT_AMBIGUOUS');
+    expect(findComponent(both, 'Flow:Invoice_After_Save.Update_Account', []).component.key).toBe(update);
+    expect(findComponent(both, 'CustomField:Invoice_After_Save.Update_Account', []).component.key).toBe(same);
   });
 });
 

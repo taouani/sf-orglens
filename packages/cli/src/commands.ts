@@ -845,6 +845,10 @@ function impactLines(report: ImpactReport): string[] {
       `It contains ${count(report.parts, 'component', 'components')} of the snapshot. The answer is about ${report.parts === 1 ? 'it' : 'them'} too.`,
     );
   }
+  // A flow runs its elements: what calls the flow runs the element.
+  if (incoming && report.elementOf !== null) {
+    lines.push(`It is an element of ${report.elementOf}. What refers to the flow refers to it too.`);
+  }
 
   // What the answer does not cover comes before the answer: a short list must not be read as a complete one.
   const reasons = gapReasons(notCovered);
@@ -878,6 +882,10 @@ function impactLines(report: ImpactReport): string[] {
       `It refers to ${count(results.length, 'component', 'components')}, ${direct === results.length ? 'directly' : `to ${String(direct)} of them directly`}.`,
     );
   }
+  // A flow refers to what its elements refer to, and is found by the reference of one of them.
+  if (incoming && results.some((result) => result.reference.from !== result.key)) {
+    lines.push('A flow is listed with the reference of one of its elements, which is listed after it.');
+  }
   if (results.length > 0) {
     lines.push(
       '',
@@ -909,6 +917,13 @@ function impactLines(report: ImpactReport): string[] {
         ['DEPTH', 'FROM', 'KIND', 'TYPE', 'NAME', 'WHERE'],
         report.unresolved.map((one) => [String(one.depth), one.from, one.kind, one.type, one.name, place(one)]),
       ),
+    );
+  }
+
+  for (const { flow, active, newer } of report.newerVersions) {
+    lines.push(
+      '',
+      `${flow} has a version newer than its active version ${String(active)}, which is ${newer}. The answer is about the active version, and the newer one is not analysed.`,
     );
   }
 

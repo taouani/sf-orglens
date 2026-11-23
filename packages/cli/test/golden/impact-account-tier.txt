@@ -1,13 +1,16 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
 The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-7 components refer to it, 4 of them directly.
+9 components refer to it, 5 of them directly.
+A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                           CONFIDENCE  KIND   REFERS TO                              WHERE
 1      CustomField:account.is_key_account__c               confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:5
 1      CustomField:invoice__c.account_tier__c              confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml:4
 1      FieldSet:invoice__c.invoice_summary                 confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml:21
+1      Flow:invoice_after_save                             confirmed   reads  CustomField:account.tier__c            force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:amount_changed      confirmed   reads  CustomField:account.tier__c            force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
+2      Flow:invoice_sent_process                           confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
 2      Flow:invoice_sent_process#element:formula_myrule_1  confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
 2      ValidationRule:account.key_account_needs_contact    confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
 2      WorkflowRule:invoice__c.stamp_code_when_paid        confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114

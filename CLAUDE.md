@@ -152,6 +152,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
   was not read or its analysis had an error. Which types an analysis read is kept with the analysis
   (`snapshot_analysis.types`), not derived from the version that answers. A statement of the graph that takes
   many ids starts from that list and walks no table: a test reads every query plan.
+- A flow runs its elements, so an impact answer takes the two together (decision record 0066). An element that is
+  found brings its flow, a result of the same depth with the reference of that element, and the walk goes on from
+  the flow. An element that is asked about brings its flow into the start. For `--outgoing`, a flow that is found
+  is walked from its elements, which are no results. A name such as `Invoice_After_Save.Update_Account` finds an
+  element. An answer names the flows in it whose active version has a newer one beside it (`newerVersions`), and
+  that is no gap.
 - A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
   (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.

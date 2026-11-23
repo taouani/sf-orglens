@@ -9,6 +9,7 @@ import { EngineError, type JsonValue } from '../core/errors.ts';
 import type { ProjectLayout } from '../sources/project.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { getBlob, putBlob } from './blobs.ts';
+import type { SqlRow } from './driver.ts';
 import type { Store } from './open.ts';
 
 type SourceKind = 'org' | 'sandbox' | 'git';
@@ -309,21 +310,25 @@ export interface StoredIssue extends SnapshotIssue {
   readonly stage: 'read' | 'analysis';
 }
 
+const ISSUE = 'SELECT severity, code, component_key, message, details, stage FROM snapshot_issue WHERE snapshot_id = ?';
+
+const issueOf = (row: SqlRow): StoredIssue => ({
+  severity: String(row['severity']) as IssueSeverity,
+  code: String(row['code']),
+  message: String(row['message']),
+  componentKey: text(row['component_key']),
+  details: typeof row['details'] === 'string' ? (JSON.parse(row['details']) as Record<string, JsonValue>) : null,
+  stage: row['stage'] === 'analysis' ? 'analysis' : 'read',
+});
+
 /** The issues of a snapshot, in the order they were recorded. */
 export function readIssues(store: Store, snapshotId: number): StoredIssue[] {
-  return store
-    .all(
-      'SELECT severity, code, component_key, message, details, stage FROM snapshot_issue WHERE snapshot_id = ? ORDER BY id',
-      snapshotId,
-    )
-    .map((row) => ({
-      severity: String(row['severity']) as IssueSeverity,
-      code: String(row['code']),
-      message: String(row['message']),
-      componentKey: text(row['component_key']),
-      details: typeof row['details'] === 'string' ? (JSON.parse(row['details']) as Record<string, JsonValue>) : null,
-      stage: row['stage'] === 'analysis' ? 'analysis' : 'read',
-    }));
+  return store.all(`${ISSUE} ORDER BY id`, snapshotId).map(issueOf);
+}
+
+/** The issues of a snapshot with one code, in the order they were recorded. */
+export function readIssuesOf(store: Store, snapshotId: number, code: string): StoredIssue[] {
+  return store.all(`${ISSUE} AND code = ? ORDER BY id`, snapshotId, code).map(issueOf);
 }
 
 /**
