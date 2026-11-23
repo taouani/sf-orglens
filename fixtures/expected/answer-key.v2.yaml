@@ -625,7 +625,7 @@ references:
           - { line: 2, match: CustomMetadata, kind: references, to: CustomObject:billing_rule__mdt, via: record-of }
           - { line: 6, match: Field_Name__c, kind: references, to: CustomField:billing_rule__mdt.field_name__c, via: listed-field }
           - { line: 10, match: Field__c, kind: references, to: CustomField:billing_rule__mdt.field__c, via: listed-field }
-          - { line: 11, match: Amount__c, kind: references, to: CustomField:invoice__c.amount__c, via: value, note: The value of a relationship to the definition of a field. }
+          - { line: 11, match: Amount__c, kind: references, to: CustomField:invoice__c.amount__c, via: value, note: "The value of a relationship to the definition of a field. It is the name of the field alone. The object is the value of the controlling field of the relationship, eight lines below." }
           - { line: 14, match: Max_Amount__c, kind: references, to: CustomField:billing_rule__mdt.max_amount__c, via: listed-field }
           - { line: 18, match: Object__c, kind: references, to: CustomField:billing_rule__mdt.object__c, via: listed-field }
           - { line: 19, match: Invoice__c, kind: references, to: CustomObject:invoice__c, via: value, note: The value of a relationship to the definition of an object. }

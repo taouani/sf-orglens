@@ -12,6 +12,7 @@ import { MetadataResolver, type SourceComponent } from '@salesforce/source-deplo
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { buildKey, isComponentKey, parentKey, parseKey, type ComponentKey } from '../src/core/keys.ts';
+import { readXml } from '../src/extraction/xml.ts';
 import { columnOf, FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { outlineApex, type ApexOutline } from './helpers/apex-outline.ts';
 
@@ -165,10 +166,50 @@ const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: re
 };
 
 /**
+ * Where the element that holds the word says too little: the element that must stand directly around it. A
+ * `field` is a field a query stores only in an output assignment, and in a filter it is a filter.
+ */
+const PARENT_OF: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  output: {
+    field: ['outputAssignments'],
+    queriedFields: ['recordLookups'],
+    displayField: ['dynamicChoiceSets'],
+    valueField: ['dynamicChoiceSets'],
+  },
+  action: { actionName: ['actionCalls'], flowName: ['subflows'], name: ['actions'] },
+  // The object of a process stands in a value at the top of its file.
+  object: { stringValue: ['value'] },
+  text: { stringValue: ['rightValue'] },
+};
+
+/** What each record element of a flow does to the records of its object. A choice set and a schedule read them. */
+const OP_OF_ELEMENT: Readonly<Record<string, string>> = {
+  recordLookups: 'lookup',
+  recordCreates: 'create',
+  recordUpdates: 'update',
+  recordDeletes: 'delete',
+  dynamicChoiceSets: 'lookup',
+  start: 'lookup',
+};
+
+/** A reference of a metadata file, as far as the rules about its place read it. */
+interface Placed {
+  readonly id: string;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+  readonly match: string;
+  readonly kind: string;
+  readonly to: ComponentKey;
+  readonly via: string;
+  readonly op?: string | undefined;
+}
+
+/**
  * The kinds a reference in a metadata file must have, by where it stands, as a sorted list joined by a space.
  * Most places allow one kind. Two stand at the same place where a value is read and written at once.
  */
-function kindsAt(reference: (typeof key.references)[number], elements: readonly string[]): string {
+function kindsAt(reference: Placed, elements: readonly string[]): string {
   const innermost = elements.at(-1) ?? '';
   const target = parseKey(reference.to).type;
   const used = target === 'CustomField' ? 'reads' : 'references';
@@ -277,8 +318,11 @@ const WORKFLOW_BLOCKS: Readonly<Record<string, string>> = {
  *
  * The files of the project are indented by four spaces, and the name of an element is its own child.
  */
-function metadataMemberAt(file: string, line: number): ComponentKey | undefined {
-  const owner = owners.get(file);
+function metadataMemberAt(
+  file: string,
+  line: number,
+  owner: ComponentKey | undefined = owners.get(file),
+): ComponentKey | undefined {
   if (owner === undefined) return undefined;
   const { type, name } = parseKey(owner);
   if (type !== 'Flow' && type !== 'Workflow') return owner;
@@ -302,6 +346,85 @@ function metadataMemberAt(file: string, line: number): ComponentKey | undefined 
   // A value at the top of a process has a name too. It is no element: it belongs to the flow.
   if (element === undefined || block === 'processMetadataValues') return owner;
   return buildKey({ type, fullName: name, subs: [{ kind: 'element', name: element }] });
+}
+
+/** The type of a field of a custom metadata type, as the file of the field names it, or an empty text. */
+function typeOfRecordField(recordFile: string, field: string): string {
+  const type = /\/([^/.]+)\.[^/]+\.md-meta\.xml$/.exec(recordFile)?.[1] ?? '';
+  const file = `force-app/main/default/objects/${type}__mdt/fields/${field}.field-meta.xml`;
+  return owners.has(file) ? (/<type>(\w+)<\/type>/.exec(readProjectFile(file))?.[1] ?? '') : '';
+}
+
+/**
+ * What is wrong with the place of a reference of a metadata file, or nothing: the element it stands in, by the
+ * way it names its target, the kind that follows from the place, and the operation of a record element. `all`:
+ * the references that can stand at the same place. The file is a path from the folder of the project.
+ */
+function placeProblems(reference: Placed, all: readonly Placed[]): string[] {
+  const wrong: string[] = [];
+  const placed = (one: Placed): string => `${one.file}:${String(one.line)}:${String(one.column)}:${one.to}`;
+  const lines = readProjectFile(reference.file).split('\n');
+  const isBody = reference.file.endsWith('.email');
+  const { elements, region } = isBody
+    ? { elements: [], region: 'code' }
+    : metadataPlace(reference.file, reference.line, reference.column);
+  const place = PLACE_OF_VIA[reference.via];
+  const innermost = elements.at(-1) ?? '';
+  const around = place?.within;
+  const parents = PARENT_OF[reference.via]?.[innermost];
+  if (
+    place === undefined ||
+    !place.in.includes(innermost) ||
+    (innermost === '') !== isBody ||
+    (around !== undefined && !elements.some((element) => around.includes(element))) ||
+    (parents !== undefined && !parents.includes(elements.at(-2) ?? ''))
+  ) {
+    return [`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`];
+  }
+  if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
+  // A name in a text counts only between the braces of a merge field.
+  if (reference.via === 'merge-field') {
+    const before = (lines[reference.line - 1] ?? '').slice(0, reference.column - 1);
+    if (before.lastIndexOf('{!') <= before.lastIndexOf('}')) wrong.push(`${reference.id}: not in a merge field`);
+  }
+  // The object of a process is the one value at the top of its file, not a value somewhere in an element.
+  if (reference.via === 'object' && innermost === 'stringValue' && elements[1] !== 'processMetadataValues') {
+    wrong.push(`${reference.id}: a value inside ${elements[1] ?? 'nothing'} is not the object of a process`);
+  }
+  // A text in a condition names a record type only where the other side is the name of the record type.
+  if (reference.via === 'text' && innermost === 'stringValue') {
+    let left = reference.line - 1;
+    while (left > 0 && !(lines[left] ?? '').includes('<leftValueReference>')) left -= 1;
+    if (!/[.>]RecordType\.DeveloperName</.test(lines[left] ?? '')) {
+      wrong.push(`${reference.id}: the text is not compared with the name of a record type`);
+    }
+  }
+  // A value of a record of a custom metadata type points at a definition where the field of the type is a
+  // relationship. In every other field it is a text.
+  if (reference.file.endsWith('.md-meta.xml') && (reference.via === 'value' || reference.via === 'text')) {
+    let above = reference.line - 1;
+    while (above > 0 && !(lines[above] ?? '').includes('<field>')) above -= 1;
+    const field = /<field>(\w+)<\/field>/.exec(lines[above] ?? '')?.[1] ?? '';
+    const expected = typeOfRecordField(reference.file, field) === 'MetadataRelationship' ? 'value' : 'text';
+    if (reference.via !== expected) wrong.push(`${reference.id}: a value of the field ${field} is ${expected}`);
+  }
+  // The operation of a record element is the one of the element the object stands in.
+  if (reference.op !== undefined && reference.file.endsWith('.flow-meta.xml')) {
+    const expected = OP_OF_ELEMENT[elements[1] ?? ''];
+    if (reference.op !== expected) {
+      wrong.push(`${reference.id}: ${reference.op} in ${elements[1] ?? 'nothing'}, expected ${expected ?? 'none'}`);
+    }
+  }
+  // A field that is used is read. A field or an object that is only named is referred to, and so is everything
+  // that is neither a field nor an object. Where a value is read and written at once, the key has both.
+  const kinds = all
+    .filter((other) => placed(other) === placed(reference) && other.via === reference.via)
+    .map((other) => other.kind)
+    .sort()
+    .join(' ');
+  const expected = kindsAt(reference, elements);
+  if (kinds !== expected) wrong.push(`${reference.id}: ${kinds}, expected ${expected}`);
+  return wrong;
 }
 
 /** Every `static final` field of the project, by its name in lower case, with the text it is set to. */
@@ -602,44 +725,8 @@ describe('the answer key', () => {
 
   it('names every place of a metadata file in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
     const wrong: string[] = [];
-    const placed = (reference: (typeof key.references)[number]): string =>
-      `${reference.file}:${String(reference.line)}:${String(reference.column)}:${reference.to}`;
     for (const reference of key.references) {
-      if (isApex(reference.file)) continue;
-      const isBody = reference.file.endsWith('.email');
-      const { elements, region } = isBody
-        ? { elements: [], region: 'code' }
-        : metadataPlace(reference.file, reference.line, reference.column);
-      const place = PLACE_OF_VIA[reference.via];
-      const innermost = elements.at(-1) ?? '';
-      const around = place?.within;
-      if (
-        place === undefined ||
-        !place.in.includes(innermost) ||
-        (innermost === '') !== isBody ||
-        (around !== undefined && !elements.some((element) => around.includes(element)))
-      ) {
-        wrong.push(`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`);
-        continue;
-      }
-      if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
-      // A name in a text counts only between the braces of a merge field.
-      if (reference.via === 'merge-field') {
-        const before = (readProjectFile(reference.file).split('\n')[reference.line - 1] ?? '').slice(
-          0,
-          reference.column - 1,
-        );
-        if (before.lastIndexOf('{!') <= before.lastIndexOf('}')) wrong.push(`${reference.id}: not in a merge field`);
-      }
-      // A field that is used is read. A field or an object that is only named is referred to, and so is everything
-      // that is neither a field nor an object. Where a value is read and written at once, the key has both.
-      const kinds = key.references
-        .filter((other) => placed(other) === placed(reference) && other.via === reference.via)
-        .map((other) => other.kind)
-        .sort()
-        .join(' ');
-      const expected = kindsAt(reference, elements);
-      if (kinds !== expected) wrong.push(`${reference.id}: ${kinds}, expected ${expected}`);
+      if (!isApex(reference.file)) wrong.push(...placeProblems(reference, key.references));
     }
     expect(wrong).toEqual([]);
     // A negative of a text with merge fields stands outside every merge field.
@@ -772,7 +859,16 @@ describe('the flows that cannot be deployed', () => {
       readonly flow: string;
       readonly reads: boolean;
       readonly unknown?: readonly { element: string; line: number; match: string }[];
-      readonly refs?: readonly { from: string; line: number; match: string; to: string }[];
+      readonly refs?: readonly {
+        from: string;
+        line: number;
+        match: string;
+        kind: string;
+        to: string;
+        via: string;
+        op?: string;
+        tier?: string;
+      }[];
       readonly unresolved?: readonly { from: string; line: number; match: string }[];
       readonly negatives?: readonly { line: number; match: string; not: string }[];
     }[];
@@ -824,6 +920,64 @@ describe('the flows that cannot be deployed', () => {
       }
       // A file that cannot be read gives no reference and no finding.
       if (!one.reads && members.length > 0) wrong.push(`${one.file}: expects something of a file that cannot be read`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('are XML where they are to be read, and no XML where not', () => {
+    for (const one of expected.files) {
+      const reading = readXml(readFileSync(join(folder, one.file)));
+      expect(reading.issue === null, one.file).toBe(one.reads);
+      if (!one.reads) expect(reading.issue?.code).toBe('XML_MALFORMED');
+    }
+  });
+
+  it('hold their references to the rules of the answer key: the element, the kind and the operation', () => {
+    const wrong: string[] = [];
+    for (const one of expected.files) {
+      // The path of the file from the folder of the project, which the rules read files from.
+      const file = `../flow-negative/${one.file}`;
+      const lines = readFileSync(join(folder, one.file), 'utf8').split('\n');
+      const placed = (place: { line: number; match: string }): { id: string; column: number } => ({
+        id: `${one.file}:${String(place.line)}:${place.match}`,
+        column: columnOf(lines[place.line - 1] ?? '', place.match, 1) ?? 0,
+      });
+      const refs = (one.refs ?? []).map((ref) => ({ ...ref, ...placed(ref), file, to: ref.to as ComponentKey }));
+      for (const ref of refs) {
+        // Only a name in an element of an unknown kind is read with less confidence. Nothing says what the
+        // elements inside such an element are, so only a merge field is read there: a name between braces.
+        const inUnknown = (one.unknown ?? []).some((element) => element.element === ref.from);
+        if (inUnknown) {
+          const before = (lines[ref.line - 1] ?? '').slice(0, ref.column - 1);
+          const used = parseKey(ref.to).type === 'CustomField' ? 'reads' : 'references';
+          if (ref.via !== 'merge-field' || before.lastIndexOf('{!') <= before.lastIndexOf('}') || ref.kind !== used) {
+            wrong.push(`${ref.id}: not a merge field that ${used}`);
+          }
+        } else {
+          wrong.push(...placeProblems(ref, refs));
+        }
+        if ((ref.tier ?? 'confirmed') !== (inUnknown ? 'probable' : 'confirmed')) wrong.push(`${ref.id}: tier`);
+        if ((ref.op !== undefined) !== ((ref.via === 'object' || ref.via === 'record') && ref.kind === 'references')) {
+          wrong.push(`${ref.id}: operation`);
+        }
+      }
+      // Every place starts from the element its line stands in.
+      for (const place of [...(one.refs ?? []), ...(one.unresolved ?? [])]) {
+        const member = metadataMemberAt(file, place.line, one.flow as ComponentKey);
+        if (member !== place.from) wrong.push(`${placed(place).id}: from ${place.from}, stands in ${member ?? ''}`);
+      }
+      // An element of an unknown kind is named at the line that opens it, by a word no flow of the project has
+      // for an element.
+      for (const element of one.unknown ?? []) {
+        if (lines[element.line - 1] !== `    <${element.match}>`) wrong.push(`${placed(element).id}: no element`);
+        if (metadataMemberAt(file, element.line + 1, one.flow as ComponentKey) !== element.element) {
+          wrong.push(`${placed(element).id}: not ${element.element}`);
+        }
+        const known = [...owners.keys()].some(
+          (path) => path.endsWith('.flow-meta.xml') && readProjectFile(path).includes(`\n    <${element.match}>`),
+        );
+        if (known) wrong.push(`${placed(element).id}: a flow of the project has such an element`);
+      }
     }
     expect(wrong).toEqual([]);
   });

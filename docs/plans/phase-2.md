@@ -272,6 +272,11 @@ Build:
   that is the recipient of an alert (`reads`), and the email template of an alert (`references`, to a component
   that is named and not analysed until work package 8).
 - A rule that is not active carries that on its references.
+- A file of workflow rules is a component with the name of its object (`Workflow:Invoice__c`). Since the
+  fixture of work package 1 has such files, `orglens impact Invoice__c` ends with `COMPONENT_AMBIGUOUS` there, as
+  it does on every org with workflow rules, and a test pins that. This work package decides what the bare name
+  of an object means, and the pull request says what was chosen. If the choice changes what a command answers
+  for a name, it is a change to a public contract and comes to you first.
 
 Accepted when:
 
@@ -288,7 +293,9 @@ Build:
 - **Field sets.** Each field, also through a relationship: `reads`.
 - **Custom metadata records.** A record refers to its type and to each field it gives a value (`references`).
   A value in a field that is a relationship to the definition of an object or of a field is a reference to
-  that object or field, at the tier `confirmed`. A value in a text field that is exactly the name of a field
+  that object or field, at the tier `confirmed`. The value of a relationship to the definition of a field is
+  the name of the field alone: its object is the value the same record gives the controlling field of the
+  relationship, which the file of the field names. A value in a text field that is exactly the name of a field
   of an object the same record names, or exactly `Object.Field`, is a reference at the tier `probable`: this
   is the second step of the sequence of decision D7. A text that only holds such a name among other words is
   no reference.
