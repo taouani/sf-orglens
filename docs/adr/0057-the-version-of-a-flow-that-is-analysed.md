@@ -1,6 +1,6 @@
 # 0057. The version of a flow that the org hands out is the one analysed
 
-- Status: Accepted
+- Status: Superseded by [0060](0060-the-active-version-of-a-flow-is-analysed.md)
 - Date: 2026-11-22
 - Decisions: none (an answer of the maintainer to the Phase 2 plan)
 
@@ -29,7 +29,9 @@ analysed. For a flow with a newer draft that replaces the first sentence of this
 the draft for the name of the flow. How a snapshot gets the active version is not known yet. Whether Salesforce
 hands out a version that is asked for by its number is measured on the test org
 (`packages/engine/test/live/flow-versions.ts`). A record of its own follows with the result and replaces this
-one. Until then this paragraph is where the answer is written down.
+one. Until then this paragraph is where the answer is written down. **Record
+[0060](0060-the-active-version-of-a-flow-is-analysed.md) is that record**, of the same day: the test org hands
+out the active version when it is asked for by its number.
 
 ## What goes further than the answer of the maintainer
 

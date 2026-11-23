@@ -19,9 +19,10 @@
  * With the argument `draft` the tool sends something else, and not the
  * project: one flow of it, as a draft that differs from the version the
  * project holds, which is active. It is a step of its own, so that the org
- * can be read before and after it. After it the org should hold a flow with
- * an active version and a newer draft. What the documentation says, and what
- * is not verified, is in `docs/live-org-setup.md`.
+ * can be read before and after it. After it the org holds a flow with an
+ * active version and a newer draft, as run 21 of the workflow showed on the
+ * test org. What the documentation says, and what is not verified, is in
+ * `docs/live-org-setup.md`.
  *
  *   node --no-warnings packages/engine/test/live/deploy-fixture.ts
  *   node --no-warnings packages/engine/test/live/deploy-fixture.ts draft

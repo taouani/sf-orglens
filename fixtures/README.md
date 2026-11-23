@@ -156,9 +156,10 @@ a difference.
 The tool that deploys can also send `Invoice_Recalculate` once more, in a step of its own, as a draft that reads
 `Paid_Date__c` where the file here reads `Due_Date__c`, so that the test org holds an active version of a flow and
 a newer draft (`docs/live-org-setup.md`). The key is about the file here, which the project sends as the active
-version. The org hands out the draft after that step, so the key does not describe that flow as the test org
-hands it out since 23 November 2026: it lacks the reference to `Paid_Date__c`
-(`docs/research/phase-2/real-org.md`).
+version. Asked for the flow by its name, the org hands out the draft after that step, so the key does not
+describe that flow as the test org hands it out for its name since 23 November 2026: it lacks the reference to
+`Paid_Date__c`. Asked for the name with the number of the active version, the org hands out the version the key
+is about (`docs/research/phase-2/real-org.md`).
 
 ## The answer key
 

@@ -5,7 +5,7 @@
  *
  * The maintainer decided on 23 November 2026 that the active version of a
  * flow is the one that is analysed, and that a newer draft is said to be
- * there and is not analysed (decision record 0057 holds the answer). An
+ * there and is not analysed (decision record 0060 holds the answer). An
  * org hands out the draft when it is asked for the flow by its name (run 21
  * of the workflow). So the engine has to ask for the active version in
  * another way, and this measures whether there is one:
@@ -113,8 +113,9 @@ const FLOW_FILE = new RegExp(`^flows/${escaped(FLOW_WITH_DRAFT)}(?:-\\d{1,6})?\\
 const DEFINITION_FILE = new RegExp(`^flowDefinitions/${escaped(FLOW_WITH_DRAFT)}\\.flowDefinition$`);
 
 /**
- * The number of the active version a file of a `FlowDefinition` names, or `null`. Salesforce writes 0 for a flow
- * that has no active version, which is no number of a version.
+ * The number of the active version a file of a `FlowDefinition` names, or `null`. The number 0 is read as no
+ * active version, since it is no number of a version. That Salesforce writes 0 for a flow without an active
+ * version is an expectation: no file that says so was seen.
  */
 function activeIn(definition: string): number | null {
   const found = /<activeVersionNumber>\s*(\d{1,6})\s*<\/activeVersionNumber>/.exec(definition)?.[1];
