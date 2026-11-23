@@ -72,6 +72,7 @@ describe('the requests to the Metadata API', () => {
       'CustomPermission',
       'EmailTemplate',
       'Flow',
+      'FlowDefinition',
       'GlobalValueSet',
       'Report',
       'Workflow',

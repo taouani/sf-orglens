@@ -1160,7 +1160,7 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toContain(
-      'Components: 120 listed by the org, 120 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+      'Components: 126 listed by the org, 126 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
     );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
@@ -1184,9 +1184,10 @@ describe('reading the test org', () => {
     expect(output).toContain(
       '- objects/Invoice__c/fields/Summary__c.field-meta.xml: only how characters such as quotes are written differs (391 bytes here, 411 from the org)',
     );
-    expect(output).toMatch(/^0 +38 +10 +\d+\.\d +1 +done$/m);
+    // The org keeps a definition of each of the six flows, which is a component of its own in the chunk.
+    expect(output).toMatch(/^0 +44 +11 +\d+\.\d +1 +done$/m);
     expect(output).toMatch(
-      /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
+      /^Files by folder: classes 26, customMetadata 4, customPermissions 1, email 3, flowDefinitions 6, flows 6, globalValueSets 1, labels 1, objects \d+, triggers 2, workflows 2$/m,
     );
     // The cross-check: the rows of the mock org, held against the analysis by the engine.
     const rows = dependencies.rows.length;
@@ -1330,6 +1331,33 @@ describe('reading the test org', () => {
     expect(lines).toContain('Invoice_Recalculate    Active      no state');
     expect(lines).toContain('Invoice_After_Save     Active      no file');
     expect(last(null)).toBe('Invoice_Sent_Process   Active      no file');
+  });
+
+  it('says that the snapshot holds the active version, where the org hands out the draft for the name of the flow', async () => {
+    // The org of run 21: version 1 is active and version 2 is the draft, which the org hands out for the name.
+    const dir = dirs.next();
+    cpSync(FIXTURE, join(dir, 'force-app'), { recursive: true });
+    const path = `flows/${FLOW_WITH_DRAFT}.flow-meta.xml`;
+    const active = fixtureFiles().get(path)?.toString('utf8') ?? '';
+    const draft = DRAFT_CHANGES.reduce((text, [from, to]) => text.replace(from, to), active);
+    writeFileSync(join(dir, 'force-app/main/default', path), draft);
+    const withDraft = await metadataFromSource(join(dir, 'force-app'));
+    withDraft.flowVersions.set(FLOW_WITH_DRAFT, { latest: 2, older: new Map([[1, active]]) });
+    mock.metadata = withDraft;
+    mock.dependencies = mockDependencies(fixtureDependencyRows(withDraft));
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    expect(output).toContain('Invoice_Recalculate    Active      Active\n');
+    expect(output).toContain(
+      'Invoice_Recalculate is the flow that the step "draft" sends once more as a draft, which differs in 3 places. The file from the org is the version that was sent as active.',
+    );
+    expect(output).toContain('- info FLOW_NEWER_VERSION: 1 observation\n');
+    expect(output).toMatch(
+      /After \d+\.\d s: 1 flow has a latest version that is not active\. The active version of each is asked for by its number\./,
+    );
+    expectNoSecret(output);
   });
 
   it('fails when the analysis missed a reference that Salesforce reports, and names the pair', async () => {
@@ -2254,6 +2282,10 @@ describe('asking the org what Salesforce knows about references', () => {
   });
 
   describe('asking for the flow with a draft by the numbers of its versions', () => {
+    // The mock org makes a definition of every flow. Here the org hands out the one a test gives it, or none.
+    beforeEach(() => {
+      metadata.withheld.add(`FlowDefinition:${FLOW_WITH_DRAFT}`);
+    });
     /** The lines of the probe about the versions by number. */
     const aboutVersions = (output: string): string[] => {
       const lines = output.split('\n');
@@ -2386,7 +2418,7 @@ describe('asking the org what Salesforce knows about references', () => {
 
     it('says that it cannot tell, where the org hands out the active version for the name alone', async () => {
       tooling(withFlows());
-      // The mock org as it is: the file of the project for the name, and no definition. It answers one number
+      // The mock org with the file of the project for the name, and without a definition. It answers one number
       // with a file of another name, one with a file whose state is no word of the Metadata API, and the
       // number of the active version with the file of the project.
       hands(`${NAME}-2`, FILE, activeFile());

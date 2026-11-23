@@ -101,8 +101,8 @@ of it.
   analysed.** They are counted and not compared, until the maintainer has decided how they are compared (see the
   consequences). Work package 3 of the plan builds that with the analyser of flows.
 
-None of this is built yet. Until it is, a snapshot of an org holds the draft of a flow that has a newer draft.
-It is built in work package 3 of the plan.
+It is built in work package 3 of the plan. Record [0062](0062-the-active-version-of-a-flow-is-fetched-by-its-number.md)
+holds how, with the choices its author made in building it.
 
 ## Consequences
 
@@ -116,7 +116,8 @@ It is built in work package 3 of the plan.
   without such a flow costs nothing more.
 - The file of the active version comes back under a name with the number, `Invoice_Recalculate-1.flow`. The
   snapshot has to take it as the file of `Invoice_Recalculate`. What the Salesforce library makes of such a file
-  name is not looked at yet.
+  name was not looked at when this record was written. Record
+  [0062](0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) says what it does.
 - How an answer shows that a flow has a newer version that is not analysed is designed with the answers, in
   work package 6 of the plan.
 - The rows of the Dependency API from a flow carry the id of a version, and the org lists a flow with the id of

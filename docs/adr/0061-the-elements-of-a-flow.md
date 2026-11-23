@@ -211,8 +211,9 @@ The rows of the Dependency API from flows are counted and not compared, as recor
 - An element that names a variable of a text where a record should stand gets the warning `NAME_NOT_READ`, whose
   words say that the value is no name. It is one, of a resource that holds no record. The words are not
   corrected.
-- The file a snapshot of an org holds for a flow with a newer draft is still the draft. Fetching the active
-  version is the second part of the work package, in a pull request of its own.
+- When this record was written, the file a snapshot of an org held for a flow with a newer draft was the draft.
+  Fetching the active version was the second part of the work package, in a pull request of its own: record
+  [0062](0062-the-active-version-of-a-flow-is-fetched-by-its-number.md) holds it.
 - Not verified: anything against Salesforce beyond the deploy of the six flows of the fixture project in work
   package 1. The forms that no file here holds, such as related records, an upsert, a step that makes records,
   a transform or a step of an orchestration, follow the type of a flow in the library and were not seen in a

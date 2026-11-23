@@ -1346,6 +1346,10 @@ export async function readOrg(
       );
     } else if (event.step === 'retrieved') {
       log.say(`After ${elapsed} s: ${String(event.done)} of ${plural(event.chunks, 'chunk', 'chunks')} ended.`);
+    } else if (event.step === 'flow-versions') {
+      log.say(
+        `After ${elapsed} s: ${plural(event.flows, 'flow has', 'flows have')} a latest version that is not active. The active version of each is asked for by its number.`,
+      );
     }
   };
 

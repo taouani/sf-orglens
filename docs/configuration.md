@@ -115,6 +115,10 @@ All five are optional.
     message names the type. [cli.md](cli.md#a-source-of-the-kind-org-or-sandbox) lists the types of the tier.
   - Only a type that is retrieved by its own name can be left out. Its parts and its folders are left out with
     it: with `Report` the folders of reports, with `SharingRules` the rules in it.
+  - `FlowDefinition` is outside the logic tier and can be left out, but the definition of a flow names its
+    active version. Without it, a flow whose latest version is not active is analysed as that version, and each
+    such flow gets the warning `FLOW_VERSION_UNKNOWN` with the reason `excluded`, which every impact answer
+    that covers flows counts ([cli.md](cli.md#a-source-of-the-kind-org-or-sandbox)).
   - Whether an org has a type of a name is known only once the org is asked. A name the org does not describe,
     the name of a part of another type (a list view is a part of an object) and the name of a folder type are
     not errors of the file. The snapshot reads on and says so with the warning `TYPE_NOT_EXCLUDED`.
