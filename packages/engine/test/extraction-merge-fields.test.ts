@@ -624,7 +624,8 @@ describe('the names of a text in a file', () => {
       return { line: line ?? 0, column: column ?? 0 };
     };
     expect(reading.unread).toEqual([
-      { element: 'text', text: 'varOther.Name', ...at(placeOf(text, 'varOther')) },
+      // The flow has no resource of that name, which is said apart from a text that is no name.
+      { element: 'text', text: 'varOther.Name', ...at(placeOf(text, 'varOther')), why: 'start' },
       { element: 'text', text: '$Record.Amount__c + 1', ...at(placeOf(text, '$Record')) },
       { element: 'text', text: '', ...at(placeOf(text, '} and')) },
     ]);

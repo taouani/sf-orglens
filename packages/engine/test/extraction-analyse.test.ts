@@ -3,7 +3,8 @@
  * validation rules, those that are written in XML and those that stand in a formula.
  *
  * The first part runs on the fixture project and is measured with its answer key. The second part runs on
- * small sources that are written here, for what the fixture project does not have.
+ * small sources that are written here, for what the fixture project does not have. The flows of the project
+ * and what they say have a file of their own, `extraction-flows.test.ts`.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -27,6 +28,8 @@ import { codes, HEAD, key, Source, told, valueOf, viaOf, xml, XMLNS } from './he
 
 /** The work of the reader of formulas on a source that holds no formula it could look at. */
 const NO_FORMULA = { origin: 'parser:formula', components: 0, failedFiles: 0 };
+/** The work of the reader of flows on a source without a flow. */
+const NO_FLOW = { origin: 'parser:flow', components: 0, failedFiles: 0 };
 
 const hex = (bytes: Uint8Array | undefined): string => Buffer.from(bytes ?? []).toString('hex');
 const sha = (content: Uint8Array | string): string => createHash('sha256').update(content).digest('hex');
@@ -56,16 +59,21 @@ describe('the analysis of the fixture project', () => {
     tree = readFolders(project, ['force-app']).tree;
     listed = (await resolveComponents(tree, ['force-app'])).components;
     analysis = analyseSource(tree, listed);
-    references = analysis.components.flatMap((one) => one.references);
+    // What the objects, fields and rules say. What the flows say is measured in the file of the flows.
+    references = analysis.components.filter((one) => !one.key.startsWith('Flow:')).flatMap((one) => one.references);
   });
 
   it('has a component for everything the key lists, and for the two standard objects it holds fields of', () => {
     const account = key('CustomObject', 'Account');
     const user = key('CustomObject', 'User');
-    expect(analysis.components.map((one) => one.key)).toEqual(
+    // An element of a flow is a component too, which the key does not list as one.
+    const elements = analysis.components.filter((one) => one.key.includes('#element:'));
+    expect(analysis.components.filter((one) => !elements.includes(one)).map((one) => one.key)).toEqual(
       [...answers.components.map((one) => one.key), account, user].sort(),
     );
-    expect(analysis.components).toHaveLength(120);
+    expect(elements).toHaveLength(55);
+    expect(elements.every((one) => one.key.startsWith('Flow:'))).toBe(true);
+    expect(analysis.components).toHaveLength(175);
     // Only those two are not defined: the project holds fields of them and no file of the object.
     expect(analysis.components.filter((one) => one.definition === null)).toEqual([
       { key: account, name: 'Account', definition: null, attrs: null, references: [] },
@@ -165,13 +173,31 @@ describe('the analysis of the fixture project', () => {
     }
   });
 
-  it('raises no issue, and counts the objects, fields and rules it looked at', () => {
-    expect(analysis.issues).toEqual([]);
+  it('raises no issue outside the flows, and counts the objects, fields, rules and flows it looked at', () => {
+    // The one issue is the path of a flow that the key calls unknown.
+    expect(analysis.issues.map((issue) => `${issue.code} ${String(issue.componentKey)}`)).toEqual([
+      'PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
+    ]);
     // 5 objects, 57 fields and 11 rules. The two objects without a file were not looked at. 35 of the fields
-    // and rules hold a formula or a default value.
+    // and rules hold a formula or a default value, and so do 7 elements of flows. The 6 flows have 55 elements.
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 73, failedFiles: 0 },
-      { origin: 'parser:formula', components: 35, failedFiles: 0 },
+      { origin: 'parser:formula', components: 42, failedFiles: 0 },
+      { origin: 'parser:flow', components: 61, failedFiles: 0 },
+    ]);
+    const withFormula = analysis.components.filter((one) =>
+      one.references.some((reference) => reference.origin === 'parser:formula'),
+    );
+    expect(withFormula.filter((one) => one.key.startsWith('Flow:')).map((one) => one.key)).toEqual([
+      'Flow:invoice_before_save#element:default_tax_rate',
+      // The formula that says which records start the flow.
+      'Flow:invoice_before_save#element:flow-start',
+      'Flow:invoice_recalculate#element:is_late',
+      'Flow:invoice_recalculate#element:line_value',
+      'Flow:invoice_review_screen#element:fee',
+      // The formula that checks what was typed into a field of the screen.
+      'Flow:invoice_review_screen#element:review',
+      'Flow:invoice_sent_process#element:formula_myrule_1',
     ]);
   });
 
@@ -205,8 +231,10 @@ describe('the analysis of the fixture project', () => {
   });
 
   it('leaves the components of every other type without attributes and without references', () => {
-    const others = analysis.components.filter((one) => !/^(?:CustomObject|CustomField|ValidationRule):/.test(one.key));
-    expect(others).toHaveLength(45);
+    const others = analysis.components.filter(
+      (one) => !/^(?:CustomObject|CustomField|Flow|ValidationRule):/.test(one.key),
+    );
+    expect(others).toHaveLength(39);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -271,7 +299,8 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      expect(written).toMatchObject({ components: 120, references: 112 });
+      // 112 references of fields and rules, and 126 of flows.
+      expect(written).toMatchObject({ components: 175, references: 238 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
@@ -285,6 +314,11 @@ describe('the analysis of the fixture project', () => {
         'CustomField:invoice__c.days_overdue__c reads formula parser:formula',
         'CustomField:invoice__c.status_rank__c reads formula parser:formula',
         'CustomField:invoice__c.sub_status__c references controlling-field parser:xml',
+        // Four elements of flows: two starts that filter by the field, and two formulas.
+        'Flow:invoice_after_save#element:flow-start reads filter parser:flow',
+        'Flow:invoice_before_save#element:flow-start reads formula parser:formula',
+        'Flow:invoice_purge_void#element:flow-start reads filter parser:flow',
+        'Flow:invoice_sent_process#element:formula_myrule_1 reads formula parser:formula',
         'ValidationRule:invoice__c.locked_when_paid reads formula parser:formula',
         // The rule names the field three times in its formula, and once as the field of its message.
         'ValidationRule:invoice__c.paid_cannot_be_reopened reads formula parser:formula',
@@ -720,7 +754,7 @@ describe('fields and rules inside the file of their object', () => {
       sha(lines.join('\n')),
       sha(lines.slice(10, 15).join('\n').trim()),
     ]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 4, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
 
     // The element without a name is not dropped in silence.
     expect(analysis.issues).toEqual([
@@ -763,7 +797,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(analysis.issues).toEqual([]);
     // No file of an analysed type was read.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('is defined by the whole file when its element is not found, and an issue says so', () => {
@@ -793,7 +827,7 @@ describe('a component that is an element of the file of its parent', () => {
     ]);
     expect(codes(analysis.issues)).toEqual(['error XML_MALFORMED']);
     expect(analysis.issues[0]?.details).toMatchObject({ path: file });
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('is defined by the first element of its name when the file holds two', () => {
@@ -822,7 +856,7 @@ describe('a component that is an element of the file of its parent', () => {
     expect(
       analysis.components.map((one) => `${String(one.definition?.path)} ${hex(one.definition?.contentHash)}`),
     ).toEqual([`${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`, `${file} ${sha(`- ${file}\n`)}`]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 0, failedFiles: 1 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('finds a part whose full name starts with the name of its parent', () => {
@@ -953,7 +987,7 @@ describe('what goes wrong in one component', () => {
       details: { path: file, line: 4, column: 15 },
     });
     expect(analysis.issues[0]?.message.startsWith(`${file}: `)).toBe(true);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 1 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('reports bytes that are no text without a place', () => {
@@ -988,7 +1022,7 @@ describe('what goes wrong in one component', () => {
     ]);
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Rule__c')).toMatchObject({ attrs: null, references: [] });
     // The file was read as XML: it did not fail.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('keeps a component whose file cannot be read, and says so once', () => {
@@ -1029,7 +1063,7 @@ describe('what goes wrong in one component', () => {
     );
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // Both files count as files that could not be read, also the one of a type that is not analysed.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 2 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('reports two names that fold to one key, keeps the first by name and merges nothing', () => {
@@ -1108,7 +1142,7 @@ describe('what goes wrong in one component', () => {
       references: [],
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('survives a path that a reference cannot hold: the component is defined and not analysed', () => {
@@ -1135,7 +1169,7 @@ describe('what goes wrong in one component', () => {
     });
     expect(componentOf(analysis, 'CustomField', 'Invoice__c.Amount__c')).toMatchObject(amount);
     // The component that failed is not counted as looked at.
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('cuts a text it shows between two characters, never inside one', () => {
@@ -1309,7 +1343,7 @@ describe('an object that lies in two package folders', () => {
       attrs: { type: 'Number' },
     });
     expect(analysis.issues).toEqual([]);
-    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 2, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
   });
 
   it('gets the same name for an object without a file however its parts are listed', () => {
