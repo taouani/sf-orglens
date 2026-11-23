@@ -13,12 +13,12 @@
 import type { JsonValue } from '../core/errors.ts';
 import { cut } from './analysed.ts';
 import { GLOBAL_OBJECTS, type FieldFacts } from './model.ts';
-import { readFormula, type FormulaReading } from './names-in-text.ts';
+import { readFormula, type FormulaReading, type MergeFieldsReading } from './names-in-text.ts';
 import { LONGEST_TEXT_SHOWN, type RawReference, type Unread, type Via } from './raw-references.ts';
 import { placesIn, textOf, valueOf, type NameAt, type Value } from './values.ts';
 import { childOf, childrenOf, type XmlDocument, type XmlElement } from './xml.ts';
 
-/** What one element of an object, a field or a rule says. */
+/** What one element of a file says: an object, a field, a rule, a flow or an element of a flow. */
 export interface ElementReading {
   readonly attrs: Readonly<Record<string, JsonValue>>;
   /** Of a field: what a path through it needs. */
@@ -28,6 +28,10 @@ export interface ElementReading {
   readonly unread: readonly Unread[];
   /** The formulas of the element. */
   readonly formulas: readonly FormulaReading[];
+  /** The texts of the element that hold merge fields. Only an element of a flow has such texts. */
+  readonly texts?: readonly MergeFieldsReading[];
+  /** Of an element of a flow: the elements in it, or itself, that are of a kind the reader does not know. */
+  readonly unknown?: readonly { readonly element: string; readonly line: number; readonly column: number }[];
 }
 
 /** A name of an object, a field or a relationship, or a global variable. */

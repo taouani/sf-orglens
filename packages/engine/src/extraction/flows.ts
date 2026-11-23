@@ -8,7 +8,7 @@
  * resource holds: `resourcesOf` says it, from the file alone.
  *
  * Only the reading is done here, as in `objects.ts`. The names are resolved against the model of all objects
- * when every file was read (`raw-references.ts`). Decision record 0060 has the rules and what is not read.
+ * when every file was read (`raw-references.ts`). Decision record 0061 has the rules and what is not read.
  */
 import type { JsonValue } from '../core/errors.ts';
 import { cut } from './analysed.ts';
@@ -179,7 +179,10 @@ export function resourcesOf(root: XmlElement): StartOf {
   const ofFields = (screen: XmlElement): void => {
     for (const field of childrenOf(screen, 'fields')) {
       // A component of a screen gives values back under names of its own. A plain field holds what was typed.
-      set(textOf(childOf(field, 'name')), fixed(textOf(childOf(field, 'extensionName')) === null ? HOLDS_NOTHING : OUTPUTS));
+      set(
+        textOf(childOf(field, 'name')),
+        fixed(textOf(childOf(field, 'extensionName')) === null ? HOLDS_NOTHING : OUTPUTS),
+      );
       ofFields(field);
     }
   };
@@ -205,7 +208,8 @@ export function resourcesOf(root: XmlElement): StartOf {
     } else if (group === 'loops' || group === 'collectionProcessors') {
       set(name, ofList(element));
       // The name under which a step that filters a list knows the record it looks at.
-      if (group === 'collectionProcessors') set(textOf(childOf(element, 'assignNextValueToReference')), ofList(element));
+      if (group === 'collectionProcessors')
+        set(textOf(childOf(element, 'assignNextValueToReference')), ofList(element));
     } else if (group === 'actionCalls' || group === 'apexPluginCalls' || group === 'subflows') {
       set(name, fixed(OUTPUTS));
     } else if (!KINDS.has(group)) {
@@ -284,13 +288,7 @@ class Reader {
   }
 
   /** A value that is the name of a field of the object `of`. */
-  field(
-    sink: Sink,
-    element: XmlElement,
-    of: FieldsOf | null,
-    kind: 'reads' | 'writes' | 'references',
-    via: Via,
-  ): void {
+  field(sink: Sink, element: XmlElement, of: FieldsOf | null, kind: 'reads' | 'writes' | 'references', via: Via): void {
     const value = valueOf(element);
     if (value === null) return;
     const at = this.#places(value);
@@ -340,7 +338,11 @@ class Reader {
       from += part.length + 1;
     }
     const [first, ...rest] = names;
-    if (first === undefined || !/^\$?[A-Za-z][A-Za-z0-9_]*$/.test(first.name) || rest.some((one) => !NAME.test(one.name))) {
+    if (
+      first === undefined ||
+      !/^\$?[A-Za-z][A-Za-z0-9_]*$/.test(first.name) ||
+      rest.some((one) => !NAME.test(one.name))
+    ) {
       this.#refuse(sink, element, value);
       return { after: null };
     }
@@ -551,7 +553,10 @@ export function readFlow(document: XmlDocument): FlowReading {
     }
 
     let of: FieldsOf | null | undefined = kind === undefined ? undefined : null;
-    const attrs: Record<string, JsonValue> = { kind: kind ?? 'unknown', ...(kind === undefined ? { element: group } : {}) };
+    const attrs: Record<string, JsonValue> = {
+      kind: kind ?? 'unknown',
+      ...(kind === undefined ? { element: group } : {}),
+    };
     if (group === 'start') {
       const trigger = textOf(childOf(element, 'triggerType'));
       const said =

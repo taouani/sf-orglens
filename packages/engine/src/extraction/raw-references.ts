@@ -63,8 +63,8 @@ interface Raw {
 
 /** A reference as a file writes it, before its names are resolved. */
 export type RawReference = Raw &
+  /** The name of an object. `kind` is `references` where nothing else is said. */
   (
-    /** The name of an object. `kind` is `references` where nothing else is said. */
     | { readonly form: 'object'; readonly at: NameAt; readonly kind?: 'references' | 'triggers-on' }
     | /** The name of a field of the object the component belongs to. */ { readonly form: 'field'; readonly at: NameAt }
       /**
@@ -196,7 +196,9 @@ export function resolveReferences(
     // A formula can hold a path of any length. The issue shows the start of what was not followed.
     const names = rest.slice(0, MOST_NAMES_SHOWN).map((at) => at.name);
     const what =
-      names.length === 0 ? 'the record it names is of no known object' : `"${cut(names.join('.'), LONGEST_PATH_SHOWN)}" after it was not followed`;
+      names.length === 0
+        ? 'the record it names is of no known object'
+        : `"${cut(names.join('.'), LONGEST_PATH_SHOWN)}" after it was not followed`;
     issues.push({
       severity: 'warning',
       code: 'PATH_NOT_FOLLOWED',
