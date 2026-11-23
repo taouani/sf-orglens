@@ -49,6 +49,10 @@ that is in no published version yet: a command tries again when Windows refuses 
 `0.1.0-next.0`, and `pnpm run check` counts seven tests more than step A1 says. Git says that the clone is in "detached
 HEAD" state, which is expected. In a clone you made earlier, run `git fetch origin` first.
 
+Since Phase 2 began, the fixture project on `main` is larger: 118 components where parts B to D expect 87. The
+numbers of those parts, and step C5, which asks for `Invoice__c` by its bare name, hold at the commit above and not
+on `main`.
+
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your
 shell, in the root of the clone:
 

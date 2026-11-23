@@ -1676,6 +1676,10 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('- missing   ApexClass:invoiceservice -> CustomField:invoice__c.status__c  (field, soql)');
     expect(output).toContain('- reported  ApexTrigger:invoicetrigger -> CustomObject:invoice__c  (declaration)');
     expect(output).toContain('- reported  ApexClass:invoiceservicetest -> CustomObject:account  (dml)');
+    // Every pair of the key has a line: the list is not cut off.
+    expect(output.split('\n').filter((line) => /^- (?:reported|by name|missing) {2,3}\S+ -> /.test(line))).toHaveLength(
+      343,
+    );
     // Two fields are named Status. The id says which one the row is about.
     expect(output).toContain('Pairs the Dependency API reports that the answer key does not hold: 3.');
     expect(output).toContain('- ApexClass:invoiceservice -> ApexClass:invoiceselector');

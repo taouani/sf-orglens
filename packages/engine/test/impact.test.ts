@@ -562,6 +562,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
     });
 
+    it('does not choose between an object and the file of its workflow rules, which have one name', async () => {
+      // The fixture project has workflow rules for the invoice since Phase 2. A file of workflow rules is a
+      // component with the name of its object, so the name alone fits two. That holds for every org with
+      // workflow rules. What the name should mean is for the work package that reads workflow rules to decide.
+      const { workspace } = await setUp();
+      expect(await failure(() => workspace.impact('fixture', 'Invoice__c'))).toMatchObject({
+        code: 'COMPONENT_AMBIGUOUS',
+        details: { component: 'Invoice__c', candidates: ['CustomObject:invoice__c', 'Workflow:invoice__c'] },
+      });
+      expect((await workspace.impact('fixture', 'CustomObject:Invoice__c')).component.type).toBe('CustomObject');
+    });
+
     it('refuses a snapshot that was never analysed, and says how to analyse it', async () => {
       const { database, workspace } = await setUp();
       // A snapshot as a version before the analysis left it: finished, and without an analysis.
