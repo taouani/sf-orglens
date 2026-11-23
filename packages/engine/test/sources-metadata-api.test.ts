@@ -70,8 +70,11 @@ describe('the requests to the Metadata API', () => {
       'CustomMetadata',
       'CustomObject',
       'CustomPermission',
+      'EmailTemplate',
+      'Flow',
       'GlobalValueSet',
       'Report',
+      'Workflow',
     ]);
     expect(types.find((type) => type.name === 'CustomLabels')?.children).toEqual(['CustomLabel']);
     expect(types.find((type) => type.name === 'CustomObject')?.children).toContain('CustomField');

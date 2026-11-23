@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Standard_Invoice</fullName>
+    <active>true</active>
+    <description>An invoice for goods or services. It can take every value of Status__c.</description>
+    <label>Standard Invoice</label>
+    <picklistValues>
+        <picklist>Channels__c</picklist>
+        <values>
+            <fullName>Email</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Portal</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Post</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Status__c</picklist>
+        <values>
+            <fullName>Draft</fullName>
+            <default>true</default>
+        </values>
+        <values>
+            <fullName>Paid</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Sent</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Void</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

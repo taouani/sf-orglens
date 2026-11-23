@@ -79,7 +79,10 @@ describe('the files of a retrieve', () => {
         .map((path) => `ApexClass:${path.slice(path.lastIndexOf('/') + 1, -'.cls'.length)}`),
       'ApexTrigger:InvoiceTrigger',
       'CustomLabels:CustomLabels',
+      'CustomMetadata:Billing_Rule.Account_Limit',
       'CustomMetadata:Billing_Rule.Default',
+      'CustomMetadata:Billing_Rule.Invoice_Amount',
+      'CustomMetadata:Billing_Rule.Line_Quantity',
       'CustomObject:Account',
       'CustomObject:Billing_Rule__mdt',
       'CustomObject:Billing_Settings__c',
@@ -88,7 +91,14 @@ describe('the files of a retrieve', () => {
       'CustomObject:Tax_Code__c',
       'CustomObject:User',
       'CustomPermission:Approve_Large_Invoices',
+      'EmailTemplate:Billing',
+      'EmailTemplate:Billing/Invoice_Overdue',
+      ...readFolders(FIXTURE, ['main/default/flows']).tree.files.map(
+        (path) => `Flow:${path.slice(path.lastIndexOf('/') + 1, -'.flow-meta.xml'.length)}`,
+      ),
       'GlobalValueSet:Billing_Region',
+      'Workflow:Invoice__c',
+      'Workflow:Invoice_Line__c',
     ]);
     const unpacked = await unpackRetrieve(zip, workDir());
     expect(unpacked.problems).toEqual([]);

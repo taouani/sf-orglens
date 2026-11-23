@@ -40,6 +40,14 @@ const WHOLE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
  * project gets a new type. One test takes a snapshot of an org that holds the whole project.
  */
 const PART = ['classes', 'triggers', 'objects/Account', 'objects/Invoice__c', 'objects/Invoice_Line__c'];
+/** What these folders got with the fixture of Phase 2. It is left out, so that the two numbers stay. */
+const NOT_OF_THE_PART = [
+  'classes/InvoicePaidAction.cls',
+  'classes/InvoicePaidAction.cls-meta.xml',
+  'objects/Invoice__c/fieldSets',
+  'objects/Invoice__c/recordTypes',
+  'objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml',
+];
 const ORG_ID = '00Dxx0000000001EAA';
 const OTHER_ORG_ID = '00Dxx0000000002EAA';
 const UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
@@ -76,6 +84,7 @@ beforeAll(async () => {
   for (const folder of PART) {
     cpSync(join(WHOLE, 'main/default', folder), join(FIXTURE, 'main/default', folder), { recursive: true });
   }
+  for (const path of NOT_OF_THE_PART) rmSync(join(FIXTURE, 'main/default', path), { recursive: true });
   fixtureFiles = walk(join(FIXTURE, 'main/default'));
   wholeFiles = walk(join(WHOLE, 'main/default'));
   WITH_RESOURCE = join(copies.next(), 'force-app');
@@ -291,20 +300,31 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.issues).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
-        { type: 'ApexClass', listed: 12, retrieved: 12, analysed: 0, listing: 'ok', note: null },
+        { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null },
         { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 54, retrieved: 54, analysed: 54, listing: 'ok', note: null },
+        { type: 'CustomField', listed: 57, retrieved: 57, analysed: 57, listing: 'ok', note: null },
         { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
         { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomMetadata', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'CustomMetadata', listed: 4, retrieved: 4, analysed: 0, listing: 'ok', note: null },
         { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null },
         { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'Flow', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 10, retrieved: 10, analysed: 10, listing: 'ok', note: null },
+        { type: 'RecordType', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
+        { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
+        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null },
+        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 0, listing: 'ok', note: null },
+        { type: 'WorkflowOutboundMessage', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
+        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 0, listing: 'ok', note: null },
+        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
-      expect(typeOf(report, 'RecordType')).toEqual({
-        type: 'RecordType',
+      expect(typeOf(report, 'ListView')).toEqual({
+        type: 'ListView',
         listed: 0,
         retrieved: 0,
         analysed: 0,
@@ -321,7 +341,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events[0]).toEqual({ step: 'connected', apiVersion: '66.0' });
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       expect(events.slice(-5)).toEqual([
-        { step: 'planned', snapshot: 1, components: 89, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 120, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
         // Before the first request to the Dependency API, and after its one query, which gave no row here.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
@@ -346,7 +366,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 89, listed: 89, retrieved: 89, ids: 89, dates: 89 });
+        ).toEqual({ items: 120, listed: 120, retrieved: 120, ids: 120, dates: 120 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -396,9 +416,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(89);
+      expect(org.components).toHaveLength(120);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(106);
+      expect(org.references).toHaveLength(112);
       // Every reference has its place in a file of its own snapshot.
       const orgFiles = new Set(stored(dir, 1));
       const folderFiles = new Set(stored(dir, 2));
@@ -424,33 +444,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(lookupToAccount(folder.references)).toEqual(['external']);
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
-      const xml = { failedFiles: 0, references: 26, unresolved: 0, pathsNotFollowed: 0 };
-      const formula = { components: 34, failedFiles: 0, references: 80, unresolved: 0, pathsNotFollowed: 0 };
+      const xml = { failedFiles: 0, references: 30, unresolved: 0, pathsNotFollowed: 0 };
+      const formula = { components: 35, failedFiles: 0, references: 82, unresolved: 0, pathsNotFollowed: 0 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 89,
-        references: 106,
+        components: 120,
+        references: 112,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 71, ...xml },
+          { origin: 'parser:xml', components: 75, ...xml },
           { origin: 'parser:formula', ...formula },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 89,
-        references: 106,
+        components: 120,
+        references: 112,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 69, ...xml },
+          { origin: 'parser:xml', components: 73, ...xml },
           { origin: 'parser:formula', ...formula },
         ],
       });
       const analysed = (report: CoverageReport): Record<string, number> =>
         Object.fromEntries(report.types.filter((type) => type.analysed > 0).map((type) => [type.type, type.analysed]));
-      expect(analysed(fromOrg)).toEqual({ CustomField: 54, CustomObject: 7, ValidationRule: 10 });
-      expect(analysed(fromFolder)).toEqual({ CustomField: 54, CustomObject: 5, ValidationRule: 10 });
+      expect(analysed(fromOrg)).toEqual({ CustomField: 57, CustomObject: 7, ValidationRule: 11 });
+      expect(analysed(fromFolder)).toEqual({ CustomField: 57, CustomObject: 5, ValidationRule: 11 });
     });
 
     it('splits a retrieve that Salesforce refuses as too large, until every half goes through', async () => {

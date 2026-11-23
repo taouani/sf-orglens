@@ -776,8 +776,8 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
     ]);
     // Ten more components were read, and each holds a formula. Five files hold one that was not read.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 79, failedFiles: 0 },
-      { origin: 'parser:formula', components: 44, failedFiles: 5 },
+      { origin: 'parser:xml', components: 83, failedFiles: 0 },
+      { origin: 'parser:formula', components: 45, failedFiles: 5 },
     ]);
   });
 });

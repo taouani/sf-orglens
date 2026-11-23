@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Field__c</fullName>
+    <description>The field a rule is about. A record names it through a relationship to the definition of a field.</description>
+    <externalId>false</externalId>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Field</label>
+    <metadataRelationshipControllingField>Billing_Rule__mdt.Object__c</metadataRelationshipControllingField>
+    <referenceTo>FieldDefinition</referenceTo>
+    <relationshipLabel>Billing Rules</relationshipLabel>
+    <relationshipName>Billing_Rules_By_Field</relationshipName>
+    <required>false</required>
+    <type>MetadataRelationship</type>
+    <unique>false</unique>
+</CustomField>

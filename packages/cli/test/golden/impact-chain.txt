@@ -1,5 +1,5 @@
 What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture".
-The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+The answer is not complete: 18 types are not analysed yet. The details are below the answer.
 
 5 components refer to it, 2 of them directly.
 
@@ -11,11 +11,22 @@ DEPTH  COMPONENT                                         CONFIDENCE  KIND   REFE
 3      CustomField:invoice__c.grand_total__c             confirmed   reads  CustomField:invoice__c.lines_total__c       force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE              LISTED  RETRIEVED
-ApexClass         12      12
-ApexTrigger       1       1
-CustomLabel       1       1
-CustomLabels      1       1
-CustomMetadata    1       1
-CustomPermission  1       1
-GlobalValueSet    1       1
+TYPE                     LISTED  RETRIEVED
+ApexClass                13      13
+ApexTrigger              1       1
+CustomLabel              1       1
+CustomLabels             1       1
+CustomMetadata           4       4
+CustomPermission         1       1
+EmailFolder              1       1
+EmailTemplate            1       1
+FieldSet                 1       1
+Flow                     6       6
+GlobalValueSet           1       1
+RecordType               2       2
+Workflow                 2       2
+WorkflowAlert            1       1
+WorkflowFieldUpdate      3       3
+WorkflowOutboundMessage  1       1
+WorkflowRule             4       4
+WorkflowTask             1       1

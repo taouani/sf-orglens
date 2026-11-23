@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workflow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <alerts>
+        <fullName>Invoice_Overdue_Alert</fullName>
+        <description>Invoice Overdue Alert</description>
+        <protected>false</protected>
+        <recipients>
+            <field>Approver__c</field>
+            <type>userLookup</type>
+        </recipients>
+        <recipients>
+            <field>Billing_Contact__c</field>
+            <type>contactLookup</type>
+        </recipients>
+        <recipients>
+            <type>owner</type>
+        </recipients>
+        <senderType>CurrentUser</senderType>
+        <template>Billing/Invoice_Overdue</template>
+    </alerts>
+    <fieldUpdates>
+        <fullName>Set_Sub_Status_Reminder</fullName>
+        <description>Sets a literal value. Status__c is not touched.</description>
+        <field>Sub_Status__c</field>
+        <literalValue>Reminder Sent</literalValue>
+        <name>Set Sub Status Reminder</name>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Stamp_Legacy_Code</fullName>
+        <field>Legacy_Code__c</field>
+        <formula>Account__r.Name &amp; &quot;-&quot; &amp; TEXT(Status__c) &amp; &quot; Amount__c&quot;</formula>
+        <name>Stamp Legacy Code</name>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Formula</operation>
+        <protected>false</protected>
+    </fieldUpdates>
+    <outboundMessages>
+        <fullName>Notify_Ledger</fullName>
+        <apiVersion>65.0</apiVersion>
+        <description>Sends four fields of the invoice to the ledger.</description>
+        <endpointUrl>https://ledger.example.com/invoices</endpointUrl>
+        <fields>Amount__c</fields>
+        <fields>Due_Date__c</fields>
+        <fields>Id</fields>
+        <fields>Status__c</fields>
+        <includeSessionId>false</includeSessionId>
+        <integrationUser>integration.user@billing-fixture.invalid</integrationUser>
+        <name>Notify Ledger</name>
+        <protected>false</protected>
+        <useDeadLetterQueue>false</useDeadLetterQueue>
+    </outboundMessages>
+    <rules>
+        <fullName>Follow_Up_When_Void</fullName>
+        <actions>
+            <name>Follow_Up_On_Void</name>
+            <type>Task</type>
+        </actions>
+        <active>false</active>
+        <criteriaItems>
+            <field>Invoice__c.Status__c</field>
+            <operation>equals</operation>
+            <value>Void</value>
+        </criteriaItems>
+        <description>This rule is not active. It still names the status.</description>
+        <triggerType>onCreateOrTriggeringUpdate</triggerType>
+    </rules>
+    <rules>
+        <fullName>Remind_When_Sent</fullName>
+        <actions>
+            <name>Invoice_Overdue_Alert</name>
+            <type>Alert</type>
+        </actions>
+        <actions>
+            <name>Notify_Ledger</name>
+            <type>OutboundMessage</type>
+        </actions>
+        <active>true</active>
+        <criteriaItems>
+            <field>Invoice__c.Status__c</field>
+            <operation>equals</operation>
+            <value>Sent</value>
+        </criteriaItems>
+        <criteriaItems>
+            <field>Invoice__c.Amount__c</field>
+            <operation>greaterThan</operation>
+            <value>1000</value>
+        </criteriaItems>
+        <description>A rule with criteria, two actions that run at once and one that runs three days after the due date.</description>
+        <triggerType>onCreateOrTriggeringUpdate</triggerType>
+        <workflowTimeTriggers>
+            <actions>
+                <name>Set_Sub_Status_Reminder</name>
+                <type>FieldUpdate</type>
+            </actions>
+            <offsetFromField>Invoice__c.Due_Date__c</offsetFromField>
+            <timeLength>3</timeLength>
+            <workflowTimeTriggerUnit>Days</workflowTimeTriggerUnit>
+        </workflowTimeTriggers>
+    </rules>
+    <rules>
+        <fullName>Stamp_Code_When_Paid</fullName>
+        <actions>
+            <name>Stamp_Legacy_Code</name>
+            <type>FieldUpdate</type>
+        </actions>
+        <active>true</active>
+        <description>A rule with a formula.</description>
+        <formula>AND(
+  ISPICKVAL(Status__c, &quot;Paid&quot;),
+  NOT(ISBLANK(Paid_Date__c)),
+  Account__r.Is_Key_Account__c,
+  $Setup.Billing_Settings__c.Grace_Days__c &gt; 0
+)</formula>
+        <triggerType>onAllChanges</triggerType>
+    </rules>
+    <tasks>
+        <fullName>Follow_Up_On_Void</fullName>
+        <assignedToType>owner</assignedToType>
+        <description>Ask why the invoice is void. Its Amount__c stays as it was.</description>
+        <dueDateOffset>2</dueDateOffset>
+        <notifyAssignee>false</notifyAssignee>
+        <offsetFromField>Invoice__c.Due_Date__c</offsetFromField>
+        <priority>Normal</priority>
+        <protected>false</protected>
+        <status>Not Started</status>
+        <subject>Follow up on a void invoice</subject>
+    </tasks>
+</Workflow>

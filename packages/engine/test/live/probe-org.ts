@@ -40,7 +40,7 @@ import { answerKey, failureLines, loginEnvironment, SOURCE } from './test-org.ts
 const REQUEST = { timeout: 180_000 } as const;
 /** No query is followed over more pages than this. */
 const PAGES = 400;
-/** At most this many lines are printed of one list. */
+/** At most this many lines are printed of one list, except of the pairs of the answer key. */
 const SHOWN = 200;
 
 type Row = Readonly<Record<string, unknown>>;
@@ -511,12 +511,13 @@ async function probeDependencies(
   for (const line of table([['TIER', 'IN THE KEY', 'REPORTED'], ...tally((pair) => [best(pair.tiers)])])) log.say(line);
 
   log.say('');
+  // The list is not cut off: the key is written by hand, so it is of a known length, and a pair that is left out
+  // is a pair nobody can read the answer of Salesforce for.
   log.say('Every pair of the answer key:');
-  for (const [id, pair] of expected.slice(0, SHOWN)) {
+  for (const [id, pair] of expected) {
     const state = sure(id) ? 'reported' : reported.has(id) ? 'by name ' : 'missing ';
     log.say(`- ${state}  ${id}  (${[...pair.via].sort().join(', ')})`);
   }
-  if (expected.length > SHOWN) log.say(`- and ${String(expected.length - SHOWN)} more pairs.`);
 
   const extra = [...reported.keys()].filter((id) => !fixture.pairs.has(id)).sort();
   log.say('');

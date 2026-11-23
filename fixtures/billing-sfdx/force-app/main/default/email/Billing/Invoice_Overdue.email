@@ -1,0 +1,8 @@
+Dear {!Contact.LastName},
+
+invoice {!Invoice__c.Name} over {!Invoice__c.Amount__c} was due on {!Invoice__c.Due_Date__c}.
+Its status is {!Invoice__c.Status__c}. This message says nothing about Total__c.
+
+Please pay it, or write to {!User.Email}.
+
+{!Organization.Name}

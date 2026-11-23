@@ -65,7 +65,7 @@ describe('the analysis of the fixture project', () => {
     expect(analysis.components.map((one) => one.key)).toEqual(
       [...answers.components.map((one) => one.key), account, user].sort(),
     );
-    expect(analysis.components).toHaveLength(89);
+    expect(analysis.components).toHaveLength(120);
     // Only those two are not defined: the project holds fields of them and no file of the object.
     expect(analysis.components.filter((one) => one.definition === null)).toEqual([
       { key: account, name: 'Account', definition: null, attrs: null, references: [] },
@@ -77,11 +77,11 @@ describe('the analysis of the fixture project', () => {
   });
 
   it('finds every reference of the key for a field or a rule, where the key says, and no other', () => {
-    // Phase 1 of the key is what fields and validation rules say. Everything else in it is Apex.
+    // Phase 1 of the key is what fields and validation rules say. Everything else in it is of a later phase.
     const keyed = answers.references.filter((one) => one.phase === 1);
-    expect(keyed.filter((one) => XML_VIAS.includes(one.via))).toHaveLength(26);
-    expect(keyed.filter((one) => one.via === 'formula')).toHaveLength(80);
-    expect(keyed).toHaveLength(106);
+    expect(keyed.filter((one) => XML_VIAS.includes(one.via))).toHaveLength(30);
+    expect(keyed.filter((one) => one.via === 'formula')).toHaveLength(82);
+    expect(keyed).toHaveLength(112);
     // The key calls four of them a stretch: a miss would not count. All four are found, so the lists are equal.
     expect(keyed.filter((one) => one.stretch)).toHaveLength(4);
     expect(references.map(idOf).sort()).toEqual(keyed.map((one) => `${one.id} ${one.via}`).sort());
@@ -104,7 +104,8 @@ describe('the analysis of the fixture project', () => {
       const standard = reference.to !== null && answers.standard.includes(reference.to);
       expect(reference.resolution, idOf(reference)).toBe(standard ? 'external' : 'resolved');
     }
-    // What Salesforce provides and a field or a rule of the project names. The key lists five more, for Apex.
+    // What Salesforce provides and a field or a rule of the project names. The key lists more, for Apex and for
+    // what Phase 2 reads.
     const external = new Set(references.filter((one) => one.resolution === 'external').map((one) => one.to));
     expect([...external].sort()).toEqual([
       'CustomField:account.industry',
@@ -117,6 +118,7 @@ describe('the analysis of the fixture project', () => {
       'CustomField:invoice__c.ownerid',
       'CustomField:organization.country',
       'CustomField:profile.name',
+      'CustomField:recordtype.developername',
       'CustomField:tax_code__c.name',
       'CustomField:user.department',
       'CustomField:user.email',
@@ -125,6 +127,8 @@ describe('the analysis of the fixture project', () => {
       'CustomField:userrole.name',
       'CustomObject:account',
       'CustomObject:contact',
+      'CustomObject:entitydefinition',
+      'CustomObject:fielddefinition',
       'CustomObject:user',
     ]);
   });
@@ -163,11 +167,11 @@ describe('the analysis of the fixture project', () => {
 
   it('raises no issue, and counts the objects, fields and rules it looked at', () => {
     expect(analysis.issues).toEqual([]);
-    // 5 objects, 54 fields and 10 rules. The two objects without a file were not looked at. 34 of the fields
+    // 5 objects, 57 fields and 11 rules. The two objects without a file were not looked at. 35 of the fields
     // and rules hold a formula or a default value.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 69, failedFiles: 0 },
-      { origin: 'parser:formula', components: 34, failedFiles: 0 },
+      { origin: 'parser:xml', components: 73, failedFiles: 0 },
+      { origin: 'parser:formula', components: 35, failedFiles: 0 },
     ]);
   });
 
@@ -202,7 +206,7 @@ describe('the analysis of the fixture project', () => {
 
   it('leaves the components of every other type without attributes and without references', () => {
     const others = analysis.components.filter((one) => !/^(?:CustomObject|CustomField|ValidationRule):/.test(one.key));
-    expect(others).toHaveLength(18);
+    expect(others).toHaveLength(45);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -267,7 +271,7 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      expect(written).toMatchObject({ components: 89, references: 106 });
+      expect(written).toMatchObject({ components: 120, references: 112 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));

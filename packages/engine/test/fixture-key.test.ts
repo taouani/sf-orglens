@@ -10,7 +10,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { MetadataResolver, type SourceComponent } from '@salesforce/source-deploy-retrieve';
 import { describe, expect, it } from 'vitest';
-import { buildKey, parentKey, parseKey, type ComponentKey } from '../src/core/keys.ts';
+import { parse } from 'yaml';
+import { buildKey, isComponentKey, parentKey, parseKey, type ComponentKey } from '../src/core/keys.ts';
+import { readXml } from '../src/extraction/xml.ts';
 import { columnOf, FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { outlineApex, type ApexOutline } from './helpers/apex-outline.ts';
 
@@ -21,9 +23,16 @@ const projectDir = join(FIXTURES_DIR, key.project);
  * The components of the project and the component that owns each file, as the Salesforce library sees them.
  *
  * A file of labels holds a component for the file and one for each label in it. The file is owned by the first.
+ * `inFile` has all of them: a file of workflow rules holds a component for each rule and each action, and a
+ * reference starts from one of those.
  */
-function resolveProject(): { owners: Map<string, ComponentKey>; resolved: Set<ComponentKey> } {
+function resolveProject(): {
+  owners: Map<string, ComponentKey>;
+  inFile: Map<string, Set<ComponentKey>>;
+  resolved: Set<ComponentKey>;
+} {
   const owners = new Map<string, ComponentKey>();
+  const inFile = new Map<string, Set<ComponentKey>>();
   const resolved = new Set<ComponentKey>();
   const visit = (component: SourceComponent): void => {
     const owner = buildKey({ type: component.type.name, fullName: component.fullName });
@@ -33,15 +42,16 @@ function resolveProject(): { owners: Map<string, ComponentKey>; resolved: Set<Co
       if (file !== undefined && statSync(file).isFile()) {
         const path = relative(projectDir, file).split(sep).join('/');
         if (!owners.has(path)) owners.set(path, owner);
+        inFile.set(path, (inFile.get(path) ?? new Set()).add(owner));
       }
     }
     component.getChildren().forEach(visit);
   };
   new MetadataResolver().getComponentsFromPath(join(projectDir, 'force-app')).forEach(visit);
-  return { owners, resolved };
+  return { owners, inFile, resolved };
 }
 
-const { owners, resolved } = resolveProject();
+const { owners, inFile, resolved } = resolveProject();
 const inProject = new Set<ComponentKey>(key.components.map((component) => component.key));
 const standard = new Set<ComponentKey>(key.standard);
 
@@ -66,7 +76,7 @@ function outline(file: string): ApexOutline {
   return found;
 }
 
-/** The ways a metadata file names a target. Every other way belongs to Apex. */
+/** The ways a metadata file names a target. Every other way belongs to Apex. `text` belongs to both. */
 const METADATA_VIA: ReadonlySet<string> = new Set([
   'formula',
   'filter',
@@ -75,39 +85,177 @@ const METADATA_VIA: ReadonlySet<string> = new Set([
   'display-field',
   'controlling-field',
   'value-set',
+  'object',
+  'record',
+  'sort',
+  'output',
+  'assignment',
+  'path',
+  'merge-field',
+  'time',
+  'action',
+  'template',
+  'listed-field',
+  'value',
+  'record-of',
 ]);
 
-/** The types a formula or a field can name besides fields and objects. Such a target is referred to, never read. */
+/**
+ * The types a metadata file can name besides fields and objects. Such a target is referred to, never read. A
+ * flow and an Apex class are among them where they are not called.
+ */
 const NAMED_ONLY: ReadonlySet<string> = new Set([
   'CustomLabel',
   'CustomMetadata',
   'CustomPermission',
+  'EmailTemplate',
   'GlobalValueSet',
+  'RecordType',
+  'WorkflowAlert',
+  'WorkflowFieldUpdate',
+  'WorkflowOutboundMessage',
+  'WorkflowTask',
 ]);
 
+/** The operators of an assignment of a flow that read the value they change. */
+const READS_AND_WRITES = ['Add', 'Subtract'];
+
 /**
- * Where a reference of each kind of naming stands in a field or a rule: the element that holds the word, and for a
- * filter the element around that one. `reads` lists the elements in which the reference is a read. In every other
- * element it is a `references`.
+ * Where a reference of each kind of naming stands in a metadata file: the element that holds the word, and where
+ * that is not enough an element around that one. The body of an email is no XML, so it has no element.
  */
-const PLACE_OF_VIA: Readonly<
-  Record<string, { in: readonly string[]; within?: readonly string[]; reads: readonly string[] }>
-> = {
+const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: readonly string[] }>> = {
   formula: {
-    in: ['formula', 'errorConditionFormula', 'defaultValue'],
-    reads: ['formula', 'errorConditionFormula', 'defaultValue'],
+    in: ['formula', 'errorConditionFormula', 'defaultValue', 'expression', 'filterFormula', 'formulaExpression'],
   },
-  filter: {
-    in: ['field', 'valueField'],
-    within: ['lookupFilter', 'summaryFilterItems'],
-    reads: ['field', 'valueField'],
+  filter: { in: ['field', 'valueField'], within: ['lookupFilter', 'summaryFilterItems', 'filters', 'criteriaItems'] },
+  summary: { in: ['summarizedField', 'summaryForeignKey'] },
+  lookup: { in: ['referenceTo'] },
+  'display-field': { in: ['errorDisplayField', 'fieldSelection'] },
+  'controlling-field': { in: ['controllingField', 'metadataRelationshipControllingField'] },
+  'value-set': { in: ['valueSetName'] },
+  object: { in: ['object', 'stringValue'], within: ['Flow'] },
+  record: { in: ['inputReference'] },
+  sort: { in: ['sortField'] },
+  output: {
+    in: ['queriedFields', 'field', 'displayField', 'valueField'],
+    within: ['recordLookups', 'outputAssignments', 'dynamicChoiceSets'],
   },
-  summary: { in: ['summarizedField', 'summaryForeignKey'], reads: ['summarizedField'] },
-  lookup: { in: ['referenceTo'], reads: [] },
-  'display-field': { in: ['errorDisplayField'], reads: [] },
-  'controlling-field': { in: ['controllingField'], reads: [] },
-  'value-set': { in: ['valueSetName'], reads: [] },
+  assignment: { in: ['field'], within: ['inputAssignments', 'fieldUpdates'] },
+  path: {
+    in: [
+      'leftValueReference',
+      'elementReference',
+      'assignToReference',
+      'inputReference',
+      'objectFieldReference',
+      'targetObject',
+    ],
+  },
+  'merge-field': { in: ['errorMessage', 'fieldText', 'text', 'subject', ''] },
+  time: { in: ['recordField', 'offsetFromField'] },
+  action: { in: ['actionName', 'flowName', 'name'], within: ['actionCalls', 'subflows', 'actions'] },
+  template: { in: ['template'] },
+  'listed-field': {
+    in: ['field', 'fields', 'picklist'],
+    within: ['availableFields', 'displayedFields', 'recipients', 'outboundMessages', 'picklistValues', 'values'],
+  },
+  value: { in: ['value'], within: ['values'] },
+  text: { in: ['value', 'stringValue'], within: ['values', 'conditions'] },
+  'record-of': { in: ['CustomMetadata'] },
 };
+
+/**
+ * Where the element that holds the word says too little: the element that must stand directly around it. A
+ * `field` is a field a query stores only in an output assignment, and in a filter it is a filter.
+ */
+const PARENT_OF: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  output: {
+    field: ['outputAssignments'],
+    queriedFields: ['recordLookups'],
+    displayField: ['dynamicChoiceSets'],
+    valueField: ['dynamicChoiceSets'],
+  },
+  action: { actionName: ['actionCalls'], flowName: ['subflows'], name: ['actions'] },
+  // The object of a process stands in a value at the top of its file.
+  object: { stringValue: ['value'] },
+  text: { stringValue: ['rightValue'] },
+};
+
+/** What each record element of a flow does to the records of its object. A choice set and a schedule read them. */
+const OP_OF_ELEMENT: Readonly<Record<string, string>> = {
+  recordLookups: 'lookup',
+  recordCreates: 'create',
+  recordUpdates: 'update',
+  recordDeletes: 'delete',
+  dynamicChoiceSets: 'lookup',
+  start: 'lookup',
+};
+
+/** A reference of a metadata file, as far as the rules about its place read it. */
+interface Placed {
+  readonly id: string;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+  readonly match: string;
+  readonly kind: string;
+  readonly to: ComponentKey;
+  readonly via: string;
+  readonly op?: string | undefined;
+}
+
+/**
+ * The kinds a reference in a metadata file must have, by where it stands, as a sorted list joined by a space.
+ * Most places allow one kind. Two stand at the same place where a value is read and written at once.
+ */
+function kindsAt(reference: Placed, elements: readonly string[]): string {
+  const innermost = elements.at(-1) ?? '';
+  const target = parseKey(reference.to).type;
+  const used = target === 'CustomField' ? 'reads' : 'references';
+  const text = readProjectFile(reference.file);
+  const lines = text.split('\n');
+  const line = lines[reference.line - 1] ?? '';
+  const isLast = line.charAt(reference.column - 1 + reference.match.length) === '<';
+  switch (reference.via) {
+    case 'formula':
+    case 'filter':
+    case 'sort':
+    case 'output':
+    case 'time':
+    case 'merge-field':
+      return used;
+    case 'summary':
+      return innermost === 'summarizedField' ? 'reads' : 'references';
+    case 'listed-field':
+      // A field set, an alert and an outbound message use the field. A record type and a record of a custom
+      // metadata type name it.
+      return elements.includes('values') || elements.includes('picklistValues') ? 'references' : 'reads';
+    case 'assignment':
+      return 'writes';
+    case 'path': {
+      if (target !== 'CustomField') return 'references';
+      // The last step of a path that is assigned to is written. Every step before it is read.
+      if (innermost === 'objectFieldReference' && isLast) return 'reads writes';
+      if (innermost === 'assignToReference' && isLast) {
+        const operator = /<operator>(\w+)<\/operator>/.exec(lines.slice(reference.line).join('\n'))?.[1] ?? '';
+        return READS_AND_WRITES.includes(operator) ? 'reads writes' : 'writes';
+      }
+      return 'reads';
+    }
+    case 'object': {
+      // A record starts the flow, or the flow reads and writes records of the object.
+      const starts =
+        (innermost === 'stringValue' && elements[1] === 'processMetadataValues') ||
+        (elements.includes('start') && text.includes('<recordTriggerType>'));
+      return starts ? 'triggers-on' : 'references';
+    }
+    case 'action':
+      return target === 'Flow' || target === 'ApexClass' ? 'calls' : 'references';
+    default:
+      return 'references';
+  }
+}
 
 /**
  * Where a place of a metadata file stands: the elements around it, from the outside in, and whether it is code of a
@@ -154,6 +302,131 @@ function metadataPlace(file: string, line: number, column: number): { elements: 
   return { elements, region: region.startsWith('text') ? 'text' : region };
 }
 
+/** The blocks of a file of workflow rules, and the type of the component each of them holds. */
+const WORKFLOW_BLOCKS: Readonly<Record<string, string>> = {
+  alerts: 'WorkflowAlert',
+  fieldUpdates: 'WorkflowFieldUpdate',
+  outboundMessages: 'WorkflowOutboundMessage',
+  rules: 'WorkflowRule',
+  tasks: 'WorkflowTask',
+};
+
+/**
+ * The member a line of a metadata file belongs to. In a flow it is the element or the resource around the line,
+ * the start element for the start, and the flow itself for what stands outside every element. In a file of
+ * workflow rules it is the rule or the action around the line. Every other file has one member, its component.
+ *
+ * The files of the project are indented by four spaces, and the name of an element is its own child.
+ */
+function metadataMemberAt(
+  file: string,
+  line: number,
+  owner: ComponentKey | undefined = owners.get(file),
+): ComponentKey | undefined {
+  if (owner === undefined) return undefined;
+  const { type, name } = parseKey(owner);
+  if (type !== 'Flow' && type !== 'Workflow') return owner;
+  const lines = readProjectFile(file).split('\n');
+  let start = line - 1;
+  while (start > 0 && !/^ {4}<\w+>$/.test(lines[start] ?? '')) start -= 1;
+  const block = /^ {4}<(\w+)>$/.exec(lines[start] ?? '')?.[1];
+  // A line of the top level that is no block, such as the label of a flow.
+  if (block === undefined) return owner;
+  let end = start;
+  while (end < lines.length && lines[end] !== `    </${block}>`) end += 1;
+  if (line - 1 > end) return owner;
+  const own = lines.slice(start, end);
+  if (type === 'Workflow') {
+    const fullName = own.map((one) => /^ {8}<fullName>([^<]+)<\/fullName>$/.exec(one)?.[1]).find(Boolean);
+    const of = WORKFLOW_BLOCKS[block];
+    return fullName === undefined || of === undefined ? owner : buildKey({ type: of, fullName: `${name}.${fullName}` });
+  }
+  if (block === 'start') return buildKey({ type, fullName: name, subs: [{ kind: 'element', name: 'flow-start' }] });
+  const element = own.map((one) => /^ {8}<name>([^<]+)<\/name>$/.exec(one)?.[1]).find(Boolean);
+  // A value at the top of a process has a name too. It is no element: it belongs to the flow.
+  if (element === undefined || block === 'processMetadataValues') return owner;
+  return buildKey({ type, fullName: name, subs: [{ kind: 'element', name: element }] });
+}
+
+/** The type of a field of a custom metadata type, as the file of the field names it, or an empty text. */
+function typeOfRecordField(recordFile: string, field: string): string {
+  const type = /\/([^/.]+)\.[^/]+\.md-meta\.xml$/.exec(recordFile)?.[1] ?? '';
+  const file = `force-app/main/default/objects/${type}__mdt/fields/${field}.field-meta.xml`;
+  return owners.has(file) ? (/<type>(\w+)<\/type>/.exec(readProjectFile(file))?.[1] ?? '') : '';
+}
+
+/**
+ * What is wrong with the place of a reference of a metadata file, or nothing: the element it stands in, by the
+ * way it names its target, the kind that follows from the place, and the operation of a record element. `all`:
+ * the references that can stand at the same place. The file is a path from the folder of the project.
+ */
+function placeProblems(reference: Placed, all: readonly Placed[]): string[] {
+  const wrong: string[] = [];
+  const placed = (one: Placed): string => `${one.file}:${String(one.line)}:${String(one.column)}:${one.to}`;
+  const lines = readProjectFile(reference.file).split('\n');
+  const isBody = reference.file.endsWith('.email');
+  const { elements, region } = isBody
+    ? { elements: [], region: 'code' }
+    : metadataPlace(reference.file, reference.line, reference.column);
+  const place = PLACE_OF_VIA[reference.via];
+  const innermost = elements.at(-1) ?? '';
+  const around = place?.within;
+  const parents = PARENT_OF[reference.via]?.[innermost];
+  if (
+    place === undefined ||
+    !place.in.includes(innermost) ||
+    (innermost === '') !== isBody ||
+    (around !== undefined && !elements.some((element) => around.includes(element))) ||
+    (parents !== undefined && !parents.includes(elements.at(-2) ?? ''))
+  ) {
+    return [`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`];
+  }
+  if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
+  // A name in a text counts only between the braces of a merge field.
+  if (reference.via === 'merge-field') {
+    const before = (lines[reference.line - 1] ?? '').slice(0, reference.column - 1);
+    if (before.lastIndexOf('{!') <= before.lastIndexOf('}')) wrong.push(`${reference.id}: not in a merge field`);
+  }
+  // The object of a process is the one value at the top of its file, not a value somewhere in an element.
+  if (reference.via === 'object' && innermost === 'stringValue' && elements[1] !== 'processMetadataValues') {
+    wrong.push(`${reference.id}: a value inside ${elements[1] ?? 'nothing'} is not the object of a process`);
+  }
+  // A text in a condition names a record type only where the other side is the name of the record type.
+  if (reference.via === 'text' && innermost === 'stringValue') {
+    let left = reference.line - 1;
+    while (left > 0 && !(lines[left] ?? '').includes('<leftValueReference>')) left -= 1;
+    if (!/[.>]RecordType\.DeveloperName</.test(lines[left] ?? '')) {
+      wrong.push(`${reference.id}: the text is not compared with the name of a record type`);
+    }
+  }
+  // A value of a record of a custom metadata type points at a definition where the field of the type is a
+  // relationship. In every other field it is a text.
+  if (reference.file.endsWith('.md-meta.xml') && (reference.via === 'value' || reference.via === 'text')) {
+    let above = reference.line - 1;
+    while (above > 0 && !(lines[above] ?? '').includes('<field>')) above -= 1;
+    const field = /<field>(\w+)<\/field>/.exec(lines[above] ?? '')?.[1] ?? '';
+    const expected = typeOfRecordField(reference.file, field) === 'MetadataRelationship' ? 'value' : 'text';
+    if (reference.via !== expected) wrong.push(`${reference.id}: a value of the field ${field} is ${expected}`);
+  }
+  // The operation of a record element is the one of the element the object stands in.
+  if (reference.op !== undefined && reference.file.endsWith('.flow-meta.xml')) {
+    const expected = OP_OF_ELEMENT[elements[1] ?? ''];
+    if (reference.op !== expected) {
+      wrong.push(`${reference.id}: ${reference.op} in ${elements[1] ?? 'nothing'}, expected ${expected ?? 'none'}`);
+    }
+  }
+  // A field that is used is read. A field or an object that is only named is referred to, and so is everything
+  // that is neither a field nor an object. Where a value is read and written at once, the key has both.
+  const kinds = all
+    .filter((other) => placed(other) === placed(reference) && other.via === reference.via)
+    .map((other) => other.kind)
+    .sort()
+    .join(' ');
+  const expected = kindsAt(reference, elements);
+  if (kinds !== expected) wrong.push(`${reference.id}: ${kinds}, expected ${expected}`);
+  return wrong;
+}
+
 /** Every `static final` field of the project, by its name in lower case, with the text it is set to. */
 const constants = new Map<string, string>();
 /** The name of each child relationship in lower case, as a query writes it, with the lookup field that defines it. */
@@ -172,12 +445,33 @@ for (const [file, owner] of owners) {
  *   object that is the target;
  * - `constant`: a constant of the project whose value holds the name of the target;
  * - `variable`: a variable, where the target is an object that is named in the member above the place;
+ * - `resource`: a resource of a flow that holds records of the object that is the target: the record that started
+ *   the flow, a variable that is declared with the object, or the record behind a relationship;
+ * - `file`: the root element of a record of a custom metadata type, whose type is in the name of its file;
  * - `stretch`: an entry that is marked as hard to find. It is not checked.
  */
 function namedBy(reference: (typeof key.references)[number]): string | undefined {
   const word = reference.match.toLowerCase();
   const target = parseKey(reference.to);
-  const last = target.name.slice(target.name.lastIndexOf('.') + 1);
+  // The name of a field without its object, and of a template without its folder.
+  const last = target.name.slice(Math.max(target.name.lastIndexOf('.'), target.name.lastIndexOf('/')) + 1);
+  if (reference.via === 'record-of') {
+    const type = /\/([^/.]+)\.[^/]+\.md-meta\.xml$/.exec(reference.file)?.[1] ?? '';
+    return word === 'custommetadata' && `${type.toLowerCase()}__mdt` === target.name ? 'file' : undefined;
+  }
+  if (reference.via === 'record') {
+    const text = readProjectFile(reference.file);
+    const object = (pattern: RegExp): string => (pattern.exec(text)?.[1] ?? '').toLowerCase();
+    const of =
+      word === '$record'
+        ? object(/<start>[\s\S]*?<object>(\w+)<\/object>[\s\S]*?<\/start>/)
+        : word.endsWith('__r')
+          ? word.replace(/__r$/, '')
+          : object(
+              new RegExp(`<name>${reference.match}</name>(?:(?!</variables>)[\\s\\S])*<objectType>(\\w+)</objectType>`),
+            );
+    return of === target.name ? 'resource' : undefined;
+  }
   if (word === last || word.replace(/__r$/, '__c') === last || `${word}id` === last) return 'name';
   if (reference.via === 'dml' && reference.op === word) return 'keyword';
   const lookup = childRelationships.get(word);
@@ -200,6 +494,15 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
     if (columnOf(above, target.name, 1) !== undefined) return 'variable';
   }
   return undefined;
+}
+
+/**
+ * The roadmap phase whose analyser must find a reference: 3 for Apex, 1 for what the file of a field or of a
+ * validation rule says, and 2 for everything else.
+ */
+function phaseOf(reference: (typeof key.references)[number]): number {
+  if (isApex(reference.file)) return 3;
+  return /\.(?:field|validationRule)-meta\.xml$/.test(reference.file) ? 1 : 2;
 }
 
 describe('the fixture project', () => {
@@ -261,9 +564,9 @@ describe('the answer key', () => {
     expect(columnOf('Invoice__c x = [SELECT Id FROM invoice__c]', 'Invoice__c', 2)).toBeUndefined();
   });
 
-  it('starts every reference from the component that owns the file', () => {
+  it('starts every reference from a component that the file holds', () => {
     const wrong = key.references
-      .filter((reference) => owners.get(reference.file) !== componentOf(reference.from))
+      .filter((reference) => inFile.get(reference.file)?.has(componentOf(reference.from)) !== true)
       .map((reference) => `${reference.id} from ${reference.from}`);
     expect(wrong).toEqual([]);
   });
@@ -274,11 +577,35 @@ describe('the answer key', () => {
       const owner = owners.get(place.file);
       if (owner === undefined) continue;
       const { type, name } = parseKey(owner);
-      const subs = isApex(place.file) ? outline(place.file).memberAt(place.line) : [];
-      const expected = buildKey({ type, fullName: name, subs });
+      const expected = isApex(place.file)
+        ? buildKey({ type, fullName: name, subs: outline(place.file).memberAt(place.line) })
+        : (metadataMemberAt(place.file, place.line) ?? owner);
       if (place.from !== expected) wrong.push(`${place.file}:${String(place.line)} ${place.match}: from ${expected}`);
     }
     expect(wrong).toEqual([]);
+  });
+
+  it('tells the elements of a flow and the rules of a file of workflow rules apart', () => {
+    const flow = 'force-app/main/default/flows/Invoice_After_Save.flow-meta.xml';
+    const workflow = 'force-app/main/default/workflows/Invoice__c.workflow-meta.xml';
+    const lineOf = (file: string, text: string): number =>
+      readProjectFile(file)
+        .split('\n')
+        .findIndex((line) => line.includes(text)) + 1;
+    expect(metadataMemberAt(flow, lineOf(flow, '<sortField>'))).toBe('Flow:invoice_after_save#element:get_open_lines');
+    expect(metadataMemberAt(flow, lineOf(flow, '<recordField>'))).toBe('Flow:invoice_after_save#element:flow-start');
+    expect(metadataMemberAt(flow, lineOf(flow, '<description>'))).toBe('Flow:invoice_after_save');
+    expect(metadataMemberAt(flow, lineOf(flow, 'CanvasMode'))).toBe('Flow:invoice_after_save');
+    expect(metadataMemberAt(workflow, lineOf(workflow, '<offsetFromField>'))).toBe(
+      'WorkflowRule:invoice__c.remind_when_sent',
+    );
+    expect(metadataMemberAt(workflow, lineOf(workflow, '<template>'))).toBe(
+      'WorkflowAlert:invoice__c.invoice_overdue_alert',
+    );
+    const members = new Set(key.references.map((reference) => reference.from));
+    // Every element that holds a reference is a member, and so is every rule and every action of a rule.
+    expect([...members].filter((member) => member.startsWith('Flow:')).length).toBeGreaterThanOrEqual(30);
+    for (const part of [...resolved].filter((one) => /^Workflow[A-Z]/.test(one))) expect(members).toContain(part);
   });
 
   it('points every reference at a component of the project or at a listed standard target', () => {
@@ -314,14 +641,24 @@ describe('the answer key', () => {
       if (reference.tier === 'possible' && target.type !== 'CustomObject') {
         wrong.push(`${reference.id}: possible and not an object`);
       }
-      // A DML statement writes an object and says how. Nothing else carries an operation.
+      // A DML statement writes an object and says how. A record element of a flow refers to an object and says
+      // what it does to its records. Nothing else carries an operation.
       const isDml = reference.via === 'dml' && reference.kind === 'writes';
-      if (isDml !== (reference.op !== undefined)) wrong.push(`${reference.id}: operation`);
+      const isRecordElement =
+        (reference.via === 'object' || reference.via === 'record') && reference.kind === 'references';
+      if ((isDml || isRecordElement) !== (reference.op !== undefined)) wrong.push(`${reference.id}: operation`);
       if (isDml && (target.type !== 'CustomObject' || reference.match !== reference.op)) {
         wrong.push(`${reference.id}: a DML statement is keyed at its keyword and writes an object`);
       }
+      const ofFlow = ['lookup', 'create', 'update', 'delete'];
+      if (isRecordElement && (target.type !== 'CustomObject' || !ofFlow.includes(reference.op ?? ''))) {
+        wrong.push(`${reference.id}: a record element refers to an object and looks up, creates, updates or deletes`);
+      }
+      if (isDml && (reference.op === 'lookup' || reference.op === 'create')) {
+        wrong.push(`${reference.id}: not an operation of a DML statement`);
+      }
       if (target.subs.length > 0) wrong.push(`${reference.id}: the target is a part of a component`);
-      if (reference.phase !== (reference.file.includes('/objects/') ? 1 : 3)) wrong.push(`${reference.id}: phase`);
+      if (reference.phase !== phaseOf(reference)) wrong.push(`${reference.id}: phase`);
     }
     expect(wrong).toEqual([]);
   });
@@ -342,6 +679,11 @@ describe('the answer key', () => {
     );
     expect(overlapping).toEqual([]);
     for (const unknown of key.unknowns) expect(owners.get(unknown.file)).toBe(componentOf(unknown.from));
+    // An unknown of a flow is a path from a resource. It is no text.
+    for (const unknown of key.unknowns.filter((one) => !isApex(one.file))) {
+      const { elements } = metadataPlace(unknown.file, unknown.line, unknown.column);
+      expect(PLACE_OF_VIA['path']?.in).toContain(elements.at(-1));
+    }
     // A negative forbids a wrong guess, so its target need not exist. But a negative whose target is misspelled
     // forbids nothing: the word on the line must be the name of the target, and the object must be a known one.
     const objects = new Set([...inProject, ...standard].map((one) => parseKey(one).name.split('.')[0]));
@@ -358,7 +700,9 @@ describe('the answer key', () => {
     for (const reference of key.references) {
       const at = `${reference.id} (${reference.via})`;
       if (!isApex(reference.file)) {
-        if (!METADATA_VIA.has(reference.via)) wrong.push(`${at}: not a way a metadata file names a target`);
+        if (!METADATA_VIA.has(reference.via) && reference.via !== 'text') {
+          wrong.push(`${at}: not a way a metadata file names a target`);
+        }
         continue;
       }
       if (METADATA_VIA.has(reference.via)) wrong.push(`${at}: not a way Apex names a target`);
@@ -372,35 +716,33 @@ describe('the answer key', () => {
             : 'code';
       if (region !== expected) wrong.push(`${at}: stands in ${region}, expected ${expected}`);
     }
-    for (const unknown of key.unknowns) {
+    for (const unknown of key.unknowns.filter((one) => isApex(one.file))) {
       const region = outline(unknown.file).regionAt(unknown.line, unknown.column);
       if (region === 'comment') wrong.push(`unknown ${unknown.file}:${String(unknown.line)}: stands in a comment`);
     }
     expect(wrong).toEqual([]);
   });
 
-  it('names every place of a field or a rule in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
+  it('names every place of a metadata file in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
-      if (isApex(reference.file)) continue;
-      const { elements, region } = metadataPlace(reference.file, reference.line, reference.column);
-      const place = PLACE_OF_VIA[reference.via];
-      const innermost = elements.at(-1) ?? '';
-      const around = place?.within;
-      if (
-        place === undefined ||
-        !place.in.includes(innermost) ||
-        (around !== undefined && !elements.some((element) => around.includes(element)))
-      ) {
-        wrong.push(`${reference.id} (${reference.via}): stands in ${elements.join(' > ')}`);
-        continue;
-      }
-      if (reference.via === 'formula' && region !== 'code') wrong.push(`${reference.id}: stands in a ${region}`);
-      // A field that is used is read. A field or an object that is only named is referred to, and so is everything
-      // that is neither a field nor an object.
-      const target = parseKey(reference.to).type;
-      const expected = place.reads.includes(innermost) && target === 'CustomField' ? 'reads' : 'references';
-      if (reference.kind !== expected) wrong.push(`${reference.id}: ${reference.kind}, expected ${expected}`);
+      if (!isApex(reference.file)) wrong.push(...placeProblems(reference, key.references));
+    }
+    expect(wrong).toEqual([]);
+    // A negative of a text with merge fields stands outside every merge field.
+    for (const negative of key.negatives) {
+      if (isApex(negative.file) || negative.file.includes('/objects/')) continue;
+      const before = (readProjectFile(negative.file).split('\n')[negative.line - 1] ?? '').slice(
+        0,
+        negative.column - 1,
+      );
+      const inMergeField = before.lastIndexOf('{!') > before.lastIndexOf('}');
+      const sameWord = key.references.some(
+        (reference) =>
+          reference.file === negative.file && reference.line === negative.line && reference.column === negative.column,
+      );
+      // A negative in a merge field forbids one target at a place that names another, as `Status__c` of the line.
+      if (inMergeField && !sameWord) wrong.push(`negative ${negative.file}:${String(negative.line)}: in a merge field`);
     }
     expect(wrong).toEqual([]);
     // The check can tell the three apart. The names in the comment and in the texts of this field are negatives.
@@ -435,10 +777,14 @@ describe('the answer key', () => {
         reference.kind === 'extends'
           ? target === 'ApexClass' && reference.via === 'declaration'
           : reference.kind === 'triggers-on'
-            ? target === 'CustomObject' && from.type === 'ApexTrigger' && reference.via === 'declaration'
-            : target === 'CustomField' ||
-              target === 'CustomObject' ||
-              (NAMED_ONLY.has(target) && reference.kind === 'references' && !isApex(reference.file));
+            ? target === 'CustomObject' &&
+              ((from.type === 'ApexTrigger' && reference.via === 'declaration') ||
+                (from.type === 'Flow' && reference.via === 'object'))
+            : reference.kind === 'calls'
+              ? (target === 'Flow' || target === 'ApexClass') && from.type === 'Flow' && reference.via === 'action'
+              : target === 'CustomField' ||
+                target === 'CustomObject' ||
+                (NAMED_ONLY.has(target) && reference.kind === 'references' && !isApex(reference.file));
       if (!fits) wrong.push(`${reference.id}: ${reference.kind} to a ${target}`);
 
       if (!isApex(reference.file)) continue;
@@ -476,8 +822,10 @@ describe('the answer key', () => {
     expect(apex.filter((reference) => reference.tier !== 'confirmed').length).toBeGreaterThanOrEqual(20);
     expect(key.references.filter((reference) => reference.phase === 1).length).toBeGreaterThanOrEqual(40);
     expect(key.negatives.length).toBeGreaterThanOrEqual(12);
-    // Stretch entries stay rare, or the pass marks would mean little.
-    expect(key.references.filter((reference) => reference.stretch).length).toBeLessThanOrEqual(8);
+    expect(key.references.filter((reference) => reference.phase === 2).length).toBeGreaterThanOrEqual(150);
+    // Stretch entries stay rare, or the pass marks would mean little: fewer than 3 in 100, as in version 1.
+    const stretch = key.references.filter((reference) => reference.stretch).length;
+    expect(stretch * 100).toBeLessThan(key.references.length * 3);
   });
 
   it('has the numbers the documents quote', () => {
@@ -486,51 +834,226 @@ describe('the answer key', () => {
       version: key.version,
       components: key.components.length,
       phase1: byPhase(1),
+      phase2: byPhase(2),
       phase3: byPhase(3),
       stretch: key.references.filter((reference) => reference.stretch).length,
       negatives: key.negatives.length,
       unknowns: key.unknowns.length,
-    }).toEqual({ version: 1, components: 87, phase1: 106, phase3: 184, stretch: 7, negatives: 31, unknowns: 5 });
+    }).toEqual({
+      version: 2,
+      components: 118,
+      phase1: 112,
+      phase2: 196,
+      phase3: 184,
+      stretch: 9,
+      negatives: 63,
+      unknowns: 6,
+    });
   });
 });
 
-describe('version 0 of the answer key', () => {
-  // The Apex trial of Phase 0 was scored with version 0, and its report quotes the numbers of that key. Version 0
-  // lists the project as it was then, so it is not checked against the components of the project of today.
+describe('the flows that cannot be deployed', () => {
+  interface Expected {
+    readonly files: readonly {
+      readonly file: string;
+      readonly flow: string;
+      readonly reads: boolean;
+      readonly unknown?: readonly { element: string; line: number; match: string }[];
+      readonly refs?: readonly {
+        from: string;
+        line: number;
+        match: string;
+        kind: string;
+        to: string;
+        via: string;
+        op?: string;
+        tier?: string;
+      }[];
+      readonly unresolved?: readonly { from: string; line: number; match: string }[];
+      readonly negatives?: readonly { line: number; match: string; not: string }[];
+    }[];
+  }
+  const folder = join(FIXTURES_DIR, 'flow-negative');
+  const expected = parse(readFileSync(join(folder, 'expected.yaml'), 'utf8')) as Expected;
+
+  it('are listed with what is expected of them, and none has the name of a flow of the project', () => {
+    // A file manager may leave files of its own in the folder. Their names start with a dot.
+    const files = readdirSync(join(folder, 'flows')).filter((file) => !file.startsWith('.'));
+    expect(expected.files.map((one) => one.file).sort()).toEqual(files.map((file) => `flows/${file}`).sort());
+    expect(files.length).toBeGreaterThanOrEqual(3);
+    for (const one of expected.files) {
+      expect(owners.has(`force-app/main/default/${one.file}`)).toBe(false);
+      const name = /^flows\/(\w+)\.flow-meta\.xml$/.exec(one.file)?.[1] ?? '';
+      expect(one.flow).toBe(buildKey({ type: 'Flow', fullName: name }));
+    }
+    // One of them cannot be read at all, and one holds an element of a kind that no flow has.
+    expect(expected.files.filter((one) => !one.reads).length).toBe(1);
+    expect(expected.files.filter((one) => (one.unknown ?? []).length > 0).length).toBe(1);
+  });
+
+  it('names places that exist, members of the flow and targets that are known', () => {
+    const wrong: string[] = [];
+    for (const one of expected.files) {
+      const lines = readFileSync(join(folder, one.file), 'utf8').split('\n');
+      const places = [...(one.refs ?? []), ...(one.unresolved ?? []), ...(one.negatives ?? []), ...(one.unknown ?? [])];
+      for (const place of places) {
+        if (columnOf(lines[place.line - 1] ?? '', place.match, 1) === undefined) {
+          wrong.push(`${one.file}:${String(place.line)} has no word "${place.match}"`);
+        }
+      }
+      const members = [
+        ...(one.refs ?? []).map((ref) => ref.from),
+        ...(one.unresolved ?? []).map((name) => name.from),
+        ...(one.unknown ?? []).map((element) => element.element),
+      ];
+      for (const member of members) {
+        if (!isComponentKey(member) || componentOf(member) !== one.flow) wrong.push(`${one.file}: ${member}`);
+      }
+      const targets = [
+        ...(one.refs ?? []).map((ref) => ref.to),
+        ...(one.negatives ?? []).map((negative) => negative.not),
+      ];
+      for (const target of targets) {
+        if (!isComponentKey(target) || (!inProject.has(target) && !standard.has(target))) {
+          wrong.push(`${one.file}: ${target} is no component of the project`);
+        }
+      }
+      // A file that cannot be read gives no reference and no finding.
+      if (!one.reads && members.length > 0) wrong.push(`${one.file}: expects something of a file that cannot be read`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('are XML where they are to be read, and no XML where not', () => {
+    for (const one of expected.files) {
+      const reading = readXml(readFileSync(join(folder, one.file)));
+      expect(reading.issue === null, one.file).toBe(one.reads);
+      if (!one.reads) expect(reading.issue?.code).toBe('XML_MALFORMED');
+    }
+  });
+
+  it('hold their references to the rules of the answer key: the element, the kind and the operation', () => {
+    const wrong: string[] = [];
+    for (const one of expected.files) {
+      // The path of the file from the folder of the project, which the rules read files from.
+      const file = `../flow-negative/${one.file}`;
+      const lines = readFileSync(join(folder, one.file), 'utf8').split('\n');
+      const placed = (place: { line: number; match: string }): { id: string; column: number } => ({
+        id: `${one.file}:${String(place.line)}:${place.match}`,
+        column: columnOf(lines[place.line - 1] ?? '', place.match, 1) ?? 0,
+      });
+      const refs = (one.refs ?? []).map((ref) => ({ ...ref, ...placed(ref), file, to: ref.to as ComponentKey }));
+      for (const ref of refs) {
+        // Only a name in an element of an unknown kind is read with less confidence. Nothing says what the
+        // elements inside such an element are, so only a merge field is read there: a name between braces.
+        const inUnknown = (one.unknown ?? []).some((element) => element.element === ref.from);
+        if (inUnknown) {
+          const before = (lines[ref.line - 1] ?? '').slice(0, ref.column - 1);
+          const used = parseKey(ref.to).type === 'CustomField' ? 'reads' : 'references';
+          if (ref.via !== 'merge-field' || before.lastIndexOf('{!') <= before.lastIndexOf('}') || ref.kind !== used) {
+            wrong.push(`${ref.id}: not a merge field that ${used}`);
+          }
+        } else {
+          wrong.push(...placeProblems(ref, refs));
+        }
+        if ((ref.tier ?? 'confirmed') !== (inUnknown ? 'probable' : 'confirmed')) wrong.push(`${ref.id}: tier`);
+        if ((ref.op !== undefined) !== ((ref.via === 'object' || ref.via === 'record') && ref.kind === 'references')) {
+          wrong.push(`${ref.id}: operation`);
+        }
+      }
+      // Every place starts from the element its line stands in.
+      for (const place of [...(one.refs ?? []), ...(one.unresolved ?? [])]) {
+        const member = metadataMemberAt(file, place.line, one.flow as ComponentKey);
+        if (member !== place.from) wrong.push(`${placed(place).id}: from ${place.from}, stands in ${member ?? ''}`);
+      }
+      // An element of an unknown kind is named at the line that opens it, by a word no flow of the project has
+      // for an element.
+      for (const element of one.unknown ?? []) {
+        if (lines[element.line - 1] !== `    <${element.match}>`) wrong.push(`${placed(element).id}: no element`);
+        if (metadataMemberAt(file, element.line + 1, one.flow as ComponentKey) !== element.element) {
+          wrong.push(`${placed(element).id}: not ${element.element}`);
+        }
+        const known = [...owners.keys()].some(
+          (path) => path.endsWith('.flow-meta.xml') && readProjectFile(path).includes(`\n    <${element.match}>`),
+        );
+        if (known) wrong.push(`${placed(element).id}: a flow of the project has such an element`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe('the older versions of the answer key', () => {
+  // The Apex trial of Phase 0 was scored with version 0 and Phase 1 with version 1, and their reports quote the
+  // numbers of those keys. An old version lists the project as it was then, so it is not checked against the
+  // components of the project of today.
   const old = loadAnswerKey(0);
+  const first = loadAnswerKey(1);
   const idOf = (place: { file: string; line: number; column: number }, target: string): string =>
     `${place.file}:${String(place.line)}:${String(place.column)}:${target}`;
-
-  it('still names places that exist, and has the numbers the report of Phase 0 quotes', () => {
-    const byPhase = (phase: number): number => old.references.filter((reference) => reference.phase === phase).length;
-    expect({
-      version: old.version,
-      components: old.components.length,
+  const numbers = (of: typeof key): Record<string, number> => {
+    const byPhase = (phase: number): number => of.references.filter((reference) => reference.phase === phase).length;
+    return {
+      version: of.version,
+      components: of.components.length,
       phase1: byPhase(1),
       phase3: byPhase(3),
-      stretch: old.references.filter((reference) => reference.stretch).length,
-      negatives: old.negatives.length,
-      unknowns: old.unknowns.length,
-    }).toEqual({ version: 0, components: 52, phase1: 44, phase3: 184, stretch: 4, negatives: 21, unknowns: 5 });
+      stretch: of.references.filter((reference) => reference.stretch).length,
+      negatives: of.negatives.length,
+      unknowns: of.unknowns.length,
+    };
+  };
+
+  it('still name places that exist, and have the numbers the reports of their phases quote', () => {
+    expect(numbers(old)).toEqual({
+      version: 0,
+      components: 52,
+      phase1: 44,
+      phase3: 184,
+      stretch: 4,
+      negatives: 21,
+      unknowns: 5,
+    });
+    expect(numbers(first)).toEqual({
+      version: 1,
+      components: 87,
+      phase1: 106,
+      phase3: 184,
+      stretch: 7,
+      negatives: 31,
+      unknowns: 5,
+    });
+    expect(first.references.filter((reference) => reference.phase === 2)).toEqual([]);
   });
 
-  it('has the Apex part of version 1, entry for entry', () => {
+  it('have the Apex part of version 2, entry for entry', () => {
     const apex = (from: typeof key): unknown[] => from.references.filter((reference) => reference.phase === 3);
-    expect(apex(key)).toEqual(apex(old));
-    expect(key.unknowns).toEqual(old.unknowns);
-    expect(key.negatives.filter((negative) => isApex(negative.file))).toEqual(
-      old.negatives.filter((negative) => isApex(negative.file)),
-    );
+    const apexOnly = <T extends { file: string }>(places: readonly T[]): T[] =>
+      places.filter((place) => isApex(place.file));
+    for (const older of [old, first]) {
+      expect(apex(key)).toEqual(apex(older));
+      expect(apexOnly(key.unknowns)).toEqual(older.unknowns);
+      expect(apexOnly(key.negatives)).toEqual(apexOnly(older.negatives));
+    }
   });
 
-  it('has nothing that version 1 has not', () => {
+  it('have nothing that version 2 has not', () => {
     const whole = (reference: (typeof key.references)[number]): string =>
       `${reference.id}:${reference.from}:${reference.via}:${reference.tier}:${String(reference.stretch)}`;
     const now = new Set(key.references.map(whole));
-    expect(old.references.filter((reference) => !now.has(whole(reference)))).toEqual([]);
     const forbidden = new Set(key.negatives.map((negative) => idOf(negative, negative.not)));
-    expect(old.negatives.filter((negative) => !forbidden.has(idOf(negative, negative.not)))).toEqual([]);
-    expect(old.components.filter((component) => !inProject.has(component.key))).toEqual([]);
-    expect(old.standard.filter((target) => !standard.has(target))).toEqual([]);
+    for (const older of [old, first]) {
+      expect(older.references.filter((reference) => !now.has(whole(reference)))).toEqual([]);
+      expect(older.negatives.filter((negative) => !forbidden.has(idOf(negative, negative.not)))).toEqual([]);
+      expect(older.components.filter((component) => !inProject.has(component.key))).toEqual([]);
+      expect(older.standard.filter((target) => !standard.has(target))).toEqual([]);
+    }
+  });
+
+  it('has in version 2 everything version 1 says about a field or a rule, and nothing else about its files', () => {
+    const files = new Set(first.references.filter((reference) => reference.phase === 1).map((one) => one.file));
+    const about = (of: typeof key): string[] =>
+      of.references.filter((reference) => files.has(reference.file)).map((reference) => reference.id);
+    expect(about(key)).toEqual(about(first));
   });
 });
