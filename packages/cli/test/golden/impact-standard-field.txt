@@ -1,11 +1,12 @@
 What refers to CustomField:user.department, in snapshot #1 of "fixture".
-The answer is not complete: 18 types are not analysed yet. The details are below the answer.
+The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-4 components refer to it, 3 of them directly.
+5 components refer to it, 4 of them directly.
 
 DEPTH  COMPONENT                                        CONFIDENCE  KIND   REFERS TO                           WHERE
 1      CustomField:invoice__c.approver__c               confirmed   reads  CustomField:user.department         force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml:10
 1      CustomField:invoice__c.region__c                 confirmed   reads  CustomField:user.department         force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml:4
+1      Flow:invoice_before_save#element:set_defaults    confirmed   reads  CustomField:user.department         force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:13
 1      ValidationRule:invoice__c.void_needs_admin       confirmed   reads  CustomField:user.department         force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml:8
 2      CustomField:invoice__c.approver_backup_email__c  confirmed   reads  CustomField:invoice__c.approver__c  force-app/main/default/objects/Invoice__c/fields/Approver_Backup_Email__c.field-meta.xml:4
 
@@ -20,7 +21,6 @@ CustomPermission         1       1
 EmailFolder              1       1
 EmailTemplate            1       1
 FieldSet                 1       1
-Flow                     6       6
 GlobalValueSet           1       1
 RecordType               2       2
 Workflow                 2       2
@@ -29,3 +29,5 @@ WorkflowFieldUpdate      3       3
 WorkflowOutboundMessage  1       1
 WorkflowRule             4       4
 WorkflowTask             1       1
+
+The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

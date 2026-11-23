@@ -457,18 +457,18 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 
 `comparison` holds:
 
-| Field                            | Meaning                                                                                                                                                                                                                                             |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rows`                           | The rows that were looked at.                                                                                                                                                                                                                       |
+| Field                            | Meaning                                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rows`                           | The rows that were looked at.                                                                                                                                                                                                                                             |
 | `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, and rows from a flow, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
-| `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                               |
-| `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                 |
-| `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                        |
-| `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                     |
-| `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                  |
-| `missed`                         | Pairs Salesforce reports and the analysis lacks, each with the keys `from` and `to`. Each is also an issue `REFERENCE_MISSED`.                                                                                                                      |
-| `onlyOrgLens`                    | Pairs the analysis has, of a kind the API reports, without a row that was compared.                                                                                                                                                                 |
-| `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                |
+| `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                                                     |
+| `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                                       |
+| `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                                              |
+| `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                                           |
+| `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                                        |
+| `missed`                         | Pairs Salesforce reports and the analysis lacks, each with the keys `from` and `to`. Each is also an issue `REFERENCE_MISSED`.                                                                                                                                            |
+| `onlyOrgLens`                    | Pairs the analysis has, of a kind the API reports, without a row that was compared.                                                                                                                                                                                       |
+| `notReported`                    | Pairs the analysis has without a row, of a kind the API does not report: per `reason`, with `pairs`.                                                                                                                                                                      |
 
 The values of `reason` are `standard-field`, `standard-object`, `inactive-rule`, `lookup`, `lookup-filter`,
 `roll-up-summary`, `controlling-field`, `value-set`, `display-field`, `default-value` and `other`. A later
@@ -530,9 +530,12 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.          |
 | `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one. No reference is made for it.                                                                                                                                                                       |
-| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads, so the names after it have no reference (`details.origin` says whose).                                                                                                                                      |
+| `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
+| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), or which object a resource of a flow holds (`details.resource`), so the names after it have no reference (`details.origin` says whose).                                            |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
+| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names of resources and the merge fields in it are recorded as `probable`.                                                                                                                 |
+| `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow is not closed. Nothing is read of it.                                                                                                                                                                                 |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one
 component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
@@ -609,8 +612,8 @@ the answer says whether it is complete, and if not, why. Below the results it na
 
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each.
   A component of such a type can refer to the component and is not in the answer. In this pre-release, that is
-  every type except objects, fields, validation rules and flows. A type that `exclude_types` leaves out of a snapshot
-  of an org is among them, with `left out` for its number;
+  every type except objects, fields, validation rules and flows. A type that `exclude_types` leaves out of a
+  snapshot of an org is among them, with `left out` for its number;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
@@ -674,10 +677,11 @@ What is not done, and what a user should know:
 
 - The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
   changes. That is a later phase.
-- Only objects, fields and validation rules are analysed. Apex, flows, layouts, permissions and the other types
+- Only objects, fields, validation rules and flows are analysed. Apex, layouts, permissions and the other types
   follow in later phases. Until then an answer about what refers to a component of a real project says that it
   is not complete. An answer with `--outgoing` can be complete, because it needs only the component and its
-  results to be analysed.
+  results to be analysed. It is complete only when the analysis of the snapshot had no warning at all: a warning
+  about any component counts for every answer, also for one it cannot touch.
 - The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
 - An answer can be large: a field that much of an org rests on can have tens of thousands of results.
   `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.

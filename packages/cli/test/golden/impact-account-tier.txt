@@ -1,12 +1,14 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
-The answer is not complete: 18 types are not analysed yet. The details are below the answer.
+The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-3 components refer to it, 2 of them directly.
+5 components refer to it, 3 of them directly.
 
-DEPTH  COMPONENT                                         CONFIDENCE  KIND   REFERS TO                              WHERE
-1      CustomField:account.is_key_account__c             confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:5
-1      CustomField:invoice__c.account_tier__c            confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml:4
-2      ValidationRule:account.key_account_needs_contact  confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
+DEPTH  COMPONENT                                           CONFIDENCE  KIND   REFERS TO                              WHERE
+1      CustomField:account.is_key_account__c               confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:5
+1      CustomField:invoice__c.account_tier__c              confirmed   reads  CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml:4
+1      Flow:invoice_after_save#element:amount_changed      confirmed   reads  CustomField:account.tier__c            force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
+2      Flow:invoice_sent_process#element:formula_myrule_1  confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
+2      ValidationRule:account.key_account_needs_contact    confirmed   reads  CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
 TYPE                     LISTED  RETRIEVED
@@ -19,7 +21,6 @@ CustomPermission         1       1
 EmailFolder              1       1
 EmailTemplate            1       1
 FieldSet                 1       1
-Flow                     6       6
 GlobalValueSet           1       1
 RecordType               2       2
 Workflow                 2       2
@@ -28,3 +29,5 @@ WorkflowFieldUpdate      3       3
 WorkflowOutboundMessage  1       1
 WorkflowRule             4       4
 WorkflowTask             1       1
+
+The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

@@ -779,12 +779,12 @@ function gapReasons(gaps: ImpactGaps): string[] {
       `${count(gaps.readErrors, 'error of the reading names', 'errors of the reading name')} no type, so what is missing may be of an analysed type`,
     );
   }
-  if (gaps.analysisErrors > 0) {
-    reasons.push(`the analysis had ${count(gaps.analysisErrors, 'error', 'errors')}`);
-  }
-  if (gaps.analysisWarnings > 0) {
-    reasons.push(`the analysis had ${count(gaps.analysisWarnings, 'warning', 'warnings')}`);
-  }
+  // One reason for both, so that the sentence does not say "the analysis had" twice.
+  const had = [
+    ...(gaps.analysisErrors > 0 ? [count(gaps.analysisErrors, 'error', 'errors')] : []),
+    ...(gaps.analysisWarnings > 0 ? [count(gaps.analysisWarnings, 'warning', 'warnings')] : []),
+  ];
+  if (had.length > 0) reasons.push(`the analysis had ${had.join(' and ')}`);
   if (gaps.notHeld > 0) {
     reasons.push(
       `the snapshot does not hold ${count(gaps.notHeld, 'component', 'components')} of the answer, so what ${gaps.notHeld === 1 ? 'it refers' : 'they refer'} to is not known`,
