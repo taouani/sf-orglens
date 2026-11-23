@@ -16,7 +16,8 @@ import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
 import { buildModel, type FieldFacts } from './model.ts';
-import { readField, readObject, readRule, resolveReferences, type ElementReading } from './objects.ts';
+import { readField, readObject, readRule, type ElementReading } from './objects.ts';
+import { resolveReferences } from './raw-references.ts';
 import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
 
 export interface SourceAnalysis {
