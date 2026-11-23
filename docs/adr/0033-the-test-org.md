@@ -130,4 +130,7 @@ Phase 2 added to what a step may do, on 23 November 2026.
   message that was seen, so it shows nothing until a problem has that form. Its three places take whatever has the
   form of a name, in quotes or not, and the check of the words lets through only words of the fixture project and
   of the platform, as for every form. Names of elements of a flow file and their values are such words. The rule
-  above is not changed by this.
+  above is not changed by this. The second deploy, on the same day, printed a problem of that form: it named a
+  path of the fixture project that Salesforce does not support in a flow that runs before the save. That sentence
+  of Salesforce is quoted in a test and in the README of the fixtures. It holds words of the platform and names
+  of the fixture project and nothing else, and the public log had printed it.

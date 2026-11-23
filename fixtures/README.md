@@ -122,18 +122,28 @@ words came out (`docs/live-org-setup.md` says why).
   fields of the user, a text field and one that is a long text as far as I know, and it takes them from the record
   an element that gets records stores by itself, not from a record variable, as here. That the type was the reason
   is my reading of "its … type … supported". The words "on this object" may mean that the object counts as well.
-  Two things were changed at once, the type and the name, so a deploy that Salesforce accepts does not say which
-  of them it was. No form is known for this message: if the flow is refused once more, the same words come out.
+  Two things were changed at once, the type and the name. The second deploy found no error in the flow, and does
+  not say which of the two it was.
 - `Invoice_Before_Save`: the words that came out: "field … unknown (When the … field is set to … the … field …
-  supported.)". So an element is not supported when another element is set to a value. Which element, they do not
-  say. It may be the custom error, which I doubted before, or the formula the flow starts by. The flow is not
-  changed until the message is known. The tool that deploys knows a form for such a message now, with the names in
-  quotes or not, so the next run prints it, if the message has that form. That is a guess.
+  supported.)". The flow was not changed on a guess. The tool that deploys got a form for such a message, written
+  from those words, and the second deploy, on the same day, printed it:
+  `field integrity exception: unknown (When the TriggerType field is set to "RecordBeforeSave", the $Record.Account__r.Is_Key_Account__c field isn't supported.)`
+  That path stood in the formula `Default_Tax_Rate` and nowhere else in the flow. The message says that this one
+  path is not supported in a flow that runs before the save, and not why. Three readings fit it: a formula of
+  such a flow may not cross a relationship from `$Record`, or the path may not end at a formula field, which
+  `Is_Key_Account__c` is, or no path across a relationship is supported and Salesforce names one problem of a flow
+  at a time. The formula now reads `Tax_Code_Name__c`, a text field of the invoice itself, which the first two
+  readings allow, and the flow no longer refers to `Account.Is_Key_Account__c`. A formula of a flow that crosses a
+  relationship is left in the process only (`Invoice_Sent_Process`). Three other paths across a relationship stand
+  in the flow, in two assignments and in a decision, none of them to a formula field. Salesforce did not name
+  them, nor the custom error, nor the formula the flow starts by. Whether it accepts them, I do not know: the
+  third deploy says. If it refuses the paths, the flow has to get the account with an element of its own.
 
-So the next deploy is refused again, for that flow at least. What Salesforce found no error in, as far as that
-says anything: the process of the Process Builder and the workflow rules, which the setup pages no longer create,
-the time trigger of a workflow rule and the scheduled path of a flow, and the outbound message with the user of
-the login in the place of the made-up user name (`integration.user@billing-fixture.invalid`).
+The second deploy counted 118 components, found no error in 117 and refused that one flow, so the org is still as
+it was. What Salesforce found no error in, as far as that says anything: the process of the Process Builder and
+the workflow rules, which the setup pages no longer create, the time trigger of a workflow rule and the scheduled
+path of a flow, and the outbound message with the user of the login in the place of the made-up user name
+(`integration.user@billing-fixture.invalid`).
 
 Three things are not as a person would build them, and I expect Salesforce to accept them. `Get_Invoice` of the
 screen flow stores five fields of the invoice, and later elements read four others of the same record. The flow
@@ -367,7 +377,7 @@ analyser. It checks that:
 - a value of a record of a custom metadata type is `value` in a field that is a relationship and `text` in every
   other field, the object of a process is the value at the top of its file, and a text that names a record type
   is compared with `RecordType.DeveloperName`;
-- the numbers this page quotes are the numbers of the key: 492 references (112 in fields and rules, 196 in the
+- the numbers this page quotes are the numbers of the key: 491 references (112 in fields and rules, 195 in the
   files of Phase 2, 184 in Apex), 9 of them stretch, 63 negatives and 6 unknowns;
 - versions 0 and 1 of the key still name places that exist, have nothing that version 2 has not, and have the same
   Apex part. Version 2 says nothing else about a file of fields or rules than version 1 does;
