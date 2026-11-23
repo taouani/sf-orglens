@@ -130,4 +130,5 @@ Phase 2 added to what a step may do, on 23 November 2026.
   message that was seen, so it shows nothing until a problem has that form. Its three places take whatever has the
   form of a name, in quotes or not, and the check of the words lets through only words of the fixture project and
   of the platform, as for every form. Names of elements of a flow file and their values are such words. The rule
-  above is not changed by this.
+  above is not changed by this. The second deploy, on the same day, printed a problem of that form: it named a
+  path of the fixture project that a formula of a flow may not hold.

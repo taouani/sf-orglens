@@ -843,7 +843,7 @@ describe('the answer key', () => {
       version: 2,
       components: 118,
       phase1: 112,
-      phase2: 196,
+      phase2: 195,
       phase3: 184,
       stretch: 9,
       negatives: 63,

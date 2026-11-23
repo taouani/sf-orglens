@@ -161,11 +161,12 @@ const KNOWN_PROBLEMS: readonly RegExp[] = [
   form('Not available for deploy for this organization'),
   // A flow in which an element is not supported when another element is set to a value. The deploy of
   // 23 November 2026 was refused with a problem of which only the everyday words came out: "field … unknown (When
-  // the … field is set to … the … field … supported.)". This form is written from those words, so it is a guess
-  // until a run prints a problem with it. Which elements they are, the words do not say. A place takes whatever
-  // has the form of a name, and the check of the words below lets through only words of the fixture project and
-  // of the platform: names of elements of a flow file and their values are such words. The words came out the
-  // same with a name in quotes and without the comma, so the form takes both.
+  // the … field is set to … the … field … supported.)". This form was written from those words, and the second
+  // deploy of that day printed a problem with it: the value stood in double quotes, and the last place held a path
+  // from `$Record` across a relationship, which a formula of a flow that runs before the save may not hold. A
+  // place takes whatever has the form of a name, and the check of the words below lets through only words of the
+  // fixture project and of the platform. The words came out the same with a name in quotes and without the
+  // comma, so the form takes both, although Salesforce was seen to write one of them only.
   form(
     `field integrity exception: unknown \\(When the ${QUOTE}NAME${QUOTE} field is set to ${QUOTE}NAME${QUOTE},? the ${QUOTE}NAME${QUOTE} field isn['’]t supported\\.\\)`,
   ),

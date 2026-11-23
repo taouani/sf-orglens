@@ -83,7 +83,7 @@
     <formulas>
         <name>Default_Tax_Rate</name>
         <dataType>Number</dataType>
-        <expression>IF({!$Record.Account__r.Is_Key_Account__c}, 0, {!$Setup.Billing_Settings__c.Late_Fee_Percent__c})</expression>
+        <expression>IF({!$Record.Account_Tier__c} = &quot;Gold&quot;, 0, {!$Setup.Billing_Settings__c.Late_Fee_Percent__c})</expression>
         <scale>2</scale>
     </formulas>
     <interviewLabel>Invoice Before Save {!$Flow.CurrentDateTime}</interviewLabel>

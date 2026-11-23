@@ -184,6 +184,8 @@ describe('what a step of the live-org workflow may print', () => {
  * may stand in quotes, and the comma may be missing: the public log would have shown the same words for each.
  */
 const FLOW_PROBLEMS: readonly string[] = [
+  // The problem as the second deploy of 23 November 2026 printed it.
+  'field integrity exception: unknown (When the TriggerType field is set to "RecordBeforeSave", the $Record.Account__r.Is_Key_Account__c field isn\'t supported.)',
   "field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the customErrors field isn't supported.)",
   'field integrity exception: unknown (When the triggerType field is set to RecordBeforeSave, the filterFormula field isn’t supported.)',
   "field integrity exception: unknown (When the 'triggerType' field is set to 'RecordBeforeSave', the 'filterFormula' field isn't supported.)",
