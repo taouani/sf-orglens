@@ -386,6 +386,7 @@ const ONE_CLASS_ANALYSED = [
   'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
   'parser:xml      0           0           0             0                   0',
   'parser:formula  0           0           0             0                   0',
+  'parser:flow     0           0           0             0                   0',
 ];
 
 describe('orglens snapshot and coverage', () => {
@@ -490,6 +491,7 @@ describe('orglens snapshot and coverage', () => {
             unresolved: 0,
             pathsNotFollowed: 0,
           },
+          { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
       crossCheck: null,
@@ -657,6 +659,7 @@ describe('orglens analyse', () => {
       'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
       'parser:xml      3           0           0             0                   0',
       'parser:formula  1           2           1             1                   0',
+      'parser:flow     0           0           0             0                   0',
       '',
       'SEVERITY  CODE               COUNT  THE FIRST',
       NOT_FOLLOWED,
@@ -693,6 +696,7 @@ describe('orglens analyse', () => {
             unresolved: 1,
             pathsNotFollowed: 1,
           },
+          { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
     });
@@ -727,6 +731,7 @@ describe('orglens analyse', () => {
       'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
       'parser:xml      2           0           0             0                   1',
       'parser:formula  1           2           1             1                   0',
+      'parser:flow     0           0           0             0                   0',
       '',
       'SEVERITY  CODE               COUNT  THE FIRST',
       `error     XML_MALFORMED      1      ${weight}: The file ends before the element "label" is closed.`,

@@ -78,12 +78,6 @@
         "listing": "ok"
       },
       {
-        "type": "Flow",
-        "listed": 6,
-        "retrieved": 6,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
@@ -135,7 +129,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 1,
     "notHeld": 0
   },
   "mayMiss": false

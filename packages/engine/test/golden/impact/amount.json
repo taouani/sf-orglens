@@ -77,6 +77,196 @@
       }
     },
     {
+      "key": "Flow:invoice_after_save#element:amount_changed",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Amount_Changed",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:amount_changed",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 75,
+        "column": 45
+      }
+    },
+    {
+      "key": "Flow:invoice_after_save#element:check_result",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Check_Result",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:check_result",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 107,
+        "column": 47
+      }
+    },
+    {
+      "key": "Flow:invoice_before_save#element:block_large_invoice",
+      "type": "Flow",
+      "name": "Invoice_Before_Save.Block_Large_Invoice",
+      "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_before_save#element:block_large_invoice",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+        "line": 44,
+        "column": 48
+      }
+    },
+    {
+      "key": "Flow:invoice_before_save#element:is_above_limit",
+      "type": "Flow",
+      "name": "Invoice_Before_Save.Is_Above_Limit",
+      "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_before_save#element:is_above_limit",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+        "line": 62,
+        "column": 45
+      }
+    },
+    {
+      "key": "Flow:invoice_recalculate#element:set_amount",
+      "type": "Flow",
+      "name": "Invoice_Recalculate.Set_Amount",
+      "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_recalculate#element:set_amount",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
+        "line": 72,
+        "column": 40
+      }
+    },
+    {
+      "key": "Flow:invoice_review_screen#element:confirmation",
+      "type": "Flow",
+      "name": "Invoice_Review_Screen.Confirmation",
+      "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_review_screen#element:confirmation",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+        "line": 313,
+        "column": 80
+      }
+    },
+    {
+      "key": "Flow:invoice_review_screen#element:fee",
+      "type": "Flow",
+      "name": "Invoice_Review_Screen.Fee",
+      "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_review_screen#element:fee",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+        "line": 89,
+        "column": 34
+      }
+    },
+    {
+      "key": "Flow:invoice_review_screen#element:get_invoice",
+      "type": "Flow",
+      "name": "Invoice_Review_Screen.Get_Invoice",
+      "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_review_screen#element:get_invoice",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+        "line": 193,
+        "column": 24
+      }
+    },
+    {
+      "key": "Flow:invoice_review_screen#element:is_paid_now",
+      "type": "Flow",
+      "name": "Invoice_Review_Screen.Is_Paid_Now",
+      "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_review_screen#element:is_paid_now",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+        "line": 36,
+        "column": 48
+      }
+    },
+    {
+      "key": "Flow:invoice_review_screen#element:save_invoice",
+      "type": "Flow",
+      "name": "Invoice_Review_Screen.Save_Invoice",
+      "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_review_screen#element:save_invoice",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
+        "line": 215,
+        "column": 20
+      }
+    },
+    {
       "key": "ValidationRule:invoice__c.amount_within_credit_limit",
       "type": "ValidationRule",
       "name": "Invoice__c.Amount_Within_Credit_Limit",
@@ -231,12 +421,6 @@
         "listing": "ok"
       },
       {
-        "type": "Flow",
-        "listed": 6,
-        "retrieved": 6,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
@@ -288,7 +472,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 1,
     "notHeld": 0
   },
   "mayMiss": false

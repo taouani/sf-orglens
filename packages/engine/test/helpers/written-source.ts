@@ -1,6 +1,6 @@
 /**
- * A source that a test writes: files of objects, fields and validation rules by path, and the components they
- * make up. The tests of the analysis use it for what the fixture project does not have.
+ * A source that a test writes: files of objects, fields, validation rules and flows by path, and the components
+ * they make up. The tests of the analysis use it for what the fixture project does not have.
  */
 import { buildKey, type ComponentKey } from '../../src/core/keys.ts';
 import type { Reference } from '../../src/core/references.ts';
@@ -60,6 +60,12 @@ export class Source {
       xml('ValidationRule', `<fullName>${name}</fullName>`, ...lines),
     );
     this.listed.push({ type: 'ValidationRule', fullName: `${object}.${name}`, files: [path] });
+    return path;
+  }
+
+  flow(name: string, ...lines: string[]): string {
+    const path = this.file(`flows/${name}.flow-meta.xml`, xml('Flow', ...lines));
+    this.listed.push({ type: 'Flow', fullName: name, files: [path] });
     return path;
   }
 

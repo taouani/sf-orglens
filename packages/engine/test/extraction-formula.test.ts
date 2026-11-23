@@ -418,7 +418,9 @@ describe('what a name of a formula stands for', () => {
       ? `path from ${one.start}: ${one.parts.map(part).join(' ')}`
       : one.form === 'component'
         ? `${one.type} ${one.fullName} at ${part(one.part)}`
-        : `object at ${part(one.part)}`;
+        : one.form === 'unfollowed'
+          ? `not followed after ${part(one.after)}: ${one.parts.map(part).join(' ')}`
+          : `object at ${part(one.part)}`;
   const uses = (name: string, own = 'Invoice__c'): string[] | null => usesOfName(name, own)?.map(use) ?? null;
 
   it('is a path from the object of the formula when it starts with no variable', () => {
@@ -463,6 +465,9 @@ describe('what a name of a formula stands for', () => {
           .join('')
           .slice(0, -1);
         for (const one of usesOfName(name, 'Invoice__c') ?? []) {
+          // A name of a field or a rule starts at an object, so none is of the form that is not followed.
+          expect(one.form).not.toBe('unfollowed');
+          if (one.form === 'unfollowed') continue;
           for (const found of one.form === 'path' ? one.parts : [one.part]) {
             expect(name.startsWith(found.name, found.from)).toBe(true);
             expect(found.name).not.toBe('');

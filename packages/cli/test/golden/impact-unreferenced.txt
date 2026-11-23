@@ -1,5 +1,5 @@
 What refers to CustomField:invoice__c.unused_field__c (Invoice__c.Unused_Field__c), in snapshot #1 of "fixture".
-The answer is not complete: 18 types are not analysed yet. The details are below the answer.
+The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
 Nothing that was analysed refers to it.
 
@@ -14,7 +14,6 @@ CustomPermission         1       1
 EmailFolder              1       1
 EmailTemplate            1       1
 FieldSet                 1       1
-Flow                     6       6
 GlobalValueSet           1       1
 RecordType               2       2
 Workflow                 2       2
@@ -23,3 +22,5 @@ WorkflowFieldUpdate      3       3
 WorkflowOutboundMessage  1       1
 WorkflowRule             4       4
 WorkflowTask             1       1
+
+The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

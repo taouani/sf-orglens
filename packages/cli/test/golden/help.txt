@@ -21,6 +21,6 @@ Commands:
   impact [options] <component>  show what refers to a component
   doctor                        check that OrgLens can run here
 
-Pre-release: an impact answer covers objects, fields and validation rules.
-Apex, flows and the other types are not analysed yet. An answer names the
+Pre-release: an impact answer covers objects, fields, validation rules and
+flows. Apex and the other types are not analysed yet. An answer names the
 types it does not cover.

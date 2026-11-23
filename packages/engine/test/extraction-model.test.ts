@@ -215,6 +215,22 @@ describe('what becomes of the name of another component', () => {
       resolution: 'unresolved',
     });
   });
+
+  it('takes the name of a part by its own name, not by the suffix of its object', () => {
+    const resolution = (type: string, name: string): string => {
+      const target = component(type, name);
+      return `${target.resolution} ${String(target.to)}`;
+    };
+    // The two underscores of `Invoice__c` are no prefix of a package: an alert the snapshot lacks is missing.
+    expect(resolution('WorkflowAlert', 'Invoice__c.Overdue')).toBe('unresolved null');
+    expect(resolution('WorkflowAlert', 'npsp__Batch__c.Overdue')).toBe('unresolved null');
+    expect(resolution('WorkflowAlert', 'Invoice__c.npsp__Overdue')).toBe(
+      'external WorkflowAlert:invoice__c.npsp__overdue',
+    );
+    // A record of a custom metadata type is named with its type, and is of a package when the type is.
+    expect(resolution('CustomMetadata', 'npsp__Rule.Std')).toBe('external CustomMetadata:npsp__rule.std');
+    expect(resolution('CustomMetadata', 'Rule.Std')).toBe('unresolved null');
+  });
 });
 
 describe('a step through a relationship', () => {

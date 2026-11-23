@@ -9,8 +9,8 @@
  * counted only where the API is known to report that kind of reference, and is no error: the API does not see
  * everything.
  *
- * The comparison is for the types the analysis read. A row from a component of another type is counted and
- * not compared.
+ * The comparison is for the types the analysis read, without the flows, whose rows are not compared yet. A row
+ * from a component of another type is counted and not compared.
  *
  * Nothing here reads a database or an org.
  */
@@ -184,9 +184,16 @@ function notReported(from: AnalysedComponent, to: string, found: Found): NotRepo
 
 const pairId = (from: string, to: string): string => `${from}\u0000${to}`;
 
+/**
+ * Types the analysis reads and whose rows are not compared yet. A row from a flow carries the id of a version,
+ * and the org lists a flow with the id of its latest version, which need not be the one that is analysed
+ * (decision record 0060). Their rows are counted with those of the types that are not read.
+ */
+const NOT_COMPARED_YET: ReadonlySet<string> = new Set(['Flow']);
+
 /** Compares the rows of the Dependency API with the references of an analysis. */
 export function crossCheck(input: CrossCheckInput): CrossCheck {
-  const analysedTypes = new Set(input.analysedTypes);
+  const analysedTypes = new Set(input.analysedTypes.filter((type) => !NOT_COMPARED_YET.has(type)));
   const match = listedMatcher(input.listed);
 
   // What the analysis found, as pairs of whole components.

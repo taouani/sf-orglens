@@ -1,6 +1,7 @@
 /**
- * The analysis of a source: a component for everything it holds, and for objects, fields and validation rules
- * their attributes, the references that are written in XML and those that stand in a formula.
+ * The analysis of a source: a component for everything it holds, and for objects, fields, validation rules and
+ * flows their attributes, the references that are written in XML and those that stand in a formula or a text.
+ * A flow gets a component for each of its elements and resources as well.
  *
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
@@ -11,13 +12,14 @@
 import { hash } from 'node:crypto';
 import type { JsonValue } from '../core/errors.ts';
 import { buildKey, KeyRegistry, parentKey, parseKey, type ComponentKey } from '../core/keys.ts';
-import type { Reference } from '../core/references.ts';
+import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
+import { readFlow, type FlowReading } from './flows.ts';
 import { buildModel, type FieldFacts } from './model.ts';
 import { readField, readObject, readRule, type ElementReading } from './objects.ts';
-import { resolveReferences } from './raw-references.ts';
+import { resolveReferences, type Unread } from './raw-references.ts';
 import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
 
 export interface SourceAnalysis {
@@ -30,7 +32,7 @@ export interface SourceAnalysis {
 }
 
 /** The types that are read. A component of another type gets a row and nothing else. */
-const ANALYSED: ReadonlySet<string> = new Set(['CustomObject', 'CustomField', 'ValidationRule']);
+const ANALYSED: ReadonlySet<string> = new Set(['CustomObject', 'CustomField', 'Flow', 'ValidationRule']);
 
 /**
  * The elements of the file of an object that are components of their own, each with the type of those. An org
@@ -60,9 +62,13 @@ const beforeDot = (fullName: string): string => {
   return dot === -1 ? fullName : fullName.slice(0, dot);
 };
 
+/** The reader whose names the references of a component of this type are, outside its formulas. */
+const originOf = (type: string): ReferenceOrigin => (type === 'Flow' ? 'parser:flow' : 'parser:xml');
+
 /** A component with a row, while the model is not built yet. */
 interface Entry {
   readonly key: ComponentKey;
+  /** The metadata type. An element of a flow has the type of the flow. */
   readonly type: string;
   readonly name: string;
   readonly definition: AnalysedComponent['definition'];
@@ -89,6 +95,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   const elements = new Map<string, Map<string, XmlElement>>();
   /** The hash of such a file as a whole, for the parts that cannot be told from the rest of it. */
   const wholeHashes = new Map<string, Uint8Array>();
+  /** The files of flows: one that cannot be read is counted for the reader of flows. */
+  const flowFiles = new Set<string>();
 
   const bytesOf = (path: string): Uint8Array | null => {
     if (unreadable.has(path)) return null;
@@ -181,22 +189,35 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     return { path, contentHash: sha256(lines.join('')) };
   };
 
-  /** Gives a component its key, or reports why it has none. */
-  const register = (type: string, fullName: string, file: string | undefined): ComponentKey | null => {
+  /**
+   * Gives a component its key, or reports why it has none. `element` is the name of an element of the
+   * component, for a component that is one.
+   */
+  const register = (
+    type: string,
+    fullName: string,
+    file: string | undefined,
+    element?: string,
+  ): ComponentKey | null => {
+    const shown = element === undefined ? fullName : `${fullName}.${element}`;
     let key: ComponentKey;
     try {
-      key = buildKey({ type, fullName });
+      key = buildKey({
+        type,
+        fullName,
+        ...(element === undefined ? {} : { subs: [{ kind: 'element', name: element }] }),
+      });
     } catch (error) {
       issues.push({
         severity: 'error',
         code: 'KEY_INVALID',
-        message: `The ${type} "${cut(fullName, 80)}" cannot be given a key: ${messageOf(error)}`,
+        message: `The ${element === undefined ? type : `element of a ${type}`} "${cut(shown, 80)}" cannot be given a key: ${messageOf(error)}`,
         componentKey: null,
         details: { type, path: file ?? null },
       });
       return null;
     }
-    const collision = registry.register({ key, displayName: fullName, ...(file === undefined ? {} : { file }) });
+    const collision = registry.register({ key, displayName: shown, ...(file === undefined ? {} : { file }) });
     if (collision === undefined) return key;
     issues.push({
       severity: collision.severity,
@@ -240,6 +261,36 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   };
   const readingsOf = (file: string, reading: ElementReading | null): Entry['readings'] =>
     reading === null ? [] : [{ file, reading }];
+
+  /** The elements and resources of a flow, each a component below it. */
+  const elementsOf = (
+    flow: ComponentKey,
+    name: string,
+    file: string,
+    document: XmlDocument,
+    read: FlowReading,
+  ): void => {
+    for (const { group, line, column } of read.nameless) {
+      issues.push({
+        severity: 'error',
+        code: 'METADATA_UNEXPECTED',
+        message: `${file}, line ${String(line)}: an element "${group}" has no name.`,
+        componentKey: flow,
+        details: { path: file, line, column },
+      });
+    }
+    for (const { name: element, element: xml, reading } of read.elements) {
+      const key = register('Flow', name, file, element);
+      if (key === null) continue;
+      entries.push({
+        key,
+        type: 'Flow',
+        name: `${name}.${element}`,
+        definition: { path: file, contentHash: sha256(document.text.slice(xml.start, xml.end)) },
+        readings: [{ file, reading }],
+      });
+    }
+  };
 
   /** The components that stand inside the file of an object. */
   const partsOf = (object: string, file: string, document: XmlDocument): void => {
@@ -307,6 +358,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     // can have a file of its own in each, and both are read.
     const readings: { file: string; reading: ElementReading }[] = [];
     const documents: { file: string; document: XmlDocument }[] = [];
+    const flows: { file: string; document: XmlDocument; read: FlowReading }[] = [];
+    if (type === 'Flow') for (const file of files) flowFiles.add(file);
     for (const { file, bytes } of ANALYSED.has(type) ? contents : []) {
       const document = bytes === null ? null : parse(file, bytes);
       if (document === null) continue;
@@ -321,6 +374,16 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
         });
         continue;
       }
+      if (type === 'Flow') {
+        try {
+          const flow = readFlow(document);
+          readings.push({ file, reading: flow.flow });
+          flows.push({ file, document, read: flow });
+        } catch (error) {
+          failed(key, type, file, error);
+        }
+        continue;
+      }
       const reading = read(key, type, name, file, document, document.root);
       if (reading !== null) readings.push({ file, reading });
       documents.push({ file, document });
@@ -328,6 +391,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     // The component first, so that it has its row whatever happens in its parts.
     entries.push({ key, type, name, definition, readings });
     if (type === 'CustomObject') for (const { file, document } of documents) partsOf(name, file, document);
+    for (const { file, document, read: flow } of flows) elementsOf(key, name, file, document, flow);
   };
 
   // In a fixed order, so that the same components give the same analysis however they are listed.
@@ -385,9 +449,33 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     fields,
   });
 
-  let analysed = 0;
+  const analysed = new Map<ReferenceOrigin, number>();
   let withFormula = 0;
   const formulasNotRead = new Set<string>();
+
+  /** The issue for something a reader did not read as a name. `where` says in what it stands. */
+  const notRead = (key: ComponentKey, file: string, unread: Unread, where: string): AnalysisIssue => {
+    const details = { path: file, line: unread.line, column: unread.column, element: unread.element };
+    const place = `${file}, line ${String(unread.line)}`;
+    if (unread.why === 'start') {
+      const [first = ''] = unread.text.split('.', 1);
+      return {
+        severity: 'warning',
+        code: 'RESOURCE_NOT_FOUND',
+        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", and the flow has no resource "${first}". It is not read.`,
+        componentKey: key,
+        details,
+      };
+    }
+    return {
+      severity: 'warning',
+      code: 'NAME_NOT_READ',
+      message: `${place}: ${where} "${unread.element}" holds "${unread.text}", which is not read as a name.`,
+      componentKey: key,
+      details,
+    };
+  };
+
   const components = entries.map((entry): AnalysedComponent => {
     const { key, name, definition, readings } = entry;
     const bare: AnalysedComponent = { key, name, definition, attrs: null, references: [] };
@@ -395,29 +483,46 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     try {
       const found: AnalysisIssue[] = [];
       const references: Reference[] = [];
-      const notRead: string[] = [];
+      const notReadAsAWhole: string[] = [];
       let formulas = 0;
       const object = entry.type === 'CustomObject' ? name : beforeDot(name);
+      const origin = originOf(entry.type);
       for (const { file, reading } of readings) {
-        for (const unread of reading.unread) {
+        for (const unknown of reading.unknown ?? []) {
           found.push({
             severity: 'warning',
-            code: 'NAME_NOT_READ',
-            message: `${file}, line ${String(unread.line)}: the element "${unread.element}" holds "${unread.text}", which is not read as a name.`,
+            code: 'FLOW_ELEMENT_UNKNOWN',
+            message: `${file}, line ${String(unknown.line)}: "${cut(unknown.element, 60)}" is no kind of element of a flow that is known here. The names in it are read as in the kinds that are known, and recorded as probable.`,
             componentKey: key,
-            details: { path: file, line: unread.line, column: unread.column, element: unread.element },
+            details: { path: file, line: unknown.line, column: unknown.column, element: cut(unknown.element, 60) },
           });
         }
+        for (const unread of reading.unread) found.push(notRead(key, file, unread, 'the element'));
         const owner = { key, file, object };
-        const resolved = resolveReferences(model, owner, reading.references, 'parser:xml');
+        const resolved = resolveReferences(model, owner, reading.references, origin);
         // One at a time: a formula can hold more names than a call takes arguments.
         for (const issue of resolved.issues) found.push(issue);
         for (const reference of resolved.references) references.push(reference);
+        for (const text of reading.texts ?? []) {
+          for (const unread of text.unread) found.push(notRead(key, file, unread, 'a merge field in'));
+          for (const open of text.notClosed) {
+            found.push({
+              severity: 'warning',
+              code: 'MERGE_FIELD_NOT_CLOSED',
+              message: `${file}, line ${String(open.line)}: a merge field in "${text.element}" is not closed. Nothing is read of it.`,
+              componentKey: key,
+              details: { path: file, line: open.line, column: open.column, element: text.element },
+            });
+          }
+          const inText = resolveReferences(model, owner, text.references, origin);
+          for (const issue of inText.issues) found.push(issue);
+          for (const reference of inText.references) references.push(reference);
+        }
         for (const formula of reading.formulas) {
           formulas += 1;
           const { problem, element } = formula;
           if (problem !== null) {
-            notRead.push(file);
+            notReadAsAWhole.push(file);
             found.push({
               severity: 'warning',
               code: 'FORMULA_NOT_READ',
@@ -426,15 +531,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
               details: { path: file, line: problem.line, column: problem.column, element },
             });
           }
-          for (const unread of formula.unread) {
-            found.push({
-              severity: 'warning',
-              code: 'NAME_NOT_READ',
-              message: `${file}, line ${String(unread.line)}: the formula in "${unread.element}" holds "${unread.text}", which is not read as a name.`,
-              componentKey: key,
-              details: { path: file, line: unread.line, column: unread.column, element: unread.element },
-            });
-          }
+          for (const unread of formula.unread) found.push(notRead(key, file, unread, 'the formula in'));
           const inFormula = resolveReferences(model, owner, formula.references, 'parser:formula');
           for (const issue of inFormula.issues) found.push(issue);
           for (const reference of inFormula.references) references.push(reference);
@@ -444,9 +541,9 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
       const attrs: Record<string, JsonValue> = {};
       for (const { reading } of [...readings].reverse()) Object.assign(attrs, reading.attrs);
       for (const issue of found) issues.push(issue);
-      analysed += 1;
+      analysed.set(origin, (analysed.get(origin) ?? 0) + 1);
       if (formulas > 0) withFormula += 1;
-      for (const file of notRead) formulasNotRead.add(file);
+      for (const file of notReadAsAWhole) formulasNotRead.add(file);
       return { key, name, definition, attrs, references };
     } catch (error) {
       failed(key, entry.type, readings[0]?.file ?? null, error);
@@ -455,14 +552,17 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   });
   components.sort((a, b) => byCodeUnit(a.key, b.key));
 
-  const failedFiles = new Set([...refused, ...unreadable]).size;
+  const failedFiles = [...new Set([...refused, ...unreadable])];
+  const ofFlows = failedFiles.filter((file) => flowFiles.has(file)).length;
   return {
     types: [...ANALYSED].sort(byCodeUnit),
     components,
     work: [
-      { origin: 'parser:xml', components: analysed, failedFiles },
+      { origin: 'parser:xml', components: analysed.get('parser:xml') ?? 0, failedFiles: failedFiles.length - ofFlows },
       // Components with a formula, and files with a formula that was not read as a whole.
       { origin: 'parser:formula', components: withFormula, failedFiles: formulasNotRead.size },
+      // Flows and their elements, and files of flows that could not be read.
+      { origin: 'parser:flow', components: analysed.get('parser:flow') ?? 0, failedFiles: ofFlows },
     ],
     issues,
   };

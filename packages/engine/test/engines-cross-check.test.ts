@@ -322,6 +322,36 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     });
   });
 
+  it('does not compare the rows of flows yet, also when the analysis reads flows', () => {
+    // A row from a flow carries the id of a version, which need not be the one that is analysed (record 0060).
+    const remind = { type: 'Flow', id: '301xx0000000001AAA', name: 'Remind', namespace: null };
+    const rows = [
+      row(remind, end('CustomField', 'Invoice__c.Amount__c')),
+      row(remind, end('CustomField', 'Invoice__c.Total__c')),
+      row(end('CustomField', 'Invoice__c.Total__c'), end('CustomField', 'Invoice__c.Amount__c')),
+    ];
+    const flow = key('Flow', 'Remind');
+    const components = [
+      component(AMOUNT, {}),
+      component(TOTAL, {}, [reference(TOTAL, AMOUNT)]),
+      // The analysis found one of the two references of the flow, and one more that no row has.
+      component(flow, {}, [reference(flow, AMOUNT), reference(flow, STATUS)]),
+    ];
+    const result = crossCheck({ ...input(rows, components), analysedTypes: [...TYPES, 'Flow'] });
+    expect(result).toMatchObject({
+      rows: 3,
+      rowsNotAnalysed: 2,
+      notAnalysed: [{ type: 'Flow', rows: 2 }],
+      rowsCompared: 1,
+      pairs: 1,
+      agreed: 1,
+      missed: [],
+    });
+    // Nothing of the flow is in either list: not the reference without a row, and not the row without a reference.
+    expect(JSON.stringify(result)).not.toContain(flow);
+    expect(crossCheckIssues(result)).toEqual([]);
+  });
+
   it('does not compare a row from a component the snapshot does not hold or that was not analysed', () => {
     const rows = [
       row(end('CustomField', 'Invoice__c.Total__c'), end('CustomField', 'Invoice__c.Amount__c')),

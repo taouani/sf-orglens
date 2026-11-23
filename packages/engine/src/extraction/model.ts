@@ -170,7 +170,11 @@ export function buildModel(input: ModelInput): ObjectModel {
     const key = keyOf(type, name);
     if (key === null) return unresolved(type);
     if (defined.has(key)) return resolved(key, type);
-    return plainNamespaceOf(name) === null ? unresolved(type) : external(key, type);
+    // A name with a parent, such as the alert `Invoice__c.Overdue`, says with its own part whether it is of a
+    // package: the suffix of the object is no prefix. The record of a custom metadata type is named with its
+    // type, which is written without a suffix, and is of a package when its type is.
+    const own = type === 'CustomMetadata' ? name : name.slice(name.lastIndexOf('.') + 1);
+    return plainNamespaceOf(own) === null ? unresolved(type) : external(key, type);
   };
 
   const relationship = (objectName: string, name: string): { field: Target; leadsTo: string | null } => {

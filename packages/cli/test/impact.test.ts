@@ -4,7 +4,7 @@
  * The answers themselves are tested in the engine. Here the fixture project is asked through the command line,
  * and what is printed is held against golden files.
  */
-import { cpSync, writeFileSync } from 'node:fs';
+import { cpSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,6 +16,15 @@ afterEach(dirs.cleanUp);
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/billing-sfdx', import.meta.url));
 const OBJECTS = 'project/force-app/main/default/objects';
 const AMOUNT = 'CustomField:invoice__c.amount__c';
+
+/**
+ * Takes away the one flow of the fixture project whose analysis has a warning: a path it does not follow, which
+ * the answer key lists among what is not known. A warning counts for every answer of a snapshot, so a test of
+ * an answer that is complete, or of a number of warnings, asks a project without that flow.
+ */
+const withoutTheWarning = (dir: string): void => {
+  rmSync(join(dir, 'project/force-app/main/default/flows/Invoice_After_Save.flow-meta.xml'));
+};
 
 /** A workspace with a copy of the fixture project as its only source, `fixture`, and one snapshot of it. */
 async function fixtureWorkspace(change: (dir: string) => void = () => undefined, more = ''): Promise<string> {
@@ -43,7 +52,6 @@ const NOT_ANALYSED = [
   'EmailFolder              1       1',
   'EmailTemplate            1       1',
   'FieldSet                 1       1',
-  'Flow                     6       6',
   'GlobalValueSet           1       1',
   'RecordType               2       2',
   'Workflow                 2       2',
@@ -82,14 +90,16 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 5)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 18 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
       '',
-      '3 components refer to it, 2 of them directly.',
+      '5 components refer to it, 3 of them directly.',
       '',
     ]);
-    expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
+    expect(lines.slice(-(NOT_ANALYSED.length + 4))).toEqual([
       'Not analysed yet. A component of these types may refer to it, and is not in the answer:',
       ...NOT_ANALYSED,
+      '',
+      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
   });
@@ -102,7 +112,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('4 components refer to it, 2 of them directly.');
+    expect(lines).toContain('8 components refer to it, 5 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -114,9 +124,10 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('7 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('17 components refer to it, all of them directly.');
 
-    const outgoing = await orglens(dir, ['impact', 'Invoice__c.Total__c', '--outgoing']);
+    const quiet = await fixtureWorkspace(withoutTheWarning);
+    const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
     expect(outgoing).toMatchObject({ code: 0, stderr: '' });
     expect(outgoing.stdout.split('\n')).toEqual([
       'What CustomField:invoice__c.total__c (Invoice__c.Total__c) refers to, in snapshot #1 of "fixture".',
@@ -131,7 +142,7 @@ describe('orglens impact', () => {
     ]);
 
     // A class is not analysed yet. The empty answer says so, and is no finding.
-    const apex = await orglens(dir, ['impact', 'InvoiceService', '--outgoing']);
+    const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
     expect(apex.stdout.split('\n')).toEqual([
       'What ApexClass:invoiceservice (InvoiceService) refers to, in snapshot #1 of "fixture".',
       'The answer is not complete: 1 type is not analysed yet. The details are below the answer.',
@@ -148,6 +159,7 @@ describe('orglens impact', () => {
 
   it('lists the names a component refers to that have no component, and says what the analysis did not follow', async () => {
     const dir = await fixtureWorkspace((root) => {
+      withoutTheWarning(root);
       // A field that no file defines, a standard field, and a relationship that no file defines: the path
       // behind it is not followed, which is the warning.
       writeFileSync(
@@ -200,7 +212,7 @@ describe('orglens impact', () => {
     });
     // The warning is about the whole snapshot, so the other direction is not complete either.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 18 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 17 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
     );
   });
 
@@ -215,12 +227,15 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 18 types are not analysed yet, and the analysis had 1 error. The details are below the answer.',
+      'The answer is not complete: 17 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
     );
-    expect(lines).toContain('6 components refer to it, all of them directly.');
-    expect(lines.slice(-3)).toEqual([
+    // The 17 of the project without the field that could not be read, and without the one that reads it.
+    expect(lines).toContain('16 components refer to it, all of them directly.');
+    expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
+      '',
+      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
     expect(await orglensJson(dir, ['impact', 'Invoice__c.Amount__c'])).toMatchObject({
@@ -232,12 +247,12 @@ describe('orglens impact', () => {
   });
 
   it('ends with 5 when a folder of the source was not read', async () => {
-    const dir = await fixtureWorkspace(() => undefined, 'paths = ["force-app", "not-there"]\n');
+    const dir = await fixtureWorkspace(withoutTheWarning, 'paths = ["force-app", "not-there"]\n');
     const shown = await orglens(dir, ['impact', 'Invoice__c.Amount__c']);
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 18 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 17 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',

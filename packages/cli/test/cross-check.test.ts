@@ -155,7 +155,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
     };
     expect(await crossCheckLines(dir)).toEqual([
       'Cross-check: the Dependency API of Salesforce reports 120 rows. No query left a row out.',
-      '61 rows are from a component of a type this version does not analyse, and are not compared: ApexClass 60, CustomMetadata 1.',
+      '61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.',
       '1 row names a component the org did not list, and is not compared.',
       '2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.',
       '56 rows were compared. They are 50 pairs of components: the analysis has 46 of them, has 2 as a reference to a part of the object Salesforce names, and missed 2.',
@@ -292,7 +292,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
     };
     expect(await crossCheckLines(dir)).toEqual([
       'Cross-check: the Dependency API of Salesforce reports 3 rows. No query left a row out.',
-      '1 row is from a component of a type this version does not analyse, and is not compared: Flow 1.',
+      '1 row is from a component of a type that is not analysed, or from a flow, and is not compared: Flow 1.',
       '1 row is from a component the snapshot does not hold or that was not analysed, and is not compared.',
       '1 row was compared. It is 1 pair of components: the analysis has 1 of them, has 0 as a reference to a part of the object Salesforce names, and missed 0.',
       '',

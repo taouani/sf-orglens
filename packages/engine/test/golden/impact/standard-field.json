@@ -58,6 +58,25 @@
       }
     },
     {
+      "key": "Flow:invoice_before_save#element:set_defaults",
+      "type": "Flow",
+      "name": "Invoice_Before_Save.Set_Defaults",
+      "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_before_save#element:set_defaults",
+        "to": "CustomField:user.department",
+        "kind": "reads",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "external",
+        "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
+        "line": 13,
+        "column": 60
+      }
+    },
+    {
       "key": "ValidationRule:invoice__c.void_needs_admin",
       "type": "ValidationRule",
       "name": "Invoice__c.Void_Needs_Admin",
@@ -155,12 +174,6 @@
         "listing": "ok"
       },
       {
-        "type": "Flow",
-        "listed": 6,
-        "retrieved": 6,
-        "listing": "ok"
-      },
-      {
         "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
@@ -212,7 +225,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 1,
     "notHeld": 0
   },
   "mayMiss": false

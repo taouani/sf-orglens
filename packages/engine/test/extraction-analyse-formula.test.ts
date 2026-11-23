@@ -114,6 +114,7 @@ describe('the formulas of a source', () => {
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 10, failedFiles: 0 },
       { origin: 'parser:formula', components: 3, failedFiles: 0 },
+      { origin: 'parser:flow', components: 0, failedFiles: 0 },
     ]);
     // Only the formula of a field makes it a formula field. A default value does not.
     const attrs = (fullName: string): unknown =>
@@ -523,6 +524,7 @@ describe('a formula that is not read as a whole', () => {
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 8, failedFiles: 0 },
       { origin: 'parser:formula', components: 1, failedFiles: 1 },
+      { origin: 'parser:flow', components: 0, failedFiles: 0 },
     ]);
   });
 
@@ -650,6 +652,7 @@ describe('a formula that a stranger wrote', () => {
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 8, failedFiles: 2 },
       { origin: 'parser:formula', components: 1, failedFiles: 0 },
+      { origin: 'parser:flow', components: 0, failedFiles: 0 },
     ]);
   });
 });
@@ -770,14 +773,19 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
         '")" stands where an operator or the end of the formula is expected.',
       ),
     ]);
-    // One more issue: the relationship that the object does not have.
-    expect(codes(analysis.issues.filter((issue) => issue.code !== 'FORMULA_NOT_READ'))).toEqual([
-      'warning PATH_NOT_FOLLOWED',
+    // One more issue: the relationship that the object does not have. The project has one issue of its own,
+    // in a flow.
+    const others = analysis.issues.filter((issue) => issue.code !== 'FORMULA_NOT_READ');
+    expect(others.map((issue) => `${issue.severity} ${issue.code} ${String(issue.componentKey)}`).sort()).toEqual([
+      'warning PATH_NOT_FOLLOWED CustomField:invoice__c.missing_relationship__c',
+      'warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
-    // Ten more components were read, and each holds a formula. Five files hold one that was not read.
+    // Ten more components were read, and each holds a formula. Five files hold one that was not read. The
+    // flows of the project are counted as they are without the ten.
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 83, failedFiles: 0 },
-      { origin: 'parser:formula', components: 45, failedFiles: 5 },
+      { origin: 'parser:formula', components: 52, failedFiles: 5 },
+      alone.work[2],
     ]);
   });
 });

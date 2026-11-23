@@ -510,8 +510,10 @@ function crossCheckLines(report: CoverageReport): string[] {
     return lines;
   }
   if (comparison.rowsNotAnalysed > 0) {
+    // Flows are analysed, and their rows are not compared yet (decision record 0060).
+    const orFlow = comparison.notAnalysed.some(({ type }) => type === 'Flow') ? ', or from a flow,' : ',';
     lines.push(
-      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type this version does not analyse, and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
+      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed${orFlow} and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
     );
   }
   if (comparison.rowsNotMatched > 0) {
@@ -779,12 +781,12 @@ function gapReasons(gaps: ImpactGaps): string[] {
       `${count(gaps.readErrors, 'error of the reading names', 'errors of the reading name')} no type, so what is missing may be of an analysed type`,
     );
   }
-  if (gaps.analysisErrors > 0) {
-    reasons.push(`the analysis had ${count(gaps.analysisErrors, 'error', 'errors')}`);
-  }
-  if (gaps.analysisWarnings > 0) {
-    reasons.push(`the analysis had ${count(gaps.analysisWarnings, 'warning', 'warnings')}`);
-  }
+  // One reason for both, so that the sentence does not say "the analysis had" twice.
+  const had = [
+    ...(gaps.analysisErrors > 0 ? [count(gaps.analysisErrors, 'error', 'errors')] : []),
+    ...(gaps.analysisWarnings > 0 ? [count(gaps.analysisWarnings, 'warning', 'warnings')] : []),
+  ];
+  if (had.length > 0) reasons.push(`the analysis had ${had.join(' and ')}`);
   if (gaps.notHeld > 0) {
     reasons.push(
       `the snapshot does not hold ${count(gaps.notHeld, 'component', 'components')} of the answer, so what ${gaps.notHeld === 1 ? 'it refers' : 'they refer'} to is not known`,

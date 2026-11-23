@@ -58,6 +58,10 @@ const tokenOf = (token: FormulaToken): string => {
 const useOf = (use: NameUse): string => {
   if (use.form === 'object') return `object ${use.part.name}@${String(use.part.from)}`;
   if (use.form === 'component') return `${use.type} ${use.fullName}@${String(use.part.from)}`;
+  if (use.form === 'unfollowed') {
+    const rest = use.parts.map((part) => `${part.name}@${String(part.from)}`);
+    return `after ${use.after.name}@${String(use.after.from)}: ${rest.join(' > ')}`;
+  }
   const parts = use.parts.map(
     (part) =>
       `${part.name}@${String(part.from)}${part.leadsTo === undefined ? '' : `:${part.leadsTo}`}${part.resolveAs === undefined ? '' : `=${part.resolveAs}`}`,
@@ -321,6 +325,24 @@ describe('what the name of a merge field stands for', () => {
     expect(uses('varCount')).toEqual([]);
     expect(uses('$Flow.CurrentDate')).toEqual([]);
     expect(uses('$Flow.Current.Date_2')).toEqual([]);
+  });
+
+  it('is not followed after a first name of which it is not known what record it holds', () => {
+    const some = (first: string): MergeStart | undefined =>
+      first === 'someRecord'
+        ? { object: null, notKnown: 'record' }
+        : first === 'Do_It'
+          ? { object: null, notKnown: 'outputs' }
+          : undefined;
+    const after = (name: string): string[] | null => usesOfMergeField(name, some)?.map(useOf) ?? null;
+    expect(after('someRecord')).toEqual([]);
+    expect(after('someRecord.Amount__c')).toEqual(['after someRecord@0: Amount__c@11']);
+    expect(after('someRecord.Account__r.Name')).toEqual(['after someRecord@0: Account__r@11 > Name@22']);
+    // What an action gives back has a name of its own: one name after it is such a value, and no field.
+    expect(after('Do_It')).toEqual([]);
+    expect(after('Do_It.result')).toEqual([]);
+    expect(after('Do_It.result.Amount__c')).toEqual(['after Do_It@0: result@6 > Amount__c@13']);
+    expect(after('Do_It.re sult')).toBeNull();
   });
 
   it('is not read where something that is no name stands after a first name that holds no record', () => {
@@ -624,7 +646,8 @@ describe('the names of a text in a file', () => {
       return { line: line ?? 0, column: column ?? 0 };
     };
     expect(reading.unread).toEqual([
-      { element: 'text', text: 'varOther.Name', ...at(placeOf(text, 'varOther')) },
+      // The flow has no resource of that name, which is said apart from a text that is no name.
+      { element: 'text', text: 'varOther.Name', ...at(placeOf(text, 'varOther')), why: 'start' },
       { element: 'text', text: '$Record.Amount__c + 1', ...at(placeOf(text, '$Record')) },
       { element: 'text', text: '', ...at(placeOf(text, '} and')) },
     ]);

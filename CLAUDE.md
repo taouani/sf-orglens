@@ -109,6 +109,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of a field or a rule, the formula of a flow, which has a merge field `{!Resource.Path}` where the other has a
   name, and a text with merge fields, where only what stands in the braces is read. The caller says what the
   first name of a merge field is. `fixtures/merge-field-probes.yaml` must be read as each probe says.
+- A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component,
+  and each of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a
+  reference starts at. `resourcesOf` says what each resource holds: a record of an object, something that holds
+  no record, or something of which that is not known, and then a path from it is not followed and a warning says
+  so. An element of a kind the reader does not know is kept, with a warning and its names as `probable`. The
+  analysis has a row of its own for flows (`parser:flow`). The rows of the Dependency API from flows are counted
+  and not compared (decision record 0060).
 - A snapshot is analysed from the files it holds (`api/analysis.ts`, decision record 0043): `snapshot` stores
   first and analyses what it stored, and `analyse` does the same for a snapshot that is already there. Whether
   a snapshot is `complete` or `partial` says what was read. Whether its analysis is complete is said by the
