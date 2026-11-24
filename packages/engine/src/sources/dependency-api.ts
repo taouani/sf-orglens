@@ -9,17 +9,19 @@
  * fewer: on a large org the query for every row held fewer rows than the limit, and most rows were not among them
  * (decision record 0069). So the query for every row never stands for the org. The rows are always asked for per
  * type of the component that refers, then whatever is of no type that a query named, the rest. The types the rest
- * shows are asked for by name in one more round, and the rest again after them. The answers are held against each
- * other: the first one against those of the types, and a rest against those of the types it showed. A row one gives
- * and the other lacks shows that an answer was cut off, also where it held few rows.
+ * shows are asked for by name in one more round, and the rest again after them.
  *
  * An answer that holds half as many rows as the limit, or more, is near the limit, and its rows are asked for in
- * parts: per pair of types, with the rest of the types of target held against their queries as above, then per
- * group of components that refer, whose ids the caller knows from what the org listed. A standard object as the
- * target cannot be asked for by name, so its rows are asked for with the rest. A part that is still near the limit
- * is taken as cut off: rows are missing, and the reading says so. Where rows were asked for per component, the
+ * parts: per pair of types, with the rest of the types of target asked for in rounds as above, then per group of
+ * components that refer, whose ids the caller knows from what the org listed. A standard object as the target
+ * cannot be asked for by name, so its rows are asked for with the rest. A part that is still near the limit is
+ * taken as cut off: rows are missing, and the reading says so. Where rows were asked for per component, the
  * reading is only as whole as the list of components: it asks for the rows of every other component in one more
  * query where the list is short enough for that, and says so where it is not.
+ *
+ * Any other answer is taken as whole, and is held against the reading when the reading has ended: a row that
+ * another query gave, and that its query asked for as well, shows that it was cut off all the same, also where it
+ * held few rows.
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. So the versions of the flows are asked for as well: one more object of the Tooling API,
@@ -68,11 +70,16 @@ export interface DependencyReading {
   /** Requests that were sent. */
   readonly requests: number;
   /**
-   * Queries that were cut off: near the limit of rows with no smaller part to ask for, or shown to be by the other
-   * queries, where an answer lacks a row that the queries it is held against give, or gave one that they lack
-   * (decision record 0069). An org that changes while it is read can show that as well.
+   * Queries that were cut off: near the limit of rows with no smaller part to ask for, or shown to be by another
+   * answer, which gave a row that the query asked for and its answer lacks (decision record 0069). An org that
+   * changes while it is read can show that as well.
    */
   readonly cutOff: number;
+  /**
+   * Of the queries in `cutOff`, those that another answer shows to be cut off. None of them was near the limit:
+   * two answers of the org do not agree. It is not stored with a snapshot.
+   */
+  readonly disagreed: number;
   /** Queries that failed and whose rows no other query gave. */
   readonly failed: number;
   /**
@@ -201,6 +208,7 @@ interface Page {
 
 /** What one query gave. */
 interface Asked {
+  /** The rows of the answer. A row that two answers give is the same object in both. */
   readonly rows: DependencyRow[];
   /**
    * The number of rows the answer says it has (`totalSize`), or 0 where it says none. Should Salesforce count rows
@@ -212,16 +220,24 @@ interface Asked {
 }
 
 /**
- * An answer that showed types no query had asked for by name: the rest of the types at the top, or the rest of the
- * types of target within a type. Those types are asked for by name after it, also where it held few rows, and it is
- * held against what their queries give, as the first answer is held against all later ones (decision record 0069).
+ * An answer that is taken as whole: it held fewer rows than half the limit, and every page of it came. So it has
+ * to hold every row of the reading that its query asked for, whichever query gave that row (decision record 0069).
  */
-interface Held {
-  readonly rows: readonly DependencyRow[];
-  /** The types it showed that no query had asked for by name. */
-  readonly types: ReadonlySet<string>;
-  /** Whether it held fewer rows than half the limit, and every page came. */
-  readonly whole: boolean;
+interface Whole {
+  /** The rows it gave. */
+  readonly came: ReadonlySet<DependencyRow>;
+  /** Whether a row is one its query asked for. */
+  readonly fits: (row: DependencyRow) => boolean;
+  /** The type of the component that refers, where its query named one. Only rows of that type can fit. */
+  readonly type: string | null;
+  /** The components its query named, each by the first 15 characters of its id. Only their rows can fit. */
+  readonly components: ReadonlySet<string> | null;
+}
+
+/** A part of the rows of a type: the condition that asks for it, and whether a row is of it. */
+interface Part {
+  readonly where: string;
+  readonly fits: (row: DependencyRow) => boolean;
 }
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -271,16 +287,14 @@ export async function readDependencies(
   /** Queries in a row, up to now, that got no answer in time. */
   let timeouts = 0;
   let cutOff = 0;
+  let disagreed = 0;
   let failed = 0;
   let unproven = 0;
   let code: string | null = null;
   /** The only address an answer may go on at: the same query of the Tooling API, further on. */
   const furtherOn = new RegExp(`^/services/data/v${apiVersion.replaceAll('.', '\\.')}/tooling/query/[A-Za-z0-9_-]+$`);
-  /** The rows that queries after the first one gave, which the first answer is held against. */
-  const later = new Set<string>();
-  let afterFirst = false;
-  /** Sets that take the rows of every query while they are open: what the queries of one type give. */
-  const gathering = new Set<Set<string>>();
+  /** The answers that are taken as whole. Each is held against the reading when the reading has ended. */
+  const taken: Whole[] = [];
 
   /** Asks one query, follows its answer over its pages, and keeps the rows. */
   const ask = async (where: string): Promise<Asked> => {
@@ -335,12 +349,13 @@ export async function readDependencies(
       if (!(error instanceof MetadataRequestError)) throw error;
       failure = error;
     }
-    for (const row of found) {
+    // A row that an earlier answer gave is that row: an answer is held against the others by the rows themselves.
+    const kept = found.map((row) => {
       const id = identity(row);
-      rows.set(id, row);
-      if (afterFirst) later.add(id);
-      for (const into of gathering) into.add(id);
-    }
+      const known = rows.get(id);
+      if (known === undefined) rows.set(id, row);
+      return known ?? row;
+    });
     options.onProgress?.(requests, rows.size);
     if (failure === null) {
       answered += 1;
@@ -359,7 +374,7 @@ export async function readDependencies(
         (answered === 0 && refusedAtStart >= limits.refusalsAtStart);
       if (stops) throw new Stopped(failure);
     }
-    return { rows: found, total, failure };
+    return { rows: kept, total, failure };
   };
 
   /**
@@ -369,50 +384,17 @@ export async function readDependencies(
   const nearLimit = (asked: Asked): boolean => 2 * Math.max(asked.rows.length, asked.total) >= limits.rowsPerQuery;
   const seen = (pick: (row: DependencyRow) => string): string[] =>
     [...new Set([...rows.values()].map(pick))].filter((type) => TYPE_NAME.test(type));
-  /** What is counted as missing so far. A part that adds to it has said itself that rows are missing. */
-  const missing = (): number => cutOff + failed + unproven;
-
   /**
-   * Runs the queries of one type, and keeps in `given` every row they gave, where they counted nothing as missing
-   * themselves. `work` asks them, and says whether the type was asked for by name: a type the org refuses by its
-   * name is left to the rest, and nothing is kept for it.
+   * Takes an answer as whole. It is only called for an answer that is not near the limit and did not fail.
+   * `type` and `components`: what its query named, so that only those rows are looked at.
    */
-  const gather = async (
-    type: string,
-    given: Map<string, ReadonlySet<string>>,
-    work: () => Promise<boolean>,
-  ): Promise<void> => {
-    const into = new Set<string>();
-    const before = missing();
-    gathering.add(into);
-    let asked: boolean;
-    try {
-      asked = await work();
-    } finally {
-      gathering.delete(into);
-    }
-    if (asked && missing() === before) given.set(type, into);
-  };
-
-  /**
-   * Whether an answer that showed types no query had asked for by name disagrees with the queries of those types.
-   * `typeOf` says what a row is of here: the type of the component that refers, or of its target. `within` says
-   * which rows of the reading the answer had to give.
-   */
-  const disagrees = (
-    held: Held,
-    typeOf: (row: DependencyRow) => string,
-    given: ReadonlyMap<string, ReadonlySet<string>>,
-    within: (row: DependencyRow) => boolean,
-  ): boolean => {
-    // A row it gave that the queries of its type did not give again: one of them left it out without showing it.
-    if (held.rows.some((row) => given.get(typeOf(row))?.has(identity(row)) === false)) return true;
-    // A row of a type it showed that it lacks, though it held fewer rows than half the limit: it was cut off.
-    const came = new Set(held.rows.map(identity));
-    return (
-      held.whole &&
-      [...rows.values()].some((row) => within(row) && held.types.has(typeOf(row)) && !came.has(identity(row)))
-    );
+  const take = (
+    asked: Asked,
+    fits: Whole['fits'],
+    type: string | null,
+    components: ReadonlySet<string> | null = null,
+  ): void => {
+    taken.push({ came: new Set(asked.rows), fits, type, components });
   };
 
   /**
@@ -420,25 +402,28 @@ export async function readDependencies(
    * pair of types, the rest of a type, or the whole type. A group near the limit is asked for in two halves, down
    * to one component. `sample`: rows that are known to be of the part.
    */
-  const askPerComponent = async (part: string, sample: readonly DependencyRow[], type: string): Promise<void> => {
+  const askPerComponent = async (part: Part, sample: readonly DependencyRow[], type: string): Promise<void> => {
     const ids = [...new Set((options.idsOfType?.(type) ?? []).filter((id) => ID.test(id)))].sort();
     // The ids of the org have 15 characters, or 18 with three more that repeat the case of the first 15.
     const known = new Set(ids.map((id) => id.slice(0, 15)));
+    const component = (row: DependencyRow): string => row.from.id.slice(0, 15);
     // The rows the part gave before it was cut off show whether the ids are the ones the API uses. If a row is
     // from a component whose id is not among them, asking per id would leave its rows out without a trace.
-    if (ids.length === 0 || sample.some((row) => !known.has(row.from.id.slice(0, 15)))) {
+    if (ids.length === 0 || sample.some((row) => !known.has(component(row)))) {
       cutOff += 1;
       return;
     }
     const groups: string[][] = [];
     for (let at = 0; at < ids.length; at += limits.idsPerQuery) groups.push(ids.slice(at, at + limits.idsPerQuery));
-    const came = new Set<string>();
+    const came = new Set<DependencyRow>();
+    /** The answers of the groups that were not near the limit and did not fail, each with its components. */
+    const answers: [Asked, ReadonlySet<string>][] = [];
     let groupsAnswered = 0;
     /** Whether a group left rows out, which is counted where it happens. */
     let lacking = false;
     for (let group = groups.shift(); group !== undefined; group = groups.shift()) {
-      const asked = await ask(`${part} AND MetadataComponentId IN (${quoted(group)})`);
-      for (const row of asked.rows) came.add(identity(row));
+      const asked = await ask(`${part.where} AND MetadataComponentId IN (${quoted(group)})`);
+      for (const row of asked.rows) came.add(row);
       if (nearLimit(asked)) {
         if (group.length === 1) {
           cutOff += 1;
@@ -451,14 +436,19 @@ export async function readDependencies(
         lacking = true;
         // An org that refuses the first group refuses the way of asking, and every other group with it.
         if (groupsAnswered === 0) return;
-      }
+      } else answers.push([asked, new Set(group.map((id) => id.slice(0, 15)))]);
       if (asked.failure === null) groupsAnswered += 1;
     }
     // The rows that are known to be of the part have to come again. Where one does not, the org does not read
-    // a condition the way it is meant here, and the groups say nothing about what is there.
-    if (!lacking && sample.some((row) => !came.has(identity(row)))) {
+    // a condition the way it is meant here, and the groups say nothing about what is there: the part is counted,
+    // once, and no group is taken as whole.
+    if (!lacking && sample.some((row) => !came.has(row))) {
       cutOff += 1;
+      disagreed += 1;
       return;
+    }
+    for (const [asked, group] of answers) {
+      take(asked, (row) => part.fits(row) && group.has(component(row)), type, group);
     }
     // The rows of a component that is not among the ids: one the org did not list, or made since. One query
     // can ask for them where it can name every id. Where it cannot, nothing shows that there is none.
@@ -466,9 +456,10 @@ export async function readDependencies(
       unproven += 1;
       return;
     }
-    const others = await ask(`${part} AND MetadataComponentId NOT IN (${quoted(ids)})`);
+    const others = await ask(`${part.where} AND MetadataComponentId NOT IN (${quoted(ids)})`);
     if (nearLimit(others)) cutOff += 1;
     else if (others.failure !== null) failed += 1;
+    else take(others, (row) => part.fits(row) && !known.has(component(row)), type);
   };
 
   /**
@@ -487,8 +478,12 @@ export async function readDependencies(
    */
   const askType = async (type: string): Promise<void> => {
     const whole = `MetadataComponentType = '${type}'`;
+    const ofThisType = (row: DependencyRow): boolean => row.from.type === type;
     const ofType = await ask(whole);
-    if (!nearLimit(ofType) && ofType.failure === null) return;
+    if (!nearLimit(ofType) && ofType.failure === null) {
+      take(ofType, ofThisType, type);
+      return;
+    }
     // The types of target the rows so far show, then whatever is of another type: the limit may hide a type.
     // A type whose query failed is asked for in the same parts: a part can be answered where the whole is not.
     /** The types of target that a query of their own was asked for and that the rest leaves out. */
@@ -500,140 +495,140 @@ export async function readDependencies(
         .filter((target) => !done.has(target) && !unnamed.has(target))
         .sort();
     let targets = left();
-    /** What the queries of each type of target gave, where they counted nothing as missing themselves. */
-    const given = new Map<string, ReadonlySet<string>>();
-    /** The rest of the round before, where it showed types of target that no query had asked for by name. */
-    let held: Held | null = null;
-    for (let round = 0; round < limits.rounds; round += 1) {
+    for (let round = 0; ; round += 1) {
       for (const target of targets) {
-        await gather(target, given, async () => {
-          const pair = `${whole} AND RefMetadataComponentType = '${target}'`;
-          const asked = await ask(pair);
-          if (nearLimit(asked)) {
-            done.add(target);
-            await askPerComponent(pair, asked.rows, type);
-          } else if (asked.failure === null) done.add(target);
-          // The rest gives the rows of a type the org refuses by its name, and counts as failed if it does not.
-          else if (refusedAsWritten(asked)) unnamed.add(target);
-          else {
-            // A query that broke off or took too long. The rest would take longer with these rows in it.
-            done.add(target);
-            failed += 1;
-          }
-          return done.has(target);
-        });
+        const pair: Part = {
+          where: `${whole} AND RefMetadataComponentType = '${target}'`,
+          fits: (row) => row.from.type === type && row.to.type === target,
+        };
+        const asked = await ask(pair.where);
+        if (nearLimit(asked)) {
+          done.add(target);
+          await askPerComponent(pair, asked.rows, type);
+        } else if (asked.failure === null) {
+          done.add(target);
+          take(asked, pair.fits, type);
+        }
+        // The rest gives the rows of a type the org refuses by its name, and counts as failed if it does not.
+        else if (refusedAsWritten(asked)) unnamed.add(target);
+        else {
+          // A query that broke off or took too long. The rest would take longer with these rows in it.
+          done.add(target);
+          failed += 1;
+        }
       }
-      if (
-        held !== null &&
-        disagrees(
-          held,
-          (row) => row.to.type,
-          given,
-          (row) => row.from.type === type,
-        )
-      )
-        cutOff += 1;
-      const rest =
-        done.size === 0 ? whole : `${whole} AND RefMetadataComponentType NOT IN (${quoted([...done].sort())})`;
-      // With no type left out, the rest is the query for the whole type, which has been asked.
-      const others = done.size === 0 ? ofType : await ask(rest);
-      // The rows the query for the whole type gave that are of the rest. The rest is the only query that brings
-      // the rows to a standard object, and nothing else shows that the org puts them into its answer.
-      const known = ofType.rows.filter((row) => !done.has(row.to.type));
+      // After the last rest, the types of target it showed were asked for by name, and the rest is not asked for
+      // again. That rest is held against what their queries gave, as every answer that is taken as whole.
+      if (round === limits.rounds) return;
+      /** The types of target the rest leaves out, as they are now. */
+      const out = new Set(done);
+      const rest: Part = {
+        // With no type left out, the rest is the query for the whole type, which has been asked.
+        where: out.size === 0 ? whole : `${whole} AND RefMetadataComponentType NOT IN (${quoted([...out].sort())})`,
+        fits: (row) => row.from.type === type && !out.has(row.to.type),
+      };
+      const others = out.size === 0 ? ofType : await ask(rest.where);
       targets = left();
-      if (!nearLimit(others)) {
-        if (others.failure === null) {
-          const came = new Set(others.rows.map(identity));
-          // A row that is of the rest and did not come with it: the org does not read the list of types the
-          // way it is meant here, and the rest says nothing about what is there.
-          if (known.some((row) => !came.has(identity(row)))) cutOff += 1;
-          // The types of target it shows that were not asked for by name: it stands for them only where their own
-          // queries agree with it, since an answer below the limit can be cut off as well.
-          else if (targets.length > 0 && round < limits.rounds - 1) {
-            held = { rows: others.rows, types: new Set(targets), whole: true };
-            continue;
-          }
-        } else if (others !== ofType && refusedAsWritten(others)) {
-          // The org does not take the list of types. The conditions on the id of a component need none.
-          await askPerComponent(whole, ofType.rows, type);
+      if (nearLimit(others)) {
+        // Near the limit with no type left to ask for by name, or after the last round: the rest is asked for per
+        // component, which leaves no type out. The rows the query for the whole type gave that are of the rest
+        // are known to be of it as well.
+        if (targets.length === 0 || round === limits.rounds - 1) {
+          await askPerComponent(rest, [...others.rows, ...ofType.rows.filter(rest.fits)], type);
+          return;
+        }
+      } else if (others.failure === null) {
+        // The rest is the only query that brings the rows to a standard object. It is taken as whole: so it has
+        // to hold the rows of the rest that the query for the whole type gave, and the rows of every type of
+        // target it shows, which are asked for by name in the next round, also where it held few rows.
+        take(others, rest.fits, type);
+        if (targets.length === 0) return;
+      } else {
+        // The org does not take the list of types. The conditions on the id of a component need none.
+        if (others !== ofType && refusedAsWritten(others)) {
+          await askPerComponent({ where: whole, fits: ofThisType }, ofType.rows, type);
         } else failed += 1;
         return;
       }
-      // Near the limit with no type left to ask for by name, or after the last round: the rest is asked for per
-      // component, which leaves no type out.
-      if (targets.length === 0 || round === limits.rounds - 1) {
-        await askPerComponent(rest, [...others.rows, ...known], type);
-        return;
+    }
+  };
+
+  /**
+   * Holds every answer that was taken as whole against the reading. A row of the reading that the query of such an
+   * answer asked for, and that the answer lacks, came with another query: the answer was cut off below half the
+   * limit, or the org does not read a condition the way it is meant here, or it changed in between. The query is
+   * counted, once.
+   */
+  const holdAgainstTheReading = (): void => {
+    const all = [...rows.values()];
+    const ofType = new Map<string, DependencyRow[]>();
+    const ofComponent = new Map<string, DependencyRow[]>();
+    const add = (to: Map<string, DependencyRow[]>, key: string, row: DependencyRow): void => {
+      const list = to.get(key);
+      if (list === undefined) to.set(key, [row]);
+      else list.push(row);
+    };
+    for (const row of all) {
+      add(ofType, row.from.type, row);
+      add(ofComponent, row.from.id.slice(0, 15), row);
+    }
+    for (const { came, fits, type, components } of taken) {
+      const among =
+        components !== null
+          ? [...components].flatMap((id) => ofComponent.get(id) ?? [])
+          : type !== null
+            ? (ofType.get(type) ?? [])
+            : all;
+      if (among.some((row) => fits(row) && !came.has(row))) {
+        cutOff += 1;
+        disagreed += 1;
       }
-      held = { rows: others.rows, types: new Set(targets), whole: false };
     }
   };
 
   try {
     try {
       const all = await ask('');
-      afterFirst = true;
       // The first answer never stands for the org, also where it holds few rows: an answer that Salesforce cut
       // off can hold fewer rows than the limit, and nothing in it shows that (decision record 0069). So the rows
       // are asked for per type of the component that refers: the types that are known to refer and the ones the
-      // rows show, then whatever is of another type.
+      // rows show, then whatever is of another type. Where it is not near the limit, it has to hold every row
+      // the other queries give, as every answer that is taken as whole.
+      if (!nearLimit(all) && all.failure === null) take(all, () => true, null);
       const done = new Set<string>();
       let types = [...new Set([...REFERRING_TYPES, ...seen((row) => row.from.type)])].sort();
-      /** What the queries of each type gave, where they counted nothing as missing themselves. */
-      const given = new Map<string, ReadonlySet<string>>();
-      /** The rest of the round before, where it showed types that no query had asked for by name. */
-      let held: Held | null = null;
-      for (let round = 0; round < limits.rounds; round += 1) {
+      for (let round = 0; ; round += 1) {
         for (const type of types) {
           done.add(type);
-          await gather(type, given, async () => {
-            await askType(type);
-            return true;
-          });
+          await askType(type);
         }
-        if (
-          held !== null &&
-          disagrees(
-            held,
-            (row) => row.from.type,
-            given,
-            () => true,
-          )
-        )
-          cutOff += 1;
-        const others = await ask(`MetadataComponentType NOT IN (${quoted(done)})`);
+        // After the last rest, the types it showed were asked for by name, and the rest is not asked for again.
+        if (round === limits.rounds) break;
+        /** The types the rest leaves out, as they are now. */
+        const out = new Set(done);
+        const others = await ask(`MetadataComponentType NOT IN (${quoted(out)})`);
+        // The types it shows are asked for by name in the next round, also where it held few rows: an answer
+        // below the limit can be cut off as well.
         types = seen((row) => row.from.type)
           .filter((type) => !done.has(type))
           .sort();
-        const near = nearLimit(others);
-        if (!near && others.failure !== null) {
+        if (nearLimit(others)) {
+          // Its rows cannot be asked for in a smaller part than the types it shows. With no type to ask for, or
+          // no rest after this one, nothing shows what it left out.
+          if (types.length === 0 || round === limits.rounds - 1) cutOff += 1;
+        } else if (others.failure !== null) {
           // Without this answer, a type that no row shows stays unseen.
           failed += 1;
           break;
-        }
-        if (types.length === 0 || round === limits.rounds - 1) {
-          if (near) cutOff += 1;
-          break;
-        }
-        // The types it shows are asked for by name in the next round, also where it held few rows: an answer
-        // below the limit can be cut off as well. It is held against what their queries give.
-        held = { rows: others.rows, types: new Set(types), whole: !near };
+        } else take(others, (row) => !out.has(row.from.type), null);
+        if (types.length === 0) break;
       }
-      // The first answer and the later ones have to agree. A row it gave that the queries of its type did not give
-      // again: one of them left it out without showing it, or the org does not read a condition the way it is
-      // meant here. Where those queries counted rows as missing themselves, the row is among them.
-      const first = new Set(all.rows.map(identity));
-      const lacked = all.rows.some((row) => given.get(row.from.type)?.has(identity(row)) === false);
-      // A row the first answer lacks, where it was not near the limit: it was cut off all the same. Then so can be
-      // any answer below the limit on this org, also one the reading took as whole.
-      const cutShort = all.failure === null && !nearLimit(all) && [...later].some((id) => !first.has(id));
-      // Either way it is the first query that is counted, and once.
-      if (lacked || cutShort) cutOff += 1;
     } catch (error) {
       if (!(error instanceof Stopped)) throw error;
       // What stopped the reading left the rows of every query that was not asked out.
       failed += 1;
     }
+    holdAgainstTheReading();
   } finally {
     await http.close();
   }
@@ -647,6 +642,7 @@ export async function readDependencies(
     state,
     requests,
     cutOff,
+    disagreed,
     failed,
     unproven,
     // A query that failed and whose rows other queries gave left nothing out.

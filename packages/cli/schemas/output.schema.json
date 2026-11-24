@@ -952,7 +952,7 @@
         },
         "rows": { "description": "The rows the snapshot holds.", "type": "integer", "minimum": 0 },
         "queriesCutOff": {
-          "description": "The queries that were cut off. One is an answer that holds half as many rows as one query gives at most, or more, with no smaller part to ask for. The other is an answer that the other answers show to be cut off, since one gives a row the other lacks.",
+          "description": "The queries that were cut off. One kind is a query whose answer holds half as many rows as one query gives at most, or more, or says that it does, with no smaller part to ask for. The other kind is a query whose answer was taken as whole and lacks a row that another query gave, and that it had asked for as well.",
           "type": "integer",
           "minimum": 0
         },

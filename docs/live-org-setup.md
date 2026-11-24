@@ -279,19 +279,27 @@ record [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and just a
 shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine then
 asks per type, per pair of types and per group of components, and the step says whether the parts give the same
 rows as the reading just before. It fails when the parts give a row that the reading just before did not give,
-and when the engine calls the reading in parts whole and a row is lacking. It also fails when a reading counts a
-query as cut off and nothing explains it. For the snapshot and the reading just after it that is: no query failed,
-and the test org holds too few rows for an answer near the limit. For the reading in parts: no query failed, and no
-component alone holds 30 rows. The answers of the Dependency API do not agree with each other then. The org can
-change between two queries and between the readings, so a second run tells whether a failure is one of the
-engine. The step ends with a warning when the
-org refuses one of those queries. Whenever a request of that reading failed, the step prints the condition of
-its query, with the names of the metadata types and the number of ids in the place of the ids, and how many
-queries and requests had that condition. Whenever the parts lack a row or give one too many, it counts those
-rows by the types of their two ends. It does not read the rows again when the reading of the snapshot is not
-whole, and does not try the parts when the reading just before is not whole or when the org holds fewer than 30
-rows, and says so. Of both readings it says how many answers said that they hold more rows than they gave
-(`totalSize`), as the org gave them: the engine takes such an answer as near the limit.
+and when the engine calls the reading in parts whole and a row is lacking.
+
+It also fails when answers of the Dependency API do not agree with each other: one of the two readings counts a
+query whose answer lacks a row that another query gave. The reader says how many queries it counts for that. A
+query that the reading in parts counts for another reason does not fail the step: one component alone can hold 30
+rows, and a part cannot be asked for per component where one of its rows comes from a component the org did not
+list, such as a version of a flow that is neither the active nor the latest one. A snapshot does not keep how many
+of its queries were counted because answers do not agree. So for the snapshot, and for the reading just after it,
+the step fails as well where a query is counted as cut off though no query failed and the reading holds fewer
+rows than half of what an answer gives at most: only an answer that lacks a row another query gave, or one that
+says that it holds more rows than it gave, is known to cause that. The org can change between two queries and
+between the readings, so a second run tells whether a failure is one of the engine.
+
+The step ends with a warning when the org refuses one of those queries. Whenever a request of that reading
+failed, the step prints the condition of its query, with the names of the metadata types and the number of ids in
+the place of the ids, and how many queries and requests had that condition. Whenever the parts lack a row or give
+one too many, it counts those rows by the types of their two ends. It reads the rows again also when the reading
+of the snapshot is not whole. It does not try the parts when the reading just before is not whole or when the org
+holds fewer than 30 rows, and says so. Of both readings it says how many answers said that they hold more rows
+than they gave (`totalSize`), as the org gave them. The engine takes an answer as near the limit where it says
+that it holds half the limit or more, which is 30 rows for the reading in parts.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
 the symbol tables. One query of the Dependency API gives at most 2,000 rows, and an answer that Salesforce cut off

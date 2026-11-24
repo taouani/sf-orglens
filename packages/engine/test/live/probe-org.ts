@@ -491,6 +491,8 @@ async function probeDependencies(
       : '(a type that is not shown, and ends in __mdt)';
   };
   log.say('The Dependency API (MetadataComponentDependency)');
+  // The probe gives the reader no ids of the components. So a query near the limit that has no smaller part is
+  // counted as cut off and is not asked again per component: `unproven` stays at zero here.
   const reading = await readDependencies(session);
   counter.requests += reading.requests;
   if (reading.state === 'none') {
@@ -511,10 +513,7 @@ async function probeDependencies(
     `Different rows in all: ${String(rows.size)}.` +
       (cutOff > 0
         ? ` ${plural(cutOff, 'query was', 'queries were')} cut off or failed${code === null ? '' : ` (${code})`}, so rows are missing, or may be.`
-        : ' No query was cut off or failed, and no answer shows that a row is missing.') +
-      (reading.unproven > 0
-        ? ` ${plural(reading.unproven, 'query', 'queries')} near the limit ${reading.unproven === 1 ? 'was' : 'were'} asked again per component, for more components than one query names: a row of a component the org did not list may be missing.`
-        : ''),
+        : ' No query was cut off or failed, and no answer shows that a row is missing.'),
   );
 
   const names = await namesBehindIds(log, session, counter);

@@ -770,7 +770,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The step is told before the first request, and after every query for rows with how far it is. The query for
       // the versions of the flows counts with them.
       const told = events.filter((event) => event.step === 'cross-checking');
-      const asked = dependencies.queries.length;
+      const asked = 1 + QUERIES_FOR_ROWS;
+      expect(dependencies.queries).toHaveLength(asked);
       expect(told).toEqual([
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
         ...Array.from({ length: asked - 1 }, (_, at) => ({

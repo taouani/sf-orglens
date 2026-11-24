@@ -95,9 +95,10 @@ const CONDITIONS_SHOWN = 40;
  * The rows of the Dependency API are read a second time with every answer cut off at this many rows. The test
  * org holds fewer rows than half the 2,000 a query really gives, so the parts the engine asks for near that limit
  * are never asked for there otherwise. The engine is told twice this number: it takes an answer as near the limit
- * from half of it on (decision record 0069). So it asks in parts where an answer was cut off, where one holds
- * exactly this many rows, and where the org says that an answer holds more rows than it gave (`totalSize`). The
- * step counts the answers that say so.
+ * from half of it on (decision record 0069). So it asks in parts where an answer holds this many rows, which is
+ * where it was cut off here or held exactly as many, and where the org says that an answer holds this many or
+ * more (`totalSize`). The step counts the answers that say that they hold more rows than they gave, whatever the
+ * number: whether Salesforce ever says so is not known.
  */
 const PRETENDED_LIMIT = 30;
 /** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
@@ -1174,17 +1175,25 @@ interface Answers {
 }
 
 /**
- * Whether the numbers of a reading show that answers of the Dependency API do not agree with each other: a query
- * is counted as cut off, though no query failed and the org holds too few rows for an answer near the limit. Then
- * an answer lacks a row that another gives, or says that it holds more rows than it gave.
+ * Whether a reading counts a query as cut off that the rows do not explain: no query failed, and the reading holds
+ * too few rows for an answer near the limit. Only two things are known to cause that: an answer lacks a row that
+ * another query gave, or an answer says that it holds more rows than it gave. After a query that failed this does
+ * not tell: the rows are then asked for in another way, which can count a query as well.
  */
-const disagreeing = (cutOff: number, code: string | null, rows: number): boolean =>
+const countedWithoutRows = (cutOff: number, code: string | null, rows: number): boolean =>
   cutOff > 0 && code === null && 2 * rows < dependencyLimits().rowsPerQuery;
 
-/** What the step says where `disagreeing` holds. `reading`: which reading it was. */
-const disagreement = (reading: string, cutOff: number): string =>
-  `Answers of the Dependency API do not agree: ${reading} counted ${plural(cutOff, 'query', 'queries')} as cut off, though no query failed and the org holds fewer rows than half of what one answer gives at most. ` +
-  'An answer lacks a row that another gives, or says that it holds more rows than it gave. If the org was changed in that moment, a second run tells.';
+/**
+ * What the step says where the snapshot counts a query that its rows do not explain. A snapshot keeps the number
+ * of queries that were cut off, and not how many of them another answer showed to be.
+ */
+const snapshotCounted = (cutOff: number): string =>
+  `The snapshot counted ${plural(cutOff, 'query', 'queries')} of the Dependency API as cut off, though no query failed and it holds fewer rows than half of what one answer gives at most. ` +
+  'Only an answer that lacks a row another query gave, or one that says that it holds more rows than it gave, is known to cause that, and a snapshot does not keep which. If the org was changed in that moment, a second run tells.';
+
+/** What the step says of a reading it made itself, where another query gave a row that an answer lacks. */
+const disagreement = (reading: string, disagreed: number): string =>
+  `Answers of the Dependency API do not agree: ${reading} counted ${plural(disagreed, 'query', 'queries')} whose answer lacks a row that another query gave. If the org was changed in that moment, a second run tells.`;
 
 /**
  * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
@@ -1332,9 +1341,14 @@ export function rowsByTypes(log: PublicLog, rows: readonly DependencyRow[]): str
  * answer each of those queries. The two readings follow each other at once, so that the org has no time to change
  * between them: the rows of the snapshot are minutes old.
  *
- * Returns `other rows` if the reading in parts gives a row the first reading did not give, or if the engine calls
- * it whole and it lacks one, and `disagreeing` if the answers of one of the two readings do not agree with each
- * other.
+ * Returns:
+ * - `disagreeing` if one of the two readings counts a query whose answer lacks a row that another query gave. The
+ *   reader says how many it counted for that (`disagreed`), so a query it counts for another reason is not taken
+ *   for one: a part near the limit that cannot be asked for per component, because a row comes from a component
+ *   the org did not list, such as a version of a flow, or one component alone that is near the limit.
+ * - `counted` if the reading as the snapshot does it counts a query that neither that nor its rows explain.
+ * - `other rows` if the reading in parts gives a row the first reading did not give, or if the engine calls it
+ *   whole and it lacks one.
  */
 export async function readInParts(
   log: PublicLog,
@@ -1343,7 +1357,7 @@ export async function readInParts(
   snapshotId: number,
   apiVersion: string | null,
   limit = PRETENDED_LIMIT,
-): Promise<'same' | 'other rows' | 'disagreeing'> {
+): Promise<'same' | 'other rows' | 'disagreeing' | 'counted'> {
   const version = apiVersion === null ? {} : { apiVersion };
   const said: Answers = { inOnePage: 0, saidMore: 0 };
   const one = await readDependencies(
@@ -1353,13 +1367,24 @@ export async function readInParts(
   log.say(
     `Read once more as the snapshot does it: ${plural(one.requests, 'request', 'requests')}, ${plural(one.rows.length, 'row', 'rows')}. ${saidMoreLine(said)}`,
   );
+  if (one.disagreed > 0) {
+    log.say(disagreement('the reading as the snapshot does it', one.disagreed));
+    return 'disagreeing';
+  }
   if (one.state !== 'whole') {
-    if (disagreeing(one.cutOff, one.code, one.rows.length)) {
-      log.say(disagreement('the reading as the snapshot does it', one.cutOff));
-      return 'disagreeing';
+    const numbers =
+      `${plural(one.cutOff, 'query', 'queries')} cut off, ${String(one.failed)} failed` +
+      (one.code === null
+        ? ''
+        : ` (the code of the first failure: ${log.code(one.code) ?? 'a code that is not shown'})`);
+    if (countedWithoutRows(one.cutOff, one.code, one.rows.length)) {
+      log.say(
+        `The reading as the snapshot does it says that rows are missing, or may be: ${numbers}. No query failed, no answer lacks a row that another query gave, and the reading holds fewer rows than half of what one answer gives at most. The line before says how many answers said that they hold more rows than they gave.`,
+      );
+      return 'counted';
     }
     log.say(
-      'The reading as the snapshot does it says this time that rows are missing, or may be, so reading them in parts was not tried.',
+      `The reading as the snapshot does it says this time that rows are missing, or may be: ${numbers}. So reading them in parts was not tried.`,
     );
     return 'same';
   }
@@ -1399,7 +1424,7 @@ export async function readInParts(
   const more = moreRows.length;
   log.say(
     `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
-      `Queries counted as cut off, still at that number with no smaller part to ask for or shown to be by the other answers: ${String(again.cutOff)}. ` +
+      `Queries counted as cut off: ${String(again.cutOff)}. Of them, still at that number of rows with no smaller part to ask for: ${String(again.cutOff - again.disagreed)}, and with an answer that lacks a row another query gave: ${String(again.disagreed)}. ` +
       `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
       `Queries asked again per component, for more components than one query names: ${String(again.unproven)}. ` +
       `As the org gave them, before one was cut off: ${saidMoreLine(saidInParts)}`,
@@ -1419,15 +1444,12 @@ export async function readInParts(
   if (again.failed > 0) {
     log.say('::warning::The org refused a query the engine asks when a query is near the limit of rows.');
   }
-  // A query for one component alone that is still at the number the answers are cut off at has no smaller part,
-  // and is counted as cut off. Where no component holds that many rows and no query failed, nothing of the kind
-  // explains a query that is counted: the answers do not agree, or the ids are not those of the rows.
-  const ofComponent = new Map<string, number>();
-  for (const { from } of one.rows) ofComponent.set(from.id, (ofComponent.get(from.id) ?? 0) + 1);
-  if (again.cutOff > 0 && again.failed === 0 && ![...ofComponent.values()].some((rows) => rows >= limit)) {
-    log.say(
-      `The reading in parts counted ${plural(again.cutOff, 'query', 'queries')} as cut off, though no query failed and no component alone holds ${String(limit)} rows or more. Its answers do not agree, or the ids the org listed are not those of the rows. If the org was changed in that moment, a second run tells.`,
-    );
+  // A query that is still at the number the answers are cut off at, with no smaller part to ask for, is counted
+  // as cut off, and that is no fault: one component alone can hold that many rows, and a part cannot be asked for
+  // per component where a row comes from a component the org did not list, such as a version of a flow. A query
+  // whose answer lacks a row that another query gave is one: no answer below that number was cut off here.
+  if (again.disagreed > 0) {
+    log.say(disagreement('the reading in parts', again.disagreed));
     return 'disagreeing';
   }
   // A reading that says that rows are missing may lack rows. One that says it is whole may not.
@@ -1546,10 +1568,14 @@ export async function readOrg(
             for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);
           }
           compared = crossCheckLines(log, crossCheck, readFlowVersionIds(store, taken.id));
-          if (crossCheck?.state === 'whole') {
+          if (crossCheck !== null && crossCheck.state !== 'none') {
+            // Also where the reading of the snapshot is not whole: the reading after it says what the answers
+            // say of themselves, and how many queries it counts because answers do not agree, which a snapshot
+            // does not keep.
+            if (crossCheck.state === 'partial') {
+              log.say('The reading of the snapshot is not whole. The rows are read again all the same.');
+            }
             inParts = await readInParts(log, session, store, taken.id, taken.apiVersion);
-          } else if (crossCheck?.state === 'partial') {
-            log.say('The reading of the snapshot is not whole, so the rows were not read again, nor in parts.');
           }
         }
       } finally {
@@ -1573,15 +1599,20 @@ export async function readOrg(
       log.fail([
         'The analysis missed a reference that Salesforce reports. The lines above name it where it is of the fixture project.',
       ]);
-    } else if (crossCheck !== null && disagreeing(crossCheck.queriesCutOff, crossCheck.code, crossCheck.rows)) {
+    } else if (crossCheck !== null && countedWithoutRows(crossCheck.queriesCutOff, crossCheck.code, crossCheck.rows)) {
       // Before the rows were always asked for per type, the step saw this when it read them again in parts. Now
       // the reading of the snapshot sees it itself, and is not whole: that is no warning on the test org.
       log.say('');
-      log.fail([disagreement('the snapshot', crossCheck.queriesCutOff)]);
+      log.fail([snapshotCounted(crossCheck.queriesCutOff)]);
     } else if (inParts === 'disagreeing') {
       log.say('');
       log.fail([
         'The answers of the Dependency API did not agree with each other when it was read again. The lines above say how many queries are counted for it.',
+      ]);
+    } else if (inParts === 'counted') {
+      log.say('');
+      log.fail([
+        'The Dependency API was read again as the snapshot does it, and a query is counted as cut off though the reading holds too few rows for an answer near the limit. The lines above say how many, and what the answers said that they hold.',
       ]);
     } else if (inParts === 'other rows') {
       log.say('');

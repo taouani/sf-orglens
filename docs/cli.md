@@ -377,14 +377,14 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
   earlier one and of its warning. Continued with `--no-cross-check`, it keeps a reading it already has.
 - One query gives at most 2,000 rows and cannot be continued, and an answer that Salesforce cut off can hold
   fewer. So after one query for every row, the rows are always asked for per type of the component that refers,
-  then whatever is of another type, and each type that shows there is asked for by name as well. The first answer
-  is held against the answers of the types, and what was of another type against the answers of the types it
-  showed: a row that one gives and the other lacks shows that an answer was cut off. Where an answer holds 1,000
-  rows or more, half of what one gives at most, or says that it has as many, the rows are asked for in parts: per
-  pair of types, and per group of components. Rows are missing, or may be, where a part is still near the limit,
-  where a query fails, and where answers do not agree. The snapshot then has the warning `CROSS_CHECK_PARTIAL`,
-  and the report says so. An org that is changed while it is read can make two answers disagree as well: a second
-  snapshot tells.
+  then whatever is of another type, and each type that shows there is asked for by name as well. Where an answer
+  holds 1,000 rows or more, half of what one gives at most, or says that it has as many, the rows are asked for in
+  parts: per pair of types, and per group of components. Any other answer is taken as whole, and is held against
+  every row the reading holds in the end: a row that another query gave, and that its own query asked for as
+  well, shows that it was cut off all the same. Rows are missing, or may be, where a part is still near the
+  limit, where a query fails, and where an answer lacks such a row. The snapshot then has the warning
+  `CROSS_CHECK_PARTIAL`, and the report says so. An org that is changed while it is read can make two answers
+  disagree as well: a second snapshot tells.
 - The groups of components are the components the org listed. Where a type has more of them than one query
   can name, which is 200, nothing shows whether a component the org did not list has a row as well. The
   reading is then `partial` too, and the warning and the report say that rows may be missing.

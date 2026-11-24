@@ -8,9 +8,10 @@
  * object, a custom object without its ending, a standard object has the type `StandardEntity` and its name as
  * its id, and a record of a custom metadata type has the name of that type as its type. A query whose condition
  * on the type of the target names `StandardEntity` is refused with `INVALID_TYPE_FOR_OPERATION`, as run 11 on
- * the test org showed. A test can make it leave rows out of an answer it cut off (`hidden`): one explanation of an
- * answer of a large org that held fewer rows than the limit and lacked rows (decision record 0069). What Salesforce
- * did there is not known.
+ * the test org showed. A test can name rows that the org never hands out and that count against the limit all the
+ * same (`hidden`), so that an answer is cut off with fewer rows than the limit: one explanation of an answer of a
+ * large org that held fewer rows than the limit and lacked rows (decision record 0069). What Salesforce did there is
+ * not known.
  *
  * It knows the few conditions the engine writes and refuses every other query, so that a test fails when the
  * engine asks for something else.

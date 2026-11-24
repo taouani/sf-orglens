@@ -44,6 +44,7 @@ const reading = (more: Partial<DependencyReading> = {}): DependencyReading => ({
   state: 'whole',
   requests: 1,
   cutOff: 0,
+  disagreed: 0,
   failed: 0,
   unproven: 0,
   code: null,
