@@ -129,7 +129,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
   its actions (`extraction/objects.ts`, decision record 0070). The page or component is a target by its name and is
   not read. A Lightning component is an Aura component, or a Lightning web component where the snapshot defines only
   that. The Dependency API of a large org reported the Lightning page. Whether it reports the others was not
-  measured, so a pair to one of them without a row is counted with a reason, and not listed.
+  measured, so a pair to one of them without a row is counted with a reason, and not listed. An impact answer
+  follows the reference as any other: an answer about such a page holds the object and, behind it, what refers to
+  the object.
 - A record type and a field set are read by `extraction/objects.ts`, and a record of a custom metadata type by
   `extraction/custom-metadata.ts` (decision record 0065). A record refers to its type, to each field it gives a
   value, and to what the value of a relationship names: an object, a field, whose object is the value of the field

@@ -497,15 +497,20 @@ describe('the overrides of the actions of an object', () => {
       ...override('Accept', 'Default', null),
       ...override('List', 'Standard', null),
       ...override('Follow', 'default', 'Not_Named'),
+      ...override('SaveEdit', 'LightningComponent', 'saveInvoice', 'Large'),
+      ...override('CancelEdit', 'LightningComponent', 'cancelInvoice', 'Large'),
     );
     defined(source, 'FlexiPage', 'Invoice_Record_Page', 'flexipages/Invoice_Record_Page.flexipage-meta.xml');
     defined(source, 'ApexPage', 'Invoice_Edit', 'pages/Invoice_Edit.page-meta.xml');
     defined(source, 'AuraDefinitionBundle', 'createInvoice', 'aura/createInvoice/createInvoice.cmp-meta.xml');
     defined(source, 'LightningComponentBundle', 'cloneInvoice', 'lwc/cloneInvoice/cloneInvoice.js-meta.xml');
+    defined(source, 'AuraDefinitionBundle', 'saveInvoice', 'aura/saveInvoice/saveInvoice.cmp-meta.xml');
+    defined(source, 'LightningComponentBundle', 'saveInvoice', 'lwc/saveInvoice/saveInvoice.js-meta.xml');
     const analysis = source.analyse();
 
-    // A Lightning component is an Aura component, or a Lightning web component where only that is defined. One
-    // that nothing defines is taken for an Aura component: of a package, it is external, and else it is not found.
+    // A Lightning component is an Aura component, or a Lightning web component where only that is defined. Where
+    // both are defined, it is the Aura component. One that nothing defines is taken for an Aura component too: of
+    // a package, it is external, and else it is not found.
     expect(told(analysis)).toEqual([
       '6:18 references FlexiPage:invoice_record_page [Invoice_Record_Page] resolved action-override',
       '12:18 references FlexiPage:invoice_record_page [Invoice_Record_Page] resolved action-override',
@@ -514,6 +519,8 @@ describe('the overrides of the actions of an object', () => {
       '29:18 references LightningComponentBundle:cloneinvoice [cloneInvoice] resolved action-override',
       '35:18 references null [Old_Delete] unresolved action-override',
       '40:18 references AuraDefinitionBundle:npsp__tab_home [npsp__Tab_Home] external action-override',
+      '59:18 references AuraDefinitionBundle:saveinvoice [saveInvoice] resolved action-override',
+      '65:18 references null [cancelInvoice] unresolved action-override',
     ]);
     const invoice = componentOf(analysis, 'CustomObject', 'Invoice__c');
     expect(invoice.references.map((one) => `${one.toType} ${one.origin} ${one.confidence}`)).toEqual([
@@ -524,9 +531,13 @@ describe('the overrides of the actions of an object', () => {
       'LightningComponentBundle parser:xml confirmed',
       'Scontrol parser:xml confirmed',
       'AuraDefinitionBundle parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
     ]);
     // The pages and components are not read: what they refer to is not known.
     expect(analysis.components.filter((one) => one.key !== invoice.key).map((one) => one.references)).toEqual([
+      [],
+      [],
       [],
       [],
       [],
@@ -543,7 +554,9 @@ describe('the overrides of the actions of an object', () => {
       ...override('View', 'Experience', 'Invoice_Page'),
       ...override('Edit', null, 'Invoice_Edit'),
       ...override('New', 'LightningComponent', 'c:createInvoice', 'Large'),
+      // An override that names nothing gives nothing, and no warning: with a type that is known, or with none.
       ...override('Clone', null, null),
+      ...override('Delete', 'Flexipage', null, 'Large'),
       '<customSettingsType>List</customSettingsType>',
     );
     const analysis = source.analyse();

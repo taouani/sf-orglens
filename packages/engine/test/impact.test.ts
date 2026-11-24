@@ -274,6 +274,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
     });
 
+    /** A file of metadata of a type, with the elements that are given. */
+    const xml = (type: string, body: string): string =>
+      `<?xml version="1.0" encoding="UTF-8"?>\n<${type} xmlns="http://soap.sforce.com/2006/04/metadata">\n${body}</${type}>\n`;
+
     /**
      * A workspace whose source `work` holds one object with two fields, and nothing of a type that is not
      * analysed. The field `Heavy__c` has the formula that is given.
@@ -284,8 +288,6 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       mkdirSync(join(object, 'fields'), { recursive: true });
       writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\n');
       writeFileSync(join(root, 'sfdx-project.json'), '{ "packageDirectories": [{ "path": "force-app" }] }\n');
-      const xml = (type: string, body: string): string =>
-        `<?xml version="1.0" encoding="UTF-8"?>\n<${type} xmlns="http://soap.sforce.com/2006/04/metadata">\n${body}</${type}>\n`;
       writeFileSync(join(object, 'Parcel__c.object-meta.xml'), xml('CustomObject', '    <label>Parcel</label>\n'));
       writeFileSync(
         join(object, 'fields', 'Weight__c.field-meta.xml'),
@@ -310,6 +312,59 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       analysisWarnings: 0,
       notHeld: 0,
     };
+
+    /**
+     * A workspace whose source `work` holds an object with a Lightning page for its records, and a second object
+     * with a lookup to the first and a rule that reads the lookup. The first object names the page as what
+     * overrides its action `View`, unless that is left out.
+     */
+    async function invoicePage(overridden = true): Promise<Workspace> {
+      const root = temp.next();
+      const invoice = join(root, OBJECTS, 'Invoice__c');
+      const payment = join(root, OBJECTS, 'Payment__c');
+      const pages = join(root, 'force-app', 'main', 'default', 'flexipages');
+      for (const folder of [invoice, join(payment, 'fields'), join(payment, 'validationRules'), pages]) {
+        mkdirSync(folder, { recursive: true });
+      }
+      writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\n');
+      writeFileSync(join(root, 'sfdx-project.json'), '{ "packageDirectories": [{ "path": "force-app" }] }\n');
+      const override = [
+        '    <actionOverrides>',
+        '        <actionName>View</actionName>',
+        '        <content>Invoice_Record_Page</content>',
+        '        <formFactor>Large</formFactor>',
+        '        <skipRecordTypeSelect>false</skipRecordTypeSelect>',
+        '        <type>Flexipage</type>',
+        '    </actionOverrides>',
+        '',
+      ].join('\n');
+      writeFileSync(
+        join(invoice, 'Invoice__c.object-meta.xml'),
+        xml('CustomObject', `${overridden ? override : ''}    <label>Invoice</label>\n`),
+      );
+      writeFileSync(
+        join(pages, 'Invoice_Record_Page.flexipage-meta.xml'),
+        xml('FlexiPage', '    <masterLabel>Invoice record page</masterLabel>\n    <type>RecordPage</type>\n'),
+      );
+      writeFileSync(join(payment, 'Payment__c.object-meta.xml'), xml('CustomObject', '    <label>Payment</label>\n'));
+      writeFileSync(
+        join(payment, 'fields', 'Invoice__c.field-meta.xml'),
+        xml(
+          'CustomField',
+          '    <fullName>Invoice__c</fullName>\n    <referenceTo>Invoice__c</referenceTo>\n    <type>Lookup</type>\n',
+        ),
+      );
+      writeFileSync(
+        join(payment, 'validationRules', 'Needs_Invoice.validationRule-meta.xml'),
+        xml(
+          'ValidationRule',
+          '    <fullName>Needs_Invoice</fullName>\n    <errorConditionFormula>ISBLANK(Invoice__c)</errorConditionFormula>\n',
+        ),
+      );
+      const workspace = await openWorkspace({ root, env });
+      await workspace.snapshot('work');
+      return workspace;
+    }
 
     it('is complete for a snapshot whose every type was analysed', async () => {
       const { workspace } = await parcels();
@@ -538,6 +593,46 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const apex = await workspace.impact('fixture', 'InvoiceService', { outgoing: true });
       expect(apex).toMatchObject({ results: [], complete: false, component: { key: 'ApexClass:invoiceservice' } });
       expect(apex.notCovered.notAnalysed.map((gap) => gap.type)).toEqual(['ApexClass']);
+    });
+
+    it('goes on through an object that names the page of one of its actions, in both directions', async () => {
+      // An object refers to the page that overrides one of its actions (decision record 0070), and an answer
+      // goes on from an object as from any component it finds. So what refers to the object is found behind the
+      // page, each by the reference that leads one step nearer.
+      const workspace = await invoicePage();
+      const page = await workspace.impact('work', 'Invoice_Record_Page');
+      expect(outline(page)).toEqual([
+        ['CustomObject:invoice__c', 1, 'confirmed'],
+        ['CustomField:payment__c.invoice__c', 2, 'confirmed'],
+        ['ValidationRule:payment__c.needs_invoice', 3, 'confirmed'],
+      ]);
+      expect(page.results.map((result) => [result.reference.from, result.reference.to])).toEqual([
+        ['CustomObject:invoice__c', 'FlexiPage:invoice_record_page'],
+        ['CustomField:payment__c.invoice__c', 'CustomObject:invoice__c'],
+        ['ValidationRule:payment__c.needs_invoice', 'CustomField:payment__c.invoice__c'],
+      ]);
+      expect(page.notCovered.notAnalysed.map((gap) => gap.type)).toEqual(['FlexiPage']);
+
+      // The other way round, what reaches the object reaches the page. A page is not analysed, so what it refers
+      // to is not known, and the answer is not complete. Nothing of what the answer covers is missing.
+      const lookup = await workspace.impact('work', 'Payment__c.Invoice__c', { outgoing: true });
+      expect(outline(lookup)).toEqual([
+        ['CustomObject:invoice__c', 1, 'confirmed'],
+        ['FlexiPage:invoice_record_page', 2, 'confirmed'],
+      ]);
+      expect(lookup).toMatchObject({
+        complete: false,
+        mayMiss: false,
+        notCovered: { ...NOTHING, notAnalysed: [{ type: 'FlexiPage' }] },
+      });
+
+      // Without the override the object refers to nothing. Nothing is found behind the page, and what the
+      // lookup refers to ends at the object: that answer is complete, though the snapshot holds the page.
+      const plain = await invoicePage(false);
+      expect((await plain.impact('work', 'Invoice_Record_Page')).results).toEqual([]);
+      const ends = await plain.impact('work', 'Payment__c.Invoice__c', { outgoing: true });
+      expect(outline(ends)).toEqual([['CustomObject:invoice__c', 1, 'confirmed']]);
+      expect(ends).toMatchObject({ complete: true, mayMiss: false, notCovered: NOTHING });
     });
 
     it('takes a depth and a least confidence, and reports both', async () => {
