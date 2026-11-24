@@ -175,6 +175,9 @@ describe('the requests to the Metadata API', () => {
     expect(mock.requests.slice(before).map((request) => request.path)).toEqual(['/services/Soap/m/66.0']);
   });
 
+  // This test and the next keep a limit of 20 seconds on every platform, also on Windows, where the limit of the
+  // others is 60. They start no program, and they wait for a time limit of the code: should it stop working, they
+  // fail after 20 seconds.
   it('gives up on a request that gets no answer in time, after asking once more', async () => {
     mock.metadata = await metadataFromSource(FIXTURE);
     const metadata = await api();

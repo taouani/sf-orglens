@@ -74,5 +74,5 @@ describe.each(DRIVERS)('two processes with $name', (driver) => {
       writeFileSync(releaseFile, '');
       await writer.exited;
     }
-  }, 30_000);
+  });
 });
