@@ -48,56 +48,131 @@ export interface RetrieveAsked {
   readonly notFound: readonly ChunkMember[];
 }
 
+/**
+ * Why a component that came back under a name the org had not listed is the component the org listed under
+ * another name:
+ *
+ * - `prefix`: a component of a package. The org lists it as `pkg__thing` and hands out `thing`.
+ * - `file-ending`: a document. The org lists it with the ending of its file, as `Folder/name.png`, and the
+ *   Salesforce library names it `Folder/name`.
+ * - `person-account`: something of person accounts. The org lists it under the object `Account`, as
+ *   `Account.thing`, and hands it out under the object `PersonAccount`, as `PersonAccount.thing`.
+ */
+export type OtherNameRule = 'prefix' | 'file-ending' | 'person-account';
+
+/** A component the org listed that came back under another name, as the org lists it. */
+export interface FoundUnderAnotherName extends ChunkMember {
+  /** The rule that takes what came back for it. */
+  readonly rule: OtherNameRule;
+}
+
 /** What stands between the prefix of a package and the name of a component. */
 const AFTER_PREFIX = '__';
+/** The one type whose components the org lists with the ending of their file. */
+const DOCUMENT = 'Document';
+/** How the name of something of person accounts starts where the org lists it, and where it hands it out. */
+const OF_ACCOUNT = 'Account.';
+const OF_PERSON_ACCOUNT = 'PersonAccount.';
 
 const idOf = (member: ChunkMember): string => `${member.type}\n${member.fullName}`;
 
+/** A member of a retrieve that can be the listed name of a component that came back, with the rule that says so. */
+interface Candidate {
+  readonly member: ChunkMember;
+  readonly rule: OtherNameRule;
+}
+
+/** A listed name that stands for a component that came back, and whether it was marked as retrieved before. */
+interface ListedName {
+  readonly fullName: string;
+  readonly retrieved: boolean;
+  readonly rule: OtherNameRule;
+}
+
 /**
- * Notes the components that came back in a retrieve. One that the org had
- * not listed gets a row of its own, marked as not listed.
+ * The name of a document without the ending of its file: `Folder/name.png` gives `Folder/name`. The name of the
+ * file is cut at its first dot, as the Salesforce library does it.
+ */
+function withoutFileEnding(fullName: string): string {
+  const file = fullName.lastIndexOf('/') + 1;
+  const dot = fullName.indexOf('.', file);
+  return dot > file ? fullName.slice(0, dot) : fullName;
+}
+
+/**
+ * Notes the components that came back in a retrieve. One that the org had not listed gets a row of its own,
+ * marked as not listed.
  *
- * A component of a package can come back under its name without the prefix of the package: the org lists a
- * bundle as `pkg__thing` and hands out the folder `thing`. Such a component is taken for the one the org
- * listed when all of this holds:
+ * A component can come back under another name than the org lists it with (`OtherNameRule`). A component that
+ * came back under a name without a row is taken for a component the org listed when exactly one listed name can
+ * stand for it, by one of these rules:
  *
- * - the retrieve asked for the listed name, and the org states the prefix the name starts with as its package;
- * - the retrieve did not ask for the short name, and the org lists nothing under it;
- * - Salesforce did not remark that it cannot find the listed name;
- * - no second member of the retrieve gives the same short name.
+ * - `prefix`: the retrieve asked for a name that is the name that came back behind a prefix and two underscores,
+ *   and the org states that prefix as the package of the listed component.
+ * - `file-ending`: the type is `Document`, and the retrieve asked for a name that is the name that came back
+ *   with an ending behind the name of the file.
+ * - `person-account`: the name that came back starts with `PersonAccount.`, and the org lists the same name with
+ *   `Account.` in that place. The retrieve asked for that listed name, or for no component of the type at all,
+ *   as it is with a part, which comes with its parent.
  *
- * Then the row of the listed name is marked, and no row is made for the short one. Without `retrieve` no
- * component is taken this way. Returned: the listed names that were found this way for the first time, with
- * their type.
+ * And all of this holds:
+ *
+ * - the retrieve did not ask for the name that came back, and the org lists nothing under it;
+ * - the listed name did not come back itself in the same retrieve;
+ * - Salesforce did not remark that it cannot find the listed name.
+ *
+ * Then the row of the listed name is marked, and no row is made for the name that came back. Without `retrieve`
+ * no component is taken this way. Returned: the listed names that were found this way for the first time, with
+ * their type and the rule.
  */
 export function markRetrieved(
   store: Store,
   snapshotId: number,
   components: readonly ChunkMember[],
-  retrieve: RetrieveAsked = { asked: [], notFound: [] },
-): ChunkMember[] {
-  const asked = new Set(retrieve.asked.map(idOf));
-  const notFound = new Set(retrieve.notFound.map(idOf));
-  // The members that can be a name with a prefix, by the name they have without it. It is read from the
-  // members, not from the table, which can hold a hundred thousand rows of a type.
-  let byShortName: Map<string, ChunkMember[]> | undefined;
-  const candidates = (component: ChunkMember): readonly ChunkMember[] => {
-    if (byShortName === undefined) {
-      byShortName = new Map();
-      for (const member of retrieve.asked) {
+  retrieve?: RetrieveAsked,
+): FoundUnderAnotherName[] {
+  const asked = new Set(retrieve?.asked.map(idOf));
+  const askedTypes = new Set(retrieve?.asked.map((member) => member.type));
+  const notFound = new Set(retrieve?.notFound.map(idOf));
+  const cameBack = new Set(components.map(idOf));
+  // The members that can come back under another name, by that name. It is read from the members, not from the
+  // table, which can hold a hundred thousand rows of a type.
+  let byOtherName: Map<string, Candidate[]> | undefined;
+  const amongAsked = (component: ChunkMember): readonly Candidate[] => {
+    if (byOtherName === undefined) {
+      const found = new Map<string, Candidate[]>();
+      const add = (fullName: string, member: ChunkMember, rule: OtherNameRule): void => {
+        const other = idOf({ type: member.type, fullName });
+        found.set(other, [...(found.get(other) ?? []), { member, rule }]);
+      };
+      for (const member of retrieve?.asked ?? []) {
         const at = member.fullName.indexOf(AFTER_PREFIX);
-        if (at <= 0) continue;
-        const short = idOf({ type: member.type, fullName: member.fullName.slice(at + AFTER_PREFIX.length) });
-        byShortName.set(short, [...(byShortName.get(short) ?? []), member]);
+        if (at > 0) add(member.fullName.slice(at + AFTER_PREFIX.length), member, 'prefix');
+        if (member.type === DOCUMENT) {
+          const short = withoutFileEnding(member.fullName);
+          if (short !== member.fullName) add(short, member, 'file-ending');
+        }
       }
+      byOtherName = found;
     }
-    return byShortName.get(idOf(component)) ?? [];
+    return byOtherName.get(idOf(component)) ?? [];
   };
-  /** The listed name a component without a row came back for, if the rule above gives exactly one. */
-  const listedNameOf = (component: ChunkMember): { fullName: string; retrieved: boolean } | undefined => {
-    if (asked.has(idOf(component))) return undefined;
-    const found: { fullName: string; retrieved: boolean }[] = [];
-    for (const member of candidates(component)) {
+  /** The listed names that can stand for a component, each with its rule. */
+  const candidatesOf = (component: ChunkMember): readonly Candidate[] => {
+    if (!component.fullName.startsWith(OF_PERSON_ACCOUNT)) return amongAsked(component);
+    const member = {
+      type: component.type,
+      fullName: `${OF_ACCOUNT}${component.fullName.slice(OF_PERSON_ACCOUNT.length)}`,
+    };
+    return asked.has(idOf(member)) || !askedTypes.has(component.type)
+      ? [...amongAsked(component), { member, rule: 'person-account' }]
+      : amongAsked(component);
+  };
+  /** The listed name a component without a row came back for, if the rules above give exactly one. */
+  const listedNameOf = (component: ChunkMember): ListedName | undefined => {
+    if (retrieve === undefined || asked.has(idOf(component))) return undefined;
+    const found: ListedName[] = [];
+    for (const { member, rule } of candidatesOf(component)) {
       const row = store.get(
         `SELECT namespace_prefix, retrieved FROM inventory_item
           WHERE snapshot_id = ? AND type = ? AND full_name = ? AND listed = 1`,
@@ -105,18 +180,21 @@ export function markRetrieved(
         member.type,
         member.fullName,
       );
+      if (row === undefined) continue;
+      // What a name looks like does not decide: the org states the package of a component.
       const prefix = member.fullName.slice(0, member.fullName.indexOf(AFTER_PREFIX));
-      if (row?.['namespace_prefix'] !== prefix) continue;
-      found.push({ fullName: member.fullName, retrieved: Number(row['retrieved']) !== 0 });
+      if (rule === 'prefix' && row['namespace_prefix'] !== prefix) continue;
+      found.push({ fullName: member.fullName, retrieved: Number(row['retrieved']) !== 0, rule });
     }
-    // Two packages with a component of the same short name: nothing says which one came back.
+    // Two listed names that can stand for it, such as two packages with a component of the same short name:
+    // nothing says which one came back.
     const [only] = found.length === 1 ? found : [];
-    return only === undefined || notFound.has(idOf({ type: component.type, fullName: only.fullName }))
-      ? undefined
-      : only;
+    if (only === undefined) return undefined;
+    const listed = idOf({ type: component.type, fullName: only.fullName });
+    return notFound.has(listed) || cameBack.has(listed) ? undefined : only;
   };
 
-  const withoutPrefix: ChunkMember[] = [];
+  const underAnotherName: FoundUnderAnotherName[] = [];
   for (const component of components) {
     const known = store.get(
       'SELECT 1 AS found FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ?',
@@ -132,7 +210,9 @@ export function markRetrieved(
         component.type,
         listedAs.fullName,
       );
-      if (!listedAs.retrieved) withoutPrefix.push({ type: component.type, fullName: listedAs.fullName });
+      if (!listedAs.retrieved) {
+        underAnotherName.push({ type: component.type, fullName: listedAs.fullName, rule: listedAs.rule });
+      }
       continue;
     }
     store.run(
@@ -143,7 +223,7 @@ export function markRetrieved(
       component.fullName,
     );
   }
-  return withoutPrefix;
+  return underAnotherName;
 }
 
 /**
