@@ -93,6 +93,14 @@ function workspaceDir(): string {
   return dir;
 }
 
+/**
+ * The queries a snapshot of the mock org asks for the rows of the Dependency API, where no answer is near the
+ * limit: the query for every row, one for each of the 17 types that are known to refer and of the 2 others the rows
+ * show, a record of a custom metadata type and a field set, and one for the rest (decision record 0069). The number
+ * is written out, so that a reading that asks more is seen here.
+ */
+const QUERIES_FOR_ROWS = 21;
+
 /** The requests for rows of the Dependency API, and every other request that is a query. */
 const queryPaths = (): string[] => [
   ...new Set(mock.requests.filter((request) => request.path.includes('query')).map((request) => request.path)),
@@ -195,10 +203,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(where[0]).toBe('');
       expect(where.slice(1, -1).every((one) => /^MetadataComponentType = '\w+'$/.test(one))).toBe(true);
       expect(where.at(-1)).toMatch(/^MetadataComponentType NOT IN \(/);
+      expect(dependencies.queries).toHaveLength(1 + QUERIES_FOR_ROWS);
       expect(report.crossCheck).toEqual({
         state: 'whole',
         readAt: expect.stringMatching(UTC) as string,
-        requests: dependencies.queries.length,
+        requests: 1 + QUERIES_FOR_ROWS,
         rows: pairs.length + 2,
         queriesCutOff: 0,
         queriesFailed: 0,
@@ -400,7 +409,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.analysis?.complete).toBe(true);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: dependencies.queries.length,
+        requests: 1 + QUERIES_FOR_ROWS,
         rows: pairs.length + 2 + ofDraft.length,
         queriesNotProven: 0,
         comparison: {
@@ -456,9 +465,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       // The rows of the active version carry an id the org did not list. The rows of the draft carry the listed
       // one, and the snapshot holds the active version: neither is compared, and nothing is missed.
+      // The query for the versions, which the org refused, counts as one request.
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: dependencies.queries.length,
+        requests: 1 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: ofActive.length, rowsOtherVersion: ofDraft.length, missed: [] },
       });
       const only = report.crossCheck?.comparison?.onlyOrgLens ?? [];
@@ -545,9 +555,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The flow with the draft was named: the rows of its active version are compared all the same.
       // The two pages of the versions, and the queries for rows.
       const ofRows = dependencies.queries.filter((soql) => soql.includes(` FROM ${DEPENDENCY_OBJECT}`)).length;
+      expect(ofRows).toBe(QUERIES_FOR_ROWS);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 2 + ofRows,
+        requests: 2 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: 0, rowsOtherVersion: ofDraft.length, missed: [] },
       });
     });

@@ -1158,13 +1158,12 @@ describe('reading the test org', () => {
   /** The query for every row, with which a reading of the Dependency API starts (decision record 0069). */
   const everyRow = (soql: string): boolean => soql.endsWith(' FROM MetadataComponentDependency');
   /**
-   * The requests the snapshot sent to the Tooling API: the queries before the reading as the snapshot does it
-   * starts again. The mock org gives every answer in one page.
+   * The requests a snapshot of the mock org sends to the Tooling API, which gives every answer in one page: the
+   * query for the versions of the flows, the query for every row, one for each of the 17 types that are known to
+   * refer and of the 2 others the rows show, a record of a custom metadata type and a field set, and one for the
+   * rest. The number is written out, so that a reading that asks more is seen here.
    */
-  const ofSnapshot = (): number => {
-    const starts = dependencies.queries.flatMap((soql, at) => (everyRow(soql) ? [at] : []));
-    return starts[1] ?? dependencies.queries.length;
-  };
+  const OF_SNAPSHOT = 22;
   /** A condition that only a part of a type asks with: on the type of the target, or on the ids of components. */
   const ofPart = (soql: string): boolean => / WHERE .*\b(?:RefMetadataComponentType|MetadataComponentId) /.test(soql);
 
@@ -1212,7 +1211,7 @@ describe('reading the test org', () => {
     const cross = output.split('\n');
     expect(cross.slice(cross.indexOf(CROSS_CHECK))).toEqual([
       CROSS_CHECK,
-      `Rows: ${String(rows)}, read with ${String(ofSnapshot())} requests. No answer shows that a row is missing.`,
+      `Rows: ${String(rows)}, read with ${String(OF_SNAPSHOT)} requests. No answer shows that a row is missing.`,
       'The org named the active and the latest version of 6 flows. Flows whose active version is not the latest: 0. Flows with no active version: 1 (Invoice_Purge_Void).',
       'Rows that are not compared, from a component of a type that is not analysed: 83 (ApexClass (82), ApexTrigger (1)).',
       'Rows with an end that is no component the org listed: 0. Rows from a component the snapshot does not hold or that was not analysed: 0.',
@@ -1220,13 +1219,19 @@ describe('reading the test org', () => {
       'Rows compared: 131, which are 131 pairs of components. The analysis has 129 of them, has 2 as a reference to a part of the object Salesforce names, and missed 0.',
       'References of the analysis of a kind Salesforce reports, for which it has no row: 0.',
       'References of the analysis of kinds the API does not report: 111 (standard-field (39), workflow-rule (18), custom-metadata (15), standard-object (7), workflow-action (7), roll-up-summary (5), field-update (4), record-type (4), global-variable (3), controlling-field (2), lookup-filter (2), value-set (2), lookup (1), name-in-text (1), subflow (1)).',
+      // The same reading once more, without the query for the versions of the flows. No answer of the mock org says
+      // that it holds more rows than it gives.
+      `Read once more as the snapshot does it: ${String(OF_SNAPSHOT - 1)} requests, ${String(rows)} rows. Answers in one page: ${String(OF_SNAPSHOT - 1)}. Of them, 0 answers said that they hold more rows than they gave (totalSize).`,
       expect.stringMatching(
         new RegExp(
-          `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries still at that number for a single component, or with no smaller part to ask for: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\.$`,
+          `^Read once more with every answer cut off at 30 rows: \\d+ requests, ${String(rows)} rows, and the engine calls the reading whole\\. Queries counted as cut off, still at that number with no smaller part to ask for or shown to be by the other answers: 0\\. Queries that failed: 0\\. Queries asked again per component, for more components than one query names: 0\\. As the org gave them, before one was cut off: Answers in one page: \\d+\\. Of them, 0 answers said that they hold more rows than they gave \\(totalSize\\)\\.$`,
         ),
       ) as string,
       'The parts give the same rows as the reading just before.',
     ]);
+    // The snapshot asked what the number above says, and the reading after it the same without the versions.
+    const second = dependencies.queries.flatMap((soql, at) => (everyRow(soql) ? [at] : []))[1];
+    expect(second).toBe(OF_SNAPSHOT);
     // The rows of a component the org did not list were asked for, where one query names every component.
     expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
     // The second reading asked per type, per pair of types and per component, and for nothing but the one object.
@@ -1441,7 +1446,7 @@ describe('reading the test org', () => {
     const lines = output.split('\n');
     const at = lines.indexOf(CROSS_CHECK);
     expect(lines.slice(at + 1, at + 3)).toEqual([
-      `Rows: ${String(dependencies.rows.length)}, read with ${String(ofSnapshot())} requests. No answer shows that a row is missing.`,
+      `Rows: ${String(dependencies.rows.length)}, read with ${String(OF_SNAPSHOT)} requests. No answer shows that a row is missing.`,
       'The snapshot holds no version of a flow. A row from a flow is matched by the id the org listed the flow with.',
     ]);
     // The org lists each flow with the id of its one version, so the rows are compared as where it names them.
@@ -1498,14 +1503,14 @@ describe('reading the test org', () => {
   });
 
   it('says that rows are missing when the org refuses to be asked per component, and does not fail for it', async () => {
-    // The org answers the one query of the snapshot. It refuses the query the second reading needs at the limit.
+    // The org answers the queries of the snapshot. It refuses the query the reading in parts needs near the limit.
     dependencies.refuse = (soql) => (soql.includes('MetadataComponentId IN (') ? 'MALFORMED_QUERY' : undefined);
     const { log, text } = collected();
     await readOrg(log, { env: environment() });
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toMatch(
-      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries still at that number for a single component, or with no smaller part to ask for: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\.$/m,
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries counted as cut off, still at that number with no smaller part to ask for or shown to be by the other answers: \d+\. Queries that failed: [1-9]\d* \(MALFORMED_QUERY\)\. Queries asked again per component, for more components than one query names: 0\. As the org gave them, before one was cut off: Answers in one page: \d+\. Of them, 0 answers said that they hold more rows than they gave \(totalSize\)\.$/m,
     );
     // The step says which requests failed: the types, and how many ids, never an id. Every line between the
     // line of the reading and the line about the parts is one of them.
@@ -1570,6 +1575,101 @@ describe('reading the test org', () => {
       '::error::Reading the Dependency API in parts gave other rows than the reading just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
     ]);
     expectNoSecret(output);
+  });
+
+  it('fails when an answer of the Dependency API lacks a row that another answer gives', async () => {
+    // The org gives a row with the query for every row and leaves it out of the query for its type, as an org does
+    // that cuts an answer off below the limit. The reading of the snapshot sees that itself and is not whole, so
+    // the rows are not read again. On the test org, which holds few rows, that is no warning: before the rows were
+    // always asked for per type, the step saw the same when it read them again in parts, and failed.
+    const leavesOut = (asked: number): void => {
+      const answer = dependencies.answer.bind(dependencies);
+      let times = 0;
+      dependencies.answer = (soql, metadata) => {
+        const answered = answer(soql, metadata);
+        if (!soql.endsWith(" WHERE MetadataComponentType = 'ApexClass'")) return answered;
+        times += 1;
+        if (times !== asked) return answered;
+        const body = JSON.parse(answered.body) as { records: unknown[] };
+        const records = body.records.slice(1);
+        return {
+          status: 200,
+          body: JSON.stringify({ ...body, records, size: records.length, totalSize: records.length }),
+        };
+      };
+    };
+    const rows = dependencies.rows.length;
+    const disagree = (reading: string): string =>
+      `Answers of the Dependency API do not agree: ${reading} counted 1 query as cut off, though no query failed and the org holds fewer rows than half of what one answer gives at most. An answer lacks a row that another gives, or says that it holds more rows than it gave. If the org was changed in that moment, a second run tells.`;
+    leavesOut(1);
+    const first = collected();
+    await readOrg(first.log, { env: environment() });
+    expect(first.log.failed).toBe(true);
+    const lines = first.text().split('\n');
+    // The row came with the first answer, so the snapshot holds it, and the comparison is the same.
+    expect(lines[lines.indexOf(CROSS_CHECK) + 1]).toBe(
+      `Rows: ${String(rows)}, read with ${String(OF_SNAPSHOT)} requests. Rows are missing, or may be: 1 query was cut off, 0 failed, and 0 asked again per component for more components than one query names.`,
+    );
+    expect(lines.slice(-4)).toEqual([
+      '::warning::Rows of the Dependency API are missing, or may be. A reference the analysis missed can go unseen.',
+      'The reading of the snapshot is not whole, so the rows were not read again, nor in parts.',
+      '',
+      `::error::${disagree('the snapshot')}`,
+    ]);
+    expect(dependencies.queries.filter(everyRow)).toHaveLength(1);
+    expectNoSecret(first.text());
+
+    // The same where the snapshot read every row, and the reading just after it lacks one.
+    dependencies.queries.length = 0;
+    leavesOut(2);
+    const second = collected();
+    await readOrg(second.log, { env: environment() });
+    expect(second.log.failed).toBe(true);
+    expect(second.text().split('\n').slice(-4)).toEqual([
+      `Read once more as the snapshot does it: ${String(OF_SNAPSHOT - 1)} requests, ${String(rows)} rows. Answers in one page: ${String(OF_SNAPSHOT - 1)}. Of them, 0 answers said that they hold more rows than they gave (totalSize).`,
+      disagree('the reading as the snapshot does it'),
+      '',
+      '::error::The answers of the Dependency API did not agree with each other when it was read again. The lines above say how many queries are counted for it.',
+    ]);
+    // The parts were not asked for.
+    expect(dependencies.queries.filter(everyRow)).toHaveLength(2);
+    expect(dependencies.queries.filter(ofPart)).toEqual([]);
+    expectNoSecret(second.text());
+
+    // The same for the reading in parts: its first answer, cut off at 30 rows, gives a row that no other query of
+    // that reading gives. The engine keeps the row and counts a query, and no component alone has 30 rows that
+    // would explain one.
+    dependencies.queries.length = 0;
+    const answer = dependencies.answer.bind(dependencies);
+    const lost = dependencies.rows[0] ?? {};
+    dependencies.answer = (soql, metadata) => {
+      const answered = answer(soql, metadata);
+      if (dependencies.queries.filter(everyRow).length < 3 || !soql.includes(' WHERE ')) return answered;
+      const body = JSON.parse(answered.body) as { records: Record<string, string | null>[] };
+      const records = body.records.filter(
+        (row) =>
+          row['MetadataComponentId'] !== lost['MetadataComponentId'] ||
+          row['RefMetadataComponentId'] !== lost['RefMetadataComponentId'],
+      );
+      return {
+        status: 200,
+        body: JSON.stringify({ ...body, records, size: records.length, totalSize: records.length }),
+      };
+    };
+    const third = collected();
+    await readOrg(third.log, { env: environment() });
+    expect(third.log.failed).toBe(true);
+    const last = third.text().split('\n').slice(-5);
+    expect(last[0]).toMatch(
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries counted as cut off, still at that number with no smaller part to ask for or shown to be by the other answers: 1\. Queries that failed: 0\. /,
+    );
+    expect(last.slice(1)).toEqual([
+      'The parts give the same rows as the reading just before.',
+      'The reading in parts counted 1 query as cut off, though no query failed and no component alone holds 30 rows or more. Its answers do not agree, or the ids the org listed are not those of the rows. If the org was changed in that moment, a second run tells.',
+      '',
+      '::error::The answers of the Dependency API did not agree with each other when it was read again. The lines above say how many queries are counted for it.',
+    ]);
+    expectNoSecret(third.text());
   });
 
   it('does not read in parts an org that holds fewer rows than the parts are cut off at', async () => {
@@ -2108,7 +2208,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(ofRows.slice(1, -1).every((soql) => /WHERE MetadataComponentType = '[A-Za-z]+'$/.test(soql))).toBe(true);
     expect(ofRows.at(-1)).toMatch(/WHERE MetadataComponentType NOT IN \(/);
     expect(output).toContain(
-      'Different rows in all: 12. No query was cut off or failed in a way that leaves a row out.',
+      'Different rows in all: 12. No query was cut off or failed, and no answer shows that a row is missing.',
     );
     expect(output).not.toContain('::warning::');
     expect(output).toContain(
@@ -2820,7 +2920,7 @@ describe('asking the org what Salesforce knows about references', () => {
     // The query for every row, one for each type that is known to refer, and one for the rest.
     expect(asked.filter((soql) => soql.includes('FROM MetadataComponentDependency'))).toHaveLength(19);
     expect(output).toContain(
-      'Different rows in all: 13. No query was cut off or failed in a way that leaves a row out.',
+      'Different rows in all: 13. No query was cut off or failed, and no answer shows that a row is missing.',
     );
     expect(output).toContain(
       'Rows read to find the names behind the ids: CustomObject 3, CustomField 8, ValidationRule 1 without NamespacePrefix (INVALID_FIELD), ApexClass 4, ApexTrigger 1, FlowDefinition 0, Flow 0.',
@@ -3197,7 +3297,7 @@ describe('a tool of the live-org workflow as a program', () => {
     // With no row, the reader asks for every row, for each of the 17 types it knows to refer, and for the rest.
     expect(probed.stdout).toContain('The reader of the engine sent 19 requests.\n');
     expect(probed.stdout).toContain(
-      'Different rows in all: 0. No query was cut off or failed in a way that leaves a row out.\n',
+      'Different rows in all: 0. No query was cut off or failed, and no answer shows that a row is missing.\n',
     );
     expect(probed.stdout).toContain(
       'The answer key holds 343 pairs of a component and a component it refers to. The Dependency API reports 0 of them.\n',

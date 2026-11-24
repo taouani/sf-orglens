@@ -8,8 +8,9 @@
  * object, a custom object without its ending, a standard object has the type `StandardEntity` and its name as
  * its id, and a record of a custom metadata type has the name of that type as its type. A query whose condition
  * on the type of the target names `StandardEntity` is refused with `INVALID_TYPE_FOR_OPERATION`, as run 11 on
- * the test org showed. A test can make it leave rows out of an answer it cut off (`hidden`), as an answer of a
- * large org was (decision record 0069).
+ * the test org showed. A test can make it leave rows out of an answer it cut off (`hidden`): one explanation of an
+ * answer of a large org that held fewer rows than the limit and lacked rows (decision record 0069). What Salesforce
+ * did there is not known.
  *
  * It knows the few conditions the engine writes and refuses every other query, so that a test fails when the
  * engine asks for something else.
@@ -29,8 +30,9 @@ export interface MockDependencies {
   limit: number;
   /**
    * Rows the org holds and never hands out, which count against `limit` all the same: the org cuts an answer off
-   * and then leaves them out of it. So an answer can be cut off with fewer rows than the limit, as an answer of a
-   * large org was (decision record 0069). Which rows Salesforce leaves out is not known. `null`: none.
+   * and then leaves them out of it. So an answer can be cut off with fewer rows than the limit, which is one
+   * explanation of what an answer of a large org showed (decision record 0069). Whether Salesforce leaves rows
+   * out in this way, and which, is not known. `null`: none.
    */
   hidden: ((row: MockDependencyRow) => boolean) | null;
   /** Whether the number of rows an answer says it has (`totalSize`) counts the hidden rows it was cut off with. */

@@ -359,8 +359,9 @@ Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has th
 - A snapshot in a database of schema version 3 or older keeps nothing of the kind, and its files are analysed
   as Salesforce lays them out. For a repository whose project changes the layout, take a new snapshot.
 
-Not verified: no snapshot of a real org was analysed by the command. The test org is read by a tool of the
-tests.
+Not verified: the maintainer took a snapshot of a large org once, with the pre-release 0.1.0-next.1, and the
+command analysed it (record 0069). What the analysis found there was not held against the org by hand. The test
+org is read by a tool of the tests.
 
 #### The cross-check of a snapshot of an org
 
@@ -376,10 +377,14 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
   earlier one and of its warning. Continued with `--no-cross-check`, it keeps a reading it already has.
 - One query gives at most 2,000 rows and cannot be continued, and an answer that Salesforce cut off can hold
   fewer. So after one query for every row, the rows are always asked for per type of the component that refers,
-  and the answers are held against each other. Where an answer holds 1,000 rows or more, half of what one gives
-  at most, the rows are asked for in parts: per pair of types, and per group of components. A part that is still
-  near the limit, a query that fails, and answers that do not agree leave rows out, or may. The snapshot then has
-  the warning `CROSS_CHECK_PARTIAL`, and the report says that rows are missing, or may be.
+  then whatever is of another type, and each type that shows there is asked for by name as well. The first answer
+  is held against the answers of the types, and what was of another type against the answers of the types it
+  showed: a row that one gives and the other lacks shows that an answer was cut off. Where an answer holds 1,000
+  rows or more, half of what one gives at most, or says that it has as many, the rows are asked for in parts: per
+  pair of types, and per group of components. Rows are missing, or may be, where a part is still near the limit,
+  where a query fails, and where answers do not agree. The snapshot then has the warning `CROSS_CHECK_PARTIAL`,
+  and the report says so. An org that is changed while it is read can make two answers disagree as well: a second
+  snapshot tells.
 - The groups of components are the components the org listed. Where a type has more of them than one query
   can name, which is 200, nothing shows whether a component the org did not list has a row as well. The
   reading is then `partial` too, and the warning and the report say that rows may be missing.
@@ -422,7 +427,7 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the maintainer took a snapshot of a large org once, with a version that took the query for every
-row as whole where it gave fewer than 2,000 rows. It gave a little less, and no row from a field (record 0069).
+row as whole where it gave fewer than 2,000 rows. It gave fewer, and no row from a field (record 0069).
 Whether the reading per type is whole on such an org is not verified. The test org is read by a tool of the
 tests, which compares in the same way. How many requests a large org needs was not measured, and the limit of
 2,000 requests is a choice without a measurement.

@@ -465,7 +465,7 @@ async function namesBehindIds(log: PublicLog, session: OrgSession, counter: { re
 
 /** What was read of the Dependency API: the different rows, the names behind their ids, and the pairs they are. */
 interface Probed {
-  /** `none` if the API could not be asked at all, `partly` if rows are missing or names could not all be read. */
+  /** `none` if the API could not be asked at all, `partly` if rows are missing, or may be, or names could not all be read. */
   readonly state: 'none' | 'partly' | 'whole';
   readonly rows: readonly Dependency[];
   readonly names: Names | null;
@@ -511,7 +511,10 @@ async function probeDependencies(
     `Different rows in all: ${String(rows.size)}.` +
       (cutOff > 0
         ? ` ${plural(cutOff, 'query was', 'queries were')} cut off or failed${code === null ? '' : ` (${code})`}, so rows are missing, or may be.`
-        : ' No query was cut off or failed in a way that leaves a row out.'),
+        : ' No query was cut off or failed, and no answer shows that a row is missing.') +
+      (reading.unproven > 0
+        ? ` ${plural(reading.unproven, 'query', 'queries')} near the limit ${reading.unproven === 1 ? 'was' : 'were'} asked again per component, for more components than one query names: a row of a component the org did not list may be missing.`
+        : ''),
   );
 
   const names = await namesBehindIds(log, session, counter);
@@ -615,7 +618,9 @@ async function probeDependencies(
   log.say(
     `Fields the answer key calls unreferenced: ${String(fixture.unreferenced.length)}. The Dependency API reports a reference to ${String(used.length)} of them${used.length > 0 ? `: ${used.join(', ')}` : ''}.`,
   );
-  return { state: cutOff > 0 || namesFailed > 0 ? 'partly' : 'whole', rows: [...rows.values()], names };
+  // The reading is not whole either where rows were asked for per component and the list of components is not
+  // proven to be whole.
+  return { state: reading.state !== 'whole' || namesFailed > 0 ? 'partly' : 'whole', rows: [...rows.values()], names };
 }
 
 /**
@@ -987,7 +992,7 @@ export async function probeOrg(
     ]);
   } else if (dependencies === 'partly') {
     log.say(
-      '::warning::What the Dependency API gave is not whole: rows are missing, or the names behind the ids could not all be read. The lines above say which. The number of pairs it reports is a lower bound.',
+      '::warning::What the Dependency API gave is not whole: rows are missing, or may be, or the names behind the ids could not all be read. The lines above say which. The number of pairs it reports is a lower bound.',
     );
   }
 }

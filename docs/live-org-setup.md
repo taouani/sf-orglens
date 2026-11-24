@@ -279,13 +279,19 @@ record [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and just a
 shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine then
 asks per type, per pair of types and per group of components, and the step says whether the parts give the same
 rows as the reading just before. It fails when the parts give a row that the reading just before did not give,
-and when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
-readings, so a second run tells whether a failure is one of the engine. The step ends with a warning when the
+and when the engine calls the reading in parts whole and a row is lacking. It also fails when a reading counts a
+query as cut off and nothing explains it. For the snapshot and the reading just after it that is: no query failed,
+and the test org holds too few rows for an answer near the limit. For the reading in parts: no query failed, and no
+component alone holds 30 rows. The answers of the Dependency API do not agree with each other then. The org can
+change between two queries and between the readings, so a second run tells whether a failure is one of the
+engine. The step ends with a warning when the
 org refuses one of those queries. Whenever a request of that reading failed, the step prints the condition of
 its query, with the names of the metadata types and the number of ids in the place of the ids, and how many
 queries and requests had that condition. Whenever the parts lack a row or give one too many, it counts those
-rows by the types of their two ends. It does not try the parts when the reading just before did not give every
-row, or when the org holds fewer than 30 rows, and says so.
+rows by the types of their two ends. It does not read the rows again when the reading of the snapshot is not
+whole, and does not try the parts when the reading just before is not whole or when the org holds fewer than 30
+rows, and says so. Of both readings it says how many answers said that they hold more rows than they gave
+(`totalSize`), as the org gave them: the engine takes such an answer as near the limit.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
 the symbol tables. One query of the Dependency API gives at most 2,000 rows, and an answer that Salesforce cut off

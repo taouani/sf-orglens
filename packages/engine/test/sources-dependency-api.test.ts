@@ -12,7 +12,13 @@ import {
 } from '../src/sources/dependency-api.ts';
 import { connectToOrg } from '../src/sources/org.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
-import { dependencyRow, mockDependencies, type MockDependencyRow, type MockEnd } from './helpers/mock-dependencies.ts';
+import {
+  dependencyRow,
+  mockDependencies,
+  type MockDependencies,
+  type MockDependencyRow,
+  type MockEnd,
+} from './helpers/mock-dependencies.ts';
 import { startMockOrg, type MockOrg } from './helpers/mock-org.ts';
 
 const ORG_ID = '00Dxx0000000001EAA';
@@ -217,21 +223,38 @@ describe('reading the Dependency API', () => {
     expect(reading.rows).toHaveLength(8);
 
     // The same where the answer for every row gives a row that no query per type gives again.
-    mock.dependencies = mockDependencies(rowsOf('ApexClass', 'CustomField', 4));
-    const answer = mock.dependencies.answer.bind(mock.dependencies);
-    mock.dependencies.answer = (soql, metadata) => {
-      const answered = answer(soql, metadata);
-      if (!soql.includes(' WHERE ')) return answered;
-      const body = JSON.parse(answered.body) as { records: MockDependencyRow[] };
-      const records = body.records.filter((row) => row['MetadataComponentName'] !== 'ApexClass_0');
-      return {
-        status: 200,
-        body: JSON.stringify({ ...body, records, size: records.length, totalSize: records.length }),
+    const leavingOutAClass = (org: MockDependencies): MockDependencies => {
+      const answer = org.answer.bind(org);
+      org.answer = (soql, metadata) => {
+        const answered = answer(soql, metadata);
+        if (!soql.includes(' WHERE ')) return answered;
+        const body = JSON.parse(answered.body) as { records: MockDependencyRow[] };
+        const records = body.records.filter((row) => row['MetadataComponentName'] !== 'ApexClass_0');
+        return {
+          status: 200,
+          body: JSON.stringify({ ...body, records, size: records.length, totalSize: records.length }),
+        };
       };
+      return org;
     };
+    mock.dependencies = leavingOutAClass(mockDependencies(rowsOf('ApexClass', 'CustomField', 4)));
     const lacking = await read({ limits: { rowsPerQuery: 10 } });
     expect(lacking).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
     expect(lacking.rows).toHaveLength(4);
+
+    // The same where the query of another type is cut off as well, with no smaller part to ask for: the layouts
+    // have more rows than a query gives, and no id of a layout is known here. Each of the two is counted.
+    const both = leavingOutAClass(
+      mockDependencies([...rowsOf('ApexClass', 'CustomField', 4), ...rowsOf('Layout', 'CustomField', 12)]),
+    );
+    both.limit = 10;
+    mock.dependencies = both;
+    expect(await read({ limits: { rowsPerQuery: 10 } })).toMatchObject({
+      state: 'partial',
+      cutOff: 2,
+      failed: 0,
+      unproven: 0,
+    });
   });
 
   it('takes an answer that says it has more rows than it gave as near the limit', async () => {
@@ -287,10 +310,103 @@ describe('reading the Dependency API', () => {
     expect(asked[0]).toBe(' FROM MetadataComponentDependency');
     expect(asked).toContain(" FROM MetadataComponentDependency WHERE MetadataComponentType = 'ApexClass'");
     expect(asked).toContain(" FROM MetadataComponentDependency WHERE MetadataComponentType = 'WorkflowRule'");
-    // What is of no type that was asked for by name is asked for at the end, until nothing is left.
-    expect(asked.filter((soql) => soql.includes('MetadataComponentType NOT IN'))).toHaveLength(1);
+    // What is of no type that was asked for by name is asked for at the end. It holds few rows, and the types it
+    // shows are asked for by name all the same, since an answer below the limit can be cut off as well. Then the
+    // rest is asked for again, until nothing is left.
+    expect(asked).toContain(" FROM MetadataComponentDependency WHERE MetadataComponentType = 'LookupFilter'");
+    expect(asked).toContain(" FROM MetadataComponentDependency WHERE MetadataComponentType = 'Odd_Thing'");
+    const rests = asked.filter((soql) => soql.includes('MetadataComponentType NOT IN'));
+    expect(rests).toHaveLength(2);
+    expect(rests[0]).not.toContain("'LookupFilter'");
+    expect(rests[1]).toContain("'LookupFilter', 'Odd_Thing'");
+    expect(asked.at(-1)).toBe(rests[1]);
     expect(asked.at(-1)).toContain("'ApexClass'");
     expect(asked.at(-1)).not.toContain('Ref');
+    // The first answer, 17 types that are known to refer, the rest, its 2 types and the rest again.
+    expect(asked).toHaveLength(22);
+  });
+
+  it('holds a rest below half the limit against the queries of the types it shows', async () => {
+    // The first answer is near the limit, so it does not show what an answer below it lacks. The rest holds 2 rows
+    // of lookup filters, fewer than half the limit, and the org cut it off with the rows of reports it leaves out:
+    // the lookup filters have 4 rows. A reading that took the rest as whole would have lacked 2 of them.
+    const rows = [
+      ...rowsOf('ApexClass', 'CustomField', 4),
+      ...rowsOf('Layout', 'CustomField', 3),
+      ...rowsOf('CustomField', 'CustomField', 3),
+      ...rowsOf('Report', 'CustomField', 8),
+      ...rowsOf('LookupFilter', 'CustomField', 4),
+    ];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 10;
+    dependencies.hidden = (row) => row['MetadataComponentType'] === 'Report';
+    mock.dependencies = dependencies;
+    const reading = await read({ limits: { rowsPerQuery: 20 } });
+    // The query of the lookup filters gives the rows the rest lacks: the rest was cut off.
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    expect(pairs(reading)).toEqual(pairsOf(rows.filter((row) => row['MetadataComponentType'] !== 'Report')));
+    const where = dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
+    expect(where[0]).toBe('');
+    const first = JSON.parse(dependencies.answer(dependencies.queries[0] ?? '').body) as {
+      records: MockDependencyRow[];
+    };
+    expect(first.records).toHaveLength(10);
+    const rest = where.findIndex((one) => one.startsWith('MetadataComponentType NOT IN ('));
+    const answer = JSON.parse(dependencies.answer(dependencies.queries[rest] ?? '').body) as {
+      records: MockDependencyRow[];
+    };
+    expect(answer.records.map((row) => row['MetadataComponentType'])).toEqual(['LookupFilter', 'LookupFilter']);
+    expect(where.slice(rest + 1)).toContain("MetadataComponentType = 'LookupFilter'");
+
+    // Where the rest gives every row of the types it shows, nothing is missing.
+    const whole = mockDependencies(rows.filter((row) => row['MetadataComponentType'] !== 'Report'));
+    whole.limit = 10;
+    mock.dependencies = whole;
+    const read2 = await read({ limits: { rowsPerQuery: 20 } });
+    expect(read2).toMatchObject({ state: 'whole', cutOff: 0, failed: 0, unproven: 0, code: null });
+    expect(whole.queries.map((soql) => soql.split(' WHERE ')[1] ?? '')).toContain(
+      "MetadataComponentType = 'LookupFilter'",
+    );
+  });
+
+  it('holds the rest within a type below half the limit against the queries of the types of target it shows', async () => {
+    // The classes are near the limit and are asked for per type of target. What is left of them holds 2 rows to
+    // pages, fewer than half the limit, and the org cut it off with the rows to reports it leaves out: there are
+    // 4 rows to pages.
+    const rows = [
+      ...rowsOf('ApexClass', 'CustomField', 6),
+      ...rowsOf('ApexClass', 'Layout', 4),
+      ...rowsOf('ApexClass', 'Report', 8),
+      ...rowsOf('ApexClass', 'ApexPage', 4),
+    ];
+    const dependencies = mockDependencies(rows);
+    dependencies.limit = 10;
+    dependencies.hidden = (row) => row['RefMetadataComponentType'] === 'Report';
+    mock.dependencies = dependencies;
+    const reading = await read({ limits: { rowsPerQuery: 20 } });
+    expect(reading).toMatchObject({ state: 'partial', cutOff: 1, failed: 0, unproven: 0 });
+    expect(pairs(reading)).toEqual(pairsOf(rows.filter((row) => row['RefMetadataComponentType'] !== 'Report')));
+    const where = dependencies.queries.map((soql) => soql.split(' WHERE ')[1] ?? '');
+    const rest = "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('CustomField', 'Layout')";
+    expect(where).toContain(rest);
+    expect(where.slice(where.indexOf(rest) + 1)).toContain(
+      "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType = 'ApexPage'",
+    );
+    expect(where).toContain(
+      "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType NOT IN ('ApexPage', 'CustomField', 'Layout')",
+    );
+
+    // Where the rest gives every row of the types it shows, nothing is missing.
+    const whole = mockDependencies(rows.filter((row) => row['RefMetadataComponentType'] !== 'Report'));
+    whole.limit = 10;
+    mock.dependencies = whole;
+    expect(await read({ limits: { rowsPerQuery: 20 } })).toMatchObject({
+      state: 'whole',
+      cutOff: 0,
+      failed: 0,
+      unproven: 0,
+      code: null,
+    });
   });
 
   it('finds a type that only the rest shows, and asks for it by name', async () => {

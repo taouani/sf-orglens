@@ -1238,7 +1238,7 @@ async function readCrossCheck(
   const versions = listed.some((item) => item.type === 'Flow')
     ? await readFlowVersions(session, { apiVersion, limits })
     : null;
-  // With the ids the org listed its components with, a query that reaches the limit of rows can be asked again
+  // With the ids the org listed its components with, a query that is near the limit of rows can be asked again
   // for a part of the components. The ids of the versions of flows are among them: the org does not list the id
   // of an active version that has a newer one.
   const ids = new Map<string, string[]>();
