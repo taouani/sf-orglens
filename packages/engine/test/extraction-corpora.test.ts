@@ -50,8 +50,8 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   `action-override` is the page or component that overrides an action of an object, read since 23 November 2026
  *   and checked by hand that day against the files: in Nebula Logger the Lightning record pages of five objects,
  *   each for the desktop and for the phone, in NPSP 11 overrides by four Visualforce pages and the record page of
- *   one object, and in PMM the record pages of two objects and an Aura component that creates a record of a
- *   third. Apex Recipes overrides nothing. Each names a page or a component that the codebase defines.
+ *   one object, and in PMM the record pages of two objects and an Aura component that overrides the action New
+ *   of a third. Apex Recipes overrides nothing. Each names a page or a component that the codebase defines.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
  *   through a lookup of another package four times: no file says where that lookup leads.
  */
