@@ -420,8 +420,8 @@ describe('orglens snapshot and coverage', () => {
     expect(status.stdout).toMatch(/^work +git +1 +#1 complete, finished /m);
   });
 
-  it('says in the line of the file of custom labels that it is the file, and keeps the name of the type in JSON', async () => {
-    // One file holds every label. The file is a component of one type, and each label in it of another.
+  it('says in the line of the type that holds the custom labels what it is, and keeps the name of the type in JSON', async () => {
+    // One component holds every label, and each label is a component of another type.
     const dir = projectWorkspace({
       'force-app/main/default/labels/CustomLabels.labels-meta.xml':
         '<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">\n    <labels>\n        <fullName>Greeting</fullName>\n        <language>en_US</language>\n        <protected>false</protected>\n        <shortDescription>Greeting</shortDescription>\n        <value>Hello</value>\n    </labels>\n</CustomLabels>\n',
@@ -429,10 +429,10 @@ describe('orglens snapshot and coverage', () => {
     const taken = await orglens(dir, ['snapshot', 'work']);
     expect(taken).toMatchObject({ code: 0, stderr: '' });
     const table = [
-      'TYPE                                   LISTED  RETRIEVED  ANALYSED',
-      'ApexClass                              1       1          0',
-      'CustomLabel                            1       1          0',
-      'CustomLabels (the file of the labels)  1       1          0',
+      'TYPE                             LISTED  RETRIEVED  ANALYSED',
+      'ApexClass                        1       1          0',
+      'CustomLabel                      1       1          0',
+      'CustomLabels (holds the labels)  1       1          0',
     ];
     expect(taken.stdout.split('\n').slice(2, 6)).toEqual(table);
     expect((await orglens(dir, ['coverage', 'work'])).stdout.split('\n').slice(2, 6)).toEqual(table);

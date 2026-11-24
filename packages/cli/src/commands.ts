@@ -445,27 +445,36 @@ type ReadIssue = CoverageReport['issues'][number];
  * The row an issue of the reading shares with others, or undefined for an issue with a row of its own: what is
  * the same for all issues of the row, and what they are counted as.
  *
- * - A code that comes once for each flow has one row.
+ * - A code that comes once for each flow has one row for each reason it gives (`details.reason`), and one row
+ *   where it gives none: the reasons of `FLOW_VERSION_UNKNOWN` call for different things to do.
  * - `RESOLVE_FAILED` comes once for each file that cannot be read as metadata, and an org can hand out hundreds
  *   of files of a type the Salesforce library does not know. The issues that are counted with the same types and
- *   say the same after the place they name share a row. A place is a file, a folder or a component, so the row
- *   counts issues. An issue of a snapshot that was taken before issues named their place has a row of its own.
+ *   say the same of the place they name share a row. Where nothing tells the type, only the issues of one top
+ *   folder do: nothing else says that the files are of one kind, and the row shows the place of the first only.
+ *   A place is a file, a folder or a component, so the row counts issues. An issue that does not say which types
+ *   it is counted with has a row of its own: one of a Git source, and one of a snapshot that was taken before
+ *   issues said so.
  */
 function sharedRow(issue: ReadIssue): { readonly id: string; readonly counted: string } | undefined {
-  if (ONE_PER_FLOW.has(issue.code)) return { id: JSON.stringify([issue.severity, issue.code]), counted: 'flows' };
-  const { at, types } = issue.details;
-  if (issue.code !== 'RESOLVE_FAILED' || typeof at !== 'string' || !issue.message.startsWith(at)) return undefined;
-  return {
-    id: JSON.stringify([issue.severity, issue.code, types ?? null, issue.message.slice(at.length)]),
-    counted: 'issues of this kind',
-  };
+  const { at, reason, types } = issue.details;
+  if (ONE_PER_FLOW.has(issue.code)) {
+    return { id: JSON.stringify([issue.severity, issue.code, reason ?? null]), counted: 'flows' };
+  }
+  if (issue.code !== 'RESOLVE_FAILED' || typeof at !== 'string' || !Array.isArray(types)) return undefined;
+  if (!issue.message.startsWith(at)) return undefined;
+  // The Salesforce library names the place once more in what it says. So the place is taken out wherever it
+  // stands, and two messages that differ in nothing else say the same.
+  const said = issue.message.split(at).join('');
+  const slash = at.indexOf('/');
+  const folder = types.length === 0 && slash > 0 ? at.slice(0, slash) : null;
+  return { id: JSON.stringify([issue.severity, issue.code, types, folder, said]), counted: 'issues of this kind' };
 }
 
 /**
  * The issues of the reading as rows: one for each issue, and one for the issues that share a row, with their
- * number and the first of them. `--json` has every issue.
+ * number and the first of them. `--json` has every issue. It is exported for its tests.
  */
-function readIssueRows(issues: readonly ReadIssue[]): string[][] {
+export function readIssueRows(issues: readonly ReadIssue[]): string[][] {
   const rows: string[][] = [];
   const shared = new Map<string, { row: string[]; count: number; first: string }>();
   for (const issue of issues) {
@@ -608,10 +617,11 @@ const exitOf = (report: CoverageReport): typeof EXIT.ok | typeof EXIT.partial =>
   report.snapshot.status === 'complete' && report.analysis?.complete !== false ? EXIT.ok : EXIT.partial;
 
 /**
- * A type as a table names it. The file of custom labels and a label in it are two types whose names differ by a
- * letter, and both have a line: the line of the file says what it is.
+ * A type as a table names it. The component that holds the custom labels and a label are two types whose names
+ * differ by a letter, and both have a line: the line of the one that holds them says what it is. A repository can
+ * keep it in more files than one, so the words do not speak of a file.
  */
-const typeShown = (type: string): string => (type === 'CustomLabels' ? 'CustomLabels (the file of the labels)' : type);
+const typeShown = (type: string): string => (type === 'CustomLabels' ? 'CustomLabels (holds the labels)' : type);
 
 /** How many components a source listed, with what is to be known about the number. */
 const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (listed: number) => string>> = {

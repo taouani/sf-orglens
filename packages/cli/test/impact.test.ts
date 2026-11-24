@@ -42,16 +42,16 @@ async function fixtureWorkspace(change: (dir: string) => void = () => undefined,
 
 /** The types of the fixture project that no analyser reads yet, as the answer prints them. */
 const NOT_ANALYSED = [
-  'TYPE                                   LISTED  RETRIEVED',
-  'ApexClass                              13      13',
-  'ApexTrigger                            1       1',
-  'CustomLabel                            1       1',
-  // The file of custom labels and a label in it are two types. The line of the file says which it is.
-  'CustomLabels (the file of the labels)  1       1',
-  'CustomPermission                       1       1',
-  'EmailFolder                            1       1',
-  'EmailTemplate                          1       1',
-  'GlobalValueSet                         1       1',
+  'TYPE                             LISTED  RETRIEVED',
+  'ApexClass                        13      13',
+  'ApexTrigger                      1       1',
+  'CustomLabel                      1       1',
+  // The component that holds the custom labels and a label are two types. Its line says which it is.
+  'CustomLabels (holds the labels)  1       1',
+  'CustomPermission                 1       1',
+  'EmailFolder                      1       1',
+  'EmailTemplate                    1       1',
+  'GlobalValueSet                   1       1',
 ];
 
 describe('orglens impact', () => {
