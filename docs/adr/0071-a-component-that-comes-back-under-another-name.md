@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-24
 - Decisions: none (a correction made after a snapshot of a large org, with the choices the author made in it)
+- Changed by: [0072](0072-a-folder-in-a-folder-comes-back-under-its-whole-path.md), which adds a fourth way, for a report, a dashboard and their folders in a folder inside a folder, and one condition: no other component that came back in the same retrieve stands for the same listed name. It puts the names of the note of this record in the order of the listed names
 
 ## Context
 

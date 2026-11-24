@@ -57,8 +57,10 @@ export interface RetrieveAsked {
  *   Salesforce library names it `Folder/name`.
  * - `person-account`: something of person accounts. The org lists it under the object `Account`, as
  *   `Account.thing`, and hands it out under the object `PersonAccount`, as `PersonAccount.thing`.
+ * - `folder-path`: a report, a dashboard or a folder of them in a folder that lies in a folder. The org lists it
+ *   without the outer folders, as `Sub/thing`, and hands it out under the whole path, as `Top/Sub/thing`.
  */
-export type OtherNameRule = 'prefix' | 'file-ending' | 'person-account';
+export type OtherNameRule = 'prefix' | 'file-ending' | 'person-account' | 'folder-path';
 
 /** A component the org listed that came back under another name, as the org lists it. */
 export interface FoundUnderAnotherName extends ChunkMember {
@@ -73,6 +75,19 @@ const DOCUMENT = 'Document';
 /** How the name of something of person accounts starts where the org lists it, and where it hands it out. */
 const OF_ACCOUNT = 'Account.';
 const OF_PERSON_ACCOUNT = 'PersonAccount.';
+/**
+ * The types whose folders can lie in folders, and the types of those folders. The org lists a component of them
+ * without the folders around the innermost one.
+ */
+const IN_FOLDERS_OF_FOLDERS: ReadonlySet<string> = new Set(['Dashboard', 'DashboardFolder', 'Report', 'ReportFolder']);
+/**
+ * The types of those folders, each with the type a retrieve asks for a folder under: the type of what it holds. No
+ * retrieve names a folder under its own type, and Salesforce remarks on a folder under the other one.
+ */
+const FOLDER_ASKED_AS: ReadonlyMap<string, string> = new Map([
+  ['DashboardFolder', 'Dashboard'],
+  ['ReportFolder', 'Report'],
+]);
 
 const idOf = (member: ChunkMember): string => `${member.type}\n${member.fullName}`;
 
@@ -114,12 +129,17 @@ function withoutFileEnding(fullName: string): string {
  * - `person-account`: the name that came back starts with `PersonAccount.`, and the org lists the same name with
  *   `Account.` in that place. The retrieve asked for that listed name, or for no component of the type at all,
  *   as it is with a part, which comes with its parent.
+ * - `folder-path`: the type is a report, a dashboard or a folder of them, and the org lists an end of the name that
+ *   came back, behind one of its slashes: `Top/Sub/Monthly` is listed as `Sub/Monthly`, and the folder `Top/Sub` as
+ *   `Sub`. For a report or a dashboard, the retrieve asked for that listed name. For a folder, which is asked for
+ *   under the type of what it holds, the retrieve asked for no component of the type of the folder.
  *
  * And all of this holds:
  *
  * - the retrieve did not ask for the name that came back, and the org lists nothing under it;
  * - the listed name did not come back itself in the same retrieve;
- * - Salesforce did not remark that it cannot find the listed name.
+ * - Salesforce did not remark that it cannot find the listed name, for a folder under the type of what it holds;
+ * - no other component that came back in the same retrieve stands for the same listed name.
  *
  * Then the row of the listed name is marked, and no row is made for the name that came back. Without `retrieve`
  * no component is taken this way. Returned: the listed names that were found this way for the first time, with
@@ -159,14 +179,29 @@ export function markRetrieved(
   };
   /** The listed names that can stand for a component, each with its rule. */
   const candidatesOf = (component: ChunkMember): readonly Candidate[] => {
-    if (!component.fullName.startsWith(OF_PERSON_ACCOUNT)) return amongAsked(component);
-    const member = {
-      type: component.type,
-      fullName: `${OF_ACCOUNT}${component.fullName.slice(OF_PERSON_ACCOUNT.length)}`,
+    const candidates = [...amongAsked(component)];
+    // A name that is worked out from the one that came back counts when the retrieve asked for it, or, where
+    // `unasked` says so, for no component of the type at all.
+    const unnamed = !askedTypes.has(component.type);
+    const offer = (fullName: string, rule: OtherNameRule, unasked: boolean): void => {
+      const member = { type: component.type, fullName };
+      if (asked.has(idOf(member)) || unasked) candidates.push({ member, rule });
     };
-    return asked.has(idOf(member)) || !askedTypes.has(component.type)
-      ? [...amongAsked(component), { member, rule: 'person-account' }]
-      : amongAsked(component);
+    if (component.fullName.startsWith(OF_PERSON_ACCOUNT)) {
+      // A part comes with its parent.
+      offer(`${OF_ACCOUNT}${component.fullName.slice(OF_PERSON_ACCOUNT.length)}`, 'person-account', unnamed);
+    }
+    if (IN_FOLDERS_OF_FOLDERS.has(component.type)) {
+      // Every end of the path behind a slash: the org lists the innermost folder, and the report with it. A folder
+      // is asked for under the type of what it holds.
+      const folder = FOLDER_ASKED_AS.has(component.type) && unnamed;
+      let slash = component.fullName.indexOf('/');
+      while (slash !== -1) {
+        offer(component.fullName.slice(slash + 1), 'folder-path', folder);
+        slash = component.fullName.indexOf('/', slash + 1);
+      }
+    }
+    return candidates;
   };
   /** The listed name a component without a row came back for, if the rules above give exactly one. */
   const listedNameOf = (component: ChunkMember): ListedName | undefined => {
@@ -191,11 +226,14 @@ export function markRetrieved(
     const [only] = found.length === 1 ? found : [];
     if (only === undefined) return undefined;
     const listed = idOf({ type: component.type, fullName: only.fullName });
-    return notFound.has(listed) || cameBack.has(listed) ? undefined : only;
+    // Salesforce remarks on a name under the type it was asked for under.
+    const askedAs = idOf({ type: FOLDER_ASKED_AS.get(component.type) ?? component.type, fullName: only.fullName });
+    return notFound.has(askedAs) || cameBack.has(listed) ? undefined : only;
   };
 
-  const underAnotherName: FoundUnderAnotherName[] = [];
-  for (const component of components) {
+  // The listed name each component stands for, before any row changes. Two components of one retrieve that stand
+  // for the same listed name, such as two folders of one name in two folders: nothing says which one it is.
+  const standing = components.map((component) => {
     const known = store.get(
       'SELECT 1 AS found FROM inventory_item WHERE snapshot_id = ? AND type = ? AND full_name = ?',
       snapshotId,
@@ -203,7 +241,15 @@ export function markRetrieved(
       component.fullName,
     );
     const listedAs = known === undefined ? listedNameOf(component) : undefined;
-    if (listedAs !== undefined) {
+    const listed = listedAs === undefined ? undefined : idOf({ type: component.type, fullName: listedAs.fullName });
+    return { component, listedAs, listed };
+  });
+  const times = new Map<string, number>();
+  for (const { listed } of standing) if (listed !== undefined) times.set(listed, (times.get(listed) ?? 0) + 1);
+
+  const underAnotherName: FoundUnderAnotherName[] = [];
+  for (const { component, listedAs, listed } of standing) {
+    if (listedAs !== undefined && listed !== undefined && times.get(listed) === 1) {
       store.run(
         'UPDATE inventory_item SET retrieved = 1 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
         snapshotId,
