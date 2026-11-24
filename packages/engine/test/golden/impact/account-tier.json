@@ -211,37 +211,7 @@
         "listing": "ok"
       },
       {
-        "type": "CustomLabel",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "CustomLabels",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "CustomPermission",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailFolder",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
         "type": "EmailTemplate",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "GlobalValueSet",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

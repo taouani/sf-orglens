@@ -463,6 +463,27 @@ describe('orglens snapshot of an org', () => {
     );
   });
 
+  it('says that an answer does not cover a type of which only components came back that the org had not listed', async () => {
+    const { dir, env } = setUp();
+    // The org lists no label and hands out the file of the labels all the same (issue 78). No analyser reads it.
+    mock.extraFiles = {
+      'labels/CustomLabels.labels':
+        '<?xml version="1.0" encoding="UTF-8"?>\n<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">\n' +
+        '    <labels>\n        <fullName>Greeting</fullName>\n        <language>en_US</language>\n' +
+        '        <protected>false</protected>\n        <shortDescription>Greeting</shortDescription>\n' +
+        '        <value>Hello</value>\n    </labels>\n</CustomLabels>\n',
+    };
+    expect((await orglens(dir, ['snapshot', 'prod'], env)).code).toBe(0);
+    const outgoing = await orglensJson(dir, ['impact', 'CustomLabels:CustomLabels', '--outgoing']);
+    expect(outgoing).toMatchObject({ code: 0, data: { complete: false } });
+    const types = (answer: { data: unknown }): unknown =>
+      (answer.data as { notCovered: { notAnalysed: unknown[] } }).notCovered.notAnalysed;
+    expect(types(outgoing)).toEqual([{ type: 'CustomLabels', listed: 0, retrieved: 0, listing: 'ok' }]);
+    // What refers to a class: a file of labels can name nothing but a label, so it is no gap of that answer.
+    const incoming = await orglensJson(dir, ['impact', 'Greeter']);
+    expect(types(incoming)).toEqual([{ type: 'ApexClass', listed: 2, retrieved: 2, listing: 'ok' }]);
+  });
+
   it('leaves the Dependency API unasked with --no-cross-check, and says so', async () => {
     const { dir, env } = setUp();
     const run = await orglens(dir, ['snapshot', 'prod', '--no-cross-check'], env);

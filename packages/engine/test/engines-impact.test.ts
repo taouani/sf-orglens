@@ -774,6 +774,16 @@ describe('what an answer does not cover', () => {
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, false]);
   });
 
+  it('names a type that was not analysed of which only components the source did not list came back', () => {
+    // The source listed no label, and handed out its file: the snapshot holds a component of the type.
+    const types = [type('CustomField'), type('CustomLabels', { listed: 0, retrieved: 0, analysed: 0 })];
+    expect(impactGaps(types, none, READ).notAnalysed).toEqual([]);
+    const gaps = impactGaps(types, none, READ, new Set(['CustomLabels', 'CustomField']));
+    expect(gaps.notAnalysed).toEqual([{ type: 'CustomLabels', listed: 0, retrieved: 0, listing: 'ok' }]);
+    expect(gaps.partial).toEqual([]);
+    expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, false]);
+  });
+
   it('names the analysed types the snapshot holds in part, which an answer may miss something of', () => {
     const gaps = impactGaps(
       [

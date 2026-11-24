@@ -154,7 +154,10 @@ packages/cli   the `orglens` binary                            imports only `@sf
   (`api/impact.ts`, decision record 0044). The walk goes level by level, with one question to the store per
   level. A component is found once, on a shortest chain, and holds the one reference it is found by. Which chain
   is kept depends on confidence, keys and places only, never on a number of the database. Every answer says
-  what it does not cover (`notCovered`). `complete` is false while anything is known that the answer could
+  what it does not cover (`notCovered`). For what refers to a component, a type that is not analysed is left out
+  of it where its components can name no type of the answer, as the table of `engines/can-name.ts` says (decision
+  record 0073). Each line of the table is held against the types of the Metadata API that `@jsforce/jsforce-node`
+  declares, and a type without a line stays. `complete` is false while anything is known that the answer could
   miss: a type that is not analysed, a warning of the analysis, and for `--outgoing` a component the snapshot
   does not hold. `mayMiss`, which the exit code `5` follows, is true only when something of an analysed type
   was not read or its analysis had an error. Which types an analysis read is kept with the analysis

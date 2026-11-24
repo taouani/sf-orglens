@@ -40,18 +40,16 @@ async function fixtureWorkspace(change: (dir: string) => void = () => undefined,
   return dir;
 }
 
-/** The types of the fixture project that no analyser reads yet, as the answer prints them. */
+/**
+ * The types of the fixture project that no analyser reads yet and that can name a field, as an answer about a
+ * field prints them. A label, the file of labels, a custom permission, a folder and a global value set cannot
+ * (decision record 0073).
+ */
 const NOT_ANALYSED = [
-  'TYPE                             LISTED  RETRIEVED',
-  'ApexClass                        13      13',
-  'ApexTrigger                      1       1',
-  'CustomLabel                      1       1',
-  // The component that holds the custom labels and a label are two types. Its line says which it is.
-  'CustomLabels (holds the labels)  1       1',
-  'CustomPermission                 1       1',
-  'EmailFolder                      1       1',
-  'EmailTemplate                    1       1',
-  'GlobalValueSet                   1       1',
+  'TYPE           LISTED  RETRIEVED',
+  'ApexClass      13      13',
+  'ApexTrigger    1       1',
+  'EmailTemplate  1       1',
 ];
 
 describe('orglens impact', () => {
@@ -116,7 +114,7 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
       '',
       '9 components refer to it, 5 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
@@ -248,7 +246,7 @@ describe('orglens impact', () => {
     });
     // The warning is about the whole snapshot, so the other direction is not complete either.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
     );
   });
 
@@ -263,7 +261,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 8 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
     );
     // The 28 of the project without the field that could not be read, and without the one that reads it.
     expect(lines).toContain('26 components refer to it, 25 of them directly.');
@@ -288,7 +286,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 8 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',
