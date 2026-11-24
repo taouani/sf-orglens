@@ -404,6 +404,163 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     store.close();
   });
 
+  it('takes a report, a dashboard or a folder that came back under its whole path for the one the org listed', () => {
+    const store = open();
+    const id = begin(store);
+    const report = (name: string): { type: string; fullName: string } => member('Report', name);
+    const folder = (name: string): { type: string; fullName: string } => member('ReportFolder', name);
+    addInventory(store, id, [
+      // A folder that lies in no folder, and a report in it: both come back under the name the org lists.
+      listed('ReportFolder', 'Finance'),
+      listed('Report', 'Finance/Totals'),
+      // A folder inside it and one inside that: the org lists each by its own name, and a report with its folder.
+      listed('ReportFolder', 'Quarterly'),
+      listed('ReportFolder', 'Archive'),
+      listed('Report', 'Quarterly/Revenue'),
+      listed('Report', 'Archive/Old_Revenue'),
+      // Salesforce remarks that it cannot find this one.
+      listed('Report', 'Quarterly/Gone'),
+      // This retrieve asks for reports, and not for this one.
+      listed('Report', 'Quarterly/Elsewhere'),
+      // The org lists the whole path as well: what comes back under it is that one.
+      listed('Report', 'Quarterly/Both'),
+      listed('Report', 'Finance/Quarterly/Both'),
+      // This one comes back under the listed name itself, and another report under a longer path.
+      listed('Report', 'Quarterly/Twin'),
+      // Two listed names are an end of the path that came back: nothing says which one it is.
+      listed('Report', 'Archive/Split'),
+      listed('Report', 'Quarterly/Archive/Split'),
+      // Dashboards and their folders are listed the same way.
+      listed('DashboardFolder', 'Inner'),
+      listed('Dashboard', 'Inner/Overview'),
+      // No other type is: an email template, a document and their folders are what their names say.
+      listed('EmailTemplate', 'Inner/Welcome'),
+      listed('EmailFolder', 'Inner'),
+      listed('Document', 'Inner/Notes'),
+      listed('DocumentFolder', 'Inner'),
+      // Salesforce remarks that it cannot find this folder, under the type of what it holds.
+      listed('ReportFolder', 'Hidden'),
+      // Two folders of this name come back: nothing says which one it is.
+      listed('ReportFolder', 'Shared'),
+    ]);
+    const asked = [
+      // A folder is asked for under the type of what it holds.
+      ...['Finance', 'Quarterly', 'Archive', 'Finance/Totals', 'Quarterly/Revenue', 'Archive/Old_Revenue'].map(report),
+      ...['Quarterly/Gone', 'Quarterly/Both', 'Finance/Quarterly/Both', 'Quarterly/Twin'].map(report),
+      ...['Archive/Split', 'Quarterly/Archive/Split'].map(report),
+      member('Dashboard', 'Inner'),
+      member('Dashboard', 'Inner/Overview'),
+      member('EmailTemplate', 'Inner/Welcome'),
+      // Asked for under their own types, so that only the type keeps them from being taken.
+      member('EmailFolder', 'Inner'),
+      member('Document', 'Inner/Notes'),
+      member('DocumentFolder', 'Inner'),
+      report('Hidden'),
+      report('Shared'),
+    ];
+    const cameBack = [
+      folder('Finance'),
+      folder('Finance/Quarterly'),
+      folder('Finance/Quarterly/Archive'),
+      // A folder the org does not list, in a folder it lists.
+      folder('Finance/Unlisted'),
+      ...[
+        'Finance/Totals',
+        'Finance/Quarterly/Revenue',
+        'Finance/Quarterly/Archive/Old_Revenue',
+        'Finance/Quarterly/Gone',
+        'Finance/Quarterly/Elsewhere',
+        'Finance/Quarterly/Both',
+        'Quarterly/Twin',
+        'Finance/Quarterly/Twin',
+        'Finance/Quarterly/Archive/Split',
+      ].map(report),
+      member('DashboardFolder', 'Board/Inner'),
+      member('Dashboard', 'Board/Inner/Overview'),
+      member('EmailTemplate', 'Mails/Inner/Welcome'),
+      member('EmailFolder', 'Mails/Inner'),
+      member('Document', 'Files/Inner/Notes'),
+      member('DocumentFolder', 'Files/Inner'),
+      folder('Finance/Hidden'),
+      folder('Finance/Shared'),
+      folder('Finance/Quarterly/Shared'),
+    ];
+    const retrieve = { asked, notFound: [report('Quarterly/Gone'), report('Hidden')] };
+    expect(markRetrieved(store, id, cameBack, retrieve)).toEqual([
+      { ...folder('Quarterly'), rule: 'folder-path' },
+      { ...folder('Archive'), rule: 'folder-path' },
+      { ...report('Quarterly/Revenue'), rule: 'folder-path' },
+      { ...report('Archive/Old_Revenue'), rule: 'folder-path' },
+      { ...member('DashboardFolder', 'Inner'), rule: 'folder-path' },
+      { ...member('Dashboard', 'Inner/Overview'), rule: 'folder-path' },
+    ]);
+    // A second retrieve with the same components says nothing new.
+    expect(markRetrieved(store, id, [report('Finance/Quarterly/Revenue')], retrieve)).toEqual([]);
+
+    expect(missingComponents(store, id, 'ReportFolder')).toEqual(['Hidden', 'Shared']);
+    expect(unlistedComponents(store, id, 'ReportFolder')).toEqual([
+      'Finance/Hidden',
+      'Finance/Quarterly/Shared',
+      'Finance/Shared',
+      'Finance/Unlisted',
+    ]);
+    expect(missingComponents(store, id, 'Report')).toEqual([
+      'Archive/Split',
+      'Quarterly/Archive/Split',
+      'Quarterly/Both',
+      'Quarterly/Elsewhere',
+      'Quarterly/Gone',
+    ]);
+    expect(unlistedComponents(store, id, 'Report')).toEqual([
+      'Finance/Quarterly/Archive/Split',
+      'Finance/Quarterly/Elsewhere',
+      'Finance/Quarterly/Gone',
+      'Finance/Quarterly/Twin',
+    ]);
+    expect(countInventory(store, id).get('Report')).toEqual({ listed: 10, retrieved: 5, unlisted: 4 });
+    for (const type of ['Dashboard', 'DashboardFolder']) {
+      expect(countInventory(store, id).get(type)).toEqual({ listed: 1, retrieved: 1, unlisted: 0 });
+    }
+    expect(missingComponents(store, id, 'EmailTemplate')).toEqual(['Inner/Welcome']);
+    expect(unlistedComponents(store, id, 'EmailTemplate')).toEqual(['Mails/Inner/Welcome']);
+    for (const [type, name] of [
+      ['EmailFolder', 'Mails/Inner'],
+      ['Document', 'Files/Inner/Notes'],
+      ['DocumentFolder', 'Files/Inner'],
+    ] as const) {
+      expect(countInventory(store, id).get(type)).toEqual({ listed: 1, retrieved: 0, unlisted: 1 });
+      expect(unlistedComponents(store, id, type)).toEqual([name]);
+    }
+
+    // A retrieve that asks for a folder by the type of folders and not for this one: the folder is not taken.
+    const second = begin(store, 'uat');
+    addInventory(store, second, [
+      listed('ReportFolder', 'Lone'),
+      listed('ReportFolder', 'Other'),
+      listed('ReportFolder', 'Solo'),
+      listed('Report', 'Solo/Weekly'),
+      listed('Report', 'Solo/Monthly'),
+    ]);
+    const others = { asked: [folder('Other')], notFound: [] };
+    expect(markRetrieved(store, second, [folder('Finance/Lone')], others)).toEqual([]);
+    // A folder that comes back with a report of it is taken, though the retrieve did not ask for the folder.
+    const weekly = { asked: [report('Solo/Weekly')], notFound: [] };
+    expect(markRetrieved(store, second, [folder('Finance/Solo'), report('Finance/Solo/Weekly')], weekly)).toEqual([
+      { ...folder('Solo'), rule: 'folder-path' },
+      { ...report('Solo/Weekly'), rule: 'folder-path' },
+    ]);
+    // A report is taken only where the retrieve asked for it, also where the retrieve asked for no report at all.
+    const board = { asked: [member('Dashboard', 'Board/Overview')], notFound: [] };
+    expect(markRetrieved(store, second, [report('Finance/Solo/Monthly')], board)).toEqual([]);
+    expect(missingComponents(store, second, 'Report')).toEqual(['Solo/Monthly']);
+    expect(unlistedComponents(store, second, 'Report')).toEqual(['Finance/Solo/Monthly']);
+    expect(missingComponents(store, second, 'ReportFolder')).toEqual(['Lone', 'Other']);
+    // Nothing is known of the retrieve: every component is what its name says.
+    expect(markRetrieved(store, second, [folder('Finance/Other')])).toEqual([]);
+    expect(unlistedComponents(store, second, 'ReportFolder')).toEqual(['Finance/Lone', 'Finance/Other']);
+    store.close();
+  });
+
   it('sets the retrieved components of every type from the inventory, and counts no unlisted one', () => {
     const store = open();
     const id = begin(store);

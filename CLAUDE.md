@@ -198,11 +198,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   component of a package that comes back without the prefix of the package is the one the org listed, when the
   retrieve asked for the listed name and not for the short one. The same is done for a document, which the org
   lists with the ending of its file and the library names without it, and for what belongs to person accounts,
-  which the org lists under the object `Account` and hands out under `PersonAccount` (decision record 0071). The
-  keys and the files keep the name that came back. A part comes with its parent and is not named in a retrieve,
-  with one exception (decision record 0049): when Salesforce cannot find a parent the org does not list, its
-  listed parts are asked for by their own names in one more retrieve. That is done only for a parent the
-  Salesforce library keeps with a file for every part, such as an object.
+  which the org lists under the object `Account` and hands out under `PersonAccount` (decision record 0071), and
+  for a report, a dashboard and their folders in a folder that lies in a folder, which the org lists without the
+  outer folders and hands out under the whole path (decision record 0072). The keys and the files keep the name
+  that came back. A part comes with its parent and is not named in a retrieve, with one exception (decision
+  record 0049): when Salesforce cannot find a parent the org does not list, its listed parts are asked for by
+  their own names in one more retrieve. That is done only for a parent the Salesforce library keeps with a file
+  for every part, such as an object.
   The file of custom labels is not missing when the org lists no label. Where the org hands out a version of a flow
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
   under the path of the flow, with the note `FLOW_NEWER_VERSION` (`api/flow-versions.ts`, decision records 0060 and

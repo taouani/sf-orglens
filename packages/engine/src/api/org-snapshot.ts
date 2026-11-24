@@ -409,7 +409,7 @@ function typesOfFolder(
 }
 
 /** The rules by which a component counts as one the org listed under another name, in the order of their notes. */
-const OTHER_NAME_RULES: readonly OtherNameRule[] = ['prefix', 'file-ending', 'person-account'];
+const OTHER_NAME_RULES: readonly OtherNameRule[] = ['prefix', 'file-ending', 'person-account', 'folder-path'];
 
 /**
  * The note about components that came back under another name than the org lists them with, per rule: its code,
@@ -432,6 +432,11 @@ const UNDER_ANOTHER_NAME: Readonly<
     code: 'RETRIEVED_UNDER_ANOTHER_NAME',
     said: (one) =>
       `came back under the object PersonAccount. The org lists ${one ? 'it' : 'them'} under the object Account, and the snapshot names ${one ? 'it' : 'them'} after PersonAccount.`,
+  },
+  'folder-path': {
+    code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+    said: (one) =>
+      `came back under the whole path of the folders ${one ? 'it lies' : 'they lie'} in. The org lists ${one ? 'it' : 'them'} without the outer folders, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`,
   },
 };
 
@@ -789,7 +794,11 @@ async function retrieveChunk(
     for (const rule of OTHER_NAME_RULES) {
       const found = otherNames.filter((component) => component.rule === rule);
       for (const type of [...new Set(found.map((component) => component.type))].sort(byCodeUnit)) {
-        const names = found.filter((component) => component.type === type).map((one) => one.fullName);
+        // In the order of the listed names, which is not always the order of the names that came back.
+        const names = found
+          .filter((component) => component.type === type)
+          .map((one) => one.fullName)
+          .sort(byCodeUnit);
         const { code, said } = UNDER_ANOTHER_NAME[rule];
         issue(
           store,
