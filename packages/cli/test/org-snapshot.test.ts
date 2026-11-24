@@ -97,7 +97,7 @@ const classesAnalysed = (components: string): string[] => [
  * is counted and not compared.
  */
 const CROSS_CHECKED = [
-  'Cross-check: the Dependency API of Salesforce reports 1 row. No query left a row out.',
+  'Cross-check: the Dependency API of Salesforce reports 1 row. No answer shows that a row is missing.',
   '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
   'No row was compared.',
   '',
@@ -128,10 +128,16 @@ describe('orglens snapshot of an org', () => {
         ...CROSS_CHECKED,
       ].join('\n'),
     });
-    // The Dependency API is asked once, for the one object that holds its rows, and for nothing else.
-    expect(mock.queries).toHaveLength(1);
+    // The Dependency API is asked for the one object that holds its rows, and for nothing else: the query for every
+    // row, one for each of the 17 types that are known to refer, and one for the rest (decision record 0069).
+    expect(mock.queries).toHaveLength(19);
     expect(mock.queries[0]).toMatch(/^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency$/);
-    expect(mock.paths.filter((path) => path.includes('/query'))).toEqual(['/services/data/v66.0/tooling/query']);
+    for (const query of mock.queries.slice(1)) {
+      expect(query).toMatch(/^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency WHERE MetadataComponentType /);
+    }
+    expect(new Set(mock.paths.filter((path) => path.includes('/query')))).toEqual(
+      new Set(['/services/data/v66.0/tooling/query']),
+    );
     expect(mock.operations).toEqual([
       'describeMetadata',
       'listMetadata',
@@ -172,7 +178,7 @@ describe('orglens snapshot of an org', () => {
         analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
         crossCheck: {
           state: 'whole',
-          requests: 1,
+          requests: 19,
           rows: 1,
           queriesCutOff: 0,
           queriesFailed: 0,
@@ -305,6 +311,90 @@ describe('orglens snapshot of an org', () => {
     ).toEqual([
       { stage: 'read', component: 'Flow:alpha' },
       { stage: 'read', component: 'Flow:beta' },
+    ]);
+  });
+
+  it('shows one row for the files that could not be read for the same reason, and the JSON has each issue', async () => {
+    const { dir, env } = setUp();
+    // Three files in the folder of custom tabs that are no custom tab, and one in the folder of applications.
+    mock.extraFiles = {
+      'applications/Thing.mystery': 'What is this?\n',
+      'tabs/First.mystery': 'And this?\n',
+      'tabs/Second.mystery': 'And this one?\n',
+      'tabs/Third.mystery': 'Or this?\n',
+    };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    const rows = run.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'));
+    expect(rows).toEqual([
+      'warning   RESOLVE_FAILED  applications/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomApplication, which is outside the logic tier, and does not make the snapshot partial.',
+      'warning   RESOLVE_FAILED  3 issues of this kind. The first: tabs/First.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
+    ]);
+    // The report of the snapshot that is stored says the same.
+    const coverage = await orglens(dir, ['coverage', 'prod'], env);
+    expect(coverage.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'))).toEqual(rows);
+    const { data } = await orglensJson(dir, ['coverage', 'prod']);
+    const issues = (data as { issues: { code: string; details: { at?: string; types?: string[] } }[] }).issues;
+    expect(
+      issues
+        .filter((issue) => issue.code === 'RESOLVE_FAILED')
+        .map(({ details }) => `${details.at ?? ''} ${(details.types ?? []).join()}`),
+    ).toEqual([
+      'applications/Thing.mystery CustomApplication',
+      'tabs/First.mystery CustomTab',
+      'tabs/Second.mystery CustomTab',
+      'tabs/Third.mystery CustomTab',
+    ]);
+  });
+
+  it('keeps the files apart whose type nothing tells, by their folder, and the files of other types that say the same', async () => {
+    const { dir, env } = setUp();
+    // Two folders that neither the Salesforce library nor the org knows a type for, and two it knows types of
+    // the logic tier for. A message about a file of that tier does not name its types.
+    mock.extraFiles = {
+      'aaa/One.mystery': 'What is this?\n',
+      'aaa/Two.mystery': 'And this?\n',
+      'classes/Thing.mystery': 'And this one?\n',
+      'objects/Thing.mystery': 'Or this?\n',
+      'zzz/Three.mystery': 'Or this one?\n',
+    };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(5);
+    const said = 'could not be read as metadata: The file belongs to no metadata type that is known.';
+    expect(run.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'))).toEqual([
+      `error     RESOLVE_FAILED  2 issues of this kind. The first: aaa/One.mystery ${said}`,
+      `error     RESOLVE_FAILED  classes/Thing.mystery ${said}`,
+      `error     RESOLVE_FAILED  objects/Thing.mystery ${said}`,
+      `error     RESOLVE_FAILED  zzz/Three.mystery ${said}`,
+    ]);
+    const { data } = await orglensJson(dir, ['coverage', 'prod']);
+    const issues = (data as { issues: { code: string; details: { at?: string; types?: string[] } }[] }).issues;
+    expect(
+      issues
+        .filter((issue) => issue.code === 'RESOLVE_FAILED')
+        .map(({ details }) => [details.at, (details.types ?? ['none told']).length > 0]),
+    ).toEqual([
+      ['aaa/One.mystery', false],
+      ['aaa/Two.mystery', false],
+      ['classes/Thing.mystery', true],
+      ['objects/Thing.mystery', true],
+      ['zzz/Three.mystery', false],
+    ]);
+  });
+
+  it('shows one row for the files of a folder that the Salesforce library says the same of, each with its own name', async () => {
+    const { dir, env } = setUp();
+    // A file with the ending of a file beside a source file, and no source file: the library cannot place it,
+    // and says of every file of the folder that it cannot tell its type, with the path of the file.
+    mock.extraFiles = {
+      'mysteries/A.mystery': 'What is this?\n',
+      'mysteries/B.mystery': 'And this?\n',
+      'mysteries/Stray.mystery-meta.xml': '<?xml version="1.0" encoding="UTF-8"?>\n<Mystery/>\n',
+    };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(5);
+    expect(run.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'))).toEqual([
+      'error     RESOLVE_FAILED  3 issues of this kind. The first: mysteries/A.mystery could not be read as metadata: mysteries/A.mystery: Could not infer a metadata type',
     ]);
   });
 

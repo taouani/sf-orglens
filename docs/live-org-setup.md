@@ -272,22 +272,41 @@ the analysis has, has through a part of an object, and missed. A pair is named o
 of the fixture project. Of the others the step gives the number. The step fails when nothing was compared, and
 when the analysis missed a pair that Salesforce reports.
 
-The test org holds fewer rows than the 2,000 at which Salesforce cuts a query off, so the engine never has to ask
-in parts there. The step therefore reads the rows twice more: with one query, and just after it through a session
-that shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine
-then asks per type, per pair of types and per group of components, and the step says whether the parts give the
-same rows as the one query just before. It fails when the parts give a row that the one query did not give, and
-when the engine calls the reading in parts whole and a row is lacking. The org can change between the two
-readings, so a second run tells whether a failure is one of the engine. The step ends with a warning when the
-org refuses one of those queries. Whenever a request of that reading failed, the step prints the condition of
-its query, with the names of the metadata types and the number of ids in the place of the ids, and how many
-queries and requests had that condition. Whenever the parts lack a row or give one too many, it counts those
-rows by the types of their two ends. It does not try the parts when the one query did not give every row, or when
-the org holds fewer than 30 rows, and says so.
+The test org holds fewer rows than half the 2,000 at which Salesforce cuts a query off, so the engine never has to
+ask per pair of types or per group of components there. The step therefore reads the rows twice more: as the
+snapshot does it, with the query for every row and one query per type of the component that refers (decision
+record [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and just after it through a session that
+shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. Both readings
+are given the ids the snapshot asked with, so that a part near the limit is asked for per group of components as
+the snapshot asks for it. The engine then asks per type, per pair of types and per group of components, and the
+step says whether the parts give the same rows as the reading just before. It fails when the parts give a row
+that the reading just before did not give, and when the engine calls the reading in parts whole and a row is
+lacking.
+
+It also fails when answers of the Dependency API do not agree with each other: one of the two readings counts a
+query whose answer lacks a row that another query gave. The reader says how many queries it counts for that. A
+query that the reading in parts counts for another reason does not fail the step: one component alone can hold 30
+rows, and a part cannot be asked for per component where one of its rows comes from a component the org did not
+list, such as a version of a flow that is neither the active nor the latest one. A snapshot does not keep how many
+of its queries were counted because answers do not agree. So for the snapshot, and for the reading just after it,
+the step fails as well where a query is counted as cut off though no query failed and the reading holds fewer
+rows than half of what an answer gives at most: only an answer that lacks a row another query gave, or one that
+says that it holds more rows than it gave, is known to cause that. The org can change between two queries and
+between the readings, so a second run tells whether a failure is one of the engine.
+
+The step ends with a warning when the org refuses one of those queries. Whenever a request of that reading
+failed, the step prints the condition of its query, with the names of the metadata types and the number of ids in
+the place of the ids, and how many queries and requests had that condition. Whenever the parts lack a row or give
+one too many, it counts those rows by the types of their two ends. It reads the rows again also when the reading
+of the snapshot is not whole. It does not try the parts when the reading just before is not whole or when the org
+holds fewer than 30 rows, and says so. Of both readings it says how many answers said that they hold more rows
+than they gave (`totalSize`), as the org gave them. The engine takes an answer as near the limit where it says
+that it holds half the limit or more, which is 30 rows for the reading in parts.
 
 The step "Ask Salesforce about references" fails when the org answers neither the Dependency API nor the query for
-the symbol tables. One query of the Dependency API gives at most 2,000 rows, so the reader of the engine asks per
-type and per pair of types. Where a query is still cut off or fails, rows are missing. The step then ends with a
+the symbol tables. One query of the Dependency API gives at most 2,000 rows, and an answer that Salesforce cut off
+can hold fewer, so the reader of the engine asks per type, and per pair of types where an answer holds half the
+limit or more. Where a query is still cut off or fails, rows are missing, or may be. The step then ends with a
 warning, and the number of pairs it reports is a lower bound. A pair that only the name of a field or of a rule
 gives, because the org did not say which object the id belongs to, is marked "by name" and not counted.
 

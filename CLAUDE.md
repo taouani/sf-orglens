@@ -173,9 +173,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   flow with the id of its latest version: so the snapshot asks the org for the ids of the active and the latest
   version of each flow and keeps them with the rows (decision record 0067). A name is taken only where there is no
   id: for a standard object, and for a component the org listed without one. A pair Salesforce reports and the
-  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. The
-  reading is `whole` only where no query could have left a row out. It never fails a snapshot and never makes it
-  partial: an org that does not answer leaves a warning.
+  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. An
+  answer that Salesforce cut off can hold fewer rows than the limit, so the query for every row never stands for
+  the org: the rows are always asked for per type, then whatever is of another type, and each type that shows
+  there by name. An answer that holds half the limit or more is asked for in parts. An answer of fewer rows, of
+  which every page came, is held against every row the reading holds in the end: a row of its query that another
+  query gave and it lacks shows that it was cut off (decision record 0069). The reading is `whole` only where no
+  answer shows that a row is missing. It never fails a snapshot and never makes it partial: an org that does not
+  answer leaves a warning.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it

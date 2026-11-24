@@ -93,6 +93,14 @@ function workspaceDir(): string {
   return dir;
 }
 
+/**
+ * The queries a snapshot of the mock org asks for the rows of the Dependency API, where no answer is near the
+ * limit: the query for every row, one for each of the 17 types that are known to refer and of the 2 others the rows
+ * show, a record of a custom metadata type and a field set, and one for the rest (decision record 0069). The number
+ * is written out, so that a reading that asks more is seen here.
+ */
+const QUERIES_FOR_ROWS = 21;
+
 /** The requests for rows of the Dependency API, and every other request that is a query. */
 const queryPaths = (): string[] => [
   ...new Set(mock.requests.filter((request) => request.path.includes('query')).map((request) => request.path)),
@@ -187,12 +195,19 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot.status).toBe('complete');
       expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
+      // One query for the versions of the flows, then the query for every row, one for each type of component that
+      // refers and one for the rest. No answer is near the limit here, and the first does not stand for the org
+      // however few rows it holds (decision record 0069).
+      const where = dependencies.queries.slice(1).map((soql) => soql.split(' WHERE ')[1] ?? '');
+      expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
+      expect(where[0]).toBe('');
+      expect(where.slice(1, -1).every((one) => /^MetadataComponentType = '\w+'$/.test(one))).toBe(true);
+      expect(where.at(-1)).toMatch(/^MetadataComponentType NOT IN \(/);
+      expect(dependencies.queries).toHaveLength(1 + QUERIES_FOR_ROWS);
       expect(report.crossCheck).toEqual({
         state: 'whole',
         readAt: expect.stringMatching(UTC) as string,
-        // One query for the versions of the flows, and one for the rows: the org holds fewer rows than one query
-        // gives.
-        requests: 2,
+        requests: 1 + QUERIES_FOR_ROWS,
         rows: pairs.length + 2,
         queriesCutOff: 0,
         queriesFailed: 0,
@@ -252,10 +267,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // Only metadata is read: two objects of the Tooling API are queried, the versions of the flows first, and
       // nothing else is.
-      expect(dependencies.queries).toEqual([
+      expect(dependencies.queries[0]).toBe(
         `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`,
-        expect.stringMatching(new RegExp(` FROM ${DEPENDENCY_OBJECT}$`)) as string,
-      ]);
+      );
+      for (const soql of dependencies.queries.slice(1)) {
+        expect(soql).toMatch(new RegExp(` FROM ${DEPENDENCY_OBJECT}(?: WHERE |$)`));
+      }
       expect(DEPENDENCY_OBJECT).toBe('MetadataComponentDependency');
       expect(FLOW_VERSION_OBJECT).toBe('FlowDefinition');
       expect(queryPaths()).toEqual(['/services/data/v66.0/tooling/query']);
@@ -392,7 +409,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.analysis?.complete).toBe(true);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 2,
+        requests: 1 + QUERIES_FOR_ROWS,
         rows: pairs.length + 2 + ofDraft.length,
         queriesNotProven: 0,
         comparison: {
@@ -413,9 +430,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const again = await (await openWorkspace({ root: dir, env })).analyse('prod');
       expect(again.crossCheck).toEqual(report.crossCheck);
 
-      // Asked in parts, the rows of the active version are asked for by the id the org named for it.
+      // Asked in parts, the rows of the active version are asked for by the id the org named for it. The org cuts an
+      // answer off at 20 rows, and the reader is given twice that: it takes an answer of half its limit as near it.
       dependencies.limit = 20;
-      const parts = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 20 } } });
+      const parts = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 40 } } });
       expect(parts.crossCheck).toMatchObject({ state: 'whole', rows: pairs.length + 2 + ofDraft.length });
       expect(parts.crossCheck?.comparison).toEqual(report.crossCheck?.comparison);
       expect(
@@ -447,9 +465,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       // The rows of the active version carry an id the org did not list. The rows of the draft carry the listed
       // one, and the snapshot holds the active version: neither is compared, and nothing is missed.
+      // The query for the versions, which the org refused, counts as one request.
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 2,
+        requests: 1 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: ofActive.length, rowsOtherVersion: ofDraft.length, missed: [] },
       });
       const only = report.crossCheck?.comparison?.onlyOrgLens ?? [];
@@ -534,9 +553,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         },
       ]);
       // The flow with the draft was named: the rows of its active version are compared all the same.
+      // The two pages of the versions, and the queries for rows.
+      const ofRows = dependencies.queries.filter((soql) => soql.includes(` FROM ${DEPENDENCY_OBJECT}`)).length;
+      expect(ofRows).toBe(QUERIES_FOR_ROWS);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 3,
+        requests: 2 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: 0, rowsOtherVersion: ofDraft.length, missed: [] },
       });
     });
@@ -632,13 +654,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
 
     it('asks in parts where a query is at the limit, with the ids the org listed its components with', async () => {
-      // A query of this org gives at most 20 rows. No component of the project has that many rows to one type.
+      // A query of this org gives at most 20 rows. No component of the project has that many rows to one type. The
+      // reader takes an answer that holds half its limit as near it (decision record 0069), so it is given twice as
+      // many: an answer is near the limit where this org cut it off.
       const LIMIT = 20;
       dependencies.limit = LIMIT;
       const dir = workspaceDir();
-      const report = await snap(dir, { tuning: { dependencies: { rowsPerQuery: LIMIT } } });
+      const report = await snap(dir, { tuning: { dependencies: { rowsPerQuery: 2 * LIMIT } } });
       const all = rowsOf(metadata).length;
-      // Per type, per pair of types and per group of components every row was found: no query is left at the limit.
+      // Per type, per pair of types and per group of components every row was found: no query is left near the limit.
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
         rows: all,
@@ -673,7 +697,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // cannot be asked for. The rows are the same, and the snapshot says what it cannot know.
       dependencies.limit = LIMIT;
       const many = workspaceDir();
-      const unproven = await snap(many, { tuning: { dependencies: { rowsPerQuery: LIMIT, idsPerQuery: 8 } } });
+      const unproven = await snap(many, { tuning: { dependencies: { rowsPerQuery: 2 * LIMIT, idsPerQuery: 8 } } });
       expect(unproven.crossCheck).toMatchObject({ state: 'partial', rows: all, queriesCutOff: 0, queriesFailed: 0 });
       const notProven = unproven.crossCheck?.queriesNotProven ?? 0;
       expect(notProven).toBeGreaterThan(0);
@@ -683,7 +707,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           stage: 'read',
           severity: 'warning',
           code: 'CROSS_CHECK_PARTIAL',
-          message: `${String(notProven)} ${notProven === 1 ? 'query' : 'queries'} at the limit of rows ${notProven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing. A reference that Salesforce knows and the analysis missed may go unseen.`,
+          message: `${String(notProven)} ${notProven === 1 ? 'query' : 'queries'} near the limit of rows ${notProven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing. A reference that Salesforce knows and the analysis missed may go unseen.`,
           component: null,
           details: { cutOff: 0, failed: 0, unproven: notProven, code: null, rows: all },
         },
@@ -705,7 +729,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           stage: 'read',
           severity: 'warning',
           code: 'CROSS_CHECK_PARTIAL',
-          message: `${String(left)} ${left === 1 ? 'query' : 'queries'} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing. A reference that Salesforce knows and the analysis missed may go unseen.`,
+          message: `${String(left)} ${left === 1 ? 'query' : 'queries'} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off or failed. Rows are missing, or may be. A reference that Salesforce knows and the analysis missed may go unseen.`,
           component: null,
           details: {
             cutOff: report.crossCheck?.queriesCutOff,
@@ -745,13 +769,21 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
       // The step is told before the first request, and after every query for rows with how far it is. The query for
       // the versions of the flows counts with them.
-      expect(events.slice(-3)).toEqual([
+      const told = events.filter((event) => event.step === 'cross-checking');
+      const asked = 1 + QUERIES_FOR_ROWS;
+      expect(dependencies.queries).toHaveLength(asked);
+      expect(told).toEqual([
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
-        { step: 'cross-checking', snapshot: 1, requests: 2, rows: rowsOf(metadata).length },
-        { step: 'analysing', snapshot: 1 },
+        ...Array.from({ length: asked - 1 }, (_, at) => ({
+          step: 'cross-checking',
+          snapshot: 1,
+          requests: at + 2,
+          rows: expect.any(Number) as number,
+        })),
       ]);
-      expect(dependencies.queries).toHaveLength(2);
-      expect(report.crossCheck).toMatchObject({ state: 'whole', requests: 2, comparison: { missed: [] } });
+      expect(told.at(-1)).toMatchObject({ requests: asked, rows: rowsOf(metadata).length });
+      expect(events.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
+      expect(report.crossCheck).toMatchObject({ state: 'whole', requests: asked, comparison: { missed: [] } });
     });
 
     it('replaces an earlier reading and its warning when a snapshot is continued, and keeps both without the cross-check', async () => {

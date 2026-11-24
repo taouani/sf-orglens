@@ -23,9 +23,15 @@ export interface StoredDependencyReading {
 
 /**
  * Stores what was read of the Dependency API for a snapshot. What the snapshot held of it before is replaced.
- * It is called inside a write of the caller, as the other writers of a snapshot are.
+ * It is called inside a write of the caller, as the other writers of a snapshot are. How many of the queries
+ * that were cut off another answer showed to be (`disagreed`) is not stored: no column holds it.
  */
-export function writeDependencies(store: Store, snapshotId: number, reading: DependencyReading, readAt: string): void {
+export function writeDependencies(
+  store: Store,
+  snapshotId: number,
+  reading: Omit<DependencyReading, 'disagreed'>,
+  readAt: string,
+): void {
   store.run('DELETE FROM snapshot_dependency_reading WHERE snapshot_id = ?', snapshotId);
   store.run(
     `INSERT INTO snapshot_dependency_reading (snapshot_id, state, read_at, requests, cut_off, failed, unproven, code)

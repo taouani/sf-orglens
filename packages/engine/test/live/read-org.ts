@@ -24,17 +24,19 @@
  * - the files of Phase 2 of the fixture project: which of the pairs its
  *   answer key has for them the Dependency API reports, by the ids the org
  *   listed, and which version of each flow the org handed out,
- * - the rows read twice more, with one query and then with every answer
- *   cut off at a few rows, to see that the parts the engine asks for then
- *   give every row, and that the org answers each way of asking. Of a
+ * - the rows read twice more, as the snapshot reads them and then with
+ *   every answer cut off at a few rows, to see that the parts the engine
+ *   asks for then give every row, and that the org answers each way of
+ *   asking. Of a
  *   request that failed, the condition of its query is shown: the names of
  *   the types, and the number of ids in the place of the ids.
  *
  * The step fails when the snapshot does not end, when the fixture project
  * is not whole in it, when the Dependency API gave nothing to compare, when
- * the analysis missed a reference that Salesforce reports, when the parts
- * give a row that one query just before did not give, or when a reading
- * in parts that the engine calls whole lacks a row of that query. A real
+ * the analysis missed a reference that Salesforce reports, when answers of
+ * the Dependency API do not agree with each other, when the parts give a
+ * row that the reading just before did not give, or when a reading in
+ * parts that the engine calls whole lacks a row of that reading. A real
  * org lists components it does not hand out, so a snapshot that is partial
  * for that reason is a warning.
  *
@@ -52,7 +54,12 @@ import type { CoverageReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey } from '../../src/core/keys.ts';
 import { listedMatcher, type CrossCheckPair } from '../../src/engines/cross-check.ts';
-import { readDependencies, type DependencyRow, type FlowVersionIds } from '../../src/sources/dependency-api.ts';
+import {
+  dependencyLimits,
+  readDependencies,
+  type DependencyRow,
+  type FlowVersionIds,
+} from '../../src/sources/dependency-api.ts';
 import { notFoundIn } from '../../src/sources/metadata-api.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
@@ -86,8 +93,12 @@ const PAIRS_SHOWN = 60;
 const CONDITIONS_SHOWN = 40;
 /**
  * The rows of the Dependency API are read a second time with every answer cut off at this many rows. The test
- * org holds fewer rows than the 2,000 a query really gives, so the parts the engine asks for at that limit are
- * never asked for there otherwise.
+ * org holds fewer rows than half the 2,000 a query really gives, so the parts the engine asks for near that limit
+ * are never asked for there otherwise. The engine is told twice this number: it takes an answer as near the limit
+ * from half of it on (decision record 0069). So it asks in parts where an answer holds this many rows, which is
+ * where it was cut off here or held exactly as many, and where the org says that an answer holds this many or
+ * more (`totalSize`). The step counts the answers that say that they hold more rows than they gave, whatever the
+ * number: whether Salesforce ever says so is not known.
  */
 const PRETENDED_LIMIT = 30;
 /** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
@@ -1078,12 +1089,17 @@ export function crossCheckLines(
     );
     return 'not compared';
   }
-  const left = crossCheck.queriesCutOff + crossCheck.queriesFailed;
+  // The code is of the first query that failed, also one whose rows other queries gave. Without a failure there
+  // is none.
+  const code =
+    crossCheck.code === null
+      ? ''
+      : ` The code of the first failure: ${log.code(crossCheck.code) ?? 'a code that is not shown'}.`;
   log.say(
     `Rows: ${String(crossCheck.rows)}, read with ${plural(crossCheck.requests, 'request', 'requests')}. ` +
       (crossCheck.state === 'whole'
-        ? 'No query left a row out.'
-        : `Rows are missing: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off at the limit, ${String(crossCheck.queriesFailed)} failed (${log.code(crossCheck.code) ?? 'a code that is not shown'}).`),
+        ? 'No answer shows that a row is missing.'
+        : `Rows are missing, or may be: ${plural(crossCheck.queriesCutOff, 'query was', 'queries were')} cut off, ${String(crossCheck.queriesFailed)} failed, and ${String(crossCheck.queriesNotProven)} asked again per component for more components than one query names.${code}`),
   );
   for (const line of flowVersionLines(log, versions)) log.say(line);
   const { comparison } = crossCheck;
@@ -1137,8 +1153,10 @@ export function crossCheckLines(
     `References of the analysis of kinds the API does not report: ${String([...reasons.values()].reduce((sum, pairs) => sum + pairs, 0))}` +
       (reasons.size > 0 ? ` (${tallied(reasons)}).` : '.'),
   );
-  if (left > 0) {
-    log.say('::warning::Rows of the Dependency API are missing. A reference the analysis missed can go unseen.');
+  if (crossCheck.state === 'partial') {
+    log.say(
+      '::warning::Rows of the Dependency API are missing, or may be. A reference the analysis missed can go unseen.',
+    );
   }
   return comparison.missed.length > 0 ? 'missed' : 'ok';
 }
@@ -1147,15 +1165,52 @@ const rowIdentity = ({ from, to }: DependencyRow): string =>
   [from.type, from.id, from.name, from.namespace ?? '', to.type, to.id, to.name, to.namespace ?? ''].join('\u0000');
 
 /**
- * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
- * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened. A
- * request that fails is told to `failed` and fails as it did.
+ * What the answers of a reading said of themselves: how many answers came in one page, and how many of those
+ * said that they hold more rows than they gave (`totalSize`). Whether Salesforce counts there the rows it leaves
+ * out of an answer it cut off is not known (decision record 0069).
  */
-function cutOffAt(session: OrgSession, limit: number, failed: (url: string, error: unknown) => void): OrgSession {
+interface Answers {
+  inOnePage: number;
+  saidMore: number;
+}
+
+/**
+ * Whether a reading counts a query as cut off that the rows do not explain: no query failed, and the reading holds
+ * too few rows for an answer near the limit. Only two things are known to cause that: an answer lacks a row that
+ * another query gave, or an answer says that it holds more rows than it gave. After a query that failed this does
+ * not tell: the rows are then asked for in another way, which can count a query as well.
+ */
+const countedWithoutRows = (cutOff: number, code: string | null, rows: number): boolean =>
+  cutOff > 0 && code === null && 2 * rows < dependencyLimits().rowsPerQuery;
+
+/**
+ * What the step says where the snapshot counts a query that its rows do not explain. A snapshot keeps the number
+ * of queries that were cut off, and not how many of them another answer showed to be.
+ */
+const snapshotCounted = (cutOff: number): string =>
+  `The snapshot counted ${plural(cutOff, 'query', 'queries')} of the Dependency API as cut off, though no query failed and it holds fewer rows than half of what one answer gives at most. ` +
+  'Only an answer that lacks a row another query gave, or one that says that it holds more rows than it gave, is known to cause that, and a snapshot does not keep which. If the org was changed in that moment, a second run tells.';
+
+/** What the step says of a reading it made itself, where another query gave a row that an answer lacks. */
+const disagreement = (reading: string, disagreed: number): string =>
+  `Answers of the Dependency API do not agree: ${reading} counted ${plural(disagreed, 'query', 'queries')} whose answer lacks a row that another query gave. If the org was changed in that moment, a second run tells.`;
+
+/**
+ * The session of an org that gives at most `limit` rows for a query and says that the answer has ended, as
+ * Salesforce does at 2,000 rows. Every request goes to the org as it is. Only the answer is shortened: what it says
+ * it holds stays as the org wrote it. A request that fails is told to `failed` and fails as it did. `answers`
+ * counts the answers as the org gave them, before one is shortened.
+ */
+function cutOffAt(
+  session: OrgSession,
+  limit: number,
+  failed: (url: string, error: unknown) => void,
+  answers: Answers,
+): OrgSession {
   const request = async (url: string, options: unknown): Promise<unknown> => {
-    let page: { records?: unknown } | null;
+    let page: { records?: unknown; done?: unknown; totalSize?: unknown } | null;
     try {
-      page = await session.connection.request<{ records?: unknown } | null>(url, options as never);
+      page = await session.connection.request<typeof page>(url, options as never);
     } catch (error) {
       try {
         failed(url, error);
@@ -1164,12 +1219,21 @@ function cutOffAt(session: OrgSession, limit: number, failed: (url: string, erro
       }
       throw error;
     }
-    return page !== null && Array.isArray(page.records) && page.records.length > limit
-      ? { ...page, records: page.records.slice(0, limit), done: true }
-      : page;
+    if (page === null || !Array.isArray(page.records)) return page;
+    // An answer over several pages says on each page how many rows it holds in all. Only an answer in one page
+    // can be held against that number.
+    if (url.includes('/tooling/query?q=') && page.done === true) {
+      answers.inOnePage += 1;
+      if (typeof page.totalSize === 'number' && page.totalSize > page.records.length) answers.saidMore += 1;
+    }
+    return page.records.length > limit ? { ...page, records: page.records.slice(0, limit), done: true } : page;
   };
   return { ...session, connection: { request } as never };
 }
+
+/** What a reading was told by its answers about the rows they hold, as a sentence. */
+const saidMoreLine = ({ inOnePage, saidMore }: Answers): string =>
+  `Answers in one page: ${String(inOnePage)}. Of them, ${plural(saidMore, 'answer', 'answers')} said that ${saidMore === 1 ? 'it holds' : 'they hold'} more rows than ${saidMore === 1 ? 'it' : 'they'} gave (totalSize).`;
 
 /** A query of the reader: what it selects, the one object, and a condition or none. */
 const QUERY = /^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency(?: WHERE (.+))?$/;
@@ -1271,13 +1335,24 @@ export function rowsByTypes(log: PublicLog, rows: readonly DependencyRow[]): str
 }
 
 /**
- * Reads the rows of the Dependency API twice more: with one query, as the snapshot did, and then through a
- * session that cuts every answer off at a few rows. So the engine has to ask per type, per pair of types and
- * per component, and the org has to answer each of those queries. The two readings follow each other at once,
- * so that the org has no time to change between them: the rows of the snapshot are minutes old.
+ * Reads the rows of the Dependency API twice more: as the snapshot did, with the query for every row and one for
+ * each type of component that refers (decision record 0069), and then through a session that cuts every answer
+ * off at a few rows. So the engine has to ask per pair of types and per component as well, and the org has to
+ * answer each of those queries. The two readings follow each other at once, so that the org has no time to change
+ * between them: the rows of the snapshot are minutes old.
  *
- * Returns false if the reading in parts gives a row the one query did not give, or if the engine calls it whole
- * and it lacks one.
+ * Both readings are given the ids the snapshot asked with. So the first asks for a part that is near the limit per
+ * group of components, as the snapshot does, and does not count it at once. It has the whole limit of requests,
+ * where the snapshot had that limit less the requests for the versions of the flows.
+ *
+ * Returns:
+ * - `disagreeing` if one of the two readings counts a query whose answer lacks a row that another query gave. The
+ *   reader says how many it counted for that (`disagreed`), so a query it counts for another reason is not taken
+ *   for one: a part near the limit that cannot be asked for per component, because a row comes from a component
+ *   the org did not list, such as a version of a flow, or one component alone that is near the limit.
+ * - `counted` if the reading as the snapshot does it counts a query that neither that nor its rows explain.
+ * - `other rows` if the reading in parts gives a row the first reading did not give, or if the engine calls it
+ *   whole and it lacks one.
  */
 export async function readInParts(
   log: PublicLog,
@@ -1286,17 +1361,8 @@ export async function readInParts(
   snapshotId: number,
   apiVersion: string | null,
   limit = PRETENDED_LIMIT,
-): Promise<boolean> {
+): Promise<'same' | 'other rows' | 'disagreeing' | 'counted'> {
   const version = apiVersion === null ? {} : { apiVersion };
-  const one = await readDependencies(session, version);
-  if (one.state !== 'whole') {
-    log.say('One query did not give every row this time, so reading them in parts was not tried.');
-    return true;
-  }
-  if (one.rows.length < limit) {
-    log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
-    return true;
-  }
   // The ids the snapshot asked with: those the org listed, and those of the versions of flows it named.
   const ids = new Map<string, string[]>();
   const add = (type: string, id: string): void => {
@@ -1308,12 +1374,52 @@ export async function readInParts(
   for (const flow of readFlowVersionIds(store, snapshotId)) {
     for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
   }
+  const idsOfType = (type: string): readonly string[] => ids.get(type) ?? [];
+  const said: Answers = { inOnePage: 0, saidMore: 0 };
+  const one = await readDependencies(
+    cutOffAt(session, Number.POSITIVE_INFINITY, () => undefined, said),
+    { ...version, idsOfType },
+  );
+  log.say(
+    `Read once more as the snapshot does it: ${plural(one.requests, 'request', 'requests')}, ${plural(one.rows.length, 'row', 'rows')}. ${saidMoreLine(said)}`,
+  );
+  if (one.disagreed > 0) {
+    log.say(disagreement('the reading as the snapshot does it', one.disagreed));
+    return 'disagreeing';
+  }
+  if (one.state !== 'whole') {
+    const numbers =
+      `${plural(one.cutOff, 'query', 'queries')} cut off, ${String(one.failed)} failed` +
+      (one.code === null
+        ? ''
+        : ` (the code of the first failure: ${log.code(one.code) ?? 'a code that is not shown'})`);
+    if (countedWithoutRows(one.cutOff, one.code, one.rows.length)) {
+      log.say(
+        `The reading as the snapshot does it says that rows are missing, or may be: ${numbers}. No query failed, no answer lacks a row that another query gave, and the reading holds fewer rows than half of what one answer gives at most. The line before says how many answers said that they hold more rows than they gave.`,
+      );
+      return 'counted';
+    }
+    log.say(
+      `The reading as the snapshot does it says this time that rows are missing, or may be: ${numbers}. So reading them in parts was not tried.`,
+    );
+    return 'same';
+  }
+  if (one.rows.length < limit) {
+    log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
+    return 'same';
+  }
   const failures: FailedRequest[] = [];
+  const saidInParts: Answers = { inOnePage: 0, saidMore: 0 };
   const again = await readDependencies(
-    cutOffAt(session, limit, (url, error) => {
-      failures.push({ url, error });
-    }),
-    { ...version, limits: { rowsPerQuery: limit }, idsOfType: (type) => ids.get(type) ?? [] },
+    cutOffAt(
+      session,
+      limit,
+      (url, error) => {
+        failures.push({ url, error });
+      },
+      saidInParts,
+    ),
+    { ...version, limits: { rowsPerQuery: 2 * limit }, idsOfType },
   );
   const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
@@ -1323,9 +1429,10 @@ export async function readInParts(
   const more = moreRows.length;
   log.say(
     `Read once more with every answer cut off at ${String(limit)} rows: ${plural(again.requests, 'request', 'requests')}, ${plural(again.rows.length, 'row', 'rows')}, and the engine calls the reading ${log.name(again.state) ?? 'something that is not shown'}. ` +
-      `Queries still at that number for a single component, or with no smaller part to ask for: ${String(again.cutOff)}. ` +
+      `Queries counted as cut off: ${String(again.cutOff)}. Of them, still at that number of rows with no smaller part to ask for: ${String(again.cutOff - again.disagreed)}, and with an answer that lacks a row another query gave: ${String(again.disagreed)}. ` +
       `Queries that failed: ${String(again.failed)}${again.failed > 0 ? ` (${log.code(again.code) ?? 'a code that is not shown'})` : ''}. ` +
-      `Queries asked again per component, for more components than one query names: ${String(again.unproven)}.`,
+      `Queries asked again per component, for more components than one query names: ${String(again.unproven)}. ` +
+      `As the org gave them, before one was cut off: ${saidMoreLine(saidInParts)}`,
   );
   for (const line of failedRequestLines(log, failures)) log.say(line);
   if (failures.length === 0 && again.failed > 0) {
@@ -1333,17 +1440,25 @@ export async function readInParts(
   }
   log.say(
     lacking === 0 && more === 0
-      ? 'The parts give the same rows as one query just before.'
-      : `The parts lack ${plural(lacking, 'row', 'rows')} of the one query just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
+      ? 'The parts give the same rows as the reading just before.'
+      : `The parts lack ${plural(lacking, 'row', 'rows')} of the reading just before, and give ${plural(more, 'row', 'rows')} it does not have.`,
   );
   if (lacking > 0)
     log.say(`The rows the parts lack, by the types of their two ends: ${rowsByTypes(log, lackingRows)}.`);
   if (more > 0) log.say(`The rows only the parts give, by the types of their two ends: ${rowsByTypes(log, moreRows)}.`);
   if (again.failed > 0) {
-    log.say('::warning::The org refused a query the engine asks when a query is at the limit of rows.');
+    log.say('::warning::The org refused a query the engine asks when a query is near the limit of rows.');
+  }
+  // A query that is still at the number the answers are cut off at, with no smaller part to ask for, is counted
+  // as cut off, and that is no fault: one component alone can hold that many rows, and a part cannot be asked for
+  // per component where a row comes from a component the org did not list, such as a version of a flow. A query
+  // whose answer lacks a row that another query gave is one: no answer below that number was cut off here.
+  if (again.disagreed > 0) {
+    log.say(disagreement('the reading in parts', again.disagreed));
+    return 'disagreeing';
   }
   // A reading that says that rows are missing may lack rows. One that says it is whole may not.
-  return again.state === 'whole' ? lacking === 0 && more === 0 : more === 0;
+  return (again.state === 'whole' ? lacking === 0 && more === 0 : more === 0) ? 'same' : 'other rows';
 }
 
 export async function readOrg(
@@ -1441,7 +1556,7 @@ export async function readOrg(
 
     let fixtureWhole = false;
     let compared: ReturnType<typeof crossCheckLines> = 'ok';
-    let sameInParts = true;
+    let inParts: Awaited<ReturnType<typeof readInParts>> = 'same';
     if (existsSync(database)) {
       const store = openStore({ path: database, readOnly: true });
       try {
@@ -1458,8 +1573,14 @@ export async function readOrg(
             for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);
           }
           compared = crossCheckLines(log, crossCheck, readFlowVersionIds(store, taken.id));
-          if (crossCheck?.state === 'whole') {
-            sameInParts = await readInParts(log, session, store, taken.id, taken.apiVersion);
+          if (crossCheck !== null && crossCheck.state !== 'none') {
+            // Also where the reading of the snapshot is not whole: the reading after it says what the answers
+            // say of themselves, and how many queries it counts because answers do not agree, which a snapshot
+            // does not keep.
+            if (crossCheck.state === 'partial') {
+              log.say('The reading of the snapshot is not whole. The rows are read again all the same.');
+            }
+            inParts = await readInParts(log, session, store, taken.id, taken.apiVersion);
           }
         }
       } finally {
@@ -1483,10 +1604,25 @@ export async function readOrg(
       log.fail([
         'The analysis missed a reference that Salesforce reports. The lines above name it where it is of the fixture project.',
       ]);
-    } else if (!sameInParts) {
+    } else if (crossCheck !== null && countedWithoutRows(crossCheck.queriesCutOff, crossCheck.code, crossCheck.rows)) {
+      // Before the rows were always asked for per type, the step saw this when it read them again in parts. Now
+      // the reading of the snapshot sees it itself, and is not whole: that is no warning on the test org.
+      log.say('');
+      log.fail([snapshotCounted(crossCheck.queriesCutOff)]);
+    } else if (inParts === 'disagreeing') {
       log.say('');
       log.fail([
-        'Reading the Dependency API in parts gave other rows than one query just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
+        'The answers of the Dependency API did not agree with each other when it was read again. The lines above say how many queries are counted for it.',
+      ]);
+    } else if (inParts === 'counted') {
+      log.say('');
+      log.fail([
+        'The Dependency API was read again as the snapshot does it, and a query is counted as cut off though the reading holds too few rows for an answer near the limit. The lines above say how many, and what the answers said that they hold.',
+      ]);
+    } else if (inParts === 'other rows') {
+      log.say('');
+      log.fail([
+        'Reading the Dependency API in parts gave other rows than the reading just before. The lines above say how many. If the org was changed in that moment, a second run tells.',
       ]);
     } else if (taken?.status !== 'complete') {
       // A real org lists components it does not hand out. The step says so and does not fail for it: it fails
