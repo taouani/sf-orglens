@@ -237,10 +237,13 @@ they have below a package directory, such as `classes/Foo.cls`.
   `Quarterly/Revenue`. It hands both out under the whole path, as `Finance/Quarterly` and
   `Finance/Quarterly/Revenue`, and the snapshot names them so, as a repository does. What comes back under the
   whole path counts as the listed component under the same conditions, where the listed name is an end of the
-  name that came back, behind one of its slashes. The retrieve asked for the listed name, or for no component of
-  the type at all, as it is with a folder, which is asked for under the type of what it holds. This is done for
-  the types `Report`, `Dashboard`, `ReportFolder` and `DashboardFolder`. The note `RETRIEVED_UNDER_ANOTHER_NAME`
-  has the reason `folder-path` for them. Not verified on an org.
+  name that came back, behind one of its slashes. For a report or a dashboard, the retrieve asked for the listed
+  name. A folder is asked for under the type of what it holds, so for a folder the retrieve asked for no component
+  of the type of the folder, and a remark of Salesforce that it cannot find the folder is read under the type of
+  what it holds. Where two components that came back in one retrieve stand for one listed name, such as two
+  folders of one name in two folders, neither counts as it: the listed one stays missing. This is done for the
+  types `Report`, `Dashboard`, `ReportFolder` and `DashboardFolder`. The note `RETRIEVED_UNDER_ANOTHER_NAME` has
+  the reason `folder-path` for them. Not verified on an org.
 - **A part is asked for by its own name when Salesforce cannot find its parent.** A field comes with its object,
   so a retrieve names the object, also when the org lists the field and not the object. When Salesforce remarks
   that it cannot find such an object, the fields, record types and other parts of it that the org lists are

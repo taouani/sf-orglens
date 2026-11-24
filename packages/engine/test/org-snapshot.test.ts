@@ -141,7 +141,9 @@ const OTHER_NAME_FILES: Readonly<Record<string, string>> = {
 
 /**
  * The part with reports and a dashboard in folders inside folders. An org lists such a folder by its own name and
- * what lies in it with that name, and hands both out under the whole path. The names are made up.
+ * what lies in it with that name, and hands both out under the whole path. Two documents, which come back under
+ * another name too, are there for the order of the notes: by rule, and in each by the listed names, by code unit.
+ * The names are made up.
  */
 let WITH_NESTED_FOLDERS: string;
 const folderFile = (type: string, name: string): string => `<${type} xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -161,8 +163,19 @@ const reportFile = (name: string): string => `<Report xmlns="http://soap.sforce.
     <showDetails>true</showDetails>
 </Report>
 `;
+const documentFile = (name: string): string => `<Document xmlns="http://soap.sforce.com/2006/04/metadata">
+    <internalUseOnly>false</internalUseOnly>
+    <name>${name}</name>
+    <public>true</public>
+</Document>
+`;
 const NESTED_FOLDER_FILES: Readonly<Record<string, string>> = {
   'dashboards/Board.dashboardFolder-meta.xml': folderFile('DashboardFolder', 'Board'),
+  'documents/Assets.documentFolder-meta.xml': folderFile('DocumentFolder', 'Assets'),
+  'documents/Assets/Logo-dark.document-meta.xml': documentFile('Logo dark'),
+  'documents/Assets/Logo-dark.png': 'not a picture\n',
+  'documents/Assets/Logo.document-meta.xml': documentFile('Logo'),
+  'documents/Assets/Logo.png': 'not a picture\n',
   'dashboards/Board/Inner.dashboardFolder-meta.xml': folderFile('DashboardFolder', 'Inner'),
   'dashboards/Board/Inner/Overview.dashboard-meta.xml': `<Dashboard xmlns="http://soap.sforce.com/2006/04/metadata">
     <backgroundEndColor>#FFFFFF</backgroundEndColor>
@@ -181,6 +194,7 @@ const NESTED_FOLDER_FILES: Readonly<Record<string, string>> = {
   'reports/Finance/Quarterly/Archive/Old_Revenue.report-meta.xml': reportFile('Old revenue'),
   'reports/Finance/Quarterly/Revenue.report-meta.xml': reportFile('Revenue'),
   'reports/Finance/Totals.report-meta.xml': reportFile('Totals'),
+  'reports/Finance/budget.reportFolder-meta.xml': folderFile('ReportFolder', 'budget'),
 };
 
 beforeAll(async () => {
@@ -217,7 +231,7 @@ beforeAll(async () => {
   for (const [path, text] of Object.entries(NESTED_FOLDER_FILES)) {
     const file = join(WITH_NESTED_FOLDERS, 'main/default', path);
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${text}`);
+    writeFileSync(file, path.endsWith('.xml') ? `<?xml version="1.0" encoding="UTF-8"?>\n${text}` : text);
   }
   WITHOUT_LABEL = join(copies.next(), 'force-app');
   cpSync(FIXTURE, WITHOUT_LABEL, { recursive: true });
@@ -2087,19 +2101,29 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           'Report:Finance/Totals',
           'Report:Quarterly',
           'Report:Quarterly/Revenue',
+          'Report:budget',
         ]);
         expect(report.snapshot.status).toBe('complete');
         // The files keep the path they came with.
         expect(stored(dir, 1)).toEqual([...expectedFiles(), ...Object.keys(NESTED_FOLDER_FILES)].sort());
         expect(typeOf(report, 'Report')).toMatchObject({ listed: 3, retrieved: 3, note: null });
-        expect(typeOf(report, 'ReportFolder')).toMatchObject({ listed: 3, retrieved: 3, note: null });
+        expect(typeOf(report, 'ReportFolder')).toMatchObject({ listed: 4, retrieved: 4, note: null });
         expect(typeOf(report, 'Dashboard')).toMatchObject({ listed: 1, retrieved: 1, note: null });
         expect(typeOf(report, 'DashboardFolder')).toMatchObject({ listed: 2, retrieved: 2, note: null });
+        expect(typeOf(report, 'Document')).toMatchObject({ listed: 2, retrieved: 2, note: null });
+        // The notes go by rule, and name the listed names by code unit: `budget` after `Quarterly`.
+        const names = ['Assets/Logo-dark.png', 'Assets/Logo.png'];
         expect(ofReading(report)).toEqual([
+          {
+            severity: 'info',
+            code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+            message: `2 components of the type Document came back under their name without the ending of their file. The org lists them with the ending, and the snapshot names them without it. The first: ${names[0] ?? ''}`,
+            details: { type: 'Document', reason: 'file-ending', count: 2, components: names },
+          },
           note('Dashboard', ['Inner/Overview']),
           note('DashboardFolder', ['Inner']),
           note('Report', ['Archive/Old_Revenue', 'Quarterly/Revenue']),
-          note('ReportFolder', ['Archive', 'Quarterly']),
+          note('ReportFolder', ['Archive', 'Quarterly', 'budget']),
         ]);
       });
 
@@ -2124,10 +2148,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             .filter((issue) => issue.code === 'RETRIEVED_UNDER_ANOTHER_NAME')
             .map((issue) => [issue.details['type'], issue.details['components']]),
         ).toEqual([
+          ['Document', ['Assets/Logo-dark.png', 'Assets/Logo.png']],
           ['Dashboard', ['Inner/Overview']],
           ['DashboardFolder', ['Inner']],
           ['Report', ['Archive/Old_Revenue']],
-          ['ReportFolder', ['Archive', 'Quarterly']],
+          ['ReportFolder', ['Archive', 'Quarterly', 'budget']],
+        ]);
+      });
+
+      it('leaves a folder missing that Salesforce cannot find, though a file of it comes back', async () => {
+        // A folder is asked for under the type of what it holds, and Salesforce remarks on it under that type.
+        metadata.withheld.add('Report:Quarterly');
+        metadata.extraFiles.set(
+          'reports/Finance/Quarterly-meta.xml',
+          `<?xml version="1.0" encoding="UTF-8"?>\n${folderFile('ReportFolder', 'Quarterly')}`,
+        );
+        const report = await snap(workspaceDir());
+
+        expect(typeOf(report, 'ReportFolder')).toMatchObject({ listed: 4, retrieved: 3 });
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.details['type'] === 'ReportFolder' || issue.code === 'RETRIEVE_MESSAGES')
+            .map((issue) => [issue.code, issue.details['components'] ?? issue.details['messages']]),
+        ).toEqual([
+          ['RETRIEVED_UNDER_ANOTHER_NAME', ['Archive', 'budget']],
+          ['RETRIEVE_MESSAGES', ["Entity of type 'Report' named 'Quarterly' cannot be found"]],
+          ['NOT_RETRIEVED', ['Quarterly']],
+          ['UNLISTED_COMPONENTS', ['Finance/Quarterly']],
         ]);
       });
     });

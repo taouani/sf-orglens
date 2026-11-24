@@ -1,6 +1,6 @@
 ---
-'@sf-orglens/engine': patch
-'sf-orglens': patch
+'@sf-orglens/engine': minor
+'sf-orglens': minor
 ---
 
 A snapshot of an org no longer counts a report, a dashboard or a folder of either as missing when it lies in a
@@ -11,7 +11,9 @@ and as one that came back although the org had not listed it. These were warning
 logic tier.
 
 What comes back under the whole path now counts as the listed component, under the conditions that hold for a
-document and for what belongs to person accounts. The files and the keys of the snapshot keep the whole path. The
+document and for what belongs to person accounts. One condition is new: where two components that came back in
+one retrieve stand for one listed name, such as two folders of one name in two folders, neither counts as it. The
+files and the keys of the snapshot keep the whole path. The
 note `RETRIEVED_UNDER_ANOTHER_NAME` has the new reason `folder-path` in `details.reason`. The names of that note
 and of `RETRIEVED_WITHOUT_PREFIX` are now in the order of the listed names.
 

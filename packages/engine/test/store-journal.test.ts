@@ -433,8 +433,15 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       // Dashboards and their folders are listed the same way.
       listed('DashboardFolder', 'Inner'),
       listed('Dashboard', 'Inner/Overview'),
-      // No other type is: an email template is what its name says.
+      // No other type is: an email template, a document and their folders are what their names say.
       listed('EmailTemplate', 'Inner/Welcome'),
+      listed('EmailFolder', 'Inner'),
+      listed('Document', 'Inner/Notes'),
+      listed('DocumentFolder', 'Inner'),
+      // Salesforce remarks that it cannot find this folder, under the type of what it holds.
+      listed('ReportFolder', 'Hidden'),
+      // Two folders of this name come back: nothing says which one it is.
+      listed('ReportFolder', 'Shared'),
     ]);
     const asked = [
       // A folder is asked for under the type of what it holds.
@@ -444,6 +451,12 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       member('Dashboard', 'Inner'),
       member('Dashboard', 'Inner/Overview'),
       member('EmailTemplate', 'Inner/Welcome'),
+      // Asked for under their own types, so that only the type keeps them from being taken.
+      member('EmailFolder', 'Inner'),
+      member('Document', 'Inner/Notes'),
+      member('DocumentFolder', 'Inner'),
+      report('Hidden'),
+      report('Shared'),
     ];
     const cameBack = [
       folder('Finance'),
@@ -465,8 +478,14 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       member('DashboardFolder', 'Board/Inner'),
       member('Dashboard', 'Board/Inner/Overview'),
       member('EmailTemplate', 'Mails/Inner/Welcome'),
+      member('EmailFolder', 'Mails/Inner'),
+      member('Document', 'Files/Inner/Notes'),
+      member('DocumentFolder', 'Files/Inner'),
+      folder('Finance/Hidden'),
+      folder('Finance/Shared'),
+      folder('Finance/Quarterly/Shared'),
     ];
-    const retrieve = { asked, notFound: [report('Quarterly/Gone')] };
+    const retrieve = { asked, notFound: [report('Quarterly/Gone'), report('Hidden')] };
     expect(markRetrieved(store, id, cameBack, retrieve)).toEqual([
       { ...folder('Quarterly'), rule: 'folder-path' },
       { ...folder('Archive'), rule: 'folder-path' },
@@ -478,8 +497,13 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     // A second retrieve with the same components says nothing new.
     expect(markRetrieved(store, id, [report('Finance/Quarterly/Revenue')], retrieve)).toEqual([]);
 
-    expect(missingComponents(store, id, 'ReportFolder')).toEqual([]);
-    expect(unlistedComponents(store, id, 'ReportFolder')).toEqual(['Finance/Unlisted']);
+    expect(missingComponents(store, id, 'ReportFolder')).toEqual(['Hidden', 'Shared']);
+    expect(unlistedComponents(store, id, 'ReportFolder')).toEqual([
+      'Finance/Hidden',
+      'Finance/Quarterly/Shared',
+      'Finance/Shared',
+      'Finance/Unlisted',
+    ]);
     expect(missingComponents(store, id, 'Report')).toEqual([
       'Archive/Split',
       'Quarterly/Archive/Split',
@@ -499,12 +523,37 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     }
     expect(missingComponents(store, id, 'EmailTemplate')).toEqual(['Inner/Welcome']);
     expect(unlistedComponents(store, id, 'EmailTemplate')).toEqual(['Mails/Inner/Welcome']);
+    for (const [type, name] of [
+      ['EmailFolder', 'Mails/Inner'],
+      ['Document', 'Files/Inner/Notes'],
+      ['DocumentFolder', 'Files/Inner'],
+    ] as const) {
+      expect(countInventory(store, id).get(type)).toEqual({ listed: 1, retrieved: 0, unlisted: 1 });
+      expect(unlistedComponents(store, id, type)).toEqual([name]);
+    }
 
     // A retrieve that asks for a folder by the type of folders and not for this one: the folder is not taken.
     const second = begin(store, 'uat');
-    addInventory(store, second, [listed('ReportFolder', 'Lone'), listed('ReportFolder', 'Other')]);
+    addInventory(store, second, [
+      listed('ReportFolder', 'Lone'),
+      listed('ReportFolder', 'Other'),
+      listed('ReportFolder', 'Solo'),
+      listed('Report', 'Solo/Weekly'),
+      listed('Report', 'Solo/Monthly'),
+    ]);
     const others = { asked: [folder('Other')], notFound: [] };
     expect(markRetrieved(store, second, [folder('Finance/Lone')], others)).toEqual([]);
+    // A folder that comes back with a report of it is taken, though the retrieve did not ask for the folder.
+    const weekly = { asked: [report('Solo/Weekly')], notFound: [] };
+    expect(markRetrieved(store, second, [folder('Finance/Solo'), report('Finance/Solo/Weekly')], weekly)).toEqual([
+      { ...folder('Solo'), rule: 'folder-path' },
+      { ...report('Solo/Weekly'), rule: 'folder-path' },
+    ]);
+    // A report is taken only where the retrieve asked for it, also where the retrieve asked for no report at all.
+    const board = { asked: [member('Dashboard', 'Board/Overview')], notFound: [] };
+    expect(markRetrieved(store, second, [report('Finance/Solo/Monthly')], board)).toEqual([]);
+    expect(missingComponents(store, second, 'Report')).toEqual(['Solo/Monthly']);
+    expect(unlistedComponents(store, second, 'Report')).toEqual(['Finance/Solo/Monthly']);
     expect(missingComponents(store, second, 'ReportFolder')).toEqual(['Lone', 'Other']);
     // Nothing is known of the retrieve: every component is what its name says.
     expect(markRetrieved(store, second, [folder('Finance/Other')])).toEqual([]);

@@ -257,8 +257,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const list = (component: SourceComponent, file: SourceComponent): void => {
     if (listed.some((item) => item.type === component.type.name && item.fullName === component.fullName)) return;
     const type = component.type.name;
-    // The folder a component lies in is the innermost one: the org lists what a folder holds by that name.
-    const folder = component.type.folderType !== undefined ? (component.fullName.split('/').at(-2) ?? null) : null;
+    // The folder a component lies in, as the org lists it: for a report and a dashboard the innermost one, by
+    // whose name the org lists what it holds, and for any other type the whole path.
+    const path = component.type.folderType === undefined ? [] : component.fullName.split('/').slice(0, -1);
+    const folder = (LISTED_BY_INNERMOST_FOLDER.has(type) ? path.slice(-1) : path).join('/') || null;
     // An org lists a document with the ending of its file, and its file under that name.
     if (type === 'Document' && folder !== null && component.content !== undefined) {
       const listedName = `${folder}/${basename(component.content)}`;

@@ -41,14 +41,21 @@ is the same, as in the other three.
 
 - **The path of the folders.** The type is `Report`, `Dashboard`, `ReportFolder` or `DashboardFolder`. The listed
   name is an end of the name that came back, which starts behind one of its slashes: `Quarterly/Revenue` for
-  `Finance/Quarterly/Revenue`, and `Quarterly` for the folder `Finance/Quarterly`. The retrieve asked for that
-  listed name, or it asked for no component of the type at all. The second is the case of a folder.
+  `Finance/Quarterly/Revenue`, and `Quarterly` for the folder `Finance/Quarterly`. For a report or a dashboard,
+  the retrieve asked for that listed name. For a folder, which no retrieve names under its own type, the retrieve
+  asked for no component of the type of the folder.
 
 The conditions of record 0071 hold as they are: the org lists nothing under the name that came back, and the
 retrieve did not ask for it. The listed name did not come back itself in the same retrieve. Salesforce did not
-remark that it cannot find the listed name. No second listed name can stand for the name that came back in the same
-retrieve, by any of the rules. Where the rule holds, the row of the listed name is marked, and no row is made for
-the name that came back.
+remark that it cannot find the listed name. For a folder, that remark is read under the type of what it holds, as
+the folder was asked for: `Entity of type 'Report' named 'Quarterly' cannot be found`. No second listed name can
+stand for the name that came back in the same retrieve, by any of the rules.
+
+One condition is new, and holds for every rule: no other component that came back in the same retrieve stands for
+the same listed name. Only this rule can give such a pair, with two folders of one name in two folders. Then the
+listed name stays missing, and both are not listed.
+
+Where the rule holds, the row of the listed name is marked, and no row is made for the name that came back.
 
 **The note** is the one of record 0071, `RETRIEVED_UNDER_ANOTHER_NAME`, with `folder-path` in `details.reason`.
 
@@ -64,16 +71,22 @@ These are choices of the author of this record. The maintainer can strike any of
    nothing where the org lists as the large org did. How deep the folders of that org lie was not looked at.
 2. **A folder is taken without a word about what the retrieve asked for.** For a folder, the rule asks only that
    the retrieve named no component of the type of the folder. It does not ask that the retrieve named the folder
-   under the type of what it holds: the store does not know which type holds which, as it does not know which
-   type is a part of which (record 0071, choice 3).
-3. **Four types and no other.** They are the ones the snapshot showed. A test holds that an email template whose
-   name ends as a listed one does is not taken this way.
+   under the type of what it holds, though the store knows that type for these two types of folders, to read a
+   remark of Salesforce. So where Salesforce hands out the file of a folder with a report in it, in a retrieve that
+   did not ask for the folder, the folder counts once, as the listed one, and not a second time as one that came
+   back unlisted. Whether Salesforce does that was not seen.
+3. **Four types and no other.** They are the ones the snapshot showed. A test holds that an email template, a
+   document and the folders of both, whose names end as listed ones do, are not taken this way.
 4. **The names of a note are in the order of the listed names**, by code unit, for every reason and for the note
    `RETRIEVED_WITHOUT_PREFIX` as well. They were in the order of the names that came back, which is not always
    the same: the folders `Finance/Quarterly` and `Finance/Quarterly/Archive` come back in that order, and are
    listed as `Quarterly` and `Archive`. A note names the first fifty, and its message the first one.
 5. **The mock org of the tests lists as the large org did**: a report, a dashboard and a folder of either without
-   the folders around the innermost one. It is asked by those names and hands out the whole path.
+   the folders around the innermost one. It is asked by those names and hands out the whole path. Any other type
+   that lies in folders it lists with the whole path of its folders.
+6. **Two components of one retrieve that stand for one listed name leave it missing**, the new condition above.
+   Without it, one of the two would be taken and the other counted nowhere. With it, the snapshot says that
+   something is not known. Records 0047 and 0071 lean to that side too.
 
 ## Not done
 
@@ -83,9 +96,12 @@ These are choices of the author of this record. The maintainer can strike any of
   documentation of Salesforce says of the name of a folder that it is unique in the org
   ([Folder](https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_folder.htm),
   the object, read on 2026-11-24). That was not tried on an org. If an org can hold `Finance/Archive` and
-  `Sales/Archive`, it lists the name `Archive` for both, and the row of that name stands for whichever comes
-  back. The other one is then counted nowhere, whether it comes back in the same retrieve or in a later one. Its
-  file is in the snapshot all the same. The same holds for two reports of one name in those two folders.
+  `Sales/Archive`, it lists the name `Archive` for both. Where both come back in one retrieve, neither is taken:
+  `Archive` stays missing, and both are not listed. Where they come back in two retrieves, the row of `Archive`
+  stands for the first one, and the second is counted nowhere. The same holds for two reports of one name in
+  those two folders. A folder `Quarterly` that lies in no folder beside a folder `Finance/Quarterly` is a case of
+  its own: in one retrieve the second is not listed, because the listed name came back itself, and in two
+  retrieves it is counted nowhere, in either order. The files are in the snapshot all the same.
 - **What did not come back under either name.** Some reports and dashboards the large org listed came back under
   no name. Why is not known, and this record changes nothing for them: they stay missing, with a warning.
 - **The name of the file in a listing.** An org names a file for every component it lists. The snapshot does not
