@@ -323,11 +323,14 @@ reads records of custom metadata types: the type, each field a record gives a va
 is an object or a field where the field is a relationship to the definition of one, and a record of another type
 where it is a relationship to that type. It is a field, at the tier `probable`, where a text field holds exactly
 `Object.Field`, or exactly the name of a field of an object that the same record names in a relationship, and a
-file of the snapshot defines that field. Every other type is stored and not analysed yet.
+file of the snapshot defines that field. Of an object itself, it reads the name of the page or component that
+overrides one of its actions, such as the Lightning page of its records: the page itself is not read. Every other
+type is stored and not analysed yet.
 Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
-[0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md) and
-[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) say what is read and what is not.
+[0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md),
+[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) and
+[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) say what is read and what is not.
 
 - A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
   snapshot is stored, also for a snapshot of an org that was interrupted and continued.
@@ -423,7 +426,9 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
   not active, of a file of workflow rules everything but the fields the formula of a field update reads, of a
   record of a custom metadata type everything but its type, everything of a record type, and of a flow a flow it
   starts, a name in a text, such as a record type a condition compares a text with, and a field of a custom setting
-  or a custom permission that only its formulas name.
+  or a custom permission that only its formulas name. A Visualforce page, a Lightning component or an s-control
+  that overrides an action of an object is counted too: whether the API reports it was not measured. A Lightning
+  page that does is listed: a large org reported it.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the maintainer took a snapshot of a large org once, with a version that took the query for every
@@ -548,8 +553,9 @@ of a workflow rule), `workflow-action` (a reference of an email alert, an outbou
 record of a custom metadata type that is not to the type of the record), `record-type` (a reference of a record
 type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
 text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
-only its formulas name) and `other`. A pair to a standard field or a standard object has one of the first two, from
-any component. A later version can add one.
+only its formulas name), `action-override` (a reference of an object to a Visualforce page, a Lightning component or
+an s-control that overrides one of its actions) and `other`. A pair to a standard field or a standard object has one
+of the first two, from any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):
 
@@ -630,7 +636,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                         |
 | `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.          |
 | `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
-| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule has a type that is not known here, or none. No reference is made for it.                                                                                           |
+| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule or an override of an action of an object has a type that is not known here, or none. No reference is made for it.                                                  |
 | `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
 | `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), which object a resource of a flow holds (`details.resource`), or, with neither key, which object a name is a field of. The names have no reference (`details.origin` says whose).  |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
@@ -710,6 +716,10 @@ in the snapshot nor known to OrgLens by name is not found by its name alone: nam
   never a line of the answer itself.
 - A component that is found is followed from itself only. If a field refers to the component, the answer goes
   on with what refers to that field, not with what refers to its object or to the other fields of its object.
+  An object is followed as any other component, and it refers to the page or component that overrides one of its
+  actions. So an answer about such a page holds the object and, from a depth of 2, what refers to the object. With
+  `--outgoing`, an answer that finds such an object goes on to the page, and says that the type of the page is not
+  analysed (decision record [0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md)).
 - Flows are the exception, since a flow runs its elements (decision record
   [0066](adr/0066-an-answer-takes-a-flow-with-its-elements.md)). What an element refers to, its flow refers to: a
   field that an element writes is written whenever the flow runs, also when another flow calls it as a subflow.

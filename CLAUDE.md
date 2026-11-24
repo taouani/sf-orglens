@@ -125,6 +125,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   not know, or of none, is not read, and a warning says so. A test holds the types of action and the groups of the
   file against the Salesforce library. Of these files the Dependency API reports only the fields the formula of a
   field update reads: any other pair of them that no row reports is counted with a reason, and not listed.
+- An object refers to the Lightning page, Visualforce page, s-control or Lightning component that overrides one of
+  its actions (`extraction/objects.ts`, decision record 0070). The page or component is a target by its name and is
+  not read. A Lightning component is an Aura component, or a Lightning web component where the snapshot defines only
+  that. The Dependency API of a large org reported the Lightning page. Whether it reports the others was not
+  measured, so a pair to one of them without a row is counted with a reason, and not listed. An impact answer
+  follows the reference as any other: an answer about such a page holds the object and, behind it, what refers to
+  the object.
 - A record type and a field set are read by `extraction/objects.ts`, and a record of a custom metadata type by
   `extraction/custom-metadata.ts` (decision record 0065). A record refers to its type, to each field it gives a
   value, and to what the value of a relationship names: an object, a field, whose object is the value of the field

@@ -465,6 +465,145 @@ describe('names that are not found', () => {
   });
 });
 
+describe('the overrides of the actions of an object', () => {
+  /** An override in the file of an object: six lines, or five without a form factor, and one less without a value. */
+  const override = (action: string, type: string | null, content: string | null, formFactor?: string): string[] => [
+    '<actionOverrides>',
+    `    <actionName>${action}</actionName>`,
+    ...(content === null ? [] : [`    <content>${content}</content>`]),
+    ...(formFactor === undefined ? [] : [`    <formFactor>${formFactor}</formFactor>`]),
+    ...(type === null ? [] : [`    <type>${type}</type>`]),
+    '</actionOverrides>',
+  ];
+  /** A component of a type that is not analysed. Its file is not read, so it can be empty. */
+  const defined = (source: Source, type: string, fullName: string, path: string): void => {
+    source.listed.push({ type, fullName, files: [source.file(path, '')] });
+  };
+  const issuesOf = (analysis: SourceAnalysis): string[] =>
+    analysis.issues.map((issue) => `${issue.severity} ${issue.code} ${String(issue.componentKey)} ${issue.message}`);
+
+  it('refer to the page or the component each override names, of the type the override says', () => {
+    const source = new Source();
+    source.object(
+      'Invoice__c',
+      '<label>Invoice</label>',
+      ...override('View', 'Flexipage', 'Invoice_Record_Page', 'Large'),
+      ...override('View', 'Flexipage', 'Invoice_Record_Page', 'Small'),
+      ...override('Edit', 'Visualforce', 'Invoice_Edit'),
+      ...override('New', 'LightningComponent', 'createInvoice', 'Large'),
+      ...override('Clone', 'lightningcomponent', 'cloneInvoice', 'Large'),
+      ...override('Delete', 'Scontrol', 'Old_Delete'),
+      ...override('Tab', 'LightningComponent', 'npsp__Tab_Home', 'Large'),
+      ...override('Accept', 'Default', null),
+      ...override('List', 'Standard', null),
+      ...override('Follow', 'default', 'Not_Named'),
+      ...override('SaveEdit', 'LightningComponent', 'saveInvoice', 'Large'),
+      ...override('CancelEdit', 'LightningComponent', 'cancelInvoice', 'Large'),
+    );
+    defined(source, 'FlexiPage', 'Invoice_Record_Page', 'flexipages/Invoice_Record_Page.flexipage-meta.xml');
+    defined(source, 'ApexPage', 'Invoice_Edit', 'pages/Invoice_Edit.page-meta.xml');
+    defined(source, 'AuraDefinitionBundle', 'createInvoice', 'aura/createInvoice/createInvoice.cmp-meta.xml');
+    defined(source, 'LightningComponentBundle', 'cloneInvoice', 'lwc/cloneInvoice/cloneInvoice.js-meta.xml');
+    defined(source, 'AuraDefinitionBundle', 'saveInvoice', 'aura/saveInvoice/saveInvoice.cmp-meta.xml');
+    defined(source, 'LightningComponentBundle', 'saveInvoice', 'lwc/saveInvoice/saveInvoice.js-meta.xml');
+    const analysis = source.analyse();
+
+    // A Lightning component is an Aura component, or a Lightning web component where only that is defined. Where
+    // both are defined, it is the Aura component. One that nothing defines is taken for an Aura component too: of
+    // a package, it is external, and else it is not found.
+    expect(told(analysis)).toEqual([
+      '6:18 references FlexiPage:invoice_record_page [Invoice_Record_Page] resolved action-override',
+      '12:18 references FlexiPage:invoice_record_page [Invoice_Record_Page] resolved action-override',
+      '18:18 references ApexPage:invoice_edit [Invoice_Edit] resolved action-override',
+      '23:18 references AuraDefinitionBundle:createinvoice [createInvoice] resolved action-override',
+      '29:18 references LightningComponentBundle:cloneinvoice [cloneInvoice] resolved action-override',
+      '35:18 references null [Old_Delete] unresolved action-override',
+      '40:18 references AuraDefinitionBundle:npsp__tab_home [npsp__Tab_Home] external action-override',
+      '59:18 references AuraDefinitionBundle:saveinvoice [saveInvoice] resolved action-override',
+      '65:18 references null [cancelInvoice] unresolved action-override',
+    ]);
+    const invoice = componentOf(analysis, 'CustomObject', 'Invoice__c');
+    expect(invoice.references.map((one) => `${one.toType} ${one.origin} ${one.confidence}`)).toEqual([
+      'FlexiPage parser:xml confirmed',
+      'FlexiPage parser:xml confirmed',
+      'ApexPage parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
+      'LightningComponentBundle parser:xml confirmed',
+      'Scontrol parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
+      'AuraDefinitionBundle parser:xml confirmed',
+    ]);
+    // The pages and components are not read: what they refer to is not known.
+    expect(analysis.components.filter((one) => one.key !== invoice.key).map((one) => one.references)).toEqual([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ]);
+    expect(analysis.issues).toEqual([]);
+    expect(analysis.work).toEqual([{ origin: 'parser:xml', components: 1, failedFiles: 0 }, NO_FORMULA, NO_FLOW]);
+  });
+
+  it('say that an override of a type they do not know is not read, and so is one without a type', () => {
+    const source = new Source();
+    const file = source.object(
+      'Invoice__c',
+      ...override('View', 'Experience', 'Invoice_Page'),
+      ...override('Edit', null, 'Invoice_Edit'),
+      ...override('New', 'LightningComponent', 'c:createInvoice', 'Large'),
+      // An override that names nothing gives nothing, and no warning: with a type that is known, or with none.
+      ...override('Clone', null, null),
+      ...override('Delete', 'Flexipage', null, 'Large'),
+      '<customSettingsType>List</customSettingsType>',
+    );
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([]);
+    expect(issuesOf(analysis)).toEqual([
+      `warning NAME_NOT_READ CustomObject:invoice__c ${file}, line 6: the element "type" holds "Experience", which is no type of an override of an action that is known here. The override is not read.`,
+      `warning NAME_NOT_READ CustomObject:invoice__c ${file}, line 10: the element "content" holds "Invoice_Edit", and the override has no type. The override is not read.`,
+      `warning NAME_NOT_READ CustomObject:invoice__c ${file}, line 14: the element "content" holds "c:createInvoice", which is not read as a name.`,
+    ]);
+    expect(analysis.issues.map((issue) => issue.details)).toEqual([
+      { path: file, line: 6, column: 15, element: 'type' },
+      { path: file, line: 10, column: 18, element: 'content' },
+      { path: file, line: 14, column: 18, element: 'content' },
+    ]);
+    // The rest of the object is read all the same.
+    expect(componentOf(analysis, 'CustomObject', 'Invoice__c').attrs).toEqual({ customSettingsType: 'List' });
+  });
+
+  it('are read in the file of an object as an org hands it out, beside its fields', () => {
+    const source = new Source();
+    const lines = [
+      HEAD,
+      `<CustomObject xmlns="${XMLNS}">`,
+      ...['Accept', 'CancelEdit', 'Clone', 'Delete', 'Edit', 'List', 'New', 'SaveEdit', 'Tab', 'View'].flatMap(
+        (action) => override(action, 'Default', null).map((line) => `    ${line}`),
+      ),
+      ...override('View', 'Flexipage', 'Account_Record_Page', 'Large').map((line) => `    ${line}`),
+      '    <fields><fullName>Tier__c</fullName><type>Text</type></fields>',
+      '</CustomObject>',
+      '',
+    ];
+    const file = source.file('objects/Account.object', lines.join('\n'));
+    source.listed.push({ type: 'CustomObject', fullName: 'Account', files: [file] });
+    defined(source, 'FlexiPage', 'Account_Record_Page', 'flexipages/Account_Record_Page.flexipage');
+    const analysis = source.analyse();
+    expect(told(analysis)).toEqual([
+      '45:18 references FlexiPage:account_record_page [Account_Record_Page] resolved action-override',
+    ]);
+    expect(analysis.components.map((one) => one.key)).toEqual([
+      'CustomField:account.tier__c',
+      'CustomObject:account',
+      'FlexiPage:account_record_page',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+});
+
 describe('a path of names in a filter', () => {
   const build = (): Source => {
     const source = new Source();

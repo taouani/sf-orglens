@@ -4,6 +4,7 @@
 - Date: 2026-11-16
 - Decisions: none (the analysis of work package 4 of the Phase 1 plan)
 - Changed by: [0065](0065-record-types-field-sets-and-records-of-custom-metadata.md), in one point: of the ten kinds of parts of an object, record types and field sets are read as well
+- Changed by: [0070](0070-an-object-refers-to-what-overrides-its-actions.md), in one point: an object refers to the page or component that each override of one of its actions names
 
 ## Context
 
