@@ -689,24 +689,29 @@ components.
 ```
 $ orglens impact Invoice__c.Amount__c
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "repo".
-The answer is not complete: 3 types are not analysed yet. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
 
-7 components refer to it, 6 of them directly.
+28 components refer to it, 26 of them directly.
+A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                              CONFIDENCE  KIND   REFERS TO                         WHERE
 1      CustomField:invoice__c.late_fee__c     confirmed   reads  CustomField:invoice__c.amount__c  force-app/…/Late_Fee__c.field-meta.xml:6
 1      CustomField:invoice__c.total__c        confirmed   reads  CustomField:invoice__c.amount__c  force-app/…/Total__c.field-meta.xml:4
+…
 2      CustomField:invoice__c.grand_total__c  confirmed   reads  CustomField:invoice__c.total__c   force-app/…/Grand_Total__c.field-meta.xml:4
 …
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
 TYPE           LISTED  RETRIEVED
-ApexClass      12      12
+ApexClass      13      13
 ApexTrigger    1       1
 EmailTemplate  1       1
+
+The analysis had 1 warning: …
 ```
 
-The example is shortened: the command prints every line and every path in full.
+The example is shortened: the command prints every line and every path in full, with the columns as wide as
+their longest value.
 
 | Option                    | Meaning                                                                                            |
 | ------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -802,9 +807,11 @@ those of the components in the answer.
 
 For what refers to a component, a type that is not analysed is left out where its components can name no type
 of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type
-that stays on the list. A custom label, for one, names nothing, and a folder names only the groups, roles,
-queues, territories and sites it is shared with. A table in the engine says this for 21 types, each read from the
-types of the Metadata API (decision record 0073). A type that is not in the table stays for every question.
+that stays on the list. Once a type stays, every analysed type is of the answer too, because a component that is
+analysed and is no result can refer to the component through one of that type. A custom label, for one, names
+nothing, and a folder names only the groups, roles, queues, territories and sites it is shared with, and folders
+of its own type. A table in the engine says this for 21 types, each read from the types of the Metadata API
+(decision record 0073). A type that is not in the table stays for every question.
 
 For `--outgoing`, a type that is not analysed counts only if the component, something it contains or a result
 is of it: what a component refers to is known once the component itself is analysed.

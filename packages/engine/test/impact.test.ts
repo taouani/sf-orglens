@@ -336,9 +336,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     /**
      * A workspace whose source `work` holds an object with a Lightning page for its records, and a second object
      * with a lookup to the first and a rule that reads the lookup. The first object names the page as what
-     * overrides its action `View`, unless that is left out.
+     * overrides its action `View`, unless that is left out. The page can be left out too, and the first object
+     * can have a sharing reason.
      */
-    async function invoicePage(overridden = true): Promise<Workspace> {
+    async function invoicePage({ overridden = true, page = true, reason = false } = {}): Promise<Workspace> {
       const root = temp.next();
       const invoice = join(root, OBJECTS, 'Invoice__c');
       const payment = join(root, OBJECTS, 'Payment__c');
@@ -362,10 +363,19 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         join(invoice, 'Invoice__c.object-meta.xml'),
         xml('CustomObject', `${overridden ? override : ''}    <label>Invoice</label>\n`),
       );
-      writeFileSync(
-        join(pages, 'Invoice_Record_Page.flexipage-meta.xml'),
-        xml('FlexiPage', '    <masterLabel>Invoice record page</masterLabel>\n    <type>RecordPage</type>\n'),
-      );
+      if (page) {
+        writeFileSync(
+          join(pages, 'Invoice_Record_Page.flexipage-meta.xml'),
+          xml('FlexiPage', '    <masterLabel>Invoice record page</masterLabel>\n    <type>RecordPage</type>\n'),
+        );
+      }
+      if (reason) {
+        mkdirSync(join(invoice, 'sharingReasons'));
+        writeFileSync(
+          join(invoice, 'sharingReasons', 'Billed__c.sharingReason-meta.xml'),
+          xml('SharingReason', '    <fullName>Billed__c</fullName>\n    <label>Billed</label>\n'),
+        );
+      }
       writeFileSync(join(payment, 'Payment__c.object-meta.xml'), xml('CustomObject', '    <label>Payment</label>\n'));
       writeFileSync(
         join(payment, 'fields', 'Invoice__c.field-meta.xml'),
@@ -648,11 +658,26 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // Without the override the object refers to nothing. Nothing is found behind the page, and what the
       // lookup refers to ends at the object: that answer is complete, though the snapshot holds the page.
-      const plain = await invoicePage(false);
+      const plain = await invoicePage({ overridden: false });
       expect((await plain.impact('work', 'Invoice_Record_Page')).results).toEqual([]);
       const ends = await plain.impact('work', 'Payment__c.Invoice__c', { outgoing: true });
       expect(outline(ends)).toEqual([['CustomObject:invoice__c', 1, 'confirmed']]);
       expect(ends).toMatchObject({ complete: true, mayMiss: false, notCovered: NOTHING });
+    });
+
+    it('names a sharing reason where its object is of the answer, or once another type stays', async () => {
+      // A sharing reason names its object (decision record 0073). Without the page, it is the only type that is
+      // not analysed, and it cannot refer to the lookup.
+      const types = (report: ImpactReport): string[] => report.notCovered.notAnalysed.map((gap) => gap.type);
+      const alone = await invoicePage({ overridden: false, page: false, reason: true });
+      const lookup = await alone.impact('work', 'Payment__c.Invoice__c');
+      expect(outline(lookup)).toEqual([['ValidationRule:payment__c.needs_invoice', 1, 'confirmed']]);
+      expect(lookup).toMatchObject({ complete: true, notCovered: NOTHING });
+      expect(types(await alone.impact('work', 'Invoice__c'))).toEqual(['SharingReason']);
+      // The page is not analysed and may refer to the lookup. The object, which is analysed and no result, refers
+      // to the page, and so may the reason through the object.
+      const paged = await invoicePage({ reason: true });
+      expect(types(await paged.impact('work', 'Payment__c.Invoice__c'))).toEqual(['FlexiPage', 'SharingReason']);
     });
 
     it('takes a depth and a least confidence, and reports both', async () => {

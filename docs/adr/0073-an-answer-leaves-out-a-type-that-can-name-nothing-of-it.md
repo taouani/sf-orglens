@@ -38,19 +38,23 @@ which a test cannot read.
    (`engines/can-name.ts`). Each line is read from the type of the schema of `@jsforce/jsforce-node` 3.13.1 and
    holds every field of the type as a path, with the fields of the types it is built on and of the types of its
    fields. A test holds the paths against the file, so a version of the library that changes one of these types
-   fails it. Another test holds that every type of the table, and every type it names, is a type the Salesforce
-   library knows, and that no type of the table is analysed. Each line says in a sentence why its fields name what
-   they name. Where a field can name something that is no component, such as a user, the sentence says so. Where
-   it was not plain whether a field names a component, its type is among those it names: a type too many keeps a
-   type on the list, and a type too few would drop it.
+   fails it, and the test holds the version of the library too. Another test holds that every type of the table,
+   and every type it names, is a type the Salesforce library knows, and that no type of the table is analysed.
+   Each line says in a sentence why its fields name what they name. Where a field can name something that is no
+   component, such as a user, the sentence says so. Where it was not plain whether a field names a component, its
+   type is among those it names: a type too many keeps a type on the list, and a type too few would drop it.
 2. **The types are those that are common and whose fields are few enough to read by hand:** `ApexTestSuite`,
    `ContentAsset`, `CspTrustedSite`, `CustomLabel`, `CustomLabels`, `CustomNotificationType`, `CustomPermission`,
    `DashboardFolder`, `Document`, `DocumentFolder`, `EmailFolder`, `GlobalValueSet`, `GlobalValueSetTranslation`,
    `Group`, `Letterhead`, `PermissionSetGroup`, `PlatformCachePartition`, `RemoteSiteSetting`, `ReportFolder`,
-   `SharingReason` and `StaticResource`. Nine of them name nothing: a label, a document or a static resource is a
-   text or a file and words about it, a global value set holds its own values, and the others are a name, an
-   address or sizes. A type the schema of the library does not have, such as a parameter of a feature or a
-   resource of DataWeave, cannot be in the table, because the test has nothing to hold it against.
+   `SharingReason` and `StaticResource`. Eight of them name nothing: a label or a static resource is a text or a
+   file and words about it, a global value set holds its own values, and the others are a name, an address or
+   sizes. A document names its folder, whose name begins its own, and a sharing reason the object it belongs to. A
+   folder names those it is shared with and folders of its own type: a folder of reports or dashboards can lie in
+   another, which record [0072](0072-a-folder-in-a-folder-comes-back-under-its-whole-path.md) is about, and of a
+   folder of documents or email templates the author does not know that it cannot. A type the schema of the
+   library does not have, such as a parameter of a feature or a resource of DataWeave, cannot be in the table,
+   because the test has nothing to hold it against.
 3. **An answer about what refers to a component leaves out a type of `notAnalysed` whose line names no type of
    the answer.** The types of the answer are those of the component, of what it contains and of the results, and
    every type that stays on the list. The last holds for a chain through components that are not analysed: a test
@@ -58,7 +62,11 @@ which a test cannot read.
    class stays, and the suite with it. A folder names the groups it is shared with, and a group names nothing, so
    for a snapshot that holds both, an answer about a field names neither. A type whose line names its own type,
    such as a custom permission that needs another one, stays only where its type is of the answer. A type that has
-   no line stays for every question.
+   no line stays for every question. Once a type stays, every analysed type is of the answer too: a component that
+   is analysed and is no result can refer to a component of the type that stays, and through it to the component
+   asked about. In this version only a sharing reason names an analysed type, its object, so it stays in nearly
+   every answer. This changes one point of record 0044, which counted every type that is not analysed for this
+   question.
 4. **An answer with `--outgoing` is not changed.** It names only the types of the component, of what it contains
    and of the results already, and the table does not say what a component of a type that is not analysed refers
    to beyond its type.
@@ -75,14 +83,16 @@ which a test cannot read.
   and an answer about the custom permission keeps the custom permissions. Tests hold the three.
 - On the public codebases of `fixtures/corpora.toml`, at the commits that file pins, the built command was asked
   by hand on 2026-11-24 about every field of a sample of 30 to 39 fields in each. Every answer about a field
-  listed 29 types where it would have listed 33 in PMM, 25 where 37 in NPSP, 23 where 32 in Nebula Logger and 13
-  where 18 in Apex Recipes, whether it had results or not. Most of what stays is
-  of a type that names fields, such as a layout, a list view, a permission set or a page, or is code, which a
-  later phase reads.
+  listed 29 types where it would have listed 33 in PMM, 25 where 37 in NPSP, 24 where 32 in Nebula Logger and 13
+  where 18 in Apex Recipes, whether it had results or not. Most of what stays is of a type that names fields, such
+  as a layout, a list view, a permission set or a page, or is code, which a later phase reads. The sharing reason of
+  Nebula Logger stays because other types do.
 - `complete` is true for an answer about what refers to a component only once every type that stays is analysed.
   No snapshot of the tests reaches that while Apex is not analysed.
-- Nothing changes in the database or in the shape of the JSON. Fewer types are in `notAnalysed`, and an answer is
-  complete in more cases. `mayMiss` and the exit code do not depend on that list.
+- Nothing changes in the database or in the shape of the JSON. Fewer types are in `notAnalysed` of an answer about
+  what refers to a component, and such an answer is complete in more cases. Decision 5 works the other way, in both
+  directions: it adds a type to the list, and an answer it is in is no longer complete where it was. `mayMiss` and
+  the exit code do not depend on that list.
 - The table is read from the schema of the library and not tried on an org. The schema does not say which
   version of the Metadata API it was made from. It lacks types that the public codebases hold, such as the
   parameters of a feature, so it is older than they are, and a field that Salesforce added to a type since is not

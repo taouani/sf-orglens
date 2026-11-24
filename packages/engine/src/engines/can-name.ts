@@ -12,7 +12,8 @@
  * component, its type is in `names`: a type too many keeps a type on the list, and a type too few would drop it.
  *
  * A type that is not here stays in the list for every question. A type that is analysed is never in that list,
- * and a test fails when a type of the table is analysed.
+ * and a test fails when a type of the table is analysed. A line can name a type that is analysed, as a sharing
+ * reason names its object: `namingTypes` is told which types are analysed.
  */
 
 /** A line of the table. */
@@ -60,11 +61,24 @@ const FOLDER_FIELDS = [
   'sharedTo.territoryAndSubordinates',
 ];
 
-const FOLDER: NameableType = {
-  names: ['CustomSite', 'Group', 'Network', 'Queue', 'Role', 'Territory', 'Territory2'],
-  fields: FOLDER_FIELDS,
-  why: 'A folder names those it is shared with: groups, queues, roles and territories, and the guest user of a site. A user, a manager and a group of a channel programme are no components.',
-};
+/** What a folder can name through those it is shared with. */
+const SHARED_WITH = ['CustomSite', 'Group', 'Network', 'Queue', 'Role', 'Territory', 'Territory2'];
+
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** The line of a type of folder. A folder names folders of its own type too, `why` says how. */
+function folder(type: string, why: string): NameableType {
+  return {
+    names: [...SHARED_WITH, type].sort(byCodeUnit),
+    fields: FOLDER_FIELDS,
+    why: `A folder names those it is shared with: groups, queues, roles and territories, and the guest user of a site. A user, a manager and a group of a channel programme are no components. ${why}`,
+  };
+}
+
+/** A folder of reports or dashboards in a folder has the path of the folders around it in its name (record 0072). */
+const NESTED = 'A folder in a folder has the names of the folders around it in its own.';
+/** Of the other folders, the author does not know that one can lie in another, and does not rule it out. */
+const NOT_KNOWN = 'Whether a folder of this type can lie in another is not known here, so it names its own type.';
 
 /** The table, by the name of the type in the Metadata API. */
 export const WHAT_A_TYPE_CAN_NAME: ReadonlyMap<string, NameableType> = new Map<string, NameableType>([
@@ -167,17 +181,17 @@ export const WHAT_A_TYPE_CAN_NAME: ReadonlyMap<string, NameableType> = new Map<s
       why: 'A permission names the connected app it belongs to and the custom permissions it needs.',
     },
   ],
-  ['DashboardFolder', FOLDER],
+  ['DashboardFolder', folder('DashboardFolder', NESTED)],
   [
     'Document',
     {
-      names: [],
+      names: ['DocumentFolder'],
       fields: ['content', 'description', 'fullName', 'internalUseOnly', 'keywords', 'name', 'public'],
-      why: 'A document is a file and words about it.',
+      why: 'A document is a file and words about it. Its full name begins with the name of its folder.',
     },
   ],
-  ['DocumentFolder', FOLDER],
-  ['EmailFolder', FOLDER],
+  ['DocumentFolder', folder('DocumentFolder', NOT_KNOWN)],
+  ['EmailFolder', folder('EmailFolder', NOT_KNOWN)],
   [
     'GlobalValueSet',
     {
@@ -284,7 +298,7 @@ export const WHAT_A_TYPE_CAN_NAME: ReadonlyMap<string, NameableType> = new Map<s
       why: 'An address on the web that the org may call.',
     },
   ],
-  ['ReportFolder', FOLDER],
+  ['ReportFolder', folder('ReportFolder', NESTED)],
   [
     'SharingReason',
     {
@@ -308,10 +322,17 @@ export const WHAT_A_TYPE_CAN_NAME: ReadonlyMap<string, NameableType> = new Map<s
  * whose components can name a type of the answer, or about which the table says nothing. The types of the answer
  * are those of the component asked about, of what it contains and of the results, and every type that stays. The
  * last holds for a chain through components that are not analysed: what can name such a component can refer to
- * the component asked about through it. The order of `types` is kept.
+ * the component asked about through it. Once a type stays, every type of `analysed` is of the answer too: a
+ * component that is analysed and is no result can refer to a component of the type that stays, and through it to
+ * the component asked about. The order of `types` is kept.
  */
-export function namingTypes<T extends { readonly type: string }>(types: readonly T[], answer: Iterable<string>): T[] {
+export function namingTypes<T extends { readonly type: string }>(
+  types: readonly T[],
+  answer: Iterable<string>,
+  analysed: Iterable<string>,
+): T[] {
   const near = new Set(answer);
+  const behind = [...analysed];
   const kept = new Set<string>();
   let more = true;
   while (more) {
@@ -320,6 +341,7 @@ export function namingTypes<T extends { readonly type: string }>(types: readonly
       if (kept.has(type)) continue;
       const line = WHAT_A_TYPE_CAN_NAME.get(type);
       if (line === undefined || line.names.some((one) => near.has(one))) {
+        if (kept.size === 0) for (const one of behind) near.add(one);
         kept.add(type);
         near.add(type);
         more = true;

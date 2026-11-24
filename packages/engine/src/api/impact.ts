@@ -220,12 +220,12 @@ export function impactOf(store: Store, source: string, component: string, query:
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what
   // a component refers to that the snapshot does not hold is not known at all. For what refers to a component,
-  // a type counts unless what its components can name is known and none of it is of the answer (decision record
-  // 0073).
+  // a type counts unless what its components can name is known and none of it is of the answer. Once one counts,
+  // what is analysed and no result can refer to the component through it (decision record 0073).
   const walked = new Set([...walk.startTypes, ...walk.results.map((result) => result.type)]);
   const notCovered =
     direction === 'incoming'
-      ? { ...gaps, notAnalysed: namingTypes(gaps.notAnalysed, walked) }
+      ? { ...gaps, notAnalysed: namingTypes(gaps.notAnalysed, walked, covered) }
       : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)), notHeld: walk.notHeld };
 
   const flows = new Set(
