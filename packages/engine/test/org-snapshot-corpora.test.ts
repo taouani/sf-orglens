@@ -101,6 +101,9 @@ describe('a snapshot of an org that holds a public codebase', () => {
         const components = store
           .all('SELECT type, full_name FROM inventory_item WHERE snapshot_id = 1 AND retrieved = 1')
           .map((row) => `${String(row['type'])}:${String(row['full_name'])}`);
+        const unlisted = store
+          .all('SELECT type, full_name FROM inventory_item WHERE snapshot_id = 1 AND listed = 0')
+          .map((row) => `${String(row['type'])}:${String(row['full_name'])}`);
         store.close();
 
         expect(report.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
@@ -142,12 +145,22 @@ describe('a snapshot of an org that holds a public codebase', () => {
               !path.endsWith('.flowDefinition-meta.xml'),
           ),
         ).toEqual([]);
-        // Every component of the project came back, by the name the org listed it under.
+        // Every component of the project came back, by the name the org listed it under. An org lists a document
+        // with the ending of its file, and the row of that name is the one that says it came back (decision
+        // record 0071).
+        const listedAs = (component: (typeof onDisk.components)[number]): string => {
+          const content = component.files.find((path) => !path.endsWith('-meta.xml'));
+          if (component.type !== 'Document' || content === undefined) return component.fullName;
+          const folder = component.fullName.slice(0, component.fullName.lastIndexOf('/') + 1);
+          return `${folder}${content.slice(content.lastIndexOf('/') + 1)}`;
+        };
         const absent = onDisk.components
           .filter((component) => !component.files.every(inUnknownFolder))
-          .map((component) => `${component.type}:${component.fullName}`)
+          .map((component) => `${component.type}:${listedAs(component)}`)
           .filter((one) => !components.includes(one));
         expect(absent).toEqual([]);
+        // And nothing is counted a second time under the name the Salesforce library gives it.
+        expect(unlisted).toEqual([]);
       },
       600_000,
     );

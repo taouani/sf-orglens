@@ -10,9 +10,11 @@ Record [0041](0041-components-and-names-written-in-xml.md) lists what the file o
 does not read. Among it is what overrides an action of the object: the Lightning page that shows its records, a
 Visualforce page that edits one, a Lightning component that creates one. Salesforce keeps each override in the
 file of the object, as an element `actionOverrides` with the action (`actionName`), the type of the override
-(`type`), the name of what overrides it (`content`) and, for a Lightning page or component, the size of screen it
-is for (`formFactor`). Most of these elements have the type `Default` and no name: the files of the four public
-codebases hold more than a thousand of them, for actions that are not overridden.
+(`type`), the name of what overrides it (`content`) and, in many of them, the size of screen it is for
+(`formFactor`). Most of these elements have the type `Default` and no name: the files of the four public
+codebases hold more than a thousand of them, for actions that are not overridden. More than half of those name a
+size of screen, and so does every override by a Lightning page or component in these files. No override by a
+Visualforce page does.
 
 On 2026-11-23 the maintainer took a snapshot of a large org. Its Dependency API reported pairs from objects to the
 Lightning pages that override their actions, and the analysis had none of them. Each was the error
@@ -45,14 +47,27 @@ Aura component or a Lightning web component.
    an action in the public codebases, one in PMM and one in a file of NPSP outside its package folder, are Aura
    components that implement `lightning:actionOverride`.
 3. **The type is compared without case.** `Default` and `Standard` name nothing and give nothing, also where a file
-   gives them a name. An override of another type, or without a type, is not read, and the warning `NAME_NOT_READ`
-   says so, as for an action of a workflow rule of an unknown type (record
+   gives them a name. An override of another type is not read, and neither is one that has a name and no type: the
+   warning `NAME_NOT_READ` says so, as for an action of a workflow rule of an unknown type (record
    [0063](0063-the-parts-of-a-file-of-workflow-rules.md)). A name that is no name, such as `c:createInvoice`, is not
-   read either, with the warning that any other value of the file gets.
+   read either, with the warning that any other value of the file gets. An override that names nothing gives
+   nothing, and no warning: one of a known type without a name, and one with neither a type nor a name.
 4. **Of the cross-check, a pair from an object to a Lightning page is of a kind the Dependency API reports**, as the
    large org showed. Whether it reports a Visualforce page, a Lightning component or an s-control that overrides an
    action was not measured. Such a pair without a row is counted with the new reason `action-override`, and is not
-   listed in `onlyOrgLens`. Where a row reports it, the pair agrees, as any other.
+   listed in `onlyOrgLens`. Where a row reports it, the pair agrees, as any other. Whether the API reports the page
+   of a standard object is not verified either. A pair from a standard object to a Lightning page is held as any
+   pair to a Lightning page: it agrees where a row reports it, and is listed in `onlyOrgLens` where none does, which
+   is no error.
+5. **An impact answer follows this reference as any other.** A component that is found is followed from itself
+   (record [0044](0044-an-impact-answer.md)), and an object is a component. So an answer about a page holds the
+   object that names it and, behind the object, everything that refers to the object, each one reference further.
+   With `--outgoing`, an answer that finds the object goes on to the page. That reads "refers to" as "needs": the
+   object needs the page it names, and what refers to the object needs the object. It does not say that a change to
+   the page changes a field that looks up to the object. The other choice is not to go on from an object that was
+   found by an override, which needs a rule of its own in the walk, as flows have one (record
+   [0066](0066-an-answer-takes-a-flow-with-its-elements.md)). This is a choice of the author of this record, made
+   after the review of the pull request, and the maintainer can strike it.
 
 ## Consequences
 
@@ -68,9 +83,24 @@ Aura component or a Lightning web component.
 - An impact answer about a Lightning page, a Visualforce page or a Lightning component names the objects whose
   actions it overrides. The answer still says that the type of the page is not analysed: what the page refers to is
   not read.
+- Before this record an object referred to nothing. No answer found an object as something that refers to another
+  component, and an answer with `--outgoing` ended at an object. Now two answers change beyond the first step
+  (decision 5). An answer about a page holds what refers to the object: in Nebula Logger, the answer about the
+  record page of `Log__c` holds 31 components to a depth of 4, of which the first is the object, and in PMM the
+  answer about the record page of `Program__c` holds 12. And an answer with `--outgoing` that reaches an object with
+  an override holds the page too and names the type of the page as not analysed, so it is not complete where it
+  was: what the field `LogEntry__c.Log__c` of Nebula Logger refers to is the object `Log__c` and its record page.
+  Neither changes `mayMiss` or the exit code. A test holds both for a small project.
 - Nothing changes in the database. The JSON output has one more value of `reason`, which the contract allows: a
   later version can add one.
 - An org can also give a Lightning page to an app, a record type or a profile. Salesforce keeps that in the file of
-  the app (`actionOverrides` and `profileActionOverrides` of a `CustomApplication`), which is not analysed.
+  the app (`actionOverrides` and `profileActionOverrides` of a `CustomApplication`). The types that
+  `@jsforce/jsforce-node` has for the Metadata API give overrides to two more: a tab (`actionOverrides` of a
+  `CustomTab`) and a profile (`profileActionOverrides` of a `Profile`). None of the three types is analysed, and
+  what their overrides name is not read.
+- Where an object names a page that the org lists and does not hand out, the name is not found in the snapshot, and
+  the reference has no target unless the name has the prefix of a package. If the Dependency API reports the pair,
+  it is then the error `REFERENCE_MISSED`, and its message says that the analysis found no such reference, though
+  it read the name. That is so for any name the analysis reads and does not find, and it is not changed here.
 - Of what record 0041 lists as not read, the rest stays: the name field and the search layouts of an object, what a
   list view, a compact layout, a web link and an index name, and the field an indirect lookup matches on.
