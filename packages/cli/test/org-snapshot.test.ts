@@ -97,7 +97,7 @@ const classesAnalysed = (components: string): string[] => [
  * is counted and not compared.
  */
 const CROSS_CHECKED = [
-  'Cross-check: the Dependency API of Salesforce reports 1 row. No query left a row out.',
+  'Cross-check: the Dependency API of Salesforce reports 1 row. No answer shows that a row is missing.',
   '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
   'No row was compared.',
   '',
@@ -128,10 +128,16 @@ describe('orglens snapshot of an org', () => {
         ...CROSS_CHECKED,
       ].join('\n'),
     });
-    // The Dependency API is asked once, for the one object that holds its rows, and for nothing else.
-    expect(mock.queries).toHaveLength(1);
+    // The Dependency API is asked for the one object that holds its rows, and for nothing else: the query for every
+    // row, one for each of the 17 types that are known to refer, and one for the rest (decision record 0069).
+    expect(mock.queries).toHaveLength(19);
     expect(mock.queries[0]).toMatch(/^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency$/);
-    expect(mock.paths.filter((path) => path.includes('/query'))).toEqual(['/services/data/v66.0/tooling/query']);
+    for (const query of mock.queries.slice(1)) {
+      expect(query).toMatch(/^SELECT [A-Za-z, ]+ FROM MetadataComponentDependency WHERE MetadataComponentType /);
+    }
+    expect(new Set(mock.paths.filter((path) => path.includes('/query')))).toEqual(
+      new Set(['/services/data/v66.0/tooling/query']),
+    );
     expect(mock.operations).toEqual([
       'describeMetadata',
       'listMetadata',
@@ -172,7 +178,7 @@ describe('orglens snapshot of an org', () => {
         analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
         crossCheck: {
           state: 'whole',
-          requests: 1,
+          requests: 19,
           rows: 1,
           queriesCutOff: 0,
           queriesFailed: 0,

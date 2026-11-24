@@ -537,17 +537,17 @@ function crossCheckLines(report: CoverageReport): string[] {
   const lacks: string[] = [];
   if (left > 0) {
     lacks.push(
-      `Rows are missing: ${count(left, 'query was', 'queries were')} cut off at the limit of the API or failed${
+      `Rows are missing, or may be: ${count(left, 'query was', 'queries were')} cut off or failed${
         crossCheck.code === null ? '' : ` (${crossCheck.code})`
       }.`,
     );
   }
   if (crossCheck.queriesNotProven > 0) {
     lacks.push(
-      `Rows of a component the org did not list may be missing: ${count(crossCheck.queriesNotProven, 'query', 'queries')} at the limit of the API ${crossCheck.queriesNotProven === 1 ? 'was' : 'were'} asked again component by component.`,
+      `Rows of a component the org did not list may be missing: ${count(crossCheck.queriesNotProven, 'query', 'queries')} near the limit of the API ${crossCheck.queriesNotProven === 1 ? 'was' : 'were'} asked again component by component.`,
     );
   }
-  const read = crossCheck.state === 'whole' ? 'No query left a row out.' : lacks.join(' ');
+  const read = crossCheck.state === 'whole' ? 'No answer shows that a row is missing.' : lacks.join(' ');
   const lines = [
     '',
     `Cross-check: the Dependency API of Salesforce reports ${count(crossCheck.rows, 'row', 'rows')}. ${read}`,

@@ -1240,7 +1240,7 @@ async function readCrossCheck(
   const versions = listed.some((item) => item.type === 'Flow')
     ? await readFlowVersions(session, { apiVersion, limits })
     : null;
-  // With the ids the org listed its components with, a query that reaches the limit of rows can be asked again
+  // With the ids the org listed its components with, a query that is near the limit of rows can be asked again
   // for a part of the components. The ids of the versions of flows are among them: the org does not list the id
   // of an active version that has a newer one.
   const ids = new Map<string, string[]>();
@@ -1308,12 +1308,12 @@ async function readCrossCheck(
       const said: string[] = [];
       if (left > 0) {
         said.push(
-          `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off at its limit of rows or failed. Rows are missing.`,
+          `${plural(left, 'query', 'queries')} of the Dependency API ${left === 1 ? 'was' : 'were'} cut off or failed. Rows are missing, or may be.`,
         );
       }
       if (reading.unproven > 0) {
         said.push(
-          `${plural(reading.unproven, 'query', 'queries')} at the limit of rows ${reading.unproven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing.`,
+          `${plural(reading.unproven, 'query', 'queries')} near the limit of rows ${reading.unproven === 1 ? 'was' : 'were'} asked again component by component. The rows of a component the org did not list may be missing.`,
         );
       }
       issue(

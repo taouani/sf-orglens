@@ -112,7 +112,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
 
     engineState.crossCheck = { ...READ, comparison: NOTHING };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. No answer shows that a row is missing.',
       '40 rows were compared. They are 38 pairs of components: the analysis has 38 of them, has 0 as a reference to a part of the object Salesforce names, and missed 0.',
       '',
     ]);
@@ -156,7 +156,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 136 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 136 rows. No answer shows that a row is missing.',
       '61 rows are from a component of a type that is not analysed, and are not compared: ApexClass 60, CustomMetadata 1.',
       '1 row names a component the org did not list, and is not compared.',
       '2 rows are from a component the snapshot does not hold or that was not analysed, and are not compared.',
@@ -194,7 +194,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       comparison: { ...NOTHING, missed: [{ from: 'CustomField:a__c.b__c', to: 'CustomField:a__c.c__c' }], agreed: 37 },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows are missing: 3 queries were cut off at the limit of the API or failed (TIMEOUT).',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows are missing, or may be: 3 queries were cut off or failed (TIMEOUT).',
       '40 rows were compared. They are 38 pairs of components: the analysis has 37 of them, has 0 as a reference to a part of the object Salesforce names, and missed 1.',
       '',
       'Salesforce reports this reference, and the analysis has none. It is an error of the analysis:',
@@ -212,7 +212,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       comparison: { ...NOTHING, onlyOrgLens: [{ from: 'CustomField:a__c.b__c', to: 'CustomField:a__c.c__c' }] },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows of a component the org did not list may be missing: 2 queries at the limit of the API were asked again component by component.',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows of a component the org did not list may be missing: 2 queries near the limit of the API were asked again component by component.',
       '40 rows were compared. They are 38 pairs of components: the analysis has 38 of them, has 0 as a reference to a part of the object Salesforce names, and missed 0.',
       '',
       'The analysis has 1 reference of a kind Salesforce reports, without a row that was compared. Either the analysis is wrong there, or the API left it out, or its row is among those that are missing or not compared:',
@@ -230,7 +230,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       comparison: NOTHING,
     };
     expect((await crossCheckLines(dir))[0]).toBe(
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows are missing: 1 query was cut off at the limit of the API or failed. Rows of a component the org did not list may be missing: 1 query at the limit of the API was asked again component by component.',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. Rows are missing, or may be: 1 query was cut off or failed. Rows of a component the org did not list may be missing: 1 query near the limit of the API was asked again component by component.',
     );
   });
 
@@ -253,14 +253,14 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
     // The rows are there, and the analysis the snapshot has was made by a version whose comparison is not read.
     engineState.crossCheck = { ...READ, comparison: null };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. No answer shows that a row is missing.',
       'They were not compared by this version of OrgLens. Compare them with: orglens analyse work --snapshot 1',
       '',
     ]);
 
     engineState.analysed = false;
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 40 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 40 rows. No answer shows that a row is missing.',
       'They were not compared: the snapshot is not analysed.',
       '',
     ]);
@@ -295,7 +295,7 @@ describe('the cross-check of a snapshot, as the coverage shows it', () => {
       },
     };
     expect(await crossCheckLines(dir)).toEqual([
-      'Cross-check: the Dependency API of Salesforce reports 4 rows. No query left a row out.',
+      'Cross-check: the Dependency API of Salesforce reports 4 rows. No answer shows that a row is missing.',
       '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
       '1 row is from a component the snapshot does not hold or that was not analysed, and is not compared.',
       '1 row is from a version of a flow that the snapshot does not hold, such as a draft, and is not compared.',

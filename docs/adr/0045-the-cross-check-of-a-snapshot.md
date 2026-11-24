@@ -4,7 +4,7 @@
 - Date: 2026-11-16
 - Decisions: none (work package 8 of the Phase 1 plan. It builds the cross-check of record 0034 for the types
   this phase analyses, and follows the answer to question Q1 of that plan)
-- Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in two points: `MetadataComponentDependency` is no longer the one object that is queried, since one query of `FlowDefinition` asks for the ids of the active and the latest version of each flow; and an end of a row from a flow is matched by those ids, and a row from a version the snapshot does not hold is counted and not compared
+- Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in two points: `MetadataComponentDependency` is no longer the one object that is queried, since one query of `FlowDefinition` asks for the ids of the active and the latest version of each flow; and an end of a row from a flow is matched by those ids, and a row from a version the snapshot does not hold is counted and not compared; and [0069](0069-an-answer-below-the-limit-can-be-cut-off.md), in two points: the query without a filter no longer stands for the org where it gives fewer than 2,000 rows, since an answer can be cut off below the limit, so the rows are always asked for per type and an answer is asked for in parts from half the limit on; and the reading is `whole` only where no answer shows that a row is missing
 
 ## Context
 
