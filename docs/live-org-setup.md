@@ -276,10 +276,12 @@ The test org holds fewer rows than half the 2,000 at which Salesforce cuts a que
 ask per pair of types or per group of components there. The step therefore reads the rows twice more: as the
 snapshot does it, with the query for every row and one query per type of the component that refers (decision
 record [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and just after it through a session that
-shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. The engine then
-asks per type, per pair of types and per group of components, and the step says whether the parts give the same
-rows as the reading just before. It fails when the parts give a row that the reading just before did not give,
-and when the engine calls the reading in parts whole and a row is lacking.
+shortens every answer to 30 rows and calls it ended. Every request still goes to the org as it is. Both readings
+are given the ids the snapshot asked with, so that a part near the limit is asked for per group of components as
+the snapshot asks for it. The engine then asks per type, per pair of types and per group of components, and the
+step says whether the parts give the same rows as the reading just before. It fails when the parts give a row
+that the reading just before did not give, and when the engine calls the reading in parts whole and a row is
+lacking.
 
 It also fails when answers of the Dependency API do not agree with each other: one of the two readings counts a
 query whose answer lacks a row that another query gave. The reader says how many queries it counts for that. A

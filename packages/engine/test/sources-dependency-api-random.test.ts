@@ -3,13 +3,16 @@
  * reads the same orgs.
  *
  * What an org holds varies, and where it cuts an answer off, which rows it never hands out, whether an answer
- * says how many rows it was cut off with, which query it refuses, which ids the caller knows, how many components
- * one query names, and how many rounds the reader makes. Where the limit the reader is given is more than twice
- * the number of rows the org cuts an answer off at, an answer is cut off below half the limit, as an answer of a
- * large org was (decision record 0069).
+ * says how many rows it was cut off with, which query it refuses, how it answers a query for a group of components,
+ * which ids the caller knows, how many components one query names, and how many rounds the reader makes. Where the
+ * limit the reader is given is more than twice the number of rows the org cuts an answer off at, an answer is cut
+ * off below half the limit, as an answer of a large org was (decision record 0069).
  *
- * What a reading has to hold is said by something that knows nothing of the reader: a twin of the org that cuts
- * nothing off and hands out every row says which rows a query asks for.
+ * What an answer has to hold is said by something that knows nothing of the reader: a twin of the org that cuts
+ * nothing off and hands out every row says which rows a query asks for. A reading that is called whole has to hold
+ * every row only of an org that cuts no answer off below half the limit of the reader. Of another org it can lack
+ * rows: an answer that is cut off below half the limit, and whose rows no other query gives, goes unseen (decision
+ * record 0069), which a test of the reader shows on an org of one type.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { OrgSource } from '../src/core/config/config.ts';
@@ -64,6 +67,8 @@ const FROM = [
 const TO = ['CustomField', 'CustomObject', 'ApexClass', 'CustomLabel', 'Layout', 'Report', 'ApexPage', 'Standard'];
 /** The type whose rows an org never hands out, where it hides some. */
 const HIDDEN = 'Report';
+/** What a query for a group of components holds, after the condition that names its part. */
+const GROUP = ' AND MetadataComponentId IN (';
 
 interface Org {
   readonly rows: MockDependencyRow[];
@@ -80,9 +85,18 @@ interface Org {
   readonly rounds: number;
   /** A type of target the org refuses to be asked for by name, or `null`. */
   readonly refused: string | null;
+  /**
+   * How the org answers a query for a group of components: with the rows it asks for, with no row, or without the
+   * first of them. The last two are an org that does not read the condition on the id the way it is meant here.
+   */
+  readonly groups: 'whole' | 'none' | 'not the first';
 }
 
-function make(next: () => number): Org {
+/**
+ * Makes an org. How it answers a query for a group of components is drawn from numbers of its own (`other`), so
+ * that it changes nothing else of the org.
+ */
+function make(next: () => number, other: () => number): Org {
   const pick = <T>(list: readonly T[]): T => list[Math.floor(next() * list.length)] as T;
   const between = (low: number, high: number): number => low + Math.floor(next() * (high - low + 1));
   const rows: MockDependencyRow[] = [];
@@ -122,6 +136,7 @@ function make(next: () => number): Org {
     idsPerQuery: pick([1, 2, 3, 200]),
     rounds: pick([1, 2, 6, 6]),
     refused: next() < 0.15 ? pick(['CustomLabel', 'ApexPage', 'Layout']) : null,
+    groups: (['whole', 'whole', 'none', 'not the first'] as const)[Math.floor(other() * 4)] ?? 'whole',
   };
 }
 
@@ -161,10 +176,15 @@ async function read(org: Org): Promise<{ reading: DependencyReading; answers: An
   const answer = dependencies.answer.bind(dependencies);
   dependencies.answer = (soql, metadata) => {
     const given = answer(soql, metadata);
-    const body =
+    const whole =
       given.status === 200 ? (JSON.parse(given.body) as { records: MockDependencyRow[]; totalSize: number }) : null;
+    const records = org.groups === 'none' ? [] : (whole?.records.slice(1) ?? []);
+    const body =
+      whole === null || org.groups === 'whole' || !soql.includes(GROUP)
+        ? whole
+        : { ...whole, records, size: records.length, totalSize: records.length };
     answers.push({ soql, answered: body !== null, rows: body?.records ?? [], total: body?.totalSize ?? 0 });
-    return given;
+    return body === null || body === whole ? given : { status: 200, body: JSON.stringify(body) };
   };
   mock.dependencies = dependencies;
   await seedCliLogin({ username: 'dev@example.com', orgId: ORG_ID, instanceUrl: mock.url, accessToken: 'the-session' });
@@ -210,12 +230,21 @@ afterEach(async () => {
 });
 
 describe('the Dependency API of orgs made at random', () => {
-  it('counts an answer that lacks a row exactly where one does, and calls no reading whole that lacks a row the org hands out', async () => {
+  it('counts an answer that lacks a row where one does, and calls no reading whole that lacks a row of an org that cuts nothing off unseen', async () => {
     const next = random(SEED);
+    const other = random(SEED + 1);
     const wrong: string[] = [];
-    const seen = { whole: 0, partial: 0, disagreeing: 0, cutBelowHalf: 0, perComponent: 0, afterTheLastRest: 0 };
+    const seen = {
+      whole: 0,
+      partial: 0,
+      disagreeing: 0,
+      cutBelowHalf: 0,
+      perComponent: 0,
+      groupsLacking: 0,
+      afterTheLastRest: 0,
+    };
     for (let at = 0; at < ORGS; at += 1) {
-      const org = make(next);
+      const org = make(next, other);
       const { reading, answers } = await read(org);
       const held = new Set(reading.rows.map(({ from, to }) => [from.type, from.id, to.type, to.id].join('|')));
       const all = new Set(org.rows.map(ofOrg));
@@ -232,27 +261,30 @@ describe('the Dependency API of orgs made at random', () => {
         return (JSON.parse(full.body) as { records: MockDependencyRow[] }).records.some(
           (row) => held.has(ofOrg(row)) && !gave.has(ofOrg(row)),
         );
-      }).length;
-      // The org cuts no answer off below half the limit of the reader, and hands out every row.
-      const plain = org.hidden === 'none' && org.rowsPerQuery <= 2 * org.limit;
-      const perComponent = answers.some(({ soql }) => soql.includes(' AND MetadataComponentId IN ('));
+      });
+      // Of them, the answers for a group of components, and the parts those groups are of.
+      const ofGroups = lacking.filter(({ soql }) => soql.includes(GROUP));
+      const parts = new Set(ofGroups.map(({ soql }) => soql.slice(0, soql.indexOf(GROUP))));
+      // The org cuts no answer off below half the limit of the reader, hands out every row, and answers a query
+      // for a group of components with the rows it asks for.
+      const plain = org.hidden === 'none' && org.rowsPerQuery <= 2 * org.limit && org.groups === 'whole';
+      const perComponent = answers.some(({ soql }) => soql.includes(GROUP));
 
       const problems: string[] = [];
       if ([...held].some((row) => !all.has(row))) problems.push('the reading holds a row the org does not hold');
       if (reading.disagreed > reading.cutOff) problems.push('more queries disagree than are counted as cut off');
-      // Each answer that lacks a row is counted, once. Only a part that was asked for per component is counted
-      // once for all its groups, where the rows that were known to be of it did not come again.
-      if (
-        perComponent
-          ? reading.disagreed > lacking || (lacking > 0 && reading.disagreed === 0)
-          : reading.disagreed !== lacking
-      ) {
+      // Each answer that lacks a row is counted, once. Only the answers for the groups of components of one part
+      // can be counted as one, where a row the part gave did not come again with them. So the reader counts every
+      // other answer, and of the answers for groups at least one for each part and at most each of them.
+      const least = lacking.length - ofGroups.length + parts.size;
+      if (reading.disagreed < least || reading.disagreed > lacking.length) {
         problems.push(
-          `${String(lacking)} answers lack a row of the reading, and the reader counts ${String(reading.disagreed)}`,
+          `${String(lacking.length)} answers lack a row of the reading, ${String(ofGroups.length)} of them for groups ` +
+            `of components of ${String(parts.size)} parts, and the reader counts ${String(reading.disagreed)}`,
         );
       }
       if (plain && reading.disagreed > 0) problems.push('answers of an org that cuts nothing off unseen disagree');
-      if (org.hidden === 'none' && reading.state === 'whole' && held.size !== all.size) {
+      if (plain && reading.state === 'whole' && held.size !== all.size) {
         problems.push(`the reading is whole and lacks ${String(all.size - held.size)} rows the org hands out`);
       }
       if (problems.length > 0) {
@@ -267,6 +299,7 @@ describe('the Dependency API of orgs made at random', () => {
       if (reading.disagreed > 0) seen.disagreeing += 1;
       if (org.rowsPerQuery > 2 * org.limit) seen.cutBelowHalf += 1;
       if (perComponent) seen.perComponent += 1;
+      if (ofGroups.length > 0) seen.groupsLacking += 1;
       const rests = answers.filter(({ soql }) => soql.includes(' WHERE MetadataComponentType NOT IN ('));
       const last = rests.at(-1);
       if (last !== undefined && rests.length === org.rounds && answers.indexOf(last) < answers.length - 1) {
@@ -278,9 +311,10 @@ describe('the Dependency API of orgs made at random', () => {
     expect(seen).toEqual({
       whole: 15,
       partial: 45,
-      disagreeing: 27,
+      disagreeing: 32,
       cutBelowHalf: 20,
       perComponent: 13,
+      groupsLacking: 6,
       afterTheLastRest: 14,
     });
   }, 120_000);

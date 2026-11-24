@@ -19,9 +19,9 @@
  * reading is only as whole as the list of components: it asks for the rows of every other component in one more
  * query where the list is short enough for that, and says so where it is not.
  *
- * Any other answer is taken as whole, and is held against the reading when the reading has ended: a row that
- * another query gave, and that its query asked for as well, shows that it was cut off all the same, also where it
- * held few rows.
+ * An answer that is not near the limit, and that did not fail, is taken as whole, and is held against the reading
+ * when the reading has ended: a row that another query gave, and that its query asked for as well, shows that it
+ * was cut off all the same, also where it held few rows.
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. So the versions of the flows are asked for as well: one more object of the Tooling API,
@@ -72,12 +72,13 @@ export interface DependencyReading {
   /**
    * Queries that were cut off: near the limit of rows with no smaller part to ask for, or shown to be by another
    * answer, which gave a row that the query asked for and its answer lacks (decision record 0069). An org that
-   * changes while it is read can show that as well.
+   * changes while it is read can show that as well. The queries for the groups of components of one part are
+   * counted as one query where a row that the part itself gave did not come again with them.
    */
   readonly cutOff: number;
   /**
-   * Of the queries in `cutOff`, those that another answer shows to be cut off. None of them was near the limit:
-   * two answers of the org do not agree. It is not stored with a snapshot.
+   * Of the queries in `cutOff`, those that another answer shows to be cut off. None of their answers was near the
+   * limit: two answers of the org do not agree. It is not stored with a snapshot.
    */
   readonly disagreed: number;
   /** Queries that failed and whose rows no other query gave. */
@@ -403,9 +404,16 @@ export async function readDependencies(
    * to one component. `sample`: rows that are known to be of the part.
    */
   const askPerComponent = async (part: Part, sample: readonly DependencyRow[], type: string): Promise<void> => {
-    const ids = [...new Set((options.idsOfType?.(type) ?? []).filter((id) => ID.test(id)))].sort();
-    // The ids of the org have 15 characters, or 18 with three more that repeat the case of the first 15.
-    const known = new Set(ids.map((id) => id.slice(0, 15)));
+    // The ids of the org have 15 characters, or 18 with three more that repeat the case of the first 15. A
+    // component that is given in both lengths is one component: it is asked for once, by the longer id.
+    const byComponent = new Map<string, string>();
+    for (const id of [...(options.idsOfType?.(type) ?? [])].sort()) {
+      if (!ID.test(id)) continue;
+      const other = byComponent.get(id.slice(0, 15));
+      if (other === undefined || id.length > other.length) byComponent.set(id.slice(0, 15), id);
+    }
+    const ids = [...byComponent.values()].sort();
+    const known = new Set(byComponent.keys());
     const component = (row: DependencyRow): string => row.from.id.slice(0, 15);
     // The rows the part gave before it was cut off show whether the ids are the ones the API uses. If a row is
     // from a component whose id is not among them, asking per id would leave its rows out without a trace.
@@ -421,35 +429,46 @@ export async function readDependencies(
     let groupsAnswered = 0;
     /** Whether a group left rows out, which is counted where it happens. */
     let lacking = false;
-    for (let group = groups.shift(); group !== undefined; group = groups.shift()) {
-      const asked = await ask(`${part.where} AND MetadataComponentId IN (${quoted(group)})`);
-      for (const row of asked.rows) came.add(row);
-      if (nearLimit(asked)) {
-        if (group.length === 1) {
-          cutOff += 1;
+    /** Takes the answers of the groups as whole, each for the rows of the part that its components have. */
+    const takeGroups = (): void => {
+      for (const [asked, group] of answers) {
+        take(asked, (row) => part.fits(row) && group.has(component(row)), type, group);
+      }
+    };
+    try {
+      for (let group = groups.shift(); group !== undefined; group = groups.shift()) {
+        const asked = await ask(`${part.where} AND MetadataComponentId IN (${quoted(group)})`);
+        for (const row of asked.rows) came.add(row);
+        if (nearLimit(asked)) {
+          if (group.length === 1) {
+            cutOff += 1;
+            lacking = true;
+          } else {
+            groups.unshift(group.slice(0, Math.ceil(group.length / 2)), group.slice(Math.ceil(group.length / 2)));
+          }
+        } else if (asked.failure !== null) {
+          failed += 1;
           lacking = true;
-        } else {
-          groups.unshift(group.slice(0, Math.ceil(group.length / 2)), group.slice(Math.ceil(group.length / 2)));
-        }
-      } else if (asked.failure !== null) {
-        failed += 1;
-        lacking = true;
-        // An org that refuses the first group refuses the way of asking, and every other group with it.
-        if (groupsAnswered === 0) return;
-      } else answers.push([asked, new Set(group.map((id) => id.slice(0, 15)))]);
-      if (asked.failure === null) groupsAnswered += 1;
+          // An org that refuses the first group refuses the way of asking, and every other group with it.
+          if (groupsAnswered === 0) return;
+        } else answers.push([asked, new Set(group.map((id) => id.slice(0, 15)))]);
+        if (asked.failure === null) groupsAnswered += 1;
+      }
+    } catch (error) {
+      // The reading stops among the groups, so the rows the part gave cannot be looked for in all of them. What
+      // the groups gave before is held against the reading like every other answer.
+      if (error instanceof Stopped) takeGroups();
+      throw error;
     }
     // The rows that are known to be of the part have to come again. Where one does not, the org does not read
-    // a condition the way it is meant here, and the groups say nothing about what is there: the part is counted,
-    // once, and no group is taken as whole.
+    // a condition the way it is meant here, and the groups say nothing about what is there: their queries are
+    // counted as one, and no group is taken as whole.
     if (!lacking && sample.some((row) => !came.has(row))) {
       cutOff += 1;
       disagreed += 1;
       return;
     }
-    for (const [asked, group] of answers) {
-      take(asked, (row) => part.fits(row) && group.has(component(row)), type, group);
-    }
+    takeGroups();
     // The rows of a component that is not among the ids: one the org did not list, or made since. One query
     // can ask for them where it can name every id. Where it cannot, nothing shows that there is none.
     if (ids.length > limits.idsPerQuery) {
@@ -495,6 +514,8 @@ export async function readDependencies(
         .filter((target) => !done.has(target) && !unnamed.has(target))
         .sort();
     let targets = left();
+    /** The rest that was asked for last, and what the org answered. */
+    let before: { readonly where: string; readonly answer: Asked } | null = null;
     for (let round = 0; ; round += 1) {
       for (const target of targets) {
         const pair: Part = {
@@ -527,7 +548,11 @@ export async function readDependencies(
         where: out.size === 0 ? whole : `${whole} AND RefMetadataComponentType NOT IN (${quoted([...out].sort())})`,
         fits: (row) => row.from.type === type && !out.has(row.to.type),
       };
-      const others = out.size === 0 ? ofType : await ask(rest.where);
+      // A round in which the org refused every type by its name put none on the list. The rest is then the query
+      // it was before: it is not asked a second time, and its answer is not taken a second time.
+      const again: Asked | null = before !== null && before.where === rest.where ? before.answer : null;
+      const others: Asked = out.size === 0 ? ofType : (again ?? (await ask(rest.where)));
+      before = { where: rest.where, answer: others };
       targets = left();
       if (nearLimit(others)) {
         // Near the limit with no type left to ask for by name, or after the last round: the rest is asked for per
@@ -541,7 +566,7 @@ export async function readDependencies(
         // The rest is the only query that brings the rows to a standard object. It is taken as whole: so it has
         // to hold the rows of the rest that the query for the whole type gave, and the rows of every type of
         // target it shows, which are asked for by name in the next round, also where it held few rows.
-        take(others, rest.fits, type);
+        if (again === null) take(others, rest.fits, type);
         if (targets.length === 0) return;
       } else {
         // The org does not take the list of types. The conditions on the id of a component need none.

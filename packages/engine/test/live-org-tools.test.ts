@@ -1854,6 +1854,54 @@ describe('reading the test org', () => {
     expectNoSecret(text());
   });
 
+  it('asks per group of components as the snapshot does where an answer after the snapshot says that it is near the limit', async () => {
+    // The org says of the answer about the classes, and of the answer about each part of them, that it holds as
+    // many rows as an answer at the limit, and gives the rows it has. An answer for a group of components says
+    // what it holds. The snapshot is not answered that way: only the readings after it are. The first of them is
+    // given the ids of the classes the org listed, as the snapshot was. So it asks for those rows per group of
+    // the classes, every row comes, and it counts nothing: without the ids it would count each part at once.
+    const answer = dependencies.answer.bind(dependencies);
+    dependencies.answer = (soql, meta) => {
+      const answered = answer(soql, meta);
+      if (dependencies.queries.filter(everyRow).length < 2) return answered;
+      if (!soql.includes(" WHERE MetadataComponentType = 'ApexClass'") || answered.status !== 200) return answered;
+      if (soql.includes(' AND MetadataComponentId ')) return answered;
+      const body = JSON.parse(answered.body) as { records: unknown[] };
+      return { status: 200, body: JSON.stringify({ ...body, totalSize: 2_000 }) };
+    };
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    const rows = dependencies.rows.length;
+    expect(output).toContain(
+      `Rows: ${String(rows)}, read with ${String(OF_SNAPSHOT)} requests. No answer shows that a row is missing.`,
+    );
+    const lines = output.split('\n');
+    expect(lines.at(-3)).toMatch(
+      new RegExp(
+        `^Read once more as the snapshot does it: \\d+ requests, ${String(rows)} rows\\. Answers in one page: \\d+\\. Of them, [1-9]\\d* answers said that they hold more rows than they gave \\(totalSize\\)\\.$`,
+      ),
+    );
+    expect(lines.at(-2)).toMatch(
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading whole\. Queries counted as cut off: 0\. /,
+    );
+    expect(lines.at(-1)).toBe('The parts give the same rows as the reading just before.');
+    expect(log.failed).toBe(false);
+    // The reading after the snapshot is the queries from the second one for every row up to the third.
+    const starts = dependencies.queries.flatMap((soql, at) => (everyRow(soql) ? [at] : []));
+    expect(starts).toHaveLength(3);
+    expect(
+      dependencies.queries
+        .slice(starts[1], starts[2])
+        .some((soql) =>
+          soql.includes(
+            "MetadataComponentType = 'ApexClass' AND RefMetadataComponentType = 'CustomField' AND MetadataComponentId IN (",
+          ),
+        ),
+    ).toBe(true);
+    expectNoSecret(output);
+  });
+
   it('does not read in parts an org that holds fewer rows than the parts are cut off at', async () => {
     dependencies.rows.length = 20;
     const { log, text } = collected();

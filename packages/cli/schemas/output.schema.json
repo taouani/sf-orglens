@@ -952,7 +952,7 @@
         },
         "rows": { "description": "The rows the snapshot holds.", "type": "integer", "minimum": 0 },
         "queriesCutOff": {
-          "description": "The queries that were cut off. One kind is a query whose answer holds half as many rows as one query gives at most, or more, or says that it does, with no smaller part to ask for. The other kind is a query whose answer was taken as whole and lacks a row that another query gave, and that it had asked for as well.",
+          "description": "The queries that were cut off. One kind is a query whose answer holds half as many rows as one query gives at most, or more, or says that it does, with no smaller part to ask for. The other kind is a query whose answer was taken as whole and lacks a row that another query gave, and that it had asked for as well. The queries for the groups of components of one part of the rows are counted as one query where a row that the part gave did not come again with them.",
           "type": "integer",
           "minimum": 0
         },

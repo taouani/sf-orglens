@@ -46,14 +46,19 @@ guess, and nothing in the answer showed it. The test org holds too few rows to s
   each such answer is held against every row the reading holds, whichever query gave that row. A row that its
   query asked for and that it lacks shows that it was cut off all the same, or that the org does not read a
   condition the way it is meant here. The query is counted as cut off, once, so the reading is `partial`. That
-  holds for every query the reader asks: the first one, which asks for every row, the query of a type, of a pair
-  of types and of a group of components, and a rest, which asks for every row of a type that its list does not
-  leave out. So a rest is counted where the query of a type it showed gives a row of that type that it lacks, and
-  also where a later rest shows a type that it did not leave out and did not show. An answer near the limit is
-  held against nothing: it is expected to lack rows, and its parts are asked for.
+  holds for each kind of query the reader asks: the first one, which asks for every row, the query of a type, of
+  a pair of types and of a group of components, and a rest, which asks for every row of a type that its list does
+  not leave out. So a rest is counted where the query of a type it showed gives a row of that type that it lacks,
+  and also where a later rest shows a type that it did not leave out and did not show. An answer near the limit
+  is held against nothing: it is expected to lack rows, and its parts are asked for. Nor is an answer that
+  failed: its query is counted as failed, or its rows are asked for in another way.
 - **One case is counted where it happens.** The rows a part gave before it was asked for per component have to
-  come again with the groups of components. Where one does not, the part is counted, once, no group is taken as
-  whole, and the query for the components that are not in the list is not asked.
+  come again with the groups of components. Where one does not, though no group left rows out itself, the org
+  does not read the condition on the id the way it is meant here: the queries for the groups are counted as one
+  query that was cut off, no group is taken as whole, and the query for the components that are not in the list
+  is not asked. Where a group left rows out itself, as one component alone near the limit or as a query that
+  failed, that is counted, and the answers of the other groups are taken as whole like any other answer. So are
+  the answers of the groups that came before a reading stopped among them.
 - **No new number in what a snapshot keeps or prints, and no new column.** Such a query is counted among those
   cut off (`cutOff` of the reading, `queriesCutOff` in `--json` and `cut_off` in the store). The reading itself
   says how many of them another answer showed to be (`disagreed`). A snapshot does not keep that number: the tool
@@ -81,10 +86,11 @@ guess, and nothing in the answer showed it. The test org holds too few rows to s
   queries for the rows, since its rows show two more types, and one for the versions of its flows. Requests count
   against the daily limit of the org. The limit of 2,000 requests of a reading stays.
 - The tool of the live-org workflow reads the test org again as the snapshot does it, also where the reading of
-  the snapshot is not whole, and then with every answer cut off at 30 rows. It tells the engine twice that number
-  as the limit, so that the engine asks in parts where an answer holds 30 rows: where the tool cut it off, where
-  it held exactly 30, and where the org says that it holds 30 or more (`totalSize`). The tool counts the answers
-  that say that they hold more rows than they gave, whatever the number.
+  the snapshot is not whole, and then with every answer cut off at 30 rows. Both readings are given the ids the
+  snapshot asked with. For the second, the tool tells the engine twice that number as the limit, so that the
+  engine asks in parts where an answer holds 30 rows: where the tool cut it off, where it held exactly 30, and
+  where the org says that it holds 30 or more (`totalSize`). The tool counts the answers that say that they hold
+  more rows than they gave, whatever the number.
 - The step fails where one of its two readings counts a query because another query gave a row that its answer
   lacks (`disagreed`). A query that the reading in parts counts for another reason does not fail it: one component
   alone can hold 30 rows, and a part cannot be asked for per component where one of its rows comes from a
@@ -95,6 +101,9 @@ guess, and nothing in the answer showed it. The test org holds too few rows to s
   one that says that it holds more rows than it gave, is known to cause that. Where a query of the snapshot
   failed as well, what the snapshot keeps does not tell, and the reading after it does. Before the rows were
   always asked for per type, the step saw answers that disagree when it read the rows again in parts.
+- The reader and the step of the live-org workflow were built against mock orgs. Neither was run against the
+  test org before this record was merged: the workflow gives the login only to a run from `main`. The first run
+  on `main` after the merge shows how the test org answers.
 - What `totalSize` says of an answer that Salesforce cut off is still not known. A snapshot does not show what
   its answers said of themselves, nor how many of the queries it counts another answer showed to be cut off.
 - The cross-check of a snapshot that an earlier version took keeps the state its reading had. A snapshot of an org

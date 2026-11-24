@@ -1341,6 +1341,10 @@ export function rowsByTypes(log: PublicLog, rows: readonly DependencyRow[]): str
  * answer each of those queries. The two readings follow each other at once, so that the org has no time to change
  * between them: the rows of the snapshot are minutes old.
  *
+ * Both readings are given the ids the snapshot asked with. So the first asks for a part that is near the limit per
+ * group of components, as the snapshot does, and does not count it at once. It has the whole limit of requests,
+ * where the snapshot had that limit less the requests for the versions of the flows.
+ *
  * Returns:
  * - `disagreeing` if one of the two readings counts a query whose answer lacks a row that another query gave. The
  *   reader says how many it counted for that (`disagreed`), so a query it counts for another reason is not taken
@@ -1359,10 +1363,22 @@ export async function readInParts(
   limit = PRETENDED_LIMIT,
 ): Promise<'same' | 'other rows' | 'disagreeing' | 'counted'> {
   const version = apiVersion === null ? {} : { apiVersion };
+  // The ids the snapshot asked with: those the org listed, and those of the versions of flows it named.
+  const ids = new Map<string, string[]>();
+  const add = (type: string, id: string): void => {
+    const ofType = ids.get(type);
+    if (ofType === undefined) ids.set(type, [id]);
+    else ofType.push(id);
+  };
+  for (const item of readListedIds(store, snapshotId)) if (item.id !== null) add(item.type, item.id);
+  for (const flow of readFlowVersionIds(store, snapshotId)) {
+    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
+  }
+  const idsOfType = (type: string): readonly string[] => ids.get(type) ?? [];
   const said: Answers = { inOnePage: 0, saidMore: 0 };
   const one = await readDependencies(
     cutOffAt(session, Number.POSITIVE_INFINITY, () => undefined, said),
-    version,
+    { ...version, idsOfType },
   );
   log.say(
     `Read once more as the snapshot does it: ${plural(one.requests, 'request', 'requests')}, ${plural(one.rows.length, 'row', 'rows')}. ${saidMoreLine(said)}`,
@@ -1392,17 +1408,6 @@ export async function readInParts(
     log.say(`The org holds fewer than ${String(limit)} rows, so reading them in parts was not tried.`);
     return 'same';
   }
-  // The ids the snapshot asked with: those the org listed, and those of the versions of flows it named.
-  const ids = new Map<string, string[]>();
-  const add = (type: string, id: string): void => {
-    const ofType = ids.get(type);
-    if (ofType === undefined) ids.set(type, [id]);
-    else ofType.push(id);
-  };
-  for (const item of readListedIds(store, snapshotId)) if (item.id !== null) add(item.type, item.id);
-  for (const flow of readFlowVersionIds(store, snapshotId)) {
-    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
-  }
   const failures: FailedRequest[] = [];
   const saidInParts: Answers = { inOnePage: 0, saidMore: 0 };
   const again = await readDependencies(
@@ -1414,7 +1419,7 @@ export async function readInParts(
       },
       saidInParts,
     ),
-    { ...version, limits: { rowsPerQuery: 2 * limit }, idsOfType: (type) => ids.get(type) ?? [] },
+    { ...version, limits: { rowsPerQuery: 2 * limit }, idsOfType },
   );
   const whole = new Set(one.rows.map(rowIdentity));
   const parts = new Set(again.rows.map(rowIdentity));
