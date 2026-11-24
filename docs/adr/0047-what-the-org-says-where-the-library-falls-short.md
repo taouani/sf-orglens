@@ -4,6 +4,7 @@
 - Date: 2026-11-17
 - Decisions: none (work package 9 of the Phase 1 plan. It holds two corrections made after the first run of the
   test org with the judgement of record 0046, and the choices their author made)
+- Changed by: [0071](0071-a-component-that-comes-back-under-another-name.md), in one point: a component of a package that comes back without its prefix is not taken for the listed one where the listed name came back itself in the same retrieve
 
 ## Context
 

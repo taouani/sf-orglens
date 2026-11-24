@@ -219,13 +219,14 @@ they have below a package directory, such as `classes/Foo.cls`.
   snapshot of many retrieves can hold several for a type.
 - **A document and what belongs to person accounts come back under another name than the org lists.** An org
   lists a document with the ending of its file, as `Assets/Logo.png`, and the snapshot names it `Assets/Logo`,
-  as the Salesforce library does. An org lists a record type, a matching rule or a duplicate rule of person
-  accounts under the object `Account`, as `Account.Client`, and hands it out under the object `PersonAccount`,
-  as `PersonAccount.Client`. What comes back under the other name counts as the listed component under the
-  conditions of a component of a package: the org lists nothing under the name that came back, the retrieve did
-  not ask for that name, the listed name did not come back itself in the same retrieve, Salesforce did not
-  remark that it cannot find the listed name, and no second listed name can stand for what came back. For a
-  document, the retrieve asked for the listed name. For person accounts, it asked for the listed name, or for no
+  as the Salesforce library does. An org lists what belongs to person accounts under the object `Account`, as
+  `Account.Client`, and hands it out under the object `PersonAccount`, as `PersonAccount.Client`. That was seen
+  for a record type, a matching rule and a duplicate rule, and the rule holds for every type. What comes back
+  under the other name counts as the listed component under the conditions of a component of a package: the org
+  lists nothing under the name that came back, the retrieve did not ask for that name, the listed name did not
+  come back itself in the same retrieve, Salesforce did not remark that it cannot find the listed name, and no
+  second listed name can stand for what came back in the same retrieve. For a document, the retrieve asked for
+  the listed name. For person accounts, it asked for the listed name, or for no
   component of the type at all, as it is with a record type, which comes with its object. Otherwise the listed
   component stays missing. The files and the keys of the snapshot keep the name that came back, so an impact
   question names a record type of person accounts as `PersonAccount.Client`. The note

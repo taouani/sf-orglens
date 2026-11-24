@@ -385,6 +385,22 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     ).toEqual([]);
     expect(missingComponents(store, other, 'RecordType')).toEqual(['Account.Client']);
     expect(missingComponents(store, other, 'Document')).toEqual(['Assets/Logo.png']);
+
+    // A retrieve that asks for one rule, without a remark: what it asked for decides, and another rule of the
+    // type that it did not ask for is not taken.
+    const third = begin(store, 'dev');
+    addInventory(store, third, [
+      listed('DuplicateRule', 'Account.Asked'),
+      listed('DuplicateRule', 'Account.Elsewhere'),
+    ]);
+    expect(
+      markRetrieved(store, third, [rule('PersonAccount.Asked'), rule('PersonAccount.Elsewhere')], {
+        asked: [rule('Account.Asked')],
+        notFound: [],
+      }),
+    ).toEqual([{ ...rule('Account.Asked'), rule: 'person-account' }]);
+    expect(missingComponents(store, third, 'DuplicateRule')).toEqual(['Account.Elsewhere']);
+    expect(unlistedComponents(store, third, 'DuplicateRule')).toEqual(['PersonAccount.Elsewhere']);
     store.close();
   });
 

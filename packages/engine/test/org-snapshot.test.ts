@@ -2021,6 +2021,41 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             .map((issue) => issue.details['type']),
         ).toEqual(['MatchingRule', 'RecordType']);
       });
+
+      it('leaves the record type of person accounts missing where the org does not list the object PersonAccount', async () => {
+        // The object is then never asked for, and its file does not come back (decision record 0071).
+        metadata.unlistedParents.add('CustomObject:PersonAccount');
+        const report = await snap(workspaceDir());
+
+        expect(report.snapshot.status).toBe('partial');
+        expect(typeOf(report, 'RecordType')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code === 'NOT_RETRIEVED')
+            .map((issue) => [issue.details['type'], issue.details['components']]),
+        ).toEqual([['RecordType', ['Account.Client']]]);
+      });
+
+      it('leaves the document missing that Salesforce cannot find, though a file of it comes back', async () => {
+        // Salesforce remarks that it cannot find the name the org lists, and hands out a file under the other one.
+        metadata.withheld.add('Document:Assets/Logo');
+        metadata.extraFiles.set('documents/Assets/Logo.png', 'not a picture\n');
+        metadata.extraFiles.set(
+          'documents/Assets/Logo.png-meta.xml',
+          `<?xml version="1.0" encoding="UTF-8"?>\n${OTHER_NAME_FILES['documents/Assets/Logo.document-meta.xml'] ?? ''}`,
+        );
+        const report = await snap(workspaceDir());
+
+        expect(typeOf(report, 'Document')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.details['type'] === 'Document')
+            .map((issue) => [issue.code, issue.details['components']]),
+        ).toEqual([
+          ['NOT_RETRIEVED', ['Assets/Logo.png']],
+          ['UNLISTED_COMPONENTS', ['Assets/Logo']],
+        ]);
+      });
     });
 
     describe('with reports and a dashboard in a folder inside a folder', () => {

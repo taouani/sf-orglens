@@ -58,8 +58,9 @@ below hold.
 - The listed name did not come back itself in the same retrieve. Then what came back under the other name is a
   component of its own. This condition is new for the prefix as well, and is the one change to record 0047.
 - Salesforce did not remark about the retrieve that it cannot find the listed name.
-- No second listed name can stand for the name that came back, by any of the rules. Two documents whose names
-  differ in the ending only: nothing says which one came back, so neither counts.
+- No second listed name can stand for the name that came back in the same retrieve, by any of the rules. A name
+  that can stand for it is one the retrieve asked for, or the listed name under `Account`. Two documents whose
+  names differ in the ending only, asked for in one retrieve: nothing says which one came back, so neither counts.
 
 Otherwise the component that came back is one the org had not listed, as before. Where a rule holds, the row of
 the listed name is marked, and no row is made for the name that came back.
@@ -82,16 +83,25 @@ These are choices of the author of this record. The maintainer can strike any of
    ending of its file. A test holds that a component of another type is not taken this way.
 3. **A part is taken without a word about its parent.** For a part, the rule asks only that the retrieve named no
    component of the type. It does not ask that the retrieve named the object `PersonAccount`: the store does not
-   know which type is a part of which, and a part cannot come back without the file of its parent.
+   know which type is a part of which, and a part cannot come back without the file of its parent. For the same
+   reason the branch holds for a type that is retrieved by its own name, such as a duplicate rule, in a retrieve
+   that asked for no component of that type. Salesforce is not known to hand out a component that no retrieve
+   asked for. If it did, the component would be taken for the listed one, and a later retrieve that asks for the
+   listed name and gets the remark that it cannot be found would not undo that.
 4. **The rules err to the side of "missing"**, as in record 0047. Each condition can leave a component as not
    retrieved that did come back. None can call a component retrieved because another one came back, as far as its
-   author can see, with the one case below.
+   author can see, with the cases below: two components whose names differ in `Account.` and `PersonAccount.`
+   or in the ending of a document, and that come back in two retrieves, and the case of choice 3 for a type that
+   is retrieved by its own name.
 5. **One note with a reason**, and not a code for each rule. A third rule of this kind, which the same snapshot
    asks for, then adds a reason and no code.
 6. **No column for the name a component came back with**, as in record 0047. It would need a migration.
-7. **The mock org of the tests lists as an org does**: a document with the ending of its file, and a record type,
-   a matching rule and a duplicate rule of person accounts under the object `Account`. It is asked for them by
-   the listed name and hands out the files under the other one.
+7. **The mock org of the tests lists what the large org showed**: a document with the ending of its file, and a
+   record type, a matching rule and a duplicate rule of person accounts under the object `Account`. It is asked
+   for them by the listed name and hands out the files under the other one. It also lists the object
+   `PersonAccount` and the file of matching rules `PersonAccount`, which is why the snapshot asks for them. That an
+   org lists these two is an assumption of the author, and a test holds what happens where the object is not
+   listed.
 
 ## Not done
 
@@ -100,14 +110,22 @@ These are choices of the author of this record. The maintainer can strike any of
 - **An org that lists nothing under the object `PersonAccount`.** A part is asked for through its parent, and the
   parent of a part the org lists as `Account.Client` is the object `Account`. The object `PersonAccount` is asked
   for only when the org lists it, or lists a part under its name. Whether an org with person accounts can list
-  neither is not known. Its record types of person accounts would then not come back, and stay missing.
+  neither is not known. Its record types of person accounts would then not come back, and stay missing, and the
+  snapshot would be partial: a test holds that. The same is so for the file of matching rules `PersonAccount`.
 - **Two components of one type named `Account.Client` and `PersonAccount.Client`, of which the org lists the
-  first name only.** If both come back in one retrieve, the second is a component the org had not listed, as it
-  should be. If the listed one came back in an earlier retrieve under its own name, the second is taken for it
-  and counted nowhere. Its file is in the snapshot all the same. As far as the author knows, a record type cannot
-  be in this case: a record type of person accounts is a record type of the object `Account`, and a name is used
-  once in an object. That is not verified, and whether a matching rule or a duplicate rule can be in this case is
-  not known.
+  first name only.** This holds for every type, such as a field `Account.Hobby__pc` that an org lists and a field
+  `PersonAccount.Hobby__pc` in the file of the object `PersonAccount`, which the Salesforce library reads as a
+  component of its own. If both come back in one retrieve, the second is a component the org had not listed, as it
+  should be. If they come back in two retrieves, in either order, the second is taken for the first and counted
+  nowhere. Where the one under `PersonAccount` comes first, the listed one counts as retrieved, also if no later
+  retrieve hands it out. Which retrieve a component comes in depends on where the snapshot cuts its chunks, so the
+  number of components the org had not listed depends on it too. The files are in the snapshot all the same. As
+  far as the author knows, a record type cannot be in this case: a record type of person accounts is a record type
+  of the object `Account`, and a name is used once in an object. That is not verified, and whether a field, a
+  matching rule or a duplicate rule can be in this case is not known.
+- **Two documents whose names differ in the ending only, asked for in two retrieves.** Each retrieve has one name
+  that can stand for the document that comes back, so each takes it, with a note. Whether an org can hold two such
+  documents in one folder is not known.
 - **A document whose file has no ending** needs no rule for its name. The library does not read such a file at
   all: it says that the file belongs to no type it knows. The file is the issue `RESOLVE_FAILED`, and the document
   stays missing. Both are warnings: a document is outside the logic tier. How an org lists such a document was
