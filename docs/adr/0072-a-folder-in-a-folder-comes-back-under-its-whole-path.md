@@ -46,9 +46,9 @@ is the same, as in the other three.
 
 The conditions of record 0071 hold as they are: the org lists nothing under the name that came back, and the
 retrieve did not ask for it. The listed name did not come back itself in the same retrieve. Salesforce did not
-remark that it cannot find the listed name. No second listed name can stand for the name that came back, by any of
-the rules. Where the rule holds, the row of the listed name is marked, and no row is made for the name that came
-back.
+remark that it cannot find the listed name. No second listed name can stand for the name that came back in the same
+retrieve, by any of the rules. Where the rule holds, the row of the listed name is marked, and no row is made for
+the name that came back.
 
 **The note** is the one of record 0071, `RETRIEVED_UNDER_ANOTHER_NAME`, with `folder-path` in `details.reason`.
 
