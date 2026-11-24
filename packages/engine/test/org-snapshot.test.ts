@@ -6,7 +6,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -78,6 +78,66 @@ let WITH_RESOURCE: string;
 /** The part with the file of custom labels, and no label in it. */
 let WITHOUT_LABEL: string;
 const RESOURCE_FILES = ['staticresources/Notice.resource-meta.xml', 'staticresources/Notice.txt'];
+/**
+ * The part with components that an org lists under another name than they come back with: a document, and a record
+ * type, a matching rule and a duplicate rule of person accounts. The org lists the three under the object `Account`,
+ * so it is asked for the matching rules of that object, and has one. The names are made up.
+ */
+let WITH_OTHER_NAMES: string;
+const OTHER_NAME_FILES: Readonly<Record<string, string>> = {
+  'documents/Assets.documentFolder-meta.xml': `<DocumentFolder xmlns="http://soap.sforce.com/2006/04/metadata">
+    <accessType>Public</accessType>
+    <name>Assets</name>
+    <publicFolderAccess>ReadOnly</publicFolderAccess>
+</DocumentFolder>
+`,
+  'documents/Assets/Logo.document-meta.xml': `<Document xmlns="http://soap.sforce.com/2006/04/metadata">
+    <internalUseOnly>false</internalUseOnly>
+    <name>Logo</name>
+    <public>true</public>
+</Document>
+`,
+  'documents/Assets/Logo.png': 'not a picture\n',
+  'duplicateRules/PersonAccount.Same_Person.duplicateRule-meta.xml': `<DuplicateRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionOnInsert>Allow</actionOnInsert>
+    <actionOnUpdate>Allow</actionOnUpdate>
+    <isActive>true</isActive>
+    <masterLabel>Same person</masterLabel>
+    <securityOption>EnforceSharingRules</securityOption>
+    <sortOrder>1</sortOrder>
+</DuplicateRule>
+`,
+  'matchingRules/Account.matchingRule-meta.xml': `<MatchingRules xmlns="http://soap.sforce.com/2006/04/metadata">
+    <matchingRules>
+        <fullName>By_Name</fullName>
+        <label>By name</label>
+        <matchingRuleItems>
+            <fieldName>Name</fieldName>
+            <matchingMethod>Exact</matchingMethod>
+        </matchingRuleItems>
+        <ruleStatus>Active</ruleStatus>
+    </matchingRules>
+</MatchingRules>
+`,
+  'matchingRules/PersonAccount.matchingRule-meta.xml': `<MatchingRules xmlns="http://soap.sforce.com/2006/04/metadata">
+    <matchingRules>
+        <fullName>Person_By_Name</fullName>
+        <label>Person by name</label>
+        <matchingRuleItems>
+            <fieldName>LastName</fieldName>
+            <matchingMethod>Exact</matchingMethod>
+        </matchingRuleItems>
+        <ruleStatus>Active</ruleStatus>
+    </matchingRules>
+</MatchingRules>
+`,
+  'objects/PersonAccount/recordTypes/Client.recordType-meta.xml': `<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Client</fullName>
+    <active>true</active>
+    <label>Client</label>
+</RecordType>
+`,
+};
 
 beforeAll(async () => {
   mock = await startMockOrg();
@@ -101,6 +161,13 @@ beforeAll(async () => {
 `,
   );
   writeFileSync(join(WITH_RESOURCE, 'main/default/staticresources/Notice.txt'), 'Invoices are due in 30 days.\n');
+  WITH_OTHER_NAMES = join(copies.next(), 'force-app');
+  cpSync(FIXTURE, WITH_OTHER_NAMES, { recursive: true });
+  for (const [path, text] of Object.entries(OTHER_NAME_FILES)) {
+    const file = join(WITH_OTHER_NAMES, 'main/default', path);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, path.endsWith('.xml') ? `<?xml version="1.0" encoding="UTF-8"?>\n${text}` : text);
+  }
   WITHOUT_LABEL = join(copies.next(), 'force-app');
   cpSync(FIXTURE, WITHOUT_LABEL, { recursive: true });
   mkdirSync(join(WITHOUT_LABEL, 'main/default/labels'));
@@ -1803,6 +1870,105 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           },
         ]);
         expect(ofReading(report).map((issue) => issue.code)).not.toContain('RETRIEVED_WITHOUT_PREFIX');
+      });
+    });
+
+    describe('with components the org lists under another name than they come back with', () => {
+      beforeEach(async () => {
+        metadata = await metadataFromSource(WITH_OTHER_NAMES);
+        mock.metadata = metadata;
+      });
+      /** The files of the snapshot: those of the folder, and the file of each object the org has parts of. */
+      const withOtherNames = (): string[] =>
+        [
+          ...expectedFiles(),
+          ...Object.keys(OTHER_NAME_FILES),
+          'objects/PersonAccount/PersonAccount.object-meta.xml',
+        ].sort();
+      const note = (
+        type: string,
+        said: string,
+        reason: string,
+        name: string,
+      ): ReturnType<typeof ofReading>[number] => ({
+        severity: 'info',
+        code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+        message: `1 component of the type ${type} came back under ${said} The first: ${name}`,
+        details: { type, reason, count: 1, components: [name] },
+      });
+      const UNDER_PERSON_ACCOUNT =
+        'the object PersonAccount. The org lists it under the object Account, and the snapshot names it after PersonAccount.';
+
+      it('takes a document and what belongs to person accounts for the listed components, and is complete', async () => {
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        // The org is asked by the names it lists: the document with the ending of its file, the rule under Account.
+        const asked = metadata.retrieves.flat();
+        expect(asked).toEqual(
+          expect.arrayContaining(['Document:Assets', 'Document:Assets/Logo.png', 'DuplicateRule:Account.Same_Person']),
+        );
+        expect(asked.filter((member) => /^(Document|DuplicateRule|RecordType|MatchingRule):/.test(member))).toEqual([
+          'Document:Assets',
+          'Document:Assets/Logo.png',
+          'DuplicateRule:Account.Same_Person',
+        ]);
+        expect(report.snapshot.status).toBe('complete');
+        // The files keep the names they came with.
+        expect(stored(dir, 1)).toEqual(withOtherNames());
+        for (const type of ['Document', 'DocumentFolder', 'DuplicateRule']) {
+          expect(typeOf(report, type)).toMatchObject({ type, listed: 1, retrieved: 1, note: null });
+        }
+        // The rule of the business account came back under the name the org lists, and the other one did not.
+        for (const type of ['MatchingRule', 'MatchingRules']) {
+          expect(typeOf(report, type)).toMatchObject({ type, listed: 2, retrieved: 2, note: null });
+        }
+        const recordTypes = typeOf(report, 'RecordType');
+        expect(recordTypes?.listed).toBe(1);
+        expect(recordTypes?.retrieved).toBe(1);
+        expect(ofReading(report)).toEqual([
+          note(
+            'Document',
+            'its name without the ending of its file. The org lists it with the ending, and the snapshot names it without it.',
+            'file-ending',
+            'Assets/Logo.png',
+          ),
+          note('DuplicateRule', UNDER_PERSON_ACCOUNT, 'person-account', 'Account.Same_Person'),
+          note('MatchingRule', UNDER_PERSON_ACCOUNT, 'person-account', 'Account.Person_By_Name'),
+          note('RecordType', UNDER_PERSON_ACCOUNT, 'person-account', 'Account.Client'),
+        ]);
+      });
+
+      it('leaves a listed component missing that the org does not hand out, under the name the org lists', async () => {
+        metadata.withheld.add('Document:Assets/Logo');
+        metadata.withheld.add('DuplicateRule:PersonAccount.Same_Person');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        // Neither type is of the logic tier.
+        expect(report.snapshot.status).toBe('complete');
+        expect(typeOf(report, 'Document')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(typeOf(report, 'DuplicateRule')).toMatchObject({ listed: 1, retrieved: 0 });
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code !== 'RETRIEVED_UNDER_ANOTHER_NAME')
+            .map((issue) => [issue.code, issue.details['components'] ?? issue.details['messages']]),
+        ).toEqual([
+          [
+            'RETRIEVE_MESSAGES',
+            [
+              "Entity of type 'Document' named 'Assets/Logo.png' cannot be found",
+              "Entity of type 'DuplicateRule' named 'Account.Same_Person' cannot be found",
+            ],
+          ],
+          ['NOT_RETRIEVED', ['Assets/Logo.png']],
+          ['NOT_RETRIEVED', ['Account.Same_Person']],
+        ]);
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code === 'RETRIEVED_UNDER_ANOTHER_NAME')
+            .map((issue) => issue.details['type']),
+        ).toEqual(['MatchingRule', 'RecordType']);
       });
     });
 

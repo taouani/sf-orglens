@@ -123,7 +123,9 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     // The retrieve asked for every name the org lists, as a retrieve does.
     const asked = ['pkg__tile', 'pkg__card', 'card', 'one__grid', 'two__grid', 'pkg__lone', 'pkg__odd'].map(bundle);
     const cameBack = ['tile', 'card', 'grid', 'lone', 'odd', 'pkg__card'].map(bundle);
-    expect(markRetrieved(store, id, cameBack, { asked, notFound: [] })).toEqual([bundle('pkg__tile')]);
+    expect(markRetrieved(store, id, cameBack, { asked, notFound: [] })).toEqual([
+      { ...bundle('pkg__tile'), rule: 'prefix' },
+    ]);
     // A second retrieve with the same component says nothing new.
     expect(markRetrieved(store, id, [bundle('tile')], { asked, notFound: [] })).toEqual([]);
     expect(
@@ -174,7 +176,7 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
 
     expect(
       markRetrieved(store, id, cameBack, { asked, notFound: [object('pkg__Gone__c'), object('Other__c')] }),
-    ).toEqual([object('pkg__Plain__c')]);
+    ).toEqual([{ ...object('pkg__Plain__c'), rule: 'prefix' }]);
     expect(missingComponents(store, id, 'CustomObject')).toEqual([
       // The retrieve asked for the short name too, and that is what came back.
       'pkg__Asked__c',
@@ -184,6 +186,205 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
       'pkg__Gone__c',
     ]);
     expect(unlistedComponents(store, id, 'CustomObject')).toEqual(['Asked__c', 'Elsewhere__c', 'Gone__c']);
+    store.close();
+  });
+
+  it('does not take a short name for the listed one that came back itself in the same retrieve', () => {
+    const store = open();
+    const id = begin(store);
+    const bundle = (name: string): { type: string; fullName: string } => member('LightningComponentBundle', name);
+    addInventory(store, id, [{ ...listed('LightningComponentBundle', 'pkg__tile'), namespacePrefix: 'pkg' }]);
+    // Both names came back for the one that was asked for: the short one is a component of its own.
+    expect(
+      markRetrieved(store, id, [bundle('tile'), bundle('pkg__tile')], { asked: [bundle('pkg__tile')], notFound: [] }),
+    ).toEqual([]);
+    expect(missingComponents(store, id, 'LightningComponentBundle')).toEqual([]);
+    expect(unlistedComponents(store, id, 'LightningComponentBundle')).toEqual(['tile']);
+    store.close();
+  });
+
+  it('takes a document that came back without the ending of its file for the one the org listed', () => {
+    const store = open();
+    const id = begin(store);
+    const document = (name: string): { type: string; fullName: string } => member('Document', name);
+    const template = (name: string): { type: string; fullName: string } => member('EmailTemplate', name);
+    addInventory(store, id, [
+      listed('Document', 'Assets/Logo.png'),
+      // The name of the file is cut at its first dot.
+      listed('Document', 'Assets/Terms.v2.txt'),
+      // A dot in the name of the folder is none of the file.
+      listed('Document', 'My.Files/Logo.png'),
+      // Two documents whose names differ in the ending only: nothing says which of them came back.
+      listed('Document', 'Assets/Twin.png'),
+      listed('Document', 'Assets/Twin.txt'),
+      // The org lists the name without an ending as well: what comes back under it is that one.
+      listed('Document', 'Assets/Both.png'),
+      listed('Document', 'Assets/Both'),
+      // Salesforce remarks that it cannot find this one.
+      listed('Document', 'Assets/Gone.png'),
+      // This retrieve does not ask for this one.
+      listed('Document', 'Assets/Elsewhere.png'),
+      // This one comes back under the listed name itself, and another component under the name without the ending.
+      listed('Document', 'Assets/Same.png'),
+      // A name without an ending is not cut, and neither is a name whose file starts with the dot.
+      listed('Document', 'Assets/Plain'),
+      listed('Document', 'Assets/.hidden'),
+      // Only a document is listed with the ending of its file.
+      listed('EmailTemplate', 'Mail/Welcome.html'),
+      listed('DocumentFolder', 'Assets'),
+    ]);
+    const asked = [
+      // The folder is asked for under the type of what it holds.
+      document('Assets'),
+      ...[
+        'Assets/Logo.png',
+        'Assets/Terms.v2.txt',
+        'My.Files/Logo.png',
+        'Assets/Twin.png',
+        'Assets/Twin.txt',
+        'Assets/Both.png',
+        'Assets/Both',
+        'Assets/Gone.png',
+        'Assets/Same.png',
+        'Assets/Plain',
+        'Assets/.hidden',
+      ].map(document),
+      template('Mail/Welcome.html'),
+    ];
+    const cameBack = [
+      member('DocumentFolder', 'Assets'),
+      ...[
+        'Assets/Logo',
+        'Assets/Terms',
+        'My.Files/Logo',
+        'Assets/Twin',
+        'Assets/Both',
+        'Assets/Gone',
+        'Assets/Elsewhere',
+        'Assets/Same.png',
+        'Assets/Same',
+        'Assets/Plain',
+        'Assets/',
+      ].map(document),
+      template('Mail/Welcome'),
+    ];
+    const retrieve = { asked, notFound: [document('Assets/Gone.png')] };
+    expect(markRetrieved(store, id, cameBack, retrieve)).toEqual(
+      ['Assets/Logo.png', 'Assets/Terms.v2.txt', 'My.Files/Logo.png'].map((name) => ({
+        ...document(name),
+        rule: 'file-ending',
+      })),
+    );
+    // A second retrieve with the same document says nothing new.
+    expect(markRetrieved(store, id, [document('Assets/Logo')], retrieve)).toEqual([]);
+    expect(missingComponents(store, id, 'Document')).toEqual([
+      'Assets/.hidden',
+      'Assets/Both.png',
+      'Assets/Elsewhere.png',
+      'Assets/Gone.png',
+      'Assets/Twin.png',
+      'Assets/Twin.txt',
+    ]);
+    expect(unlistedComponents(store, id, 'Document')).toEqual([
+      'Assets/',
+      'Assets/Elsewhere',
+      'Assets/Gone',
+      'Assets/Same',
+      'Assets/Twin',
+    ]);
+    expect(missingComponents(store, id, 'EmailTemplate')).toEqual(['Mail/Welcome.html']);
+    expect(unlistedComponents(store, id, 'EmailTemplate')).toEqual(['Mail/Welcome']);
+    expect(countInventory(store, id).get('Document')).toEqual({ listed: 12, retrieved: 6, unlisted: 5 });
+    store.close();
+  });
+
+  it('takes what came back under the object PersonAccount for what the org listed under the object Account', () => {
+    const store = open();
+    const id = begin(store);
+    const rule = (name: string): { type: string; fullName: string } => member('DuplicateRule', name);
+    const recordType = (name: string): { type: string; fullName: string } => member('RecordType', name);
+    addInventory(store, id, [
+      // A type that is retrieved by its own name: the retrieve asks for the listed name.
+      listed('DuplicateRule', 'Account.Same_Person'),
+      // Salesforce remarks that it cannot find this one.
+      listed('DuplicateRule', 'Account.Gone'),
+      // This retrieve asks for rules, and not for this one.
+      listed('DuplicateRule', 'Account.Elsewhere'),
+      // Parts, which come with their parent: the retrieve asks for nothing of their type.
+      listed('RecordType', 'Account.Client'),
+      listed('MatchingRule', 'Account.Person_By_Name'),
+      // The org lists the name under PersonAccount as well: what comes back under it is that one.
+      listed('RecordType', 'Account.Both'),
+      listed('RecordType', 'PersonAccount.Both'),
+      // This one comes back under the listed name itself, and another component under PersonAccount.
+      listed('RecordType', 'Account.Twin'),
+      // A part of the business account, which comes back under its own name.
+      listed('RecordType', 'Account.Business'),
+      // Only the object Account stands for PersonAccount.
+      listed('RecordType', 'Contact.Client'),
+      listed('CustomObject', 'Account'),
+      listed('CustomObject', 'PersonAccount'),
+      listed('MatchingRules', 'PersonAccount'),
+    ]);
+    // A record type that came back before under a name the org did not list is no listed name.
+    expect(markRetrieved(store, id, [recordType('Account.Unlisted')], { asked: [], notFound: [] })).toEqual([]);
+
+    const asked = [
+      rule('Account.Same_Person'),
+      rule('Account.Gone'),
+      member('CustomObject', 'Account'),
+      member('CustomObject', 'PersonAccount'),
+      member('MatchingRules', 'PersonAccount'),
+    ];
+    const cameBack = [
+      rule('PersonAccount.Same_Person'),
+      rule('PersonAccount.Gone'),
+      rule('PersonAccount.Elsewhere'),
+      member('CustomObject', 'Account'),
+      member('CustomObject', 'PersonAccount'),
+      member('MatchingRules', 'PersonAccount'),
+      member('MatchingRule', 'PersonAccount.Person_By_Name'),
+      ...[
+        'PersonAccount.Client',
+        'PersonAccount.Both',
+        'Account.Twin',
+        'PersonAccount.Twin',
+        'Account.Business',
+        'PersonAccount.Unlisted',
+        'PersonAccount.Lone',
+        'PersonContact.Client',
+      ].map(recordType),
+    ];
+    const retrieve = { asked, notFound: [rule('Account.Gone')] };
+    expect(markRetrieved(store, id, cameBack, retrieve)).toEqual([
+      { ...rule('Account.Same_Person'), rule: 'person-account' },
+      { ...member('MatchingRule', 'Account.Person_By_Name'), rule: 'person-account' },
+      { ...recordType('Account.Client'), rule: 'person-account' },
+    ]);
+    // A second retrieve with the same components says nothing new.
+    expect(markRetrieved(store, id, [recordType('PersonAccount.Client')], retrieve)).toEqual([]);
+
+    expect(missingComponents(store, id, 'DuplicateRule')).toEqual(['Account.Elsewhere', 'Account.Gone']);
+    expect(unlistedComponents(store, id, 'DuplicateRule')).toEqual(['PersonAccount.Elsewhere', 'PersonAccount.Gone']);
+    expect(missingComponents(store, id, 'MatchingRule')).toEqual([]);
+    expect(unlistedComponents(store, id, 'MatchingRule')).toEqual([]);
+    expect(missingComponents(store, id, 'RecordType')).toEqual(['Account.Both', 'Contact.Client']);
+    expect(unlistedComponents(store, id, 'RecordType')).toEqual([
+      'Account.Unlisted',
+      'PersonAccount.Lone',
+      'PersonAccount.Twin',
+      'PersonAccount.Unlisted',
+      'PersonContact.Client',
+    ]);
+
+    // Nothing is known of the retrieve: every component is what its name says.
+    const other = begin(store, 'uat');
+    addInventory(store, other, [listed('RecordType', 'Account.Client'), listed('Document', 'Assets/Logo.png')]);
+    expect(
+      markRetrieved(store, other, [recordType('PersonAccount.Client'), member('Document', 'Assets/Logo')]),
+    ).toEqual([]);
+    expect(missingComponents(store, other, 'RecordType')).toEqual(['Account.Client']);
+    expect(missingComponents(store, other, 'Document')).toEqual(['Assets/Logo.png']);
     store.close();
   });
 
