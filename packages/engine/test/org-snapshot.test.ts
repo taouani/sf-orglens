@@ -139,6 +139,50 @@ const OTHER_NAME_FILES: Readonly<Record<string, string>> = {
 `,
 };
 
+/**
+ * The part with reports and a dashboard in folders inside folders. An org lists such a folder by its own name and
+ * what lies in it with that name, and hands both out under the whole path. The names are made up.
+ */
+let WITH_NESTED_FOLDERS: string;
+const folderFile = (type: string, name: string): string => `<${type} xmlns="http://soap.sforce.com/2006/04/metadata">
+    <accessType>Public</accessType>
+    <name>${name}</name>
+    <publicFolderAccess>ReadOnly</publicFolderAccess>
+</${type}>
+`;
+const reportFile = (name: string): string => `<Report xmlns="http://soap.sforce.com/2006/04/metadata">
+    <columns>
+        <field>ACCOUNT.NAME</field>
+    </columns>
+    <format>Tabular</format>
+    <name>${name}</name>
+    <reportType>AccountList</reportType>
+    <scope>organization</scope>
+    <showDetails>true</showDetails>
+</Report>
+`;
+const NESTED_FOLDER_FILES: Readonly<Record<string, string>> = {
+  'dashboards/Board.dashboardFolder-meta.xml': folderFile('DashboardFolder', 'Board'),
+  'dashboards/Board/Inner.dashboardFolder-meta.xml': folderFile('DashboardFolder', 'Inner'),
+  'dashboards/Board/Inner/Overview.dashboard-meta.xml': `<Dashboard xmlns="http://soap.sforce.com/2006/04/metadata">
+    <backgroundEndColor>#FFFFFF</backgroundEndColor>
+    <backgroundFadeDirection>Diagonal</backgroundFadeDirection>
+    <backgroundStartColor>#FFFFFF</backgroundStartColor>
+    <dashboardType>LoggedInUser</dashboardType>
+    <textColor>#000000</textColor>
+    <title>Overview</title>
+    <titleColor>#000000</titleColor>
+    <titleSize>12</titleSize>
+</Dashboard>
+`,
+  'reports/Finance.reportFolder-meta.xml': folderFile('ReportFolder', 'Finance'),
+  'reports/Finance/Quarterly.reportFolder-meta.xml': folderFile('ReportFolder', 'Quarterly'),
+  'reports/Finance/Quarterly/Archive.reportFolder-meta.xml': folderFile('ReportFolder', 'Archive'),
+  'reports/Finance/Quarterly/Archive/Old_Revenue.report-meta.xml': reportFile('Old revenue'),
+  'reports/Finance/Quarterly/Revenue.report-meta.xml': reportFile('Revenue'),
+  'reports/Finance/Totals.report-meta.xml': reportFile('Totals'),
+};
+
 beforeAll(async () => {
   mock = await startMockOrg();
   FIXTURE = join(copies.next(), 'force-app');
@@ -167,6 +211,13 @@ beforeAll(async () => {
     const file = join(WITH_OTHER_NAMES, 'main/default', path);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, path.endsWith('.xml') ? `<?xml version="1.0" encoding="UTF-8"?>\n${text}` : text);
+  }
+  WITH_NESTED_FOLDERS = join(copies.next(), 'force-app');
+  cpSync(FIXTURE, WITH_NESTED_FOLDERS, { recursive: true });
+  for (const [path, text] of Object.entries(NESTED_FOLDER_FILES)) {
+    const file = join(WITH_NESTED_FOLDERS, 'main/default', path);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${text}`);
   }
   WITHOUT_LABEL = join(copies.next(), 'force-app');
   cpSync(FIXTURE, WITHOUT_LABEL, { recursive: true });
@@ -1969,6 +2020,80 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             .filter((issue) => issue.code === 'RETRIEVED_UNDER_ANOTHER_NAME')
             .map((issue) => issue.details['type']),
         ).toEqual(['MatchingRule', 'RecordType']);
+      });
+    });
+
+    describe('with reports and a dashboard in a folder inside a folder', () => {
+      beforeEach(async () => {
+        metadata = await metadataFromSource(WITH_NESTED_FOLDERS);
+        mock.metadata = metadata;
+      });
+      const UNDER_THE_PATH = (one: boolean): string =>
+        `came back under the whole path of ${one ? 'its' : 'their'} folders. The org lists ${one ? 'it' : 'them'} with the innermost folder only, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`;
+      const note = (type: string, names: string[]): ReturnType<typeof ofReading>[number] => ({
+        severity: 'info',
+        code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+        message: `${String(names.length)} ${names.length === 1 ? 'component' : 'components'} of the type ${type} ${UNDER_THE_PATH(names.length === 1)} The first: ${names[0] ?? ''}`,
+        details: { type, reason: 'folder-path', count: names.length, components: names },
+      });
+
+      it('takes what comes back under the whole path for what the org lists by the innermost folder', async () => {
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        // The org is asked by the names it lists. A folder is asked for under the type of what it holds.
+        expect(metadata.retrieves.flat().filter((member) => /^(Report|Dashboard)/.test(member))).toEqual([
+          'Dashboard:Board',
+          'Dashboard:Inner',
+          'Dashboard:Inner/Overview',
+          'Report:Archive',
+          'Report:Archive/Old_Revenue',
+          'Report:Finance',
+          'Report:Finance/Totals',
+          'Report:Quarterly',
+          'Report:Quarterly/Revenue',
+        ]);
+        expect(report.snapshot.status).toBe('complete');
+        // The files keep the path they came with.
+        expect(stored(dir, 1)).toEqual([...expectedFiles(), ...Object.keys(NESTED_FOLDER_FILES)].sort());
+        expect(typeOf(report, 'Report')).toMatchObject({ listed: 3, retrieved: 3, note: null });
+        expect(typeOf(report, 'ReportFolder')).toMatchObject({ listed: 3, retrieved: 3, note: null });
+        expect(typeOf(report, 'Dashboard')).toMatchObject({ listed: 1, retrieved: 1, note: null });
+        expect(typeOf(report, 'DashboardFolder')).toMatchObject({ listed: 2, retrieved: 2, note: null });
+        expect(ofReading(report)).toEqual([
+          note('Dashboard', ['Inner/Overview']),
+          note('DashboardFolder', ['Inner']),
+          note('Report', ['Archive/Old_Revenue', 'Quarterly/Revenue']),
+          note('ReportFolder', ['Archive', 'Quarterly']),
+        ]);
+      });
+
+      it('leaves a listed report missing that the org does not hand out, under the name the org lists', async () => {
+        metadata.withheld.add('Report:Finance/Quarterly/Revenue');
+        const dir = workspaceDir();
+        const report = await snap(dir);
+
+        // A report is outside the logic tier.
+        expect(report.snapshot.status).toBe('complete');
+        expect(typeOf(report, 'Report')).toMatchObject({ listed: 3, retrieved: 2 });
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code !== 'RETRIEVED_UNDER_ANOTHER_NAME')
+            .map((issue) => [issue.code, issue.details['components'] ?? issue.details['messages']]),
+        ).toEqual([
+          ['RETRIEVE_MESSAGES', ["Entity of type 'Report' named 'Quarterly/Revenue' cannot be found"]],
+          ['NOT_RETRIEVED', ['Quarterly/Revenue']],
+        ]);
+        expect(
+          ofReading(report)
+            .filter((issue) => issue.code === 'RETRIEVED_UNDER_ANOTHER_NAME')
+            .map((issue) => [issue.details['type'], issue.details['components']]),
+        ).toEqual([
+          ['Dashboard', ['Inner/Overview']],
+          ['DashboardFolder', ['Inner']],
+          ['Report', ['Archive/Old_Revenue']],
+          ['ReportFolder', ['Archive', 'Quarterly']],
+        ]);
       });
     });
 

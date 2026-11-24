@@ -58,7 +58,7 @@ export interface RetrieveAsked {
  * - `person-account`: something of person accounts. The org lists it under the object `Account`, as
  *   `Account.thing`, and hands it out under the object `PersonAccount`, as `PersonAccount.thing`.
  */
-export type OtherNameRule = 'prefix' | 'file-ending' | 'person-account';
+export type OtherNameRule = 'prefix' | 'file-ending' | 'person-account' | 'folder-path';
 
 /** A component the org listed that came back under another name, as the org lists it. */
 export interface FoundUnderAnotherName extends ChunkMember {
@@ -73,6 +73,11 @@ const DOCUMENT = 'Document';
 /** How the name of something of person accounts starts where the org lists it, and where it hands it out. */
 const OF_ACCOUNT = 'Account.';
 const OF_PERSON_ACCOUNT = 'PersonAccount.';
+/**
+ * The types whose folders can lie in folders, and the types of those folders. The org lists a component of them
+ * without the folders around the innermost one.
+ */
+const IN_FOLDERS_OF_FOLDERS: ReadonlySet<string> = new Set(['Dashboard', 'DashboardFolder', 'Report', 'ReportFolder']);
 
 const idOf = (member: ChunkMember): string => `${member.type}\n${member.fullName}`;
 
@@ -114,6 +119,10 @@ function withoutFileEnding(fullName: string): string {
  * - `person-account`: the name that came back starts with `PersonAccount.`, and the org lists the same name with
  *   `Account.` in that place. The retrieve asked for that listed name, or for no component of the type at all,
  *   as it is with a part, which comes with its parent.
+ * - `folder-path`: the type is a report, a dashboard or a folder of them, and the org lists an end of the name that
+ *   came back, behind one of its slashes: `Top/Sub/Monthly` is listed as `Sub/Monthly`, and the folder `Top/Sub` as
+ *   `Sub`. The retrieve asked for that listed name, or for no component of the type at all, as it is with a
+ *   folder, which is asked for under the type of what it holds.
  *
  * And all of this holds:
  *
@@ -159,14 +168,25 @@ export function markRetrieved(
   };
   /** The listed names that can stand for a component, each with its rule. */
   const candidatesOf = (component: ChunkMember): readonly Candidate[] => {
-    if (!component.fullName.startsWith(OF_PERSON_ACCOUNT)) return amongAsked(component);
-    const member = {
-      type: component.type,
-      fullName: `${OF_ACCOUNT}${component.fullName.slice(OF_PERSON_ACCOUNT.length)}`,
+    const candidates = [...amongAsked(component)];
+    // A name that is worked out from the one that came back counts when the retrieve asked for it, or for no
+    // component of the type at all: a part comes with its parent, and a folder under the type of what it holds.
+    const offer = (fullName: string, rule: OtherNameRule): void => {
+      const member = { type: component.type, fullName };
+      if (asked.has(idOf(member)) || !askedTypes.has(component.type)) candidates.push({ member, rule });
     };
-    return asked.has(idOf(member)) || !askedTypes.has(component.type)
-      ? [...amongAsked(component), { member, rule: 'person-account' }]
-      : amongAsked(component);
+    if (component.fullName.startsWith(OF_PERSON_ACCOUNT)) {
+      offer(`${OF_ACCOUNT}${component.fullName.slice(OF_PERSON_ACCOUNT.length)}`, 'person-account');
+    }
+    if (IN_FOLDERS_OF_FOLDERS.has(component.type)) {
+      // Every end of the path behind a slash: the org lists the innermost folder, and the report with it.
+      let slash = component.fullName.indexOf('/');
+      while (slash !== -1) {
+        offer(component.fullName.slice(slash + 1), 'folder-path');
+        slash = component.fullName.indexOf('/', slash + 1);
+      }
+    }
+    return candidates;
   };
   /** The listed name a component without a row came back for, if the rules above give exactly one. */
   const listedNameOf = (component: ChunkMember): ListedName | undefined => {

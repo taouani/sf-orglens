@@ -12,11 +12,12 @@
  * component it does not hand out, refuse a retrieve that is too large, or
  * never finish one.
  *
- * The org lists two kinds of components under another name than the one
- * the library gives them, as an org does (decision record 0071): a document
- * with the ending of its file, and what belongs to person accounts under
- * the object `Account`. It is asked for them by the listed name and hands
- * out the files of the folder.
+ * The org lists three kinds of components under another name than the one
+ * the library gives them, as an org does (decision records 0071 and 0072): a
+ * document with the ending of its file, what belongs to person accounts
+ * under the object `Account`, and a report, a dashboard or a folder of them
+ * that lies in a folder inside a folder without the outer folders. It is
+ * asked for them by the listed name and hands out the files of the folder.
  */
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -189,6 +190,25 @@ const LISTED_UNDER_ACCOUNT = new Set(['RecordType', 'MatchingRule', 'DuplicateRu
 const underAccount = (type: string, name: string): string =>
   LISTED_UNDER_ACCOUNT.has(type) && /^PersonAccount(?:\.|$)/.test(name) ? name.slice('Person'.length) : name;
 
+/**
+ * The types an org lists without the folders around the innermost one, as a snapshot of a large org showed:
+ * reports and dashboards, and the folders of both.
+ */
+const LISTED_BY_INNERMOST_FOLDER = new Set(['Dashboard', 'DashboardFolder', 'Report', 'ReportFolder']);
+
+/**
+ * The name of a component of such a type as the org lists it. `folders`: how many folders the listed name keeps,
+ * which is none for a folder and one for what lies in it. `Top/Sub/Monthly` is listed as `Sub/Monthly`, and the
+ * folder `Top/Sub` as `Sub`. Any other name is listed as it is.
+ */
+const byInnermostFolder = (type: string, name: string, folders: 0 | 1): string =>
+  LISTED_BY_INNERMOST_FOLDER.has(type)
+    ? name
+        .split('/')
+        .slice(-1 - folders)
+        .join('/')
+    : name;
+
 /** The metadata of an org that holds what the folder holds. `dir` is a folder in source format. */
 export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const { ComponentSet, MetadataConverter, RegistryAccess, SourceComponent: Component } = await library();
@@ -237,7 +257,8 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const list = (component: SourceComponent, file: SourceComponent): void => {
     if (listed.some((item) => item.type === component.type.name && item.fullName === component.fullName)) return;
     const type = component.type.name;
-    const folder = component.type.folderType !== undefined ? (component.fullName.split('/')[0] ?? null) : null;
+    // The folder a component lies in is the innermost one: the org lists what a folder holds by that name.
+    const folder = component.type.folderType !== undefined ? (component.fullName.split('/').at(-2) ?? null) : null;
     // An org lists a document with the ending of its file, and its file under that name.
     if (type === 'Document' && folder !== null && component.content !== undefined) {
       const listedName = `${folder}/${basename(component.content)}`;
@@ -247,7 +268,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     listed.push({
       type,
       fullName: component.fullName,
-      listedName: underAccount(type, component.fullName),
+      listedName: byInnermostFolder(type, underAccount(type, component.fullName), folder === null ? 0 : 1),
       fileName: `${file.type.directoryName}/${underAccount(type, file.fullName)}${file.type.suffix === undefined ? '' : `.${file.type.suffix}`}`,
       folder,
     });
@@ -365,9 +386,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
       const inProject = listed.find((item) => item.type === asked.type && listedAs(item) === asked.fullName);
       const member = { type: asked.type, fullName: inProject?.fullName ?? asked.fullName };
       const id = key(member.type, member.fullName);
-      // A folder is asked for under the type of what it holds.
+      // A folder is asked for under the type of what it holds, by the name the org lists it with.
       const folderType = folderTypeOf(member.type);
-      const asFolder = folderType === null ? id : key(folderType, member.fullName);
+      const folderInProject = listed.find((item) => item.type === folderType && listedAs(item) === asked.fullName);
+      const asFolder = folderType === null ? id : key(folderType, folderInProject?.fullName ?? member.fullName);
       const part = parts.get(id);
       const owned = owners.get(id) ?? owners.get(asFolder) ?? (part === undefined ? undefined : [part]);
       // The org knows a component of a package by its name with the prefix only.
