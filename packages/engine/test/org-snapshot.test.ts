@@ -2029,7 +2029,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mock.metadata = metadata;
       });
       const UNDER_THE_PATH = (one: boolean): string =>
-        `came back under the whole path of ${one ? 'its' : 'their'} folders. The org lists ${one ? 'it' : 'them'} with the innermost folder only, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`;
+        `came back under the whole path of the folders ${one ? 'it lies' : 'they lie'} in. The org lists ${one ? 'it' : 'them'} without the outer folders, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`;
       const note = (type: string, names: string[]): ReturnType<typeof ofReading>[number] => ({
         severity: 'info',
         code: 'RETRIEVED_UNDER_ANOTHER_NAME',

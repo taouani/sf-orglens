@@ -436,7 +436,7 @@ const UNDER_ANOTHER_NAME: Readonly<
   'folder-path': {
     code: 'RETRIEVED_UNDER_ANOTHER_NAME',
     said: (one) =>
-      `came back under the whole path of ${one ? 'its' : 'their'} folders. The org lists ${one ? 'it' : 'them'} with the innermost folder only, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`,
+      `came back under the whole path of the folders ${one ? 'it lies' : 'they lie'} in. The org lists ${one ? 'it' : 'them'} without the outer folders, and the snapshot names ${one ? 'it' : 'them'} with the whole path.`,
   },
 };
 

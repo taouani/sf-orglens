@@ -231,6 +231,15 @@ they have below a package directory, such as `classes/Foo.cls`.
   question names a record type of person accounts as `PersonAccount.Client`. The note
   `RETRIEVED_UNDER_ANOTHER_NAME` says how many components of a type came back that way in one retrieve, and why
   in `details.reason`: `file-ending` or `person-account`. Not verified on an org.
+- **A report, a dashboard and their folders come back under the whole path of their folders.** An org lists a
+  folder that lies in a folder by its own name, as `Quarterly`, and a report in it with that folder only, as
+  `Quarterly/Revenue`. It hands both out under the whole path, as `Finance/Quarterly` and
+  `Finance/Quarterly/Revenue`, and the snapshot names them so, as a repository does. What comes back under the
+  whole path counts as the listed component under the same conditions, where the listed name is an end of the
+  name that came back, behind one of its slashes. The retrieve asked for the listed name, or for no component of
+  the type at all, as it is with a folder, which is asked for under the type of what it holds. This is done for
+  the types `Report`, `Dashboard`, `ReportFolder` and `DashboardFolder`. The note `RETRIEVED_UNDER_ANOTHER_NAME`
+  has the reason `folder-path` for them. Not verified on an org.
 - **A part is asked for by its own name when Salesforce cannot find its parent.** A field comes with its object,
   so a retrieve names the object, also when the org lists the field and not the object. When Salesforce remarks
   that it cannot find such an object, the fields, record types and other parts of it that the org lists are
@@ -585,9 +594,10 @@ names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED
 `RETRIEVED_WITHOUT_PREFIX` and `RETRIEVED_UNDER_ANOTHER_NAME` name the type in `details.type`. The names of
 `RETRIEVED_WITHOUT_PREFIX` are the ones the org lists, with the prefix, and the names of
 `RETRIEVED_UNDER_ANOTHER_NAME` are the ones the org lists too: with the ending of the file where `details.reason`
-is `file-ending`, and under the object `Account` where it is `person-account`. `PARTS_ASKED_BY_NAME` counts and names the components Salesforce cannot find, each
-as type and name, and carries the number of parts that are asked for in `details.parts`. `RETRIEVE_FAILED` and
-`CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
+is `file-ending`, under the object `Account` where it is `person-account`, and without the outer folders where it
+is `folder-path`. Both notes name them in the order of the listed names. `PARTS_ASKED_BY_NAME` counts and names
+the components Salesforce cannot find, each as type and name, and carries the number of parts that are asked for
+in `details.parts`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
 `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
