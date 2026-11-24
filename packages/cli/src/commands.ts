@@ -415,7 +415,7 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
         shown.map((type) => {
           const more = unlisted.get(type.type);
           return [
-            type.type,
+            typeShown(type.type),
             LISTED[type.listing](type.listed),
             `${String(type.retrieved)}${more === undefined ? '' : ` (and ${String(more)} not listed)`}`,
             String(type.analysed),
@@ -439,25 +439,45 @@ const ONE_PER_FLOW: ReadonlySet<string> = new Set([
   'FLOW_VERSION_UNKNOWN',
 ]);
 
+type ReadIssue = CoverageReport['issues'][number];
+
 /**
- * The issues of the reading as rows: one for each issue, and one for each code that comes once per flow, with
- * the number of flows and the first issue. `--json` has every issue.
+ * The row an issue of the reading shares with others, or undefined for an issue with a row of its own: what is
+ * the same for all issues of the row, and what they are counted as.
+ *
+ * - A code that comes once for each flow has one row.
+ * - `RESOLVE_FAILED` comes once for each file that cannot be read as metadata, and an org can hand out hundreds
+ *   of files of a type the Salesforce library does not know. The issues that are counted with the same types and
+ *   say the same after the place they name share a row. A place is a file, a folder or a component, so the row
+ *   counts issues. An issue of a snapshot that was taken before issues named their place has a row of its own.
  */
-function readIssueRows(issues: readonly CoverageReport['issues'][number][]): string[][] {
+function sharedRow(issue: ReadIssue): { readonly id: string; readonly counted: string } | undefined {
+  if (ONE_PER_FLOW.has(issue.code)) return { id: JSON.stringify([issue.severity, issue.code]), counted: 'flows' };
+  const { at, types } = issue.details;
+  if (issue.code !== 'RESOLVE_FAILED' || typeof at !== 'string' || !issue.message.startsWith(at)) return undefined;
+  return {
+    id: JSON.stringify([issue.severity, issue.code, types ?? null, issue.message.slice(at.length)]),
+    counted: 'issues of this kind',
+  };
+}
+
+/**
+ * The issues of the reading as rows: one for each issue, and one for the issues that share a row, with their
+ * number and the first of them. `--json` has every issue.
+ */
+function readIssueRows(issues: readonly ReadIssue[]): string[][] {
   const rows: string[][] = [];
-  const perFlow = new Map<string, { row: string[]; count: number; first: string }>();
+  const shared = new Map<string, { row: string[]; count: number; first: string }>();
   for (const issue of issues) {
-    const id = `${issue.severity} ${issue.code}`;
-    const seen = perFlow.get(id);
-    if (!ONE_PER_FLOW.has(issue.code)) {
-      rows.push([issue.severity, issue.code, issue.message]);
-    } else if (seen === undefined) {
-      const row = [issue.severity, issue.code, issue.message];
-      perFlow.set(id, { row, count: 1, first: issue.message });
+    const row = [issue.severity, issue.code, issue.message];
+    const share = sharedRow(issue);
+    const seen = share === undefined ? undefined : shared.get(share.id);
+    if (share === undefined || seen === undefined) {
+      if (share !== undefined) shared.set(share.id, { row, count: 1, first: issue.message });
       rows.push(row);
     } else {
       seen.count += 1;
-      seen.row[2] = `${String(seen.count)} flows. The first: ${seen.first}`;
+      seen.row[2] = `${String(seen.count)} ${share.counted}. The first: ${seen.first}`;
     }
   }
   return rows;
@@ -586,6 +606,12 @@ function crossCheckLines(report: CoverageReport): string[] {
 /** The exit code for a snapshot: `partial` if something was not read, or if something was not analysed. */
 const exitOf = (report: CoverageReport): typeof EXIT.ok | typeof EXIT.partial =>
   report.snapshot.status === 'complete' && report.analysis?.complete !== false ? EXIT.ok : EXIT.partial;
+
+/**
+ * A type as a table names it. The file of custom labels and a label in it are two types whose names differ by a
+ * letter, and both have a line: the line of the file says what it is.
+ */
+const typeShown = (type: string): string => (type === 'CustomLabels' ? 'CustomLabels (the file of the labels)' : type);
 
 /** How many components a source listed, with what is to be known about the number. */
 const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (listed: number) => string>> = {
@@ -940,7 +966,7 @@ function impactLines(report: ImpactReport): string[] {
   const gapTable = (gaps: ImpactReport['notCovered']['partial']): string[] =>
     table(
       ['TYPE', 'LISTED', 'RETRIEVED'],
-      gaps.map((gap) => [gap.type, LISTED[gap.listing](gap.listed), String(gap.retrieved)]),
+      gaps.map((gap) => [typeShown(gap.type), LISTED[gap.listing](gap.listed), String(gap.retrieved)]),
     );
   const about = `orglens coverage ${snapshot.source} --snapshot ${String(snapshot.id)}`;
   if (notCovered.notAnalysed.length > 0) {

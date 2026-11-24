@@ -308,6 +308,39 @@ describe('orglens snapshot of an org', () => {
     ]);
   });
 
+  it('shows one row for the files that could not be read for the same reason, and the JSON has each issue', async () => {
+    const { dir, env } = setUp();
+    // Three files in the folder of custom tabs that are no custom tab, and one in the folder of applications.
+    mock.extraFiles = {
+      'applications/Thing.mystery': 'What is this?\n',
+      'tabs/First.mystery': 'And this?\n',
+      'tabs/Second.mystery': 'And this one?\n',
+      'tabs/Third.mystery': 'Or this?\n',
+    };
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    const rows = run.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'));
+    expect(rows).toEqual([
+      'warning   RESOLVE_FAILED  applications/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomApplication, which is outside the logic tier, and does not make the snapshot partial.',
+      'warning   RESOLVE_FAILED  3 issues of this kind. The first: tabs/First.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
+    ]);
+    // The report of the snapshot that is stored says the same.
+    const coverage = await orglens(dir, ['coverage', 'prod'], env);
+    expect(coverage.stdout.split('\n').filter((line) => line.includes('RESOLVE_FAILED'))).toEqual(rows);
+    const { data } = await orglensJson(dir, ['coverage', 'prod']);
+    const issues = (data as { issues: { code: string; details: { at?: string; types?: string[] } }[] }).issues;
+    expect(
+      issues
+        .filter((issue) => issue.code === 'RESOLVE_FAILED')
+        .map(({ details }) => `${details.at ?? ''} ${(details.types ?? []).join()}`),
+    ).toEqual([
+      'applications/Thing.mystery CustomApplication',
+      'tabs/First.mystery CustomTab',
+      'tabs/Second.mystery CustomTab',
+      'tabs/Third.mystery CustomTab',
+    ]);
+  });
+
   it('leaves out the types that orglens.toml names, and says in the report that they were not read', async () => {
     const { dir, env } = setUp();
     mock.extraTypes = ['Dashboard', 'Report'];
