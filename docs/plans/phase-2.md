@@ -18,8 +18,9 @@ too, and they are written there when that note is written. Run 26 of "Live org" 
 package 6 is being built: the answers for flows and elements are built (record 0066), and so is the cross-check of
 the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
 org with it. The actions of a workflow rule that are analysed join the judgement of "complete" (record 0068), so
-every type analysed so far counts for it. The narrower list of what an answer does not cover and the times of the
-synthetic org follow.
+every type analysed so far counts for it. An answer about what refers to a component leaves out a type that is
+not analysed where its components can name nothing of the answer (record 0073). The times of the synthetic org
+follow.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

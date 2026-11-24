@@ -658,7 +658,7 @@ components.
 ```
 $ orglens impact Invoice__c.Amount__c
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "repo".
-The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet. The details are below the answer.
 
 7 components refer to it, 6 of them directly.
 
@@ -669,10 +669,10 @@ DEPTH  COMPONENT                              CONFIDENCE  KIND   REFERS TO      
 …
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE         LISTED  RETRIEVED
-ApexClass    12      12
-ApexTrigger  1       1
-…
+TYPE           LISTED  RETRIEVED
+ApexClass      12      12
+ApexTrigger    1       1
+EmailTemplate  1       1
 ```
 
 The example is shortened: the command prints every line and every path in full.
@@ -751,7 +751,9 @@ the answer says whether it is complete, and if not, why. Below the results it na
   component of such a type can refer to the component and is not in the answer. In this pre-release, that is every
   type except objects, fields, validation rules, flows, workflow rules with their field updates, email alerts,
   outbound messages and tasks, record types, field sets and records of custom metadata types. A type that
-  `exclude_types` leaves out of a snapshot of an org is among them, with `left out` for its number;
+  `exclude_types` leaves out of a snapshot of an org is among them, with `left out` for its number. So is a type
+  of which the snapshot holds only components that the source did not list, with `0` for both numbers, which
+  count what the source listed;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
@@ -766,6 +768,12 @@ the answer says whether it is complete, and if not, why. Below the results it na
 
 An answer is complete only if none of these applies. The warnings are those of the whole snapshot, not only
 those of the components in the answer.
+
+For what refers to a component, a type that is not analysed is left out where its components can name no type
+of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type
+that stays on the list. A custom label, for one, names nothing, and a folder names only the groups, roles,
+queues, territories and sites it is shared with. A table in the engine says this for 21 types, each read from the
+types of the Metadata API (decision record 0073). A type that is not in the table stays for every question.
 
 For `--outgoing`, a type that is not analysed counts only if the component, something it contains or a result
 is of it: what a component refers to is known once the component itself is analysed.
@@ -790,24 +798,24 @@ needs a complete answer reads `data.complete`: the exit code `0` does not say it
 
 **The data of `--json`:**
 
-| Field           | Meaning                                                                                                                                                                                                                                         |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                         |
-| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                  |
-| `sameName`      | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                    |
-| `parts`         | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                       |
-| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                       |
-| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                       |
-| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                           |
-| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                              |
-| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                        |
-| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`.       |
-| `reference`     | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse. |
-| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.    |
-| `newerVersions` | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                     |
-| `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                    |
-| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`.                                       |
-| `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                     |
+| Field           | Meaning                                                                                                                                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                                                                                                           |
+| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                                                                                                    |
+| `sameName`      | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                                                                                                      |
+| `parts`         | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                                                                                                         |
+| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                                                                                                         |
+| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                                                                                                         |
+| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                                                                                                             |
+| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                                                                                                                |
+| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                                                                                                          |
+| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`.                                                                                         |
+| `reference`     | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse.                                                                                   |
+| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.                                                                                      |
+| `newerVersions` | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                                                                                                       |
+| `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                                                                                                      |
+| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. For `incoming`, `notAnalysed` leaves out a type whose components can name no type of the answer (decision record 0073). `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`. |
+| `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                                                                                                       |
 
 **The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
 reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the nearer

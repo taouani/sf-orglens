@@ -263,8 +263,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         complete: false,
         mayMiss: false,
       });
+      // Of the types that are not analysed, the answer names those whose components can name a field: a label, the
+      // file of labels, a custom permission, a folder and a global value set cannot (decision record 0073).
       expect(report.notCovered).toEqual({
-        notAnalysed: NOT_ANALYSED.map(([type, held]) => ({ type, listed: held, retrieved: held, listing: 'ok' })),
+        notAnalysed: NOT_ANALYSED.filter(([type]) => ['ApexClass', 'ApexTrigger', 'EmailTemplate'].includes(type)).map(
+          ([type, held]) => ({ type, listed: held, retrieved: held, listing: 'ok' }),
+        ),
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
@@ -272,6 +276,22 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysisWarnings: 1,
         notHeld: 0,
       });
+      // The file of labels names labels, and a custom permission names custom permissions: so they stay for an
+      // answer about one of their own.
+      const named = async (component: string): Promise<string[]> =>
+        (await workspace.impact('fixture', component)).notCovered.notAnalysed.map((gap) => gap.type);
+      expect(await named('CustomLabel:Overdue_Notice')).toEqual([
+        'ApexClass',
+        'ApexTrigger',
+        'CustomLabels',
+        'EmailTemplate',
+      ]);
+      expect(await named('Approve_Large_Invoices')).toEqual([
+        'ApexClass',
+        'ApexTrigger',
+        'CustomPermission',
+        'EmailTemplate',
+      ]);
     });
 
     /** A file of metadata of a type, with the elements that are given. */

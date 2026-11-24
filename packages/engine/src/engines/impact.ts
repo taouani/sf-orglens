@@ -563,21 +563,24 @@ export interface ImpactGaps {
  * the source has components of it, they are missing from an answer that claims to cover the type. `null`
  * for an analysis that did not keep the list: the number of analysed components then decides alone.
  *
+ * `unlisted` are the types of which the snapshot holds components that the source did not list. Such a type
+ * counts as any other, also where the source listed nothing of it (decision record 0073): its counts are then 0.
+ *
  * `notHeld` is 0 here. It is known from a walk.
  */
 export function impactGaps(
   types: readonly TypeCount[],
   issues: { readonly read: number; readonly analysis: number; readonly analysisWarnings: number },
   analysedTypes: readonly string[] | null,
+  unlisted: ReadonlySet<string> = new Set(),
 ): ImpactGaps {
   const gap = ({ type, listed, retrieved, listing }: TypeCount): ImpactGap => ({ type, listed, retrieved, listing });
   const sorted = [...types].sort((a, b) => compareText(a.type, b.type));
   const read = new Set(analysedTypes);
   const analysed = (type: TypeCount): boolean => type.analysed > 0 || read.has(type.type);
+  const held = (type: TypeCount): boolean => type.listed > 0 || type.retrieved > 0 || unlisted.has(type.type);
   return {
-    notAnalysed: sorted
-      .filter((type) => !analysed(type) && (type.listed > 0 || type.retrieved > 0 || type.listing !== 'ok'))
-      .map(gap),
+    notAnalysed: sorted.filter((type) => !analysed(type) && (held(type) || type.listing !== 'ok')).map(gap),
     partial: sorted
       .filter(
         (type) =>

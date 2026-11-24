@@ -7,6 +7,7 @@
 import { EngineError } from '../core/errors.ts';
 import { parentKey, type ComponentKey } from '../core/keys.ts';
 import { isConfidenceTier, type ConfidenceTier } from '../core/references.ts';
+import { namingTypes } from '../engines/can-name.ts';
 import {
   coversEverything,
   findComponent,
@@ -21,6 +22,7 @@ import {
 } from '../engines/impact.ts';
 import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
+import { countInventory } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
 import { countIssues, readCoverage, readIssuesOf, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
 import { noSnapshot } from './snapshot.ts';
@@ -88,16 +90,17 @@ export interface ImpactReport {
    */
   readonly newerVersions: readonly NewerVersion[];
   /**
-   * True if nothing is known that the answer could miss: every type of the snapshot was analysed, the snapshot
-   * holds every component of them, and the reading and the analysis had neither an error nor, for the
-   * analysis, a warning. False says that the answer is what was found, and that `notCovered` names what could
-   * not be looked at.
+   * True if nothing is known that the answer could miss: every type of the snapshot that could be in it was
+   * analysed, the snapshot holds every component of them, and the reading and the analysis had neither an
+   * error nor, for the analysis, a warning. False says that the answer is what was found, and that
+   * `notCovered` names what could not be looked at.
    */
   readonly complete: boolean;
   /**
-   * For `outgoing`, `notAnalysed` holds only the types of the component, of what it contains and of the
-   * results: what a component refers to does not depend on the other types. `notHeld` counts the component
-   * and the results that the snapshot does not hold.
+   * For `incoming`, `notAnalysed` leaves out a type whose components can name no type of the answer, as the
+   * table of `engines/can-name.ts` says (decision record 0073). For `outgoing`, it holds only the types of the
+   * component, of what it contains and of the results: what a component refers to does not depend on the other
+   * types. `notHeld` counts the component and the results that the snapshot does not hold.
    */
   readonly notCovered: ImpactGaps;
   /**
@@ -208,14 +211,21 @@ export function impactOf(store: Store, source: string, component: string, query:
   const covered = [
     ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
   ];
-  const gaps = impactGaps(types, countIssues(store, snapshot.id, covered), analysis.types);
+  // A type of which the snapshot holds components that the source did not list counts, also where the source
+  // listed none of it (decision record 0073).
+  const unlisted = new Set(
+    [...countInventory(store, snapshot.id)].filter(([, count]) => count.unlisted > 0).map(([type]) => type),
+  );
+  const gaps = impactGaps(types, countIssues(store, snapshot.id, covered), analysis.types, unlisted);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what
-  // a component refers to that the snapshot does not hold is not known at all.
+  // a component refers to that the snapshot does not hold is not known at all. For what refers to a component,
+  // a type counts unless what its components can name is known and none of it is of the answer (decision record
+  // 0073).
   const walked = new Set([...walk.startTypes, ...walk.results.map((result) => result.type)]);
   const notCovered =
     direction === 'incoming'
-      ? gaps
+      ? { ...gaps, notAnalysed: namingTypes(gaps.notAnalysed, walked) }
       : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)), notHeld: walk.notHeld };
 
   const flows = new Set(
