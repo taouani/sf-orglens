@@ -11,8 +11,15 @@
  * A test can make the org behave badly: fail the listing of a type, list a
  * component it does not hand out, refuse a retrieve that is too large, or
  * never finish one.
+ *
+ * The org lists two kinds of components under another name than the one
+ * the library gives them, as an org does (decision record 0071): a document
+ * with the ending of its file, and what belongs to person accounts under
+ * the object `Account`. It is asked for them by the listed name and hands
+ * out the files of the folder.
  */
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import type * as SourceLibrary from '@salesforce/source-deploy-retrieve';
 import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
@@ -50,7 +57,10 @@ interface DescribedType {
 
 interface Listed {
   readonly type: string;
+  /** The name the Salesforce library gives the component, which is the name of its files in the folder. */
   readonly fullName: string;
+  /** The name the org lists it with, before the prefix of a package. */
+  readonly listedName: string;
   readonly fileName: string;
   /** For a component in a folder: the folder. */
   readonly folder: string | null;
@@ -164,6 +174,21 @@ async function library(): Promise<typeof SourceLibrary> {
 
 const key = (type: string, fullName: string): string => `${type}:${fullName}`;
 
+/**
+ * The types of which an org lists what belongs to person accounts under the object `Account`: a record type, as
+ * https://github.com/mdapi-issues/listmetadata-recordtype-personaccount shows, and the two kinds of rules, as a
+ * snapshot of a large org showed. The org hands each out under the object `PersonAccount`.
+ */
+const LISTED_UNDER_ACCOUNT = new Set(['RecordType', 'MatchingRule', 'DuplicateRule']);
+
+/**
+ * The name of a component of such a type, or of the file it lies in, as the org lists it: `PersonAccount.Client`
+ * as `Account.Client`, and the file `PersonAccount` as `Account`. Any other name is listed as it is. A folder that
+ * holds `Account.Client` beside `PersonAccount.Client` is not provided for: the org would list one name twice.
+ */
+const underAccount = (type: string, name: string): string =>
+  LISTED_UNDER_ACCOUNT.has(type) && /^PersonAccount(?:\.|$)/.test(name) ? name.slice('Person'.length) : name;
+
 /** The metadata of an org that holds what the folder holds. `dir` is a folder in source format. */
 export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const { ComponentSet, MetadataConverter, RegistryAccess, SourceComponent: Component } = await library();
@@ -211,11 +236,20 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     });
   const list = (component: SourceComponent, file: SourceComponent): void => {
     if (listed.some((item) => item.type === component.type.name && item.fullName === component.fullName)) return;
+    const type = component.type.name;
+    const folder = component.type.folderType !== undefined ? (component.fullName.split('/')[0] ?? null) : null;
+    // An org lists a document with the ending of its file, and its file under that name.
+    if (type === 'Document' && folder !== null && component.content !== undefined) {
+      const listedName = `${folder}/${basename(component.content)}`;
+      listed.push({ type, fullName: component.fullName, listedName, fileName: `documents/${listedName}`, folder });
+      return;
+    }
     listed.push({
-      type: component.type.name,
+      type,
       fullName: component.fullName,
-      fileName: `${file.type.directoryName}/${file.fullName}${file.type.suffix === undefined ? '' : `.${file.type.suffix}`}`,
-      folder: component.type.folderType !== undefined ? (component.fullName.split('/')[0] ?? null) : null,
+      listedName: underAccount(type, component.fullName),
+      fileName: `${file.type.directoryName}/${underAccount(type, file.fullName)}${file.type.suffix === undefined ? '' : `.${file.type.suffix}`}`,
+      folder,
     });
   };
   for (const component of top) {
@@ -244,6 +278,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     listed.push({
       type: 'FlowDefinition',
       fullName: name,
+      listedName: name,
       fileName: `flowDefinitions/${name}.flowDefinition`,
       folder: null,
     });
@@ -269,10 +304,10 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
   const deployJobs = new Map<string, { readonly files: string[]; polls: number }>();
 
   const idOf = (index: number): string => `0Axxx${String(index).padStart(10, '0')}AAA`;
-  /** The name the org lists a component with: that of the project, or with the prefix of its package. */
-  const listedAs = (item: { readonly type: string; readonly fullName: string }): string => {
+  /** The name the org lists a component with: its listed name, or that with the prefix of its package. */
+  const listedAs = (item: Listed): string => {
     const prefix = metadata.packaged.get(key(item.type, item.fullName));
-    return prefix === undefined ? item.fullName : `${prefix}__${item.fullName}`;
+    return prefix === undefined ? item.listedName : `${prefix}__${item.listedName}`;
   };
   const properties = (tag: string, item: Listed, index: number): string => {
     const prefix = metadata.packaged.get(key(item.type, item.fullName));
@@ -326,7 +361,7 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
           continue;
         }
       }
-      // A component of a package is asked for by the name the org lists it with.
+      // A component the org lists under another name than the folder has for it is asked for by the listed name.
       const inProject = listed.find((item) => item.type === asked.type && listedAs(item) === asked.fullName);
       const member = { type: asked.type, fullName: inProject?.fullName ?? asked.fullName };
       const id = key(member.type, member.fullName);

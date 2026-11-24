@@ -66,6 +66,7 @@ import {
   unlistedComponents,
   type Chunk,
   type ChunkMember,
+  type OtherNameRule,
 } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
 import {
@@ -406,6 +407,33 @@ function typesOfFolder(
   }
   return folders.then((known) => ({ types: known.types.get(folder) ?? [], refused: known.refused }));
 }
+
+/** The rules by which a component counts as one the org listed under another name, in the order of their notes. */
+const OTHER_NAME_RULES: readonly OtherNameRule[] = ['prefix', 'file-ending', 'person-account'];
+
+/**
+ * The note about components that came back under another name than the org lists them with, per rule: its code,
+ * and what it says after their number and type. `one`: it is about a single component.
+ */
+const UNDER_ANOTHER_NAME: Readonly<
+  Record<OtherNameRule, { readonly code: string; readonly said: (one: boolean) => string }>
+> = {
+  prefix: {
+    code: 'RETRIEVED_WITHOUT_PREFIX',
+    said: (one) =>
+      `came back under ${one ? 'its' : 'their'} name without the prefix of ${one ? 'its' : 'their'} package. The org lists ${one ? 'it' : 'them'} with the prefix, and the files of the snapshot are named without it.`,
+  },
+  'file-ending': {
+    code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+    said: (one) =>
+      `came back under ${one ? 'its' : 'their'} name without the ending of ${one ? 'its' : 'their'} file. The org lists ${one ? 'it' : 'them'} with the ending, and the snapshot names ${one ? 'it' : 'them'} without it.`,
+  },
+  'person-account': {
+    code: 'RETRIEVED_UNDER_ANOTHER_NAME',
+    said: (one) =>
+      `came back under the object PersonAccount. The org lists ${one ? 'it' : 'them'} under the object Account, and the snapshot names ${one ? 'it' : 'them'} after PersonAccount.`,
+  },
+};
 
 /** What the message of a file says that is counted by the word of the org. */
 const DESCRIBED_BY_ORG =
@@ -757,17 +785,21 @@ async function retrieveChunk(
     for (const path of unpacked.tree.files) {
       if (owned.has(path) && putSnapshotFile(store, snapshotId, path, unpacked.tree.read(path))) twice.push(path);
     }
-    const withoutPrefix = markRetrieved(store, snapshotId, unpacked.components, { asked: members, notFound });
-    for (const type of [...new Set(withoutPrefix.map((component) => component.type))].sort(byCodeUnit)) {
-      const names = withoutPrefix.filter((component) => component.type === type).map((one) => one.fullName);
-      issue(
-        store,
-        snapshotId,
-        'info',
-        'RETRIEVED_WITHOUT_PREFIX',
-        `${plural(names.length, 'component', 'components')} of the type ${type} came back under ${names.length === 1 ? 'its' : 'their'} name without the prefix of ${names.length === 1 ? 'its' : 'their'} package. The org lists ${names.length === 1 ? 'it' : 'them'} with the prefix, and the files of the snapshot are named without it. The first: ${names[0] ?? ''}`,
-        { type, ...named(names) },
-      );
+    const otherNames = markRetrieved(store, snapshotId, unpacked.components, { asked: members, notFound });
+    for (const rule of OTHER_NAME_RULES) {
+      const found = otherNames.filter((component) => component.rule === rule);
+      for (const type of [...new Set(found.map((component) => component.type))].sort(byCodeUnit)) {
+        const names = found.filter((component) => component.type === type).map((one) => one.fullName);
+        const { code, said } = UNDER_ANOTHER_NAME[rule];
+        issue(
+          store,
+          snapshotId,
+          'info',
+          code,
+          `${plural(names.length, 'component', 'components')} of the type ${type} ${said(names.length === 1)} The first: ${names[0] ?? ''}`,
+          { type, ...(code === 'RETRIEVED_WITHOUT_PREFIX' ? {} : { reason: rule }), ...named(names) },
+        );
+      }
     }
     for (const problem of problems) {
       // What nothing tells the type of counts against the logic tier.

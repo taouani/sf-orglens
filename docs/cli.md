@@ -210,12 +210,28 @@ they have below a package directory, such as `classes/Foo.cls`.
 - **A component of a package can come back without the prefix of the package.** An org lists a Lightning web
   component of a package as `pkg__thing` and hands out the folder `thing`. What comes back under the short name
   counts as the listed component when the retrieve asked for the listed name and not for the short one, the org
-  states the prefix as the package of the listed component, the org lists nothing under the short name,
-  Salesforce did not remark that it cannot find the listed name, and no second component of the retrieve has
-  the same short name. Otherwise the listed component stays missing. Only a prefix at the very start of a name
-  is seen, so a part of a component and a component in a folder are never taken this way. The files of the
-  snapshot keep the short name. The note `RETRIEVED_WITHOUT_PREFIX` says how many components of a type came
-  back that way in one retrieve, so a snapshot of many retrieves can hold several for a type.
+  states the prefix as the package of the listed component, the org lists nothing under the short name, the
+  listed name did not come back itself in the same retrieve, Salesforce did not remark that it cannot find the
+  listed name, and no second component of the retrieve has the same short name. Otherwise the listed component
+  stays missing. Only a prefix at the very start of a name is seen, so a part of a component and a component in
+  a folder are never taken this way. The files of the snapshot keep the short name. The note
+  `RETRIEVED_WITHOUT_PREFIX` says how many components of a type came back that way in one retrieve, so a
+  snapshot of many retrieves can hold several for a type.
+- **A document and what belongs to person accounts come back under another name than the org lists.** An org
+  lists a document with the ending of its file, as `Assets/Logo.png`, and the snapshot names it `Assets/Logo`,
+  as the Salesforce library does. An org lists what belongs to person accounts under the object `Account`, as
+  `Account.Client`, and hands it out under the object `PersonAccount`, as `PersonAccount.Client`. That was seen
+  for a record type, a matching rule and a duplicate rule, and the rule holds for every type. What comes back
+  under the other name counts as the listed component under the conditions of a component of a package: the org
+  lists nothing under the name that came back, the retrieve did not ask for that name, the listed name did not
+  come back itself in the same retrieve, Salesforce did not remark that it cannot find the listed name, and no
+  second listed name can stand for what came back in the same retrieve. For a document, the retrieve asked for
+  the listed name. For person accounts, it asked for the listed name, or for no
+  component of the type at all, as it is with a record type, which comes with its object. Otherwise the listed
+  component stays missing. The files and the keys of the snapshot keep the name that came back, so an impact
+  question names a record type of person accounts as `PersonAccount.Client`. The note
+  `RETRIEVED_UNDER_ANOTHER_NAME` says how many components of a type came back that way in one retrieve, and why
+  in `details.reason`: `file-ending` or `person-account`. Not verified on an org.
 - **A part is asked for by its own name when Salesforce cannot find its parent.** A field comes with its object,
   so a retrieve names the object, also when the org lists the field and not the object. When Salesforce remarks
   that it cannot find such an object, the fields, record types and other parts of it that the org lists are
@@ -563,17 +579,19 @@ The issue codes of the reading (`stage` is `read`):
 | --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `error`   | `FOLDER_MISSING`, `FOLDER_UNREADABLE`, `FILE_UNREADABLE`, `NAME_NOT_UTF8`, `RESOLVE_FAILED`, `APEX_FILE_UNRESOLVED` | In the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`                                                                                                                                                                                                                                                  |
 | `warning` | `LINK_SKIPPED`, `FILES_NOT_METADATA`, `COMPONENT_DEFINED_TWICE`, `PROJECT_FILE_INVALID`                             | Outside the logic tier: `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED`, `RESOLVE_FAILED`. In any tier: `TYPE_NOT_READ`, `TYPE_NOT_EXCLUDED`, `ACCESS_INCOMPLETE`, `RETRIEVE_MESSAGES`, `FILES_NOT_METADATA`, `FILE_RETRIEVED_TWICE`, `CROSS_CHECK_NOT_READ`, `CROSS_CHECK_PARTIAL`, `FLOW_VERSIONS_NOT_READ`, `FLOW_VERSION_UNKNOWN` |
-| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`, `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED`                                                                                                                                      |
+| `info`    | `FILES_IGNORED`, `COMMIT_UNKNOWN`, `WORKING_TREE_MODIFIED`, `CHANGED_WHILE_READ`                                    | `CHUNK_SPLIT`, `UNLISTED_COMPONENTS`, `RETRIEVED_WITHOUT_PREFIX`, `RETRIEVED_UNDER_ANOTHER_NAME`, `PARTS_ASKED_BY_NAME`, `SNAPSHOT_RESUMED`, `SNAPSHOT_GIVEN_UP`, `TYPES_EXCLUDED`, `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED`                                                                                                      |
 
 An issue about several components of an org carries their number in `details.count` and at most the first 50
-names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS` and
-`RETRIEVED_WITHOUT_PREFIX` name the type in `details.type`. The names of `RETRIEVED_WITHOUT_PREFIX` are the ones
-the org lists, with the prefix. `PARTS_ASKED_BY_NAME` counts and names the components Salesforce cannot find, each
-as type and name, and carries the number of parts that are asked for in `details.parts`. `RETRIEVE_FAILED` and
-`CHUNK_SPLIT` carry what Salesforce said in `details.said`, and
-`RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry
-the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
-there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
+names in `details.components`. `LISTING_FAILED`, `TYPE_NOT_READ`, `NOT_RETRIEVED`, `UNLISTED_COMPONENTS`,
+`RETRIEVED_WITHOUT_PREFIX` and `RETRIEVED_UNDER_ANOTHER_NAME` name the type in `details.type`. The names of
+`RETRIEVED_WITHOUT_PREFIX` are the ones the org lists, with the prefix, and the names of
+`RETRIEVED_UNDER_ANOTHER_NAME` are the ones the org lists too: with the ending of the file where `details.reason`
+is `file-ending`, and under the object `Account` where it is `person-account`. `PARTS_ASKED_BY_NAME` counts and
+names the components Salesforce cannot find, each as type and name, and carries the number of parts that are
+asked for in `details.parts`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce said in `details.said`,
+and `RETRIEVE_MESSAGES` its remarks in `details.messages`. `LISTING_FAILED`, `RETRIEVE_FAILED` and `CHUNK_SPLIT`
+carry the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the
+code there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
 the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` is written where the answer of
 `FlowDefinition` is not whole, or where it is whole and leaves out a flow the org listed. It carries the code of
 the failure in `details.code`, or `null`, the state of the answer in `details.state` (`whole`, `partial` or
