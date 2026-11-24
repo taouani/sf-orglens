@@ -1723,6 +1723,40 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
     });
 
+    it('ends what the Salesforce library says of such a file as a sentence, before what is said of the org', async () => {
+      // A file with the ending of a file beside a source file, and no source file. The library cannot place it
+      // and gives up the folder, and each file of the folder then gets the words of the library, which end
+      // without a full stop.
+      metadata.extraFiles.set('mysteries/Thing.mystery', 'what is this');
+      metadata.extraFiles.set('mysteries/Stray.mystery-meta.xml', '<Mystery/>');
+      metadata.unknownTypes.set('Mystery', { directory: 'mysteries' });
+      const described = await snap(workspaceDir());
+      expect(ofReading(described).map(({ message }) => message)).toEqual(
+        ['Stray.mystery-meta.xml', 'Thing.mystery'].map(
+          (name) =>
+            `mysteries/${name} could not be read as metadata: mysteries/${name}: Could not infer a metadata type. ` +
+            'The org describes a type that keeps its files in this folder, and the Salesforce library OrgLens reads with does not know it. ' +
+            'It is counted with the type Mystery, which is outside the logic tier, and does not make the snapshot partial.',
+        ),
+      );
+
+      // The org answers when the snapshot begins, and refuses the same question later.
+      let asked = 0;
+      mock.intercept = (request) => {
+        if (!request.body.includes('describeMetadata')) return undefined;
+        asked += 1;
+        return asked === 1 ? undefined : soapFault('UNKNOWN_EXCEPTION', 'An unexpected error occurred.');
+      };
+      const refused = await snap(workspaceDir());
+      expect(ofReading(refused).map(({ message }) => message)).toEqual(
+        ['Stray.mystery-meta.xml', 'Thing.mystery'].map(
+          (name) =>
+            `mysteries/${name} could not be read as metadata: mysteries/${name}: Could not infer a metadata type. ` +
+            'The org was asked which type keeps its files in this folder, and did not say: UNKNOWN_EXCEPTION: An unexpected error occurred.',
+        ),
+      );
+    });
+
     describe('with components of a package, which the org lists with a prefix and hands out without', () => {
       it('takes what comes back for the listed components, and is complete in a type of the logic tier', async () => {
         metadata.packaged.set('ApexClass:InvoiceService', 'pkg');
