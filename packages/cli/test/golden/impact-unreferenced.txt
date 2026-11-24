@@ -4,14 +4,14 @@ The answer is not complete: 8 types are not analysed yet, and the analysis had 1
 Nothing that was analysed refers to it.
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE              LISTED  RETRIEVED
-ApexClass         13      13
-ApexTrigger       1       1
-CustomLabel       1       1
-CustomLabels      1       1
-CustomPermission  1       1
-EmailFolder       1       1
-EmailTemplate     1       1
-GlobalValueSet    1       1
+TYPE                             LISTED  RETRIEVED
+ApexClass                        13      13
+ApexTrigger                      1       1
+CustomLabel                      1       1
+CustomLabels (holds the labels)  1       1
+CustomPermission                 1       1
+EmailFolder                      1       1
+EmailTemplate                    1       1
+GlobalValueSet                   1       1
 
 The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

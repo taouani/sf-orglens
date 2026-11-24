@@ -744,9 +744,11 @@ async function retrieveChunk(
     }
     const org = await typesOfFolder(api, problem.folder);
     if (org.types.length > 0) {
-      problems.push({ ...problem, message: `${problem.message} ${DESCRIBED_BY_ORG}`, types: org.types, byOrg: true });
+      // What the Salesforce library says of a file ends without a full stop.
+      const message = `${asSentence(problem.message)} ${DESCRIBED_BY_ORG}`;
+      problems.push({ ...problem, message, types: org.types, byOrg: true });
     } else if (org.refused !== null) {
-      const message = `${problem.message} The org was asked which type keeps its files in this folder, and did not say: ${org.refused}`;
+      const message = `${asSentence(problem.message)} The org was asked which type keeps its files in this folder, and did not say: ${org.refused}`;
       problems.push({ ...problem, message, byOrg: false });
     } else problems.push({ ...problem, byOrg: false });
   }

@@ -437,7 +437,18 @@ is not analysed yet. It can be larger than `RETRIEVED`: the analysis also counts
 inside the file of an object, and the elements of a flow with their flow, and a type of which the source lists
 nothing can have a line for that reason.
 
-Below it stand the issues of the reading, then the analysis, and for a snapshot of an org the cross-check:
+The custom labels have two lines, because they are two types of the Metadata API: `CustomLabel` counts the labels,
+and `CustomLabels` is the component that holds them. Its line says so: `CustomLabels (holds the labels)`. The table
+of types of an `impact` answer names it the same way. In JSON the type is `CustomLabels`.
+
+Below it stand the issues of the reading, one line for each. Two kinds of issue share a line, which then starts
+with their number and shows the first of them, and `--json` has every issue. One kind is the issues that come once
+for each flow: a code has one line, and `FLOW_VERSION_UNKNOWN` one for each reason it gives. The other is the
+issues `RESOLVE_FAILED` of a snapshot of an org that are counted with the same types and say the same of what they
+name: an org can hand out hundreds of files of a type the Salesforce library does not know, and each of them is an
+issue. Where nothing tells the type of the files, only those of one top folder share a line.
+
+Then come the analysis, and for a snapshot of an org the cross-check:
 
 ```
 Analysed by engine 0.1.0: 89 components, 106 references.
@@ -562,13 +573,21 @@ sorted. Those are the types that are retrieved by name: a field that fails with 
 component, or the types that keep their files in the top folder of the file with the types of their parts. The
 types are those the Salesforce library knows for the folder. Where it knows none, they are the types the org
 describes with that folder, and `details.describedByOrg` is `true`. The list is empty when nothing tells the
-type. When the org was asked for its types and refused, the message says so and what the org answered. A
-snapshot taken before these fields existed has issues without them.
+type. When the org was asked for its types and refused, the message says so and what the org answered.
+`details.at` names what could not be read, as the message does in its first words: the path of a file or a
+folder of the retrieve, or the type and the name of a component. It can also be an entry of the zip file beside
+its folder `unpackaged`, or a path of the files as they were converted. The text of `snapshot` and `coverage`
+shows one line for the issues with the same `details.types` whose messages say the same once that place is taken
+out of them, with their number and the first of them. Where `details.types` is empty, only the issues whose place
+starts with the same folder share a line: nothing else says that the files are of one kind, and the line shows
+the place of the first only. An issue without `details.types` has a line of its own: every issue of a Git source,
+and those of a snapshot taken before the field existed.
 
 `FLOW_NEWER_VERSION`, `ACTIVE_FLOW_NOT_RETRIEVED` and `FLOW_VERSION_UNKNOWN` are about one flow: they are the
 only issues of the reading whose `component` is not `null`, but the key of the flow, and `details.flow` is its
 name. The text of `snapshot` and `coverage` shows one line for each of the three codes, with the number of
-flows and the first issue. `FLOW_NEWER_VERSION` carries the number of the active version in `details.version`
+flows and the first issue, and for `FLOW_VERSION_UNKNOWN` one line for each `details.reason`.
+`FLOW_NEWER_VERSION` carries the number of the active version in `details.version`
 and the state of the newer one, such as `Draft`, in `details.newer`. `ACTIVE_FLOW_NOT_RETRIEVED` carries the same
 and what Salesforce said or handed out in `details.said`. `FLOW_VERSION_UNKNOWN` carries the state of the file in
 `details.state`, `["Flow"]` in `details.types`, and why the active version is not asked for in `details.reason`:
