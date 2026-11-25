@@ -2122,7 +2122,9 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toContain(
       'Rows compared: 136, which are 136 pairs of components. The analysis has 132 of them, has 3 as a reference to a part of the object Salesforce names, and missed 1.',
     );
-    expect(output).toContain('- 1 pair has a component that is not of the fixture project, and is not named.');
+    expect(output).toContain(
+      '- 1 pair has a component that is not of the fixture project, and is not named. By the types of its two ends: CustomField to CustomField (1).',
+    );
     expect(output).not.toContain('- missed');
     // The observation of the analysis names the two components in the database. The code is shown, the names are not.
     expect(output).toContain('- error REFERENCE_MISSED: 1 observation');

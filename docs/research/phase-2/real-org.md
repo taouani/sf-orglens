@@ -1,7 +1,8 @@
 # real-org, with the fixture project of Phase 2
 
 What the runs against the test org showed after the fixture project grew from 87 to 118 components, recorded on
-23 November 2026. The runs are the ones of the workflow "Live org" (`.github/workflows/live-org.yml`), whose log is
+23 November 2026, and after it grew to 120 with the report type and the quick action of work package 8, recorded on
+25 November 2026. The runs are the ones of the workflow "Live org" (`.github/workflows/live-org.yml`), whose log is
 public. Every number here is taken from such a log. Nothing was read from the org in another way, and no file of
 the org was kept.
 
@@ -40,6 +41,14 @@ In short:
   reader of the engine asked per component by the ids the org listed only, and the org does not list the id of the
   active version of a flow that has a draft. With the ids of the versions as well, the reading in parts is whole
   again `[run 27]`.
+- **Of a report type the Dependency API reports nothing. Of a quick action it reports the object it creates records
+  of and the field `targetParentField`**, and nothing it sets, reads or shows `[run 29]`. Run 29 deployed the 120
+  components, compared 136 rows, and the analysis missed none.
+- **The API keeps the rows of versions of a flow that are neither active nor the latest.** After the deploy of run
+  29 it gave 54 rows that the engine matches to nothing the org lists, and read in parts with every answer cut off
+  at 30 rows, the reading was no longer whole: 58 rows short, all from a flow to a custom field. By my reading of
+  the code, the reader does not ask per component for a part whose rows come from an id it does not know (section
+  5).
 - The symbol tables are as in Phase 0 and Phase 1: no reference in any of them.
 
 ## Conditions
@@ -63,9 +72,13 @@ In short:
 | [24](https://github.com/taouani/sf-orglens/actions/runs/45199698754) | read | `f5bb7fe` | green, with the same warning |
 | [26](https://github.com/taouani/sf-orglens/actions/runs/45221970983) | read | `3864d3b` | green, with the same warning |
 | [27](https://github.com/taouani/sf-orglens/actions/runs/45256396281) | read | `9e8e2d0` | green, with the same warning |
+| [28](https://github.com/taouani/sf-orglens/actions/runs/45416596205) | read and probe | `7ca24d5` | green, with the same warning |
+| [29](https://github.com/taouani/sf-orglens/actions/runs/45666961343) | deploy and read | `b2c8650` | green, with the same warning |
 
 Run 25 is the login the workflow makes once a week by itself. Run 16 was started by hand on `e86de72`, with the
-code of Phase 1, and read the org before anything of Phase 2 was deployed. This note does not use it.
+code of Phase 1, and read the org before anything of Phase 2 was deployed. This note does not use it. Run 28 read
+the org for decision record [0069](../../adr/0069-an-answer-below-the-limit-can-be-cut-off.md), and this note uses
+it as the last run before the deploy of run 29.
 
 ## 1. The deploys
 
@@ -76,6 +89,7 @@ A deploy is all or nothing, so the org was as before until run 19.
 | 17 | 118 | 116 | `Invoice_Before_Save`, `Invoice_Review_Screen` | 27 | 11 | 78 |
 | 18 | 118 | 117 | `Invoice_Before_Save` | 28 | 11 | 78 |
 | 19 | 118 | 118 | none | 29 | 11 | 78 |
+| 29 | 120 | 120 | none | 2 | 22 | 96 |
 
 The last three columns count the components Salesforce found no error in. Each deploy ended in under a minute.
 The project grew by 31 components, from 87 to 118, and Salesforce counted 29 as new in run 19. No log says which
@@ -107,6 +121,11 @@ What Salesforce accepted without a remark `[run 19]`, as far as one org of one e
 the Process Builder and workflow rules, which the setup pages no longer create, a time trigger of a workflow rule,
 a scheduled path of a flow, a custom error in a flow that runs before the save, a formula as the condition such a
 flow starts by, and an outbound message that names the user of the login.
+
+Run 29 deployed the project with the report type `Invoices_with_Lines` and the quick action `Invoice__c.New_Line`
+of work package 8 (record [0077](../../adr/0077-email-templates-report-types-and-quick-actions.md)), in 56 seconds.
+Salesforce counted the two as new and found no error in them. It counted 22 components as changed, and the log does
+not say which. Section 4 says what the deploy did to the versions of the flows.
 
 ## 2. The snapshot
 
@@ -220,6 +239,29 @@ and not the object. By my reading of the files, each of the 21 is a relation tha
 components of the project is wrong.
 
 Of the 13 fields the key calls unreferenced, the API reports a reference to none `[run 20]`.
+
+### The report type and the quick action
+
+`[run 29]`, after the deploy that brought them. The read step holds the rows against the pairs of the key, as the
+probe did in run 20, with the ids the org listed the components with.
+
+| From | To | In the key | Reported |
+| --- | --- | --- | --- |
+| QuickAction | CustomField | 5 | 1 |
+| QuickAction | CustomObject | 1 | 1 |
+| ReportType | CustomField | 8 | 0 |
+| ReportType | CustomObject | 1 | 0 |
+
+- **A quick action.** The object of the records it creates, `Invoice_Line__c`, and the field `targetParentField`
+  names, `Invoice_Line__c.Invoice__c`, are reported. Not reported: the three fields its predefined values write,
+  `Quantity__c`, `Status__c` and `Unit_Price__c`, also where its layout shows two of them, and the field of the
+  invoice its formula reads, `Invoice__c.Amount__c`.
+- **A report type.** Nothing: not its object, not the lookup field behind the child relationship it joins, not the
+  eight fields it lists, two of them standard. No row of the org is from a report type or to one, and the org lists
+  13.
+- **An email template.** As in run 20: its three custom fields, not the four standard ones, and the object
+  `Invoice__c`, which the key does not hold.
+- One row is to a quick action. The log counts it by the type of its target, and does not say what it is from.
 
 ## 4. Flows and their versions
 
@@ -355,6 +397,21 @@ version 1 of `Invoice_Recalculate` active, version 2 a draft. All of the followi
 - The cross-check of the types of Phase 1 is as in run 21: of 57 pairs Salesforce reports, the analysis has 55,
   has 2 through a part of the object, and missed none.
 
+### After the deploy of run 29
+
+The deploy of run 29 sent every flow of the project again, `Invoice_Recalculate` as the active version its file
+names. All of the following is `[run 29]`.
+
+- **The org named the active and the latest version of 7 flows, and the active version of none is older than its
+  latest.** In run 28 that was `Invoice_Recalculate`, whose draft was the latest. So the deploy made a new version
+  of it, active and the latest. The two flows without an active version are the same as in run 27.
+- **The API gave 116 rows from a flow: 62 with an id the org listed, and 54 without.** The 62 are as many as runs
+  27 and 28 compared. The 54 are counted as rows with an end the org did not list, not as rows of a version the
+  snapshot does not hold, since the engine knows the ids of the active and the latest version only. By my reading
+  of the counts they are the rows of the versions the deploy left behind: the 15 and the 16 rows of the first two
+  versions of `Invoice_Recalculate`, which run 27 counted, and 23 of older versions of the other flows the deploy
+  changed. The log names neither the versions nor the flows of these rows.
+
 ## 5. The cross-check of the engine
 
 In runs 19 and 21 the engine analyses the types of Phase 1 only, so it compares rows from a custom field or a
@@ -365,17 +422,20 @@ well. Run 26 read it with the readers of record types, field sets and records of
 flows by their version (record [0067](../../adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). In the runs
 before it the rows from a flow are not compared, and the second line of the table counts them with those of a type
 that is not analysed: 62 in run 19, before the draft, and 78 after it (section 4). The third line is new in run 27.
+Run 29 compares the rows of email templates and quick actions as well (record
+[0077](../../adr/0077-email-templates-report-types-and-quick-actions.md)), after the deploy that brought the report
+type and the quick action.
 
-| | Run 19 | Run 21 | Run 24 | Run 26 | Run 27 |
-| --- | --- | --- | --- | --- | --- |
-| Rows of the org | 335 | 351 | 351 | 351 | 351 |
-| Rows from a component of a type that is not analysed, or of a flow until run 27 | 278 | 294 | 291 | 283 | 205 |
-| Rows of a version of a flow that the snapshot does not hold | | | | | 16 |
-| Rows compared, which are as many pairs | 57 | 57 | 60 | 68 | 130 |
-| The analysis has the pair | 55 | 55 | 58 | 66 | 128 |
-| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 | 2 | 2 |
-| Missed by the analysis | 0 | 0 | 0 | 0 | 0 |
-| Rows with an end the org did not list | 0 | 0 | 0 | 0 | 0 |
+| | Run 19 | Run 21 | Run 24 | Run 26 | Run 27 | Run 28 | Run 29 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Rows of the org | 335 | 351 | 351 | 351 | 351 | 351 | 391 |
+| Rows from a component of a type that is not analysed, or of a flow until run 27 | 278 | 294 | 291 | 283 | 205 | 205 | 201 |
+| Rows of a version of a flow that the snapshot does not hold | | | | | 16 | 16 | 0 |
+| Rows compared, which are as many pairs | 57 | 57 | 60 | 68 | 130 | 130 | 136 |
+| The analysis has the pair | 55 | 55 | 58 | 66 | 128 | 128 | 133 |
+| The analysis has it through a part of the object Salesforce names | 2 | 2 | 2 | 2 | 2 | 2 | 3 |
+| Missed by the analysis | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Rows with an end the org did not list | 0 | 0 | 0 | 0 | 0 | 0 | 54 |
 
 - **The three rows of the workflow rules, from the formulas of field updates, are compared, and the analysis has
   all three** `[run 24]`. Of the pairs the analysis has and no row reports, it counts 18 with the reason
@@ -457,6 +517,39 @@ the log and not printed in it, the text says so.
   of version 1 of `Invoice_Recalculate`. That this is what made the difference is my reading of the code: the log
   does not show the queries.
 
+### The rows of templates and quick actions compared
+
+All of the following is `[run 29]`, with run 28 for what came before.
+
+- **The analysis misses none of the 136 pairs.** The 6 more than in run 28 are the 4 rows of the email template,
+  which were counted with those of a type that is not analysed until then, and the 2 of the quick action. The
+  analysis has the three of the template to a custom field and the two of the quick action, and the one of the
+  template to `Invoice__c` through the fields of the object, which makes 3 through a part.
+- **Of the pairs the analysis has and no row reports, it counts 7 with the reason `report-type` and 4 with
+  `quick-action`.** Those are the pairs of the key for these files that the API does not report (section 3), but
+  for `Invoice__c.Name` and `Invoice__c.OwnerId` of the report type, which count with `standard-field`.
+- **The counts of `standard-field` and `standard-object` grew from 42 to 329 and from 7 to 29.** The email
+  templates, report types and quick actions of the org are analysed now, and the org holds 29, 13 and 22 of them,
+  most of which are not of the fixture project. That these are where the counts come from is my reading: the log
+  counts reasons, not the components they are of.
+- **Two references of a kind Salesforce reports have no row.** Both have an end that is not of the fixture
+  project, and the log does not name them. Run 28 had none, and of the three new types only a pair of an email
+  template counts that way, so they are most likely of a template of the org. Whether the analysis or the API is
+  right about them is not known. The step now prints the types of the two ends of such a pair.
+- **Read in parts, the reading is not whole any more.** With every answer cut off at 30 rows it took 76 requests,
+  gave 333 of the 391 rows of the one query just before, and the engine called it partial: one query was counted
+  as cut off, at the limit with no smaller part to ask for. The 58 rows the parts lack are all from a flow to a
+  custom field. Run 28 read the same way gave all 351 rows in 82 requests and was whole. By my reading of the code
+  (`askPerComponent` in `sources/dependency-api.ts`), a part near the limit is asked for per component only where
+  every row its cut-off answer gave is from a component whose id the reader knows, and a row of an old version of a
+  flow is not. The text above expected that for a version that is neither active nor the latest, which no run
+  before showed.
+- What that means for a real org: Salesforce keeps the old versions of a flow until they are deleted. An org whose
+  flows give 2,000 rows or more to one type of target, and that holds old versions, can get a reading of the rows
+  of its flows that is not whole in the same way. The engine says so and compares what it read. The rows of an old
+  version are of no use to the comparison, since the snapshot holds the active version. Whether the snapshot should
+  ask the org for the ids of every version of a flow went to the maintainer on 25 November 2026.
+
 ## 6. The symbol tables
 
 `[run 20]`. The 13 classes of the project all have a symbol table. The tables hold 0 places of use and 0
@@ -468,7 +561,11 @@ Dependency API alone is the cross-check for Apex stands.
 - Any other org, edition or API version.
 - Why Salesforce refused the two flows, beyond the words it gave.
 - A flow with more than two versions, one whose active version is the latest of several, one with versions
-  that are obsolete, and one whose latest version is obsolete while an older one is active.
+  that are obsolete, and one whose latest version is obsolete while an older one is active, other than through the
+  rows of run 29, which the log does not tie to versions.
+- What the Dependency API reports of a quick action of another kind than one that creates a record, of a report
+  type with more than one join, and of a Lightning or a Visualforce template. The fixture project has one of each
+  of the others only.
 - A process of the Process Builder asked for by a number.
 - Several flows asked for by their numbers in one retrieve, and a flow of a managed package asked for that way.
 - What the file of a `FlowDefinition` says for a flow without an active version. The Tooling API says "none" for

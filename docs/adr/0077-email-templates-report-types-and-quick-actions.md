@@ -112,9 +112,13 @@ of the records it creates, the values it sets, the fields of its form and the fl
 7. **A row of the Dependency API from an email template is compared.** The test org reports the custom fields of
    the merge fields of a template, and the object they are of ([real-org.md of
    Phase 2](../research/phase-2/real-org.md)). A pair of the analysis from a template without a row is listed, but
-   for a standard field or object. What the API reports of a report type and of a quick action was not measured: a
-   row from one of them is compared, and a pair the analysis has without a row is counted with the reasons
-   `report-type` and `quick-action`, and not listed.
+   for a standard field or object. What the API reports of a report type and of a quick action was not measured
+   when this was decided: a row from one of them is compared, and a pair the analysis has without a row is counted
+   with the reasons `report-type` and `quick-action`, and not listed. Run 29 of that note measured it after the
+   merge: of a report type the API reports nothing, and of a quick action the object it creates records of and the
+   field `targetParentField`, not a field a predefined value writes, a name of its formula or a field of its layout.
+   The two reasons stay as they are: a field `targetParentField` names and one a predefined value writes are both
+   `assignment`.
 
 ## Consequences
 
@@ -157,4 +161,4 @@ of the records it creates, the values it sets, the fields of its form and the fl
   the names of the 15 child relationships every org has, and how a report type writes a column through a lookup
   field of Salesforce. So are the form of `defaultEmailTemplateName` and of `canvas` of a quick action, and whether
   an org hands out the body of a template in ISO-8859-1. What the Dependency API reports of a report type and of a
-  quick action was not measured: the test org lists neither until the next run of "Live org".
+  quick action was measured on the test org only, with one of each (decision 7).
