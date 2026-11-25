@@ -253,7 +253,8 @@ function kindsAt(reference: Placed, elements: readonly string[]): string {
       if (elements.includes('columns'))
         return line.charAt(reference.column - 1 + reference.match.length) === '.' ? 'reads' : 'references';
       if (elements.includes('quickActionLayoutItems')) {
-        const behavior = /<uiBehavior>(\w+)<\/uiBehavior>/.exec(lines.slice(reference.line).join('\n'))?.[1] ?? '';
+        const item = lines.slice(reference.line).join('\n').split('</quickActionLayoutItems>')[0] ?? '';
+        const behavior = /<uiBehavior>(\w+)<\/uiBehavior>/.exec(item)?.[1] ?? '';
         return behavior === 'Edit' || behavior === 'Required' ? 'reads writes' : 'reads';
       }
       return elements.includes('values') || elements.includes('picklistValues') ? 'references' : 'reads';

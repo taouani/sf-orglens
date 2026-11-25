@@ -47,8 +47,9 @@ of the records it creates, the values it sets, the fields of its form and the fl
      org. `ApprovalRequest` is the request of an approval, which is no record, and gives no reference.
      `{!Object.Link}` is the link to the record and no field. A lookup field of Salesforce is named by its
      relationship, as in a report type: `{!Case.CreatedBy}` reads `CreatedById`. A field of the owner is written as
-     a field of the record, `{!Case.OwnerEmail}`, and reads `OwnerId`: a last name that is `Owner` and a capital
-     letter, with no `__`.
+     a field of the record, `{!Case.OwnerEmail}`, and reads `OwnerId`: `Owner` and `FullName`, `FirstName`,
+     `LastName`, `Email`, `Phone`, `Title` or `Alias`. Only these, as a contract has a field
+     `OwnerExpirationNotice` of its own.
    - A Lightning template (`uiType` `SFX`, or `SFX_Sample` for a sample of Salesforce) writes `{{{Name.Field}}}`, and
      one made before Winter '19 `{!Name.Field}`: both forms are read. `Sender` is a user and `Organization` the org.
      The related record is of the object `relatedEntityType` names, and is written with that name. That object is
@@ -57,8 +58,12 @@ of the records it creates, the values it sets, the fields of its form and the fl
    - A Visualforce template writes `{!relatedTo.Field}` and `{!recipient.Field}`. The objects are the attributes
      `relatedToType` and `recipientType` of `<messaging:emailTemplate>` in its markup, and each is a `references`,
      `via: object`, at its place in the body. Where one is missing, the fields of that record are not followed.
-     `{!relatedTo.Lines__r}`, one name that ends in `__r`, is a child relationship of the record, and a
-     `references` to the lookup field behind it, as a join of a report type is.
+     A first name after the record that ends in `__r` is a relationship of a custom object, and only the model of
+     all objects says of which kind. A child relationship, `{!relatedTo.Lines__r}` or `{!relatedTo.Lines__r.size}`,
+     is a `references` to the lookup field behind it, as a join of a report type is, and what follows it is no
+     field. A relationship to a parent that the snapshot holds, or knows to be outside it, is a path as in a
+     formula, and alone, `{!relatedTo.Account__r}`, its lookup field. Any other is not followed, with a warning
+     that has no `details.endsAt`, as a child relationship of a report type that is not known.
    - A merge field of the form `{!...}` that holds more than a name, such as `{!IF(ISBLANK(Case.Reason), "", ...)}`
      or `{!TEXT(relatedTo.Amount__c)}`, is read as a formula with plain names whose first names are those of the
      kind (`readMergeFields` with `formula`). One that cannot be read as a formula is not read, with the warning
@@ -66,7 +71,9 @@ of the records it creates, the values it sets, the fields of its form and the fl
    - A first name that starts with `$` and that the kind does not know is a global variable, as in a flow:
      `{!$Setup.Settings__c.Limit__c}`. Any other first name is not read, with the warning `NAME_NOT_READ`.
    - The letterhead of a template is a `references` to the `Letterhead`, `via: template`, and each document it
-     attaches (`attachedDocuments`, `Folder/Name.pdf`) a `references` to the `Document`, `via: attachment`.
+     attaches (`attachedDocuments`, `Folder/Name.pdf`) a `references` to the `Document`, `via: attachment`, by
+     its name up to the first dot of the name of its file, as the Salesforce library keys a document (record
+     [0071](0071-a-component-that-comes-back-under-another-name.md)).
 3. **A report type is a `references` to its object, `via: object`, to the lookup field behind each child
    relationship it joins, `via: join`, and to each field it lists, `via: listed-field`.** A child relationship is
    the one a lookup or master-detail field of the snapshot names (`relationshipName` with `__r`, and the prefix of

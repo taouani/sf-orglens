@@ -167,7 +167,18 @@ export type RawReference = Raw &
      * relationships `joins`, which earlier joins of the same report type name. The reference is to the lookup
      * field of the child object that defines the relationship.
      */
-    | { readonly form: 'join'; readonly start: string; readonly joins: readonly string[]; readonly at: NameAt }
+    | {
+        readonly form: 'join';
+        readonly start: string;
+        readonly joins: readonly string[];
+        readonly at: NameAt;
+        /**
+         * Where the name can be a relationship to a parent as well, as in a Visualforce template: the names of the
+         * path from `start` that it is then. The path is followed where the name is no child relationship that is
+         * known and is a lookup field the snapshot holds or knows to be outside it.
+         */
+        readonly orPath?: readonly (NameAt & PathHint)[];
+      }
     /**
      * A field that a report type lists: a path of names from the object reached from `start` through the child
      * relationships `joins`, the table of the field. Every name before the last is a lookup field, and is read.
@@ -471,11 +482,12 @@ export function resolveReferences(
    * missing is to a lookup field whose name is not known either, so the warning says nothing of its end, and bears
    * on every answer about what refers to a component (decision records 0074 and 0077).
    */
-  const unknownChild = (at: NameAt, of: string): void => {
+  const unknownChild = (at: NameAt, of: string, child = true): void => {
+    const what = child ? 'child relationship' : 'relationship';
     issues.push({
       severity: 'warning',
       code: 'PATH_NOT_FOLLOWED',
-      message: `${owner.file}, line ${String(at.line)}: it is not known which object the child relationship "${cut(at.name, LONGEST_TEXT_SHOWN)}" of "${cut(of, LONGEST_TEXT_SHOWN)}" leads to, so it was not followed.`,
+      message: `${owner.file}, line ${String(at.line)}: it is not known which object the ${what} "${cut(at.name, LONGEST_TEXT_SHOWN)}" of "${cut(of, LONGEST_TEXT_SHOWN)}" leads to, so it was not followed.`,
       componentKey: owner.key,
       details: {
         path: owner.file,
@@ -558,8 +570,19 @@ export function resolveReferences(
       // Where an earlier join was not followed, its own reference says so.
       const object = children(one.start, one.joins);
       const child = object === null ? null : model.childRelationship(object, one.at.name);
+      const lookup = object === null || one.orPath === undefined ? null : model.relationship(object, one.at.name).field;
       if (child !== null) add(one.at, child.field, 'references', one);
-      else if (object !== null) unknownChild(one.at, object);
+      else if (one.orPath !== undefined && lookup !== null && lookup.resolution !== 'unresolved') {
+        const { orPath, start, tier } = one;
+        path({
+          form: 'path',
+          start,
+          names: orPath,
+          kind: 'reads',
+          via: one.via,
+          ...(tier === undefined ? {} : { tier }),
+        });
+      } else if (object !== null) unknownChild(one.at, object, one.orPath === undefined);
     } else if (one.form === 'column') {
       const object = children(one.start, one.joins);
       if (object === null) nothingSays(one.names, 'field');

@@ -61,9 +61,14 @@ describe('an email template', () => {
   const META = 'email/Billing/Overdue.email-meta.xml';
   const BODY = 'email/Billing/Overdue.email';
 
-  /** The project with a template of these lines of metadata and this body. */
-  const withTemplate = (meta: readonly string[], body: string | Uint8Array): Source => {
+  /** The project with a template of these lines of metadata and this body, and what `change` adds. */
+  const withTemplate = (
+    meta: readonly string[],
+    body: string | Uint8Array,
+    change: (source: Source) => void = () => undefined,
+  ): Source => {
     const source = project();
+    change(source);
     source.file('email/Billing.emailFolder-meta.xml', xml('EmailFolder', '<name>Billing</name>'));
     source.file(META, xml('EmailTemplate', '<available>true</available>', ...meta));
     source.file(BODY, body);
@@ -113,13 +118,19 @@ describe('an email template', () => {
         [
           'Owner {!Invoice__c.OwnerEmail}, made by {!Invoice__c.CreatedBy} for {!Contact.Account}.',
           '{!ApprovalRequest.Comments} {!TODAY()} {!Invoice__c.Owner.Email} {!Invoice__c.Amount__c +}',
+          '{!Contract.OwnerExpirationNotice}',
         ].join('\n'),
+        (source) => {
+          source.file('documents/Shared.documentFolder-meta.xml', xml('DocumentFolder', '<name>Shared</name>'));
+          source.file('documents/Shared/Terms.pdf', Uint8Array.of(0x25, 0x50, 0x44, 0x46));
+          source.file('documents/Shared/Terms.pdf-meta.xml', xml('Document', '<name>Terms</name>'));
+        },
       ),
     );
     expect(told(analysis, TEMPLATE)).toEqual([
-      // The letterhead and the document, which the project does not hold.
+      // The letterhead, which the project does not hold, and the document, whose key has no ending.
       '5:17 references null [Billing_Letterhead] unresolved template',
-      '4:24 references null [Shared/Terms.pdf] unresolved attachment',
+      '4:24 references Document:shared/terms [Shared/Terms.pdf] resolved attachment',
       // The formula of the text version, whose names start as the merge fields do.
       '7:39 reads CustomField:invoice__c.status__c [Status__c] resolved merge-field',
       '7:80 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
@@ -130,6 +141,8 @@ describe('an email template', () => {
       // The request of an approval is no record, and a formula of no name names nothing.
       '2:53 reads CustomField:invoice__c.ownerid [Owner] external merge-field',
       '2:59 reads CustomField:user.email [Email] external merge-field',
+      // A field of a contract that starts with Owner and is no field of the owner.
+      '3:12 reads CustomField:contract.ownerexpirationnotice [OwnerExpirationNotice] external merge-field',
     ]);
     expect(issuesOf(analysis)).toEqual([
       `warning NAME_NOT_READ ${TEMPLATE} ${BODY}, line 2: a merge field holds "Invoice__c.Amount__c +", which is not read as a name.`,
@@ -204,6 +217,7 @@ describe('an email template', () => {
       '<messaging:emailTemplate subject="Total > 0" recipientType="Contact" relatedToType="Invoice__c">',
       '<messaging:plainTextEmailBody>{!recipient.FirstName}, {!relatedTo.Amount__c} {!relatedTo.Account__r.Tier__c}',
       '<apex:repeat value="{!relatedTo.Lines__r}" var="line">{!line.Quantity__c}</apex:repeat> {!TEXT(relatedTo.Amount__c)}',
+      '{!IF(relatedTo.Lines__r.size > 0, 1, 0)} {!relatedTo.Account__r} {!relatedTo.Notes__r.size}',
       '</messaging:plainTextEmailBody>',
       '</messaging:emailTemplate>',
     ].join('\n');
@@ -219,11 +233,18 @@ describe('an email template', () => {
       // A child relationship of the record is the lookup field that defines it, and a formula is read.
       '3:33 references CustomField:invoice_line__c.invoice__c [Lines__r] resolved merge-field',
       '3:106 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
+      // What follows a child relationship is no field of the child, and a relationship to a parent alone is its
+      // lookup field.
+      '4:16 references CustomField:invoice_line__c.invoice__c [Lines__r] resolved merge-field',
+      '4:54 reads CustomField:invoice__c.account__c [Account__r] resolved merge-field',
     ]);
-    // A variable that the markup declares is not known.
+    // A variable that the markup declares is not known. Nor is a relationship that is neither a child relationship
+    // nor a lookup field the project holds: its lookup field can have any name.
     expect(issuesOf(analysis)).toEqual([
       `warning NAME_NOT_READ ${TEMPLATE} ${BODY}, line 3: a merge field holds "line.Quantity__c", and the template knows no "line". It is not read.`,
+      `warning PATH_NOT_FOLLOWED ${TEMPLATE} ${BODY}, line 4: it is not known which object the relationship "Notes__r" of "Invoice__c" leads to, so it was not followed.`,
     ]);
+    expect(analysis.issues.at(-1)?.details).not.toHaveProperty('endsAt');
 
     // Without the attributes, nothing says which object a record is of, and a name the template does not know is
     // not read.

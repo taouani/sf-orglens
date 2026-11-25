@@ -62,11 +62,19 @@ const TEMPLATE_TAG = /<messaging:emailTemplate\b(?:[^>"']|"[^"]*"|'[^']*')*>/i;
 /** An attribute of a tag and its value, in quotes. */
 const ATTRIBUTE = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/dg;
 
-/** The name of a field of the owner of a record that a classic template writes as a field of the record. */
-const OWNER_FIELD = /^Owner[A-Z][A-Za-z0-9]*$/;
+/**
+ * The names of the fields of the owner of a record that a classic template writes as fields of the record, by
+ * their folded name: `{!Case.OwnerEmail}`. Only these: a standard field such as `OwnerExpirationNotice` of a
+ * contract starts with `Owner` too.
+ */
+const OWNER_FIELDS: ReadonlySet<string> = new Set(
+  ['FullName', 'FirstName', 'LastName', 'Email', 'Phone', 'Title', 'Alias'].map(
+    (field) => `owner${field.toLowerCase()}`,
+  ),
+);
 
-/** A child relationship of a custom object, as a Visualforce template names one: `Lines__r`. */
-const CHILD_RELATIONSHIP = /__r$/i;
+/** A relationship of a custom object, as a Visualforce template names one: `Lines__r` or `Account__r`. */
+const RELATIONSHIP = /__r$/i;
 
 /** The object an attribute of the opening tag of a Visualforce template names, with its place in the body. */
 function objectInMarkup(body: TextDocument, attribute: string): NameAt | null {
@@ -113,26 +121,33 @@ function classicAdjusted(reference: RawReference): RawReference | null {
   const kept = withoutLink(reference);
   const last = kept === null ? null : lastOf(kept);
   if (kept?.form !== 'path' || last === null || last.resolveAs !== undefined) return kept;
-  const field =
-    standardLookupField(last.name) ??
-    (OWNER_FIELD.test(last.name) && foldName(last.name) !== 'ownerid' ? 'OwnerId' : undefined);
+  const field = standardLookupField(last.name) ?? (OWNER_FIELDS.has(foldName(last.name)) ? 'OwnerId' : undefined);
   if (field === undefined) return kept;
   return { ...kept, names: [...kept.names.slice(0, -1), { ...last, resolveAs: field }] };
 }
 
-/** A reference of a Visualforce template, where it names a child relationship of the record: a join. */
+/**
+ * A reference of a Visualforce template whose first name after the record is a relationship of a custom object:
+ * a child relationship, `{!relatedTo.Lines__r}`, or one to a parent, `{!relatedTo.Account__r.Tier__c}`. Which of
+ * the two is known only once every file was read, so it is a join that is followed as the path where the name is
+ * a lookup field (`raw-references.ts`).
+ */
 function visualforceAdjusted(reference: RawReference): RawReference | null {
-  const last = lastOf(reference);
-  if (
-    reference.form !== 'path' ||
-    reference.names.length !== 1 ||
-    last === null ||
-    !CHILD_RELATIONSHIP.test(last.name)
-  ) {
-    return reference;
-  }
-  const { line, column, name } = last;
-  return { form: 'join', start: reference.start, joins: [], at: { name, line, column }, via: reference.via };
+  if (reference.form !== 'path') return reference;
+  const [first, ...rest] = reference.names;
+  if (first === undefined || !RELATIONSHIP.test(first.name)) return reference;
+  // A relationship to a parent that stands alone is its lookup field.
+  const names =
+    rest.length === 0 ? [{ ...first, resolveAs: first.name.replace(RELATIONSHIP, '__c') }] : reference.names;
+  const { line, column, name } = first;
+  return {
+    form: 'join',
+    start: reference.start,
+    joins: [],
+    at: { name, line, column },
+    orPath: names,
+    via: reference.via,
+  };
 }
 
 /** The kind of a template, from what the file of its metadata says and from the markup of its body. */
@@ -220,14 +235,14 @@ export function readEmailTemplate(
     at,
     via: 'template',
   }));
+  // A document is named with the ending of its file, `Assets/Terms.pdf`, and its key without it (record 0071).
   for (const document of childrenOf(meta.root, 'attachedDocuments')) {
-    reader.wholeName(document, (at) => ({
-      form: 'component',
-      type: 'Document',
-      at,
-      fullName: at.name,
-      via: 'attachment',
-    }));
+    reader.wholeName(document, (at) => {
+      const slash = at.name.lastIndexOf('/');
+      const dot = at.name.indexOf('.', slash + 1);
+      const fullName = dot === -1 ? at.name : at.name.slice(0, dot);
+      return { form: 'component', type: 'Document', at, fullName, via: 'attachment' };
+    });
   }
   const texts: MergeFieldsReading[] = [];
   for (const local of TEXTS) {
