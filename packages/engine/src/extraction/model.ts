@@ -68,6 +68,12 @@ export interface ModelInput {
 /** A custom field of a contact as a person account shows it: `Level__pc` of the account is `Level__c` of the contact. */
 const PERSON_ACCOUNT_FIELD = /__pc$/i;
 
+/**
+ * The objects that show the fields of the contact of a person account, by folded name: the account, and the two
+ * objects under which an org with person accounts hands out parts of the account (decision record 0075).
+ */
+const PERSON_ACCOUNT_OBJECTS: ReadonlySet<string> = new Set(['account', 'personaccount', 'businessaccount']);
+
 /** The object of the record that holds a relationship. */
 const SELF = '';
 
@@ -150,17 +156,23 @@ export function buildModel(input: ModelInput): ObjectModel {
   };
 
   const field = (written: string, writtenName: string): Target => {
-    // Two objects show custom fields that belong to another: a task and an event those of `Activity`, and an
-    // account those of the contact of a person account, spelled `__pc`.
+    // Some objects show custom fields that belong to another: a task and an event those of `Activity`, and an
+    // account, as `PersonAccount` and `BusinessAccount`, those of the contact of a person account, spelled `__pc`.
     const folded = foldName(written);
     const custom = isCustomName(writtenName);
     const ofActivity = custom && (folded === 'task' || folded === 'event');
-    const ofContact = custom && folded === 'account' && PERSON_ACCOUNT_FIELD.test(writtenName);
+    const ofContact = custom && PERSON_ACCOUNT_OBJECTS.has(folded) && PERSON_ACCOUNT_FIELD.test(writtenName);
     const objectName = ofActivity ? 'Activity' : ofContact ? 'Contact' : written;
     const name = ofContact ? `${writtenName.slice(0, -2)}c` : writtenName;
     const key = keyOf('CustomField', `${objectName}.${name}`);
     if (key === null) return unresolved('CustomField');
     if (defined.has(key)) return resolved(key, 'CustomField');
+    if (ofContact) {
+      // The snapshot holds no such field of the contact. It can hold the field as the account shows it, in a file
+      // of its own, as the file of the object `PersonAccount` can.
+      const shown = keyOf('CustomField', `${written}.${writtenName}`);
+      if (shown !== null && defined.has(shown)) return resolved(shown, 'CustomField');
+    }
     const whole = geolocationField(name);
     const wholeKey = whole === null ? null : keyOf('CustomField', `${objectName}.${whole}`);
     if (wholeKey !== null && defined.has(wholeKey)) return resolved(wholeKey, 'CustomField');
