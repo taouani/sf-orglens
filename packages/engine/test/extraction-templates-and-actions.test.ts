@@ -100,14 +100,46 @@ describe('an email template', () => {
     expect(analysis.work.find((one) => one.origin === 'parser:xml')?.failedFiles).toBe(0);
   });
 
-  it('says which merge field it did not read, and which it did not find closed, in the body as in the subject', async () => {
+  it('of the classic kind reads a formula in a merge field, a lookup field by its relationship and the owner', async () => {
     const analysis = await analysed(
       withTemplate(
         [
+          '<attachedDocuments>Shared/Terms.pdf</attachedDocuments>',
+          '<letterhead>Billing_Letterhead</letterhead>',
           '<name>Overdue</name>',
-          '<subject>{!IF(true, 1, 2)} and {!Invoice__c.Amount__c</subject>',
-          '<type>html</type>',
+          '<textOnly>{!IF(ISBLANK(Invoice__c.Status__c), &quot;none&quot;, Invoice__c.Amount__c)}</textOnly>',
+          '<type>custom</type>',
         ],
+        [
+          'Owner {!Invoice__c.OwnerEmail}, made by {!Invoice__c.CreatedBy} for {!Contact.Account}.',
+          '{!ApprovalRequest.Comments} {!TODAY()} {!Invoice__c.Owner.Email} {!Invoice__c.Amount__c +}',
+        ].join('\n'),
+      ),
+    );
+    expect(told(analysis, TEMPLATE)).toEqual([
+      // The letterhead and the document, which the project does not hold.
+      '5:17 references null [Billing_Letterhead] unresolved template',
+      '4:24 references null [Shared/Terms.pdf] unresolved attachment',
+      // The formula of the text version, whose names start as the merge fields do.
+      '7:39 reads CustomField:invoice__c.status__c [Status__c] resolved merge-field',
+      '7:80 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
+      // The owner's address and the user who made the record are the lookup fields, and so is the account.
+      '1:20 reads CustomField:invoice__c.ownerid [OwnerEmail] external merge-field',
+      '1:54 reads CustomField:invoice__c.createdbyid [CreatedBy] external merge-field',
+      '1:79 reads CustomField:contact.accountid [Account] external merge-field',
+      // The request of an approval is no record, and a formula of no name names nothing.
+      '2:53 reads CustomField:invoice__c.ownerid [Owner] external merge-field',
+      '2:59 reads CustomField:user.email [Email] external merge-field',
+    ]);
+    expect(issuesOf(analysis)).toEqual([
+      `warning NAME_NOT_READ ${TEMPLATE} ${BODY}, line 2: a merge field holds "Invoice__c.Amount__c +", which is not read as a name.`,
+    ]);
+  });
+
+  it('says which merge field it did not read, and which it did not find closed, in the body as in the subject', async () => {
+    const analysis = await analysed(
+      withTemplate(
+        ['<name>Overdue</name>', '<subject>{!IF(true, 1} and {!Invoice__c.Amount__c</subject>', '<type>html</type>'],
         '<p>{!Invoice__c.Status__c}</p>\n<p>{!1abc} {!Invoice__c.Amount__c</p>',
       ),
     );
@@ -115,7 +147,7 @@ describe('an email template', () => {
       '1:17 reads CustomField:invoice__c.status__c [Status__c] resolved merge-field',
     ]);
     expect(issuesOf(analysis)).toEqual([
-      `warning NAME_NOT_READ ${TEMPLATE} ${META}, line 5: a merge field in "subject" holds "IF(true, 1, 2)", which is not read as a name.`,
+      `warning NAME_NOT_READ ${TEMPLATE} ${META}, line 5: a merge field in "subject" holds "IF(true, 1", which is not read as a name.`,
       `warning MERGE_FIELD_NOT_CLOSED ${TEMPLATE} ${META}, line 5: a merge field in "subject" is not closed. Nothing is read of it.`,
       `warning NAME_NOT_READ ${TEMPLATE} ${BODY}, line 2: a merge field holds "1abc", which is not read as a name.`,
       `warning MERGE_FIELD_NOT_CLOSED ${TEMPLATE} ${BODY}, line 2: a merge field is not closed. Nothing is read of it.`,
@@ -138,12 +170,15 @@ describe('an email template', () => {
           '<type>custom</type>',
           '<uiType>SFX</uiType>',
         ],
-        'Hello {{{Recipient.FirstName}}}, {{{Invoice__c.Amount__c}}} from {{{Sender.Email}}} of {{{Organization.Name}}}.\n{{{Opportunity.Name}}} {{{Invoice__c.Amount__c}',
+        'Hello {{{Recipient.FirstName}}}, {{{Invoice__c.Amount__c}}} from {{{Sender.Email}}} of {{{Organization.Name}}}.\n{{{Opportunity.Name}}} {{{Invoice__c.Link}}} {{{Invoice__c.Amount__c}',
       ),
     );
     expect(told(analysis, TEMPLATE)).toEqual([
-      // A merge field in the form of a classic template is no merge field here.
+      // The object of the related record.
+      '5:24 references CustomObject:invoice__c [Invoice__c] resolved object',
+      // A template made before Winter '19 writes its merge fields as a classic template does.
       '6:28 reads CustomField:invoice__c.name [Name] external merge-field',
+      '6:49 reads CustomField:invoice__c.status__c [Status__c] resolved merge-field',
       '1:48 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
       '1:76 reads CustomField:user.email [Email] external merge-field',
       '1:104 reads CustomField:organization.name [Name] external merge-field',
@@ -153,22 +188,42 @@ describe('an email template', () => {
       `warning MERGE_FIELD_NOT_CLOSED ${TEMPLATE} ${BODY}, line 2: a merge field is not closed. Nothing is read of it.`,
       `warning PATH_NOT_FOLLOWED ${TEMPLATE} ${BODY}, line 1: it is not known which object "Recipient" holds, so "FirstName" after it was not followed.`,
     ]);
+
+    // A template that Salesforce provides is of the same kind.
+    const sample = await analysed(
+      withTemplate(
+        ['<name>Overdue</name>', '<type>custom</type>', '<uiType>SFX_Sample</uiType>'],
+        '{{{Sender.Email}}}',
+      ),
+    );
+    expect(told(sample, TEMPLATE)).toEqual(['1:11 reads CustomField:user.email [Email] external merge-field']);
   });
 
   it('of the Visualforce kind takes the objects of the records from the attributes of its markup', async () => {
     const markup = [
-      '<messaging:emailTemplate subject="Overdue" recipientType="Contact" relatedToType="Invoice__c">',
-      '<messaging:plainTextEmailBody>{!recipient.FirstName}, {!relatedTo.Amount__c} {!relatedTo.Account__r.Tier__c}</messaging:plainTextEmailBody>',
+      '<messaging:emailTemplate subject="Total > 0" recipientType="Contact" relatedToType="Invoice__c">',
+      '<messaging:plainTextEmailBody>{!recipient.FirstName}, {!relatedTo.Amount__c} {!relatedTo.Account__r.Tier__c}',
+      '<apex:repeat value="{!relatedTo.Lines__r}" var="line">{!line.Quantity__c}</apex:repeat> {!TEXT(relatedTo.Amount__c)}',
+      '</messaging:plainTextEmailBody>',
       '</messaging:emailTemplate>',
     ].join('\n');
     const analysis = await analysed(withTemplate(['<name>Overdue</name>', '<type>visualforce</type>'], markup));
     expect(told(analysis, TEMPLATE)).toEqual([
+      // The objects of the two records. A value of another attribute can hold a ">".
+      '1:85 references CustomObject:invoice__c [Invoice__c] resolved object',
+      '1:61 references CustomObject:contact [Contact] external object',
       '2:43 reads CustomField:contact.firstname [FirstName] external merge-field',
       '2:67 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
       '2:90 reads CustomField:invoice__c.account__c [Account__r] resolved merge-field',
       '2:101 reads CustomField:account.tier__c [Tier__c] resolved merge-field',
+      // A child relationship of the record is the lookup field that defines it, and a formula is read.
+      '3:33 references CustomField:invoice_line__c.invoice__c [Lines__r] resolved merge-field',
+      '3:106 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
     ]);
-    expect(issuesOf(analysis)).toEqual([]);
+    // A variable that the markup declares is not known.
+    expect(issuesOf(analysis)).toEqual([
+      `warning NAME_NOT_READ ${TEMPLATE} ${BODY}, line 3: a merge field holds "line.Quantity__c", and the template knows no "line". It is not read.`,
+    ]);
 
     // Without the attributes, nothing says which object a record is of, and a name the template does not know is
     // not read.
@@ -211,6 +266,19 @@ describe('an email template', () => {
       `error XML_NOT_UTF8 null ${BODY}: The bytes of the file are not text in UTF-8.`,
     ]);
     expect(analysis.work.find((one) => one.origin === 'parser:xml')?.failedFiles).toBe(1);
+  });
+
+  it('reads a body in ISO-8859-1 where the file of its metadata says so and the bytes are no UTF-8', async () => {
+    const body = Buffer.from('Montant dû : {!Invoice__c.Amount__c}', 'latin1');
+    const meta = ['<name>Overdue</name>', '<type>text</type>'];
+    const analysis = await analysed(withTemplate(['<encodingKey>ISO-8859-1</encodingKey>', ...meta], body));
+    expect(told(analysis, TEMPLATE)).toEqual([
+      '1:27 reads CustomField:invoice__c.amount__c [Amount__c] resolved merge-field',
+    ]);
+    expect(issuesOf(analysis)).toEqual([]);
+    // Any other encoding is not read.
+    const other = await analysed(withTemplate(['<encodingKey>Shift_JIS</encodingKey>', ...meta], body));
+    expect(issuesOf(other)).toEqual([`error XML_NOT_UTF8 null ${BODY}: The bytes of the file are not text in UTF-8.`]);
   });
 
   it('reads nothing of the body where the file of its metadata is not that of an email template', async () => {
@@ -514,7 +582,77 @@ describe('a quick action', () => {
     expect(issuesOf(ofAccount)).toEqual([]);
   });
 
-  it('shows in its layout fields of the object whose records it sets, and an empty space names nothing', async () => {
+  it('names the record type of the records it creates, and the email template it starts with', async () => {
+    const source = withAction('Account.New_Invoice', [
+      '<label>New Invoice</label>',
+      '<targetObject>Invoice__c</targetObject>',
+      '<targetParentField>Account__c</targetParentField>',
+      '<targetRecordType>Invoice__c.Credit_Note</targetRecordType>',
+      '<type>Create</type>',
+    ]);
+    source.file(
+      'objects/Invoice__c/recordTypes/Credit_Note.recordType-meta.xml',
+      xml('RecordType', '<fullName>Credit_Note</fullName>', '<active>true</active>', '<label>Credit Note</label>'),
+    );
+    expect(told(await analysed(source), key('QuickAction', 'Account.New_Invoice'))).toEqual([
+      '4:19 references CustomObject:invoice__c [Invoice__c] resolved object',
+      '6:34 references RecordType:invoice__c.credit_note [Credit_Note] resolved assignment',
+      '5:24 writes CustomField:invoice__c.account__c [Account__c] resolved assignment',
+    ]);
+
+    // A record type is named by its object and its name. Any other name is not read.
+    const alone = await analysed(
+      withAction('Account.New_Invoice', [
+        '<label>New Invoice</label>',
+        '<targetObject>Invoice__c</targetObject>',
+        '<targetRecordType>Credit_Note</targetRecordType>',
+        '<type>Create</type>',
+      ]),
+    );
+    expect(issuesOf(alone)).toEqual([
+      `warning NAME_NOT_READ ${key('QuickAction', 'Account.New_Invoice')} ${ACTIONS}Account.New_Invoice.quickAction-meta.xml, line 5: the element "targetRecordType" holds "Credit_Note", which is not read as a name.`,
+    ]);
+
+    // An action that sends email names its template by its folder and its name. A task names the record it is
+    // about by the relationship What.
+    const email = withAction('Invoice__c.Send', [
+      '<label>Send</label>',
+      '<quickActionSendEmailOptions>',
+      '    <defaultEmailTemplateName>Billing/Overdue</defaultEmailTemplateName>',
+      '    <ignoreDefaultEmailTemplateSubject>false</ignoreDefaultEmailTemplateSubject>',
+      '</quickActionSendEmailOptions>',
+      '<targetObject>OutgoingEmail</targetObject>',
+      '<type>SendEmail</type>',
+    ]);
+    email.file('email/Billing.emailFolder-meta.xml', xml('EmailFolder', '<name>Billing</name>'));
+    email.file(
+      'email/Billing/Overdue.email-meta.xml',
+      xml('EmailTemplate', '<name>Overdue</name>', '<type>text</type>'),
+    );
+    email.file('email/Billing/Overdue.email', 'Overdue');
+    email.file(
+      `${ACTIONS}Account.Log.quickAction-meta.xml`,
+      xml(
+        'QuickAction',
+        '<label>Log</label>',
+        '<targetObject>Task</targetObject>',
+        '<targetParentField>What</targetParentField>',
+        '<type>LogACall</type>',
+      ),
+    );
+    const sent = await analysed(email);
+    expect(told(sent, key('QuickAction', 'Invoice__c.Send'))).toEqual([
+      '8:19 references CustomObject:outgoingemail [OutgoingEmail] external object',
+      '5:43 references EmailTemplate:billing/overdue [Overdue] resolved template',
+    ]);
+    expect(told(sent, key('QuickAction', 'Account.Log'))).toEqual([
+      '4:19 references CustomObject:task [Task] external object',
+      '5:24 writes CustomField:task.whatid [What] external assignment',
+    ]);
+    expect(issuesOf(sent)).toEqual([]);
+  });
+
+  it('shows in its layout fields of the object whose records it sets, sets those the user types in, and an empty space names nothing', async () => {
     const lines = (target: string): string[] => [
       '<label>New Line</label>',
       '<quickActionLayout>',
@@ -529,6 +667,11 @@ describe('a quick action', () => {
       '            <emptySpace>true</emptySpace>',
       '            <uiBehavior>Edit</uiBehavior>',
       '        </quickActionLayoutItems>',
+      '        <quickActionLayoutItems>',
+      '            <emptySpace>false</emptySpace>',
+      '            <field>Invoice__c</field>',
+      '            <uiBehavior>Readonly</uiBehavior>',
+      '        </quickActionLayoutItems>',
       '    </quickActionLayoutColumns>',
       '    <quickActionLayoutColumns/>',
       '</quickActionLayout>',
@@ -537,8 +680,11 @@ describe('a quick action', () => {
     ];
     const analysis = await analysed(withAction('Invoice__c.New_Line', lines('Invoice_Line__c')));
     expect(told(analysis, key('QuickAction', 'Invoice__c.New_Line'))).toEqual([
-      '19:19 references CustomObject:invoice_line__c [Invoice_Line__c] resolved object',
+      '24:19 references CustomObject:invoice_line__c [Invoice_Line__c] resolved object',
+      // The user types in the quantity, and only sees the invoice.
       '9:24 reads CustomField:invoice_line__c.quantity__c [Quantity__c] resolved listed-field',
+      '9:24 writes CustomField:invoice_line__c.quantity__c [Quantity__c] resolved listed-field',
+      '18:24 reads CustomField:invoice_line__c.invoice__c [Invoice__c] resolved listed-field',
     ]);
     expect(issuesOf(analysis)).toEqual([]);
     // A global action without an object: nothing says whose field the layout shows.
@@ -546,6 +692,7 @@ describe('a quick action', () => {
     expect(told(global, key('QuickAction', 'New_Line'))).toEqual([]);
     expect(issuesOf(global)).toEqual([
       `warning PATH_NOT_FOLLOWED ${key('QuickAction', 'New_Line')} ${ACTIONS}New_Line.quickAction-meta.xml, line 9: nothing says which object "Quantity__c" is a field of, so it was not followed.`,
+      `warning PATH_NOT_FOLLOWED ${key('QuickAction', 'New_Line')} ${ACTIONS}New_Line.quickAction-meta.xml, line 18: nothing says which object "Invoice__c" is a field of, so it was not followed.`,
     ]);
   });
 
@@ -582,7 +729,7 @@ describe('a quick action', () => {
     ]);
   });
 
-  it('calls the flow it starts, and names the component or page it opens', async () => {
+  it('calls the flow it starts, and names the component, page or canvas app it opens', async () => {
     /** The references of an action that opens what `element` names, with the files of that in the project. */
     const opened = async (
       fullName: string,
@@ -641,6 +788,12 @@ describe('a quick action', () => {
         ['pages/InvoicePrint.page-meta.xml', xml('ApexPage', '<label>Print</label>')],
       ),
     ).toEqual(['4:11 references ApexPage:invoiceprint [InvoicePrint] resolved action']);
+    expect(
+      await opened('Invoice__c.Ledger', 'canvas', 'Ledger_App', 'Canvas', [
+        'connectedApps/Ledger_App.connectedApp-meta.xml',
+        xml('ConnectedApp', '<contactEmail>billing@example.com</contactEmail>', '<label>Ledger</label>'),
+      ]),
+    ).toEqual(['4:13 references ConnectedApp:ledger_app [Ledger_App] resolved action']);
     // Where the project does not hold it, the name is not found.
     expect(await opened('Invoice__c.Print', 'page', 'InvoicePrint', 'VisualforcePage')).toEqual([
       '4:11 references null [InvoicePrint] unresolved action',

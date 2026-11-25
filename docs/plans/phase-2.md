@@ -436,7 +436,7 @@ Accepted when:
 Built on 25 November 2026 (record 0077). Both codebases are under BSD-3-Clause. At the pinned commits the package
 folders hold 31 email templates, 8 report types and 54 quick actions, and the analysis reads them without an error.
 One formula of a quick action of PMM holds a token of the build tool of that project and is not read, with
-warnings. The key has 17 entries more, for a report type and a quick action of the fixture project, and the
+warnings. The key has 19 entries more, for a report type and a quick action of the fixture project, and the
 analysis finds them and no other.
 
 ### WP9 Proof on public codebases, and measurements

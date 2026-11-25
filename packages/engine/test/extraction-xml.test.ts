@@ -287,6 +287,18 @@ describe('a file that is no XML, such as the body of an email template', () => {
     });
     expect(readText(Uint8Array.of(0xff, 0xfe, 0x61, 0x00)).issue?.code).toBe('XML_UNSUPPORTED');
   });
+
+  it('is read in ISO-8859-1 where it is said to be and its bytes are no UTF-8, one character to a byte', () => {
+    const latin = Uint8Array.of(0x64, 0xfb, 0x0a, 0x7b, 0x21, 0x41, 0x7d);
+    const reading = readText(latin, ' ISO-8859-1 ');
+    if (reading.document === null) throw new Error('Not read.');
+    expect(reading.document.text).toBe('dû\n{!A}');
+    expect(reading.document.place(4)).toEqual({ line: 2, column: 2, offset: 4 });
+    // Bytes that are UTF-8 are read as UTF-8 whatever is said, and no other encoding is read.
+    expect(readText(bytesOf('dû'), 'ISO-8859-1').document?.text).toBe('dû');
+    expect(readText(latin, 'Shift_JIS').issue?.code).toBe('XML_NOT_UTF8');
+    expect(readText(latin, 'UTF-8').issue?.code).toBe('XML_NOT_UTF8');
+  });
 });
 
 describe('attributes and namespaces', () => {

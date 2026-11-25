@@ -4,13 +4,13 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org,
-take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects,
-fields, validation rules, record types and field sets, with the formulas in them, for its flows, element by
-element, for its workflow rules with their actions, for the records of its custom metadata types, and for its
-email templates, report types and quick actions. `orglens impact` answers what refers to a component from those types alone. Nothing else of a snapshot is analysed yet, and
-an answer names the types it does not cover. Reading an org is tested against a mock org. The code that reads an
-org was also run against one real Developer Edition org, by a tool of the tests
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org, take
+snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects, fields,
+validation rules, record types and field sets, with the formulas in them, for its flows, element by element, for its
+workflow rules with their actions, for the records of its custom metadata types, and for its email templates, report
+types and quick actions. `orglens impact` answers what refers to a component from those types alone. Nothing else of a
+snapshot is analysed yet, and an answer names the types it does not cover. Reading an org is tested against a mock org.
+The code that reads an org was also run against one real Developer Edition org, by a tool of the tests
 ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot` itself has not been run against
 Salesforce.
 
@@ -361,12 +361,15 @@ where it is a relationship to that type. It is a field, at the tier `probable`, 
 file of the snapshot defines that field. Of an object itself, it reads the name of the page or component that
 overrides one of its actions, such as the Lightning page of its records: the page itself is not read. It reads the
 merge fields of an email template, in its subject and in its body, which is a file of its own and no XML, in the
-forms of a classic, a Lightning and a Visualforce template. A merge field of a record is read where the template
-says which object the record is of, and a field of the recipient of a Lightning template is not followed. It
-reads report types: the object, the lookup field behind each child relationship a report type joins, and each
-field it lists. It reads quick actions: the object whose records an action creates, each field it sets and the
-lookup to the record it runs on, the names in the formula of a value it sets, the fields its layout shows, and the
-flow, component or page it opens. Every other type is stored and not analysed yet.
+forms of a classic, a Lightning and a Visualforce template, also where a merge field holds a formula. A merge field
+of a record is read where the template says which object the record is of, and a field of the recipient of a
+Lightning template is not followed. It also reads the object a template is written for, its letterhead and the
+documents it attaches. It reads report types: the object, the lookup field behind each child relationship a report
+type joins, and each field it lists. It reads quick actions: the object and the record type of the records an
+action creates, each field it sets and the lookup to the record it runs on, the names in the formula of a value it
+sets, the fields its layout shows, which it also sets where the user types in them, the email template it starts
+with, and the flow, component, page or canvas app it opens. The icon of an action is not read. Every other type is
+stored and not analysed yet.
 Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
 [0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md),

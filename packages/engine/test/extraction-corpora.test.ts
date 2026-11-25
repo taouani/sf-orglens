@@ -66,10 +66,12 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * beside their files that day: `object` is the object a quick action creates or a report type starts from,
  * `assignment` a field a quick action sets, `action` the flow, page or component a quick action opens, `join` the
  * lookup by which a report type joins an object, `listed-field` also a column of a report type and a field the
- * layout of a quick action shows, and `merge-field` a merge field of an email template. A column `Id` gives none, and `Owner` is the field `OwnerId`. NPSP and PMM
- * name objects and fields of the packages they build on, which are `external`. V4S is in the metadata format: an
- * object and its fields are one file. The workflow rules of V4S give `action`, `assignment` and `template`, as
- * those of NPSP do.
+ * layout of a quick action shows, twice where the user types in it (`Edit`, `Required`: 7 in Nebula Logger, 135 in
+ * NPSP, 74 in PMM and 24 in Outbound Funds), `template` also the letterhead of an email template (1 in NPSP, 6 in
+ * V4S), and `merge-field` a merge field of an email template. A column `Id` gives none, and `Owner` is the field
+ * `OwnerId`. NPSP and PMM name objects and fields of the packages they build on, which are
+ * `external`. V4S is in the metadata format: an object and its fields are one file. The workflow rules of V4S give
+ * `action`, `assignment` and `template`, as those of NPSP do.
  */
 interface Expected {
   readonly components: number;
@@ -104,7 +106,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'display-field': 4,
       filter: 7,
       formula: 387,
-      'listed-field': 146,
+      'listed-field': 153,
       lookup: 17,
       'record-of': 55,
       summary: 16,
@@ -125,13 +127,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'display-field': 2,
       filter: 11,
       formula: 70,
-      'listed-field': 2106,
+      'listed-field': 2241,
       lookup: 77,
       'merge-field': 8,
       object: 16,
       'record-of': 193,
       summary: 4,
-      template: 1,
+      template: 2,
       value: 318,
       'value-set': 2,
     },
@@ -150,7 +152,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       filter: 4,
       formula: 133,
       join: 1,
-      'listed-field': 578,
+      'listed-field': 652,
       lookup: 26,
       object: 14,
       'record-of': 27,
@@ -176,7 +178,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'merge-field': 404,
       object: 4,
       summary: 24,
-      template: 7,
+      template: 13,
     },
     issues: {},
   },
@@ -191,7 +193,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       filter: 3,
       formula: 3,
       join: 4,
-      'listed-field': 143,
+      'listed-field': 167,
       lookup: 15,
       object: 6,
       summary: 6,

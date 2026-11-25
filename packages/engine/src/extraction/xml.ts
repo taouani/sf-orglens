@@ -793,11 +793,21 @@ function decode(
  * Reads the bytes of a file that is no XML as text in UTF-8, as `readXml` reads them: a byte order mark of UTF-8
  * is no part of the text, and one of UTF-16 or UTF-32 is refused. It gives the text, or the issue why the bytes
  * are none.
+ *
+ * `declared` is the encoding the file is said to have elsewhere, such as the `encodingKey` of an email template.
+ * Where it is `ISO-8859-1` and the bytes are no UTF-8, they are read in that encoding, one character to a byte.
+ * Any other encoding is not read.
  */
 export function readText(
   bytes: Uint8Array,
+  declared: string | null = null,
 ): { readonly document: TextDocument; readonly issue: null } | { readonly document: null; readonly issue: XmlIssue } {
   const decoded = decode(bytes);
+  if (decoded.issue?.code === 'XML_NOT_UTF8' && declared?.trim().toLowerCase() === 'iso-8859-1') {
+    // The decoder of the web reads ISO-8859-1 as windows-1252, which differs only in 32 characters no name holds.
+    const text = new TextDecoder('iso-8859-1').decode(bytes);
+    return { document: { text, place: placer(text, 0, bytes.length) }, issue: null };
+  }
   if (decoded.issue !== null) return { document: null, issue: decoded.issue };
   const { text, byteOrderMark } = decoded;
   return { document: { text, place: placer(text, byteOrderMark ? 3 : 0, bytes.length) }, issue: null };

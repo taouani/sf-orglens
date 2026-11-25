@@ -582,7 +582,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
       expect(org.components).toHaveLength(177);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(324);
+      expect(org.references).toHaveLength(326);
       // The flows among them: 6 flows with 55 elements, and the 126 references of the answer key.
       const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
       expect(org.components.filter(ofFlow)).toHaveLength(61);
@@ -615,8 +615,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
       // The 12 components of the two files of workflow rules are read as XML too, with 21 references, and so are
       // the 2 record types, the field set and the 4 records of custom metadata, with 28, and the email template,
-      // the report type and the quick action, with 24.
-      const xml = { failedFiles: 0, references: 103, unresolved: 0, pathsNotFollowed: 0 };
+      // the report type and the quick action, with 26.
+      const xml = { failedFiles: 0, references: 105, unresolved: 0, pathsNotFollowed: 0 };
       // The formulas of 35 fields and rules, of 7 elements of flows, of 2 workflow rules and 2 field updates and of
       // the quick action: 82 names, 19, 12 and 1. Of the 126 references of flows, the other 107 are of the reader
       // of flows. One path of a flow is not followed.
@@ -627,7 +627,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 183,
-        references: 324,
+        references: 326,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 97, ...xml },
@@ -637,7 +637,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 177,
-        references: 324,
+        references: 326,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 95, ...xml },

@@ -417,6 +417,9 @@ describe('a child relationship, as a report type joins one', () => {
     expect(standardLookupField('Name')).toBeUndefined();
     expect(standardLookupField('Account__c')).toBeUndefined();
     expect(standardLookupField('OwnerId')).toBeUndefined();
+    // The relationships of a task and an event that lead to one of several objects.
+    expect(standardLookupField('What')).toBe('WhatId');
+    expect(standardLookupField('who')).toBe('whoId');
   });
 });
 

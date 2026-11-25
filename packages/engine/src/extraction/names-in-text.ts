@@ -115,6 +115,7 @@ function reading(
   at: PlaceOf,
   whyOf: (name: FormulaName) => { readonly why?: 'start' } = () => ({}),
   given?: 'probable',
+  via: Via = 'formula',
 ): FormulaReading {
   const parsed = parseFormula(text, { mergeFields });
   const references: RawReference[] = [];
@@ -129,7 +130,7 @@ function reading(
     }
     const value = name.value === undefined ? {} : { value: name.value };
     // One at a time: a formula can hold more names than a call takes arguments.
-    for (const reference of referencesOf(uses, name.start, at, { via: 'formula', ...tier, ...value })) {
+    for (const reference of referencesOf(uses, name.start, at, { via, ...tier, ...value })) {
       references.push(reference);
     }
   }
@@ -186,6 +187,10 @@ export function readFormulaOfMergeFields(
  * Reads the merge fields of a text that is no formula. What stands between two merge fields is left alone, and
  * what stands in one is read as one name. A merge field that holds anything else, a call or an operator, is not
  * read, and the reading says so. `form` says how the text writes its merge fields.
+ *
+ * With `expressions` set to `formula`, a merge field that holds more than a name is read as a formula with plain
+ * names whose first names `startOf` knows, as an email template writes `{!IF(ISBLANK(Case.Reason), ...)}`. One
+ * that cannot be read as a formula is not read, and the reading says so.
  */
 export function readMergeFields(
   text: string,
@@ -194,20 +199,32 @@ export function readMergeFields(
   at: PlaceOf,
   tier?: 'probable',
   form: MergeForm = 'classic',
+  expressions?: 'formula',
 ): MergeFieldsReading {
   const { fields, notClosed } = mergeFieldsOf(text, form);
   const references: RawReference[] = [];
   const unread: Unread[] = [];
   const said: Said = { via: 'merge-field', ...(tier === undefined ? {} : { tier }) };
+  const usesOf = (name: FormulaName): readonly NameUse[] | null => usesOfMergeField(name.text, startOf);
+  const whyOf = (name: FormulaName): { readonly why?: 'start' } => whyNot(name.text, startOf);
   for (const field of fields) {
     const uses = usesOfMergeField(field.text, startOf);
-    if (uses === null) {
-      const { line, column } = at(field.start, field.start);
-      const text = cut(field.text, LONGEST_TEXT_SHOWN);
-      unread.push({ element, text, line, column, ...whyNot(field.text, startOf) });
+    if (uses !== null) {
+      for (const reference of referencesOf(uses, field.start, at, said)) references.push(reference);
       continue;
     }
-    for (const reference of referencesOf(uses, field.start, at, said)) references.push(reference);
+    if (expressions === 'formula') {
+      // The places of the formula count from the start of what the merge field holds.
+      const within: PlaceOf = (from, to) => at(field.start + from, field.start + to);
+      const read = reading(field.text, false, usesOf, element, within, whyOf, tier, 'merge-field');
+      if (read.problem === null) {
+        references.push(...read.references);
+        unread.push(...read.unread);
+        continue;
+      }
+    }
+    const { line, column } = at(field.start, field.start);
+    unread.push({ element, text: cut(field.text, LONGEST_TEXT_SHOWN), line, column, ...whyNot(field.text, startOf) });
   }
   return {
     element,

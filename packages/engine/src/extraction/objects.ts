@@ -31,7 +31,7 @@ export interface ElementReading {
   readonly unread: readonly Unread[];
   /** The formulas of the element. */
   readonly formulas: readonly FormulaReading[];
-  /** The texts of the element that hold merge fields. Only an element of a flow has such texts. */
+  /** The texts of the element that hold merge fields: of an element of a flow and of an email template. */
   readonly texts?: readonly MergeFieldsReading[];
   /** Of an element of a flow: the elements in it, or itself, that are of a kind the reader does not know. */
   readonly unknown?: readonly { readonly element: string; readonly line: number; readonly column: number }[];

@@ -39,17 +39,25 @@ export type Via =
    * field it goes through to the parent it writes on.
    */
   | 'path'
-  /** In a flow: the field a record element sets by its name. The field a field update writes. */
+  /**
+   * In a flow: the field a record element sets by its name. The field a field update writes. The field a quick
+   * action sets, and the record type it gives the records it creates.
+   */
   | 'assignment'
   /** In a flow: a field a query asks for or stores. */
   | 'output'
   | 'sort'
   /** The date field a scheduled path, a time trigger or the due date of a task counts from. */
   | 'time'
-  /** What a flow starts: an Apex class, a subflow, an alert. What a workflow rule starts: an action of its object. */
+  /**
+   * What a flow starts: an Apex class, a subflow, an alert. What a workflow rule starts: an action of its object.
+   * What a quick action opens: a flow, a component, a page, a canvas app.
+   */
   | 'action'
-  /** The email template of an alert. */
+  /** The email template of an alert and of a quick action that sends email, and the letterhead of a template. */
   | 'template'
+  /** A document an email template attaches. */
+  | 'attachment'
   /**
    * A field in a list: of the recipients of an alert, of the fields an outbound message sends, of the picklists
    * of a record type, of a field set, or of the fields a record of a custom metadata type gives a value.

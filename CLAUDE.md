@@ -143,11 +143,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
 - An email template, a report type and a quick action are read by `extraction/email-templates.ts`,
   `extraction/report-types.ts` and `extraction/quick-actions.ts` (decision record 0077). The body of a template is
   a file of its own and no XML, and is read as text (`readText`). Its merge fields are written in the form of its
-  kind, classic `{!Object.Field}`, Lightning `{{{Name.Field}}}` or Visualforce `{!relatedTo.Field}`, and the kind
-  says what their first name is. A report type refers to its object, to the lookup field behind each child
-  relationship it joins (`childRelationship` of the model) and to each field it lists. A quick action refers to the
-  object it creates records of, writes the fields it sets, reads the names in the formula of a value, which start
-  with the object the action runs on, and the fields its layout shows, and names what it opens. Of the three, the
+  kind, classic `{!Object.Field}`, Lightning `{{{Name.Field}}}` (and `{!Name.Field}`) or Visualforce
+  `{!relatedTo.Field}`, and the kind says what their first name is. A merge field `{!...}` that holds more than a
+  name is read as a formula. A report type refers to its object, to the lookup field behind each child relationship
+  it joins (`childRelationship` of the model) and to each field it lists. A quick action refers to the object and
+  the record type it creates records of, writes the fields it sets and those its layout lets the user type in,
+  reads the names in the formula of a value, which start with the object the action runs on, and the fields its
+  layout shows, and names the template it starts with and what it opens. Of the three, the
   Dependency API is known to report the custom fields of a template only: a pair of a report type or a quick action
   that no row reports is counted with a reason, and not listed. `EmailFolder` is outside the logic tier.
 - A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,

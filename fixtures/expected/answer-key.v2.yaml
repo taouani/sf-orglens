@@ -721,7 +721,9 @@ references:
           - { line: 13, match: Unit_Price__c, kind: writes, to: CustomField:invoice_line__c.unit_price__c, via: assignment }
           - { line: 14, match: Amount__c, kind: reads, to: CustomField:invoice__c.amount__c, via: formula, note: The formula names a field of the invoice the action runs on by its object. }
           - { line: 23, match: Quantity__c, kind: reads, to: CustomField:invoice_line__c.quantity__c, via: listed-field, note: "The layout of the action shows the field, as a field set lists one." }
+          - { line: 23, match: Quantity__c, kind: writes, to: CustomField:invoice_line__c.quantity__c, via: listed-field, note: "The user types in the field, and the action stores it, as a field of a screen of a flow." }
           - { line: 28, match: Unit_Price__c, kind: reads, to: CustomField:invoice_line__c.unit_price__c, via: listed-field }
+          - { line: 28, match: Unit_Price__c, kind: writes, to: CustomField:invoice_line__c.unit_price__c, via: listed-field }
           - { line: 34, match: Invoice_Line__c, kind: references, to: CustomObject:invoice_line__c, via: object }
           - { line: 35, match: Invoice__c, kind: writes, to: CustomField:invoice_line__c.invoice__c, via: assignment, note: The action sets the lookup of the line to the invoice it runs on. }
 
@@ -1423,6 +1425,7 @@ negatives:
   - { file: force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml, line: 7, match: Amount__c, not: CustomField:invoice__c.amount__c, why: A text that holds the name of a field among other words. }
   - { file: force-app/main/default/customMetadata/Billing_Rule.Account_Limit.md-meta.xml, line: 3, match: Credit_Limit__c, not: CustomField:account.credit_limit__c, why: The label of a record is text. }
   - { file: force-app/main/default/email/Billing/Invoice_Overdue.email, line: 4, match: Total__c, not: CustomField:invoice__c.total__c, why: "The text of an email, outside a merge field." }
+  - { file: force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml, line: 9, match: Status__c, not: CustomField:invoice__c.status__c, why: "A field of the line the action creates. The invoice it runs on has a field of the same name." }
 # Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
 # One entry for each name whose target is not known.
 unknowns:

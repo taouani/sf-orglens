@@ -972,7 +972,7 @@ describe('the texts of the fixture project', () => {
     expect(hit).toEqual([]);
     // The negatives of these files that stand in a text or a formula are there to be missed.
     const inTexts = answerKey.negatives.filter((negative) => found.has(negative.file));
-    expect(inTexts).toHaveLength(28);
+    expect(inTexts).toHaveLength(29);
   });
 });
 

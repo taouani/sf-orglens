@@ -31,26 +31,42 @@ of the records it creates, the values it sets, the fields of its form and the fl
 ## Decision
 
 1. **The body of an email template is read as text in UTF-8**, as the reader of XML reads a file (`readText` in
-   `extraction/xml.ts`): a byte order mark of UTF-8 is no part of the text, one of UTF-16 or UTF-32 is refused, and
-   bytes that are no UTF-8 are the error `XML_NOT_UTF8` of that file. The rest of the template is read all the same.
-   `encodingKey` is not read: it says how Salesforce encodes the email it sends, not the file. V4S writes
-   `ISO-8859-1` there, and its files are UTF-8, with French in them. Nothing is read of the body where the file of
-   the metadata cannot be read or is not that of an email template (`METADATA_UNEXPECTED`).
+   `extraction/xml.ts`): a byte order mark of UTF-8 is no part of the text, and one of UTF-16 or UTF-32 is refused.
+   `encodingKey` says how Salesforce encodes the email it sends, and not always the file: V4S writes `ISO-8859-1`
+   there, and its files are UTF-8, with French in them. So UTF-8 is tried first. Where the bytes are no UTF-8 and
+   `encodingKey` is `ISO-8859-1`, the body is read in that encoding, one character to a byte, and no issue is
+   raised: the names of merge fields are ASCII. Bytes that are no UTF-8 under any other encoding are the error
+   `XML_NOT_UTF8` of that file, and the rest of the template is read all the same. Nothing is read of the body
+   where the file of the metadata cannot be read or is not that of an email template (`METADATA_UNEXPECTED`).
 2. **A merge field of an email template is `reads`, `via: merge-field`, from the template**, in the subject, in the
    text version and in the body, each with its place in its own file. A merge field of the body stands in no
    element, and an issue about it has no `details.element`. The kind of the template says how merge fields are
    written and what their first name is (`extraction/email-templates.ts`):
    - A classic template (`text`, `html`, `custom`) writes `{!Object.Field}`. The first name is an object. `User` and
      `Sending_User` are the user who sends the email, `Receiving_User` the user who gets it, and `Organization` the
-     org. `{!Object.Link}` is the link to the record and no field.
-   - A Lightning template writes `{{{Name.Field}}}`. `Sender` is a user and `Organization` the org. The related
-     record is of the object `relatedEntityType` names, and is written with that name. `Recipient` is a contact, a
-     lead or a user, and nothing says which: its fields are not followed, with the warning `PATH_NOT_FOLLOWED`.
+     org. `ApprovalRequest` is the request of an approval, which is no record, and gives no reference.
+     `{!Object.Link}` is the link to the record and no field. A lookup field of Salesforce is named by its
+     relationship, as in a report type: `{!Case.CreatedBy}` reads `CreatedById`. A field of the owner is written as
+     a field of the record, `{!Case.OwnerEmail}`, and reads `OwnerId`: a last name that is `Owner` and a capital
+     letter, with no `__`.
+   - A Lightning template (`uiType` `SFX`, or `SFX_Sample` for a sample of Salesforce) writes `{{{Name.Field}}}`, and
+     one made before Winter '19 `{!Name.Field}`: both forms are read. `Sender` is a user and `Organization` the org.
+     The related record is of the object `relatedEntityType` names, and is written with that name. That object is
+     a `references`, `via: object`. `Recipient` is a contact, a lead or a user, and nothing says which: its fields
+     are not followed, with the warning `PATH_NOT_FOLLOWED`. `Link` is no field here either.
    - A Visualforce template writes `{!relatedTo.Field}` and `{!recipient.Field}`. The objects are the attributes
-     `relatedToType` and `recipientType` of `<messaging:emailTemplate>` in its markup. Where one is missing, the
-     fields of that record are not followed.
+     `relatedToType` and `recipientType` of `<messaging:emailTemplate>` in its markup, and each is a `references`,
+     `via: object`, at its place in the body. Where one is missing, the fields of that record are not followed.
+     `{!relatedTo.Lines__r}`, one name that ends in `__r`, is a child relationship of the record, and a
+     `references` to the lookup field behind it, as a join of a report type is.
+   - A merge field of the form `{!...}` that holds more than a name, such as `{!IF(ISBLANK(Case.Reason), "", ...)}`
+     or `{!TEXT(relatedTo.Amount__c)}`, is read as a formula with plain names whose first names are those of the
+     kind (`readMergeFields` with `formula`). One that cannot be read as a formula is not read, with the warning
+     `NAME_NOT_READ`.
    - A first name that starts with `$` and that the kind does not know is a global variable, as in a flow:
      `{!$Setup.Settings__c.Limit__c}`. Any other first name is not read, with the warning `NAME_NOT_READ`.
+   - The letterhead of a template is a `references` to the `Letterhead`, `via: template`, and each document it
+     attaches (`attachedDocuments`, `Folder/Name.pdf`) a `references` to the `Document`, `via: attachment`.
 3. **A report type is a `references` to its object, `via: object`, to the lookup field behind each child
    relationship it joins, `via: join`, and to each field it lists, `via: listed-field`.** A child relationship is
    the one a lookup or master-detail field of the snapshot names (`relationshipName` with `__r`, and the prefix of
@@ -65,18 +81,21 @@ of the records it creates, the values it sets, the fields of its form and the fl
    relationship, and a `references` to the field at its end. `Owner` is the field `OwnerId`, and a column `Id` gives
    no reference. A table that does not start at the object of the report type is not read (`NAME_NOT_READ`), and
    neither are the columns of a table whose relationship was not followed.
-4. **A quick action is a `references` to the object of the records it creates, `via: object`.** Each field it sets
-   with a predefined value, and the lookup field of the new record that it sets to the record it runs on
-   (`targetParentField`), is `writes`, `via: assignment`. A field its layout shows is `reads`, `via:
-listed-field`, as a field of a field set is. The fields are of the object of the records it creates, or of its
-   own object, the part of its name before the dot, where it names none. The formula of a predefined value names a
-   field of the record the action runs on by its object, `Invoice__c.Amount__c`. It is read by the reader of
-   formulas (`readFormulaOfStarts`), and the names are `reads`, `via: formula`. A name that starts with another name
-   is not read (`NAME_NOT_READ`), and a global variable is read as in a formula of a field. A global action runs on
-   no record: a name in its formula is not read, and a field it sets or shows without an object is not followed
-   (`PATH_NOT_FOLLOWED`). The flow an action starts is `calls`, and the Aura component, Lightning web component and
-   Visualforce page it opens are `references`, `via: action`, by their names. Reading the layout and what an action
-   opens goes further than the plan.
+4. **A quick action is a `references` to the object of the records it creates, `via: object`, and to their record type
+   (`targetRecordType`, `Opportunity.Donation`), `via: assignment`.** Each field it sets with a predefined value, and
+   the lookup field of the new record that it sets to the record it runs on (`targetParentField`), is `writes`,
+   `via: assignment`. `What` and `Who` of a task are `WhatId` and `WhoId`. A field its layout shows is `reads`,
+   `via: listed-field`, as a field of a field set is, and one the user types in (`uiBehavior` `Edit` or `Required`) is
+   `writes` too, as a field of a screen of a flow is. The fields are of the object of the records it creates, or of its
+   own object, the part of its name before the dot, where it names none. The formula of a predefined value names a field
+   of the record the action runs on by its object, `Invoice__c.Amount__c`. It is read by the reader of formulas
+   (`readFormulaOfStarts`), and the names are `reads`, `via: formula`. A name that starts with another name is not read
+   (`NAME_NOT_READ`), and a global variable is read as in a formula of a field. A global action runs on no record: a
+   name in its formula is not read, and a field it sets or shows without an object is not followed
+   (`PATH_NOT_FOLLOWED`). The flow an action starts is `calls`, and the Aura component, Lightning web component,
+   Visualforce page and canvas app (`ConnectedApp`) it opens are `references`, `via: action`, by their names. The email
+   template an action that sends email starts with (`defaultEmailTemplateName`, `Folder/Name`) is a `references`,
+   `via: template`. Reading the layout, the record type and what an action opens goes further than the plan.
 5. **The three types join the logic tier**, with the version that analyses them. The list of `core/tiers.ts` has 28
    names. An org that lists an email template, a report type or a quick action and does not hand it out has a
    partial snapshot.
@@ -92,9 +111,9 @@ listed-field`, as a field of a field set is. The fields are of the object of the
 
 ## Consequences
 
-- The fixture project has a report type and a quick action more, 120 components. The answer key has their 17
-  entries, 9 of the report type and 8 of the quick action, and 508 references in all. The test org gets the two
-  files when a run of the workflow "Live org" on `main` deploys the project again, which a maintainer starts with
+- The fixture project has a report type and a quick action more, 120 components. The answer key has their 19 entries, 9
+  of the report type and 10 of the quick action, and 510 references in all, with a negative more. The test org gets the
+  two files when a run of the workflow "Live org" on `main` deploys the project again, which a maintainer starts with
   the step `deploy`. A run that only reads the org before that says that the org does not list them.
 - An answer about a field that a template, a report type or a quick action names holds them now. `EmailTemplate` is
   no longer among the types an answer about the fixture project does not cover, and its golden files changed with
@@ -122,8 +141,13 @@ listed-field`, as a field of a field set is. The fields are of the object of the
 - Not done: of a Visualforce template only the merge fields of its markup are read. The controller, the components
   and the variables its markup declares, such as the `var` of `apex:repeat`, are not: a merge field that starts with
   such a variable is not read and says so. Reports are not analysed: they stay in Phase 6.
+- Not done: the icon of a quick action (`icon`) is not read, as nothing says of what type its name is. An answer
+  about the static resource or the document behind an icon does not hold the action. No action of the public
+  codebases names one.
 - Not verified on an org: the forms of the Lightning and the Visualforce templates are taken from the documentation
   of Salesforce and from the files of the public codebases, which hold no Lightning template. So are `Link`,
-  `Sending_User`, `Receiving_User`, the names of the 15 child relationships every org has, and how a report type
-  writes a column through a lookup field of Salesforce. What the Dependency API reports of a report type and of a
+  `Sending_User`, `Receiving_User`, `ApprovalRequest`, the fields of the owner as a classic template writes them,
+  the names of the 15 child relationships every org has, and how a report type writes a column through a lookup
+  field of Salesforce. So are the form of `defaultEmailTemplateName` and of `canvas` of a quick action, and whether
+  an org hands out the body of a template in ISO-8859-1. What the Dependency API reports of a report type and of a
   quick action was not measured: the test org lists neither until the next run of "Live org".

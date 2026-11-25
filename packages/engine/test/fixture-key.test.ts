@@ -246,13 +246,18 @@ function kindsAt(reference: Placed, elements: readonly string[]): string {
       return used;
     case 'summary':
       return innermost === 'summarizedField' ? 'reads' : 'references';
-    case 'listed-field':
-      // A field set, an alert, an outbound message and the layout of a quick action use the field. A record type
-      // and a record of a custom metadata type name it, and so does a report type, which reads the lookup fields
-      // of a path.
+    case 'listed-field': {
+      // A field set, an alert, an outbound message and the layout of a quick action use the field, and the layout
+      // sets one the user types in. A record type and a record of a custom metadata type name it, and so does a
+      // report type, which reads the lookup fields of a path.
       if (elements.includes('columns'))
         return line.charAt(reference.column - 1 + reference.match.length) === '.' ? 'reads' : 'references';
+      if (elements.includes('quickActionLayoutItems')) {
+        const behavior = /<uiBehavior>(\w+)<\/uiBehavior>/.exec(lines.slice(reference.line).join('\n'))?.[1] ?? '';
+        return behavior === 'Edit' || behavior === 'Required' ? 'reads writes' : 'reads';
+      }
       return elements.includes('values') || elements.includes('picklistValues') ? 'references' : 'reads';
+    }
     case 'assignment':
       return 'writes';
     case 'path': {
@@ -874,10 +879,10 @@ describe('the answer key', () => {
       version: 2,
       components: 120,
       phase1: 112,
-      phase2: 212,
+      phase2: 214,
       phase3: 184,
       stretch: 9,
-      negatives: 63,
+      negatives: 64,
       unknowns: 6,
     });
   });

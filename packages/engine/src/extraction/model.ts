@@ -149,14 +149,17 @@ const STANDARD_CHILD_RELATIONSHIPS: ReadonlyMap<string, { readonly object: strin
   }),
 );
 
+/** The relationships of a task and an event that lead to a record of one of several objects: `What`, `Who`. */
+const POLYMORPHIC_RELATIONSHIPS: ReadonlySet<string> = new Set(['what', 'who']);
+
 /**
  * The field behind a name that stands where a field does and that is a relationship every org has, as a report
- * type and a quick action name a lookup field of Salesforce: `Owner` is the field `OwnerId`. `undefined` for any
- * other name.
+ * type, a quick action and a classic email template name a lookup field of Salesforce: `Owner` is the field
+ * `OwnerId`, and `What` of a task `WhatId`. `undefined` for any other name.
  */
 export function standardLookupField(name: string): string | undefined {
-  const known = STANDARD_RELATIONSHIPS.get(foldName(name));
-  return known === undefined ? undefined : `${name}Id`;
+  const folded = foldName(name);
+  return STANDARD_RELATIONSHIPS.has(folded) || POLYMORPHIC_RELATIONSHIPS.has(folded) ? `${name}Id` : undefined;
 }
 
 /**

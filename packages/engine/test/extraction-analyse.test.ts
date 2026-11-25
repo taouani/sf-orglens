@@ -315,8 +315,8 @@ describe('the analysis of the fixture project', () => {
         issues: analysis.issues,
       });
       // 112 references of fields and rules, 126 of flows, 33 of workflow rules, 28 of record types, a field set
-      // and records of custom metadata, and 25 of an email template, a report type and a quick action.
-      expect(written).toMatchObject({ components: 177, references: 324 });
+      // and records of custom metadata, and 27 of an email template, a report type and a quick action.
+      expect(written).toMatchObject({ components: 177, references: 326 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));

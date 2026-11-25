@@ -25,6 +25,7 @@ import { readField, readFieldSet, readObject, readRecordType, readRule, type Ele
 import { readQuickAction } from './quick-actions.ts';
 import { resolveReferences, type Unread } from './raw-references.ts';
 import { readReportType } from './report-types.ts';
+import { textOf } from './values.ts';
 import { readWorkflow, readWorkflowPart, WORKFLOW_PARTS } from './workflows.ts';
 import { childOf, childrenOf, readText, readXml, type XmlDocument, type XmlElement, type XmlReading } from './xml.ts';
 
@@ -387,9 +388,11 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     const meta = contents.find((one) => one.file.endsWith('-meta.xml'));
     const document = meta === undefined || meta.bytes === null ? null : parse(meta.file, meta.bytes);
     if (meta === undefined || document === null || !rootIs(key, 'EmailTemplate', meta.file, document)) return [];
+    // Salesforce keeps the encoding of the email, which can be that of the file.
+    const encoding = textOf(childOf(document.root, 'encodingKey'));
     const bodies = contents.flatMap(({ file, bytes }) => {
       if (file === meta.file || bytes === null) return [];
-      const { document: body, issue } = readText(bytes);
+      const { document: body, issue } = readText(bytes, encoding);
       if (issue !== null) refuse(file, issue);
       return body === null ? [] : [{ file, body }];
     });
