@@ -28,11 +28,12 @@ library nor the types of the Metadata API that `@jsforce/jsforce-node` declares 
    that field. The list holds these three names, since nothing else says which objects show the fields of a
    contact (`PERSON_ACCOUNT_OBJECTS` in `extraction/model.ts`).
 2. **The field of the contact comes first. Where the snapshot defines no such field of the contact, and defines
-   the field as the object shows it, the name is that field.** Record 0071 says that the file of the object
-   `PersonAccount` can hold a field such as `PersonAccount.Hobby__pc`, which the Salesforce library reads as a
-   component of its own. Before this record a name on `PersonAccount` was that field, and with the first point
-   alone it would be lost where the snapshot holds no field of the contact. The same holds on `Account`, where a
-   file defines `Account.Hobby__pc`: before this record the name was not found there.
+   the field as the object shows it, the name is that field.** Record 0071 names that case: the Salesforce library
+   would read a field such as `PersonAccount.Hobby__pc` in the file of the object `PersonAccount` as a component
+   of its own. Whether an org hands one out is not known. Before this record a name on `PersonAccount` was such a
+   field, and with the first point alone it would be lost where the snapshot holds no field of the contact. The
+   same holds on `Account` and `BusinessAccount`, where a file defines the field there: before this record the
+   name was not found on `Account`.
 3. **Nothing else of `BusinessAccount` is taken for the account.** A custom field of another kind is its own, as
    before, and the key of a component keeps the name that came back, as record 0071 says. Whether an org hands out
    under `BusinessAccount` the same fields as under `Account`, or fields that it lists under `Account` only, is not
@@ -43,6 +44,11 @@ library nor the types of the Metadata API that `@jsforce/jsforce-node` declares 
 - A formula of a field of `BusinessAccount` or `PersonAccount` that walks a `__pr` relationship is followed where
   the snapshot holds the lookup field of the contact, and a `__pc` name there is a field of the contact. An answer
   about that field of the contact holds what refers to it from those objects.
+- Where the snapshot defines a field of the contact and the same field as an object shows it, such as
+  `Contact.Level__c` and `PersonAccount.Level__pc`, a name `Level__pc` or `Level__pr` on that object is the field
+  of the contact. Before this record it was the field as the object shows it, so an answer about
+  `PersonAccount.Level__pc` held what names it there, and now does not. Nothing ties the two keys together, so no
+  one question finds both.
 - `fieldsANameCanBe` of record [0074](0074-a-warning-counts-where-it-can-bear-on-the-answer.md) needs no change,
   since it compares names without their object. The test that holds it against the model reads the two objects
   too.
@@ -52,3 +58,5 @@ library nor the types of the Metadata API that `@jsforce/jsforce-node` declares 
   pre-release, shows whether its warnings on `BusinessAccount` are gone.
 - Not known: whether an org hands out parts of the account under yet another object. Its `__pc` names would stay
   unresolved and its `__pr` paths not followed, each with a warning, as before.
+- Not changed, and older than this record: a formula field that the file of `PersonAccount` holds as `X__pc` is a
+  formula of the contact, and its names are read on `PersonAccount`, as of any field of that object.

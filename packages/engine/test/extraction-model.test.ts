@@ -19,8 +19,9 @@ const field = (fullName: string): ComponentKey => key('CustomField', fullName);
 
 /**
  * A small snapshot: an invoice with its file, an account of which the snapshot holds two fields and no file,
- * a user with a hierarchy field, a custom field of the activity, two of the contact, and two as a person account
- * shows them, of which one is a field of the contact too.
+ * a user with a hierarchy field, a custom field of the activity, two of the contact, and four as an account shows
+ * them: two on the person account, of which one is a field of the contact too, one on the account and one on the
+ * business account.
  */
 function model(): ObjectModel {
   const fields = new Map<ComponentKey, FieldFacts>([
@@ -37,6 +38,8 @@ function model(): ObjectModel {
     [field('Contact.Mentor__c'), { type: 'Lookup', referenceTo: ['User'] }],
     [field('PersonAccount.Level__pc'), { type: 'Text', referenceTo: [] }],
     [field('PersonAccount.Hobby__pc'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
+    [field('Account.Club__pc'), { type: 'Text', referenceTo: [] }],
+    [field('BusinessAccount.Club2__pc'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
   ]);
   return buildModel({
     defined: new Set([
@@ -209,6 +212,8 @@ describe('what becomes of the name of a field', () => {
     }
     // A custom field of another kind is the object's own, as written.
     expect(resolutions('BusinessAccount', ['Level__c'])).toEqual(['unresolved null']);
+    // No other object shows the fields of a contact, whatever its name ends with.
+    expect(resolutions('PartnerAccount', ['Level__pc'])).toEqual(['unresolved null']);
   });
 
   it('takes the field as the person account shows it where the snapshot defines that and no field of the contact', () => {
@@ -218,6 +223,10 @@ describe('what becomes of the name of a field', () => {
     ]);
     // Only the object it is defined on shows it: no file defines it on the account.
     expect(resolutions('Account', ['Hobby__pc'])).toEqual(['unresolved null']);
+    // So on the account and on the business account, where a file defines it there.
+    expect(resolutions('Account', ['Club__pc'])).toEqual(['resolved CustomField:account.club__pc']);
+    expect(resolutions('PersonAccount', ['Club__pc'])).toEqual(['unresolved null']);
+    expect(resolutions('BusinessAccount', ['Club2__pc'])).toEqual(['resolved CustomField:businessaccount.club2__pc']);
   });
 });
 
@@ -284,6 +293,7 @@ describe('a step through a relationship', () => {
     expect(step('BusinessAccount', 'Lost__pr')).toBe('unresolved null -> null');
     // The field as the person account shows it, which is all the snapshot defines of it, says where it leads.
     expect(step('PersonAccount', 'Hobby__pr')).toBe('resolved CustomField:personaccount.hobby__pc -> Sponsor__c');
+    expect(step('BusinessAccount', 'Club2__pr')).toBe('resolved CustomField:businessaccount.club2__pc -> Sponsor__c');
   });
 
   it('takes a hierarchy field as a field that points at its own object', () => {
@@ -447,6 +457,8 @@ describe('the fields a name of a path that was not followed can be', () => {
     'Mentor__c',
     'Hobby__pc',
     'Hobby__pr',
+    'Club__pc',
+    'Club2__pr',
     'Owner',
     'Name',
     'npsp__Batch__r',
