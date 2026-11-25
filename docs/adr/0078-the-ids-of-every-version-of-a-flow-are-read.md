@@ -71,8 +71,11 @@ The statements below are choices of the author of this record. The maintainer ca
 
 ## Consequences
 
-- On the test org after run 29, the 54 rows are to count in `rowsOtherVersion` and not in `rowsNotMatched`. The
-  reading in parts is to be whole again. Neither is measured until the next run of "Live org" ("read" is enough).
+- On the test org after run 29, the 54 rows were to count in `rowsOtherVersion` and not in `rowsNotMatched`, and the
+  reading in parts was to be whole again. Run 30 of "Live org" measured both after the merge: the org answered the query
+  of `Flow` and named one version that is neither active nor the latest for each of four flows, 54 rows of another
+  version, none with an end the org did not list, 136 rows compared, none missed, and the reading in parts whole again,
+  with the same 391 rows (section 5 of the [research note of Phase 2](../research/phase-2/real-org.md)).
 - The mock org of the tests names every version of its flows. A test gives a flow an old version with its rows and
   finds the rows counted as of another version, also when they are asked for in parts with the answers cut off. With
   the query refused, it finds them not matched and the reading in parts partial, as in run 29.
@@ -88,7 +91,8 @@ The statements below are choices of the author of this record. The maintainer ca
 What was not measured, and what this record therefore does not know:
 
 - Whether the test org answers the query as it is written here. The probe asked the same object for two more fields,
-  `VersionNumber` and `Status`, and the org answered.
+  `VersionNumber` and `Status`, and the org answered. Run 30 measured it after this record was accepted: the org
+  answered the query as it is written.
 - Whether `Flow` names the versions of a flow of a managed package. The test org holds components of a package with a
   namespace, and its public log does not say whether a flow is among them.
 - An answer of more than one page. It is written as the Tooling API documents it, and tested on the mock org only.
