@@ -15,14 +15,14 @@ Work package 5 is built but for the same thing (record 0065): the 335 records of
 public codebases are read without an error and give no reference at the tier `probable`, and record 0065 says why,
 with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
 too, and they are written there when that note is written. Run 26 of "Live org" read the test org with it. Work
-package 6 is being built: the answers for flows and elements are built (record 0066), and so is the cross-check of
+package 6 is built: the answers for flows and elements are built (record 0066), and so is the cross-check of
 the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
 org with it. The actions of a workflow rule that are analysed join the judgement of "complete" (record 0068), so
 every type analysed so far counts for it. An answer about what refers to a component leaves out a type that is
 not analysed where its components can name nothing of the answer (record 0073). The impact times of the synthetic
 org were measured again on 25 November 2026 and have not changed beyond the spread of the runs
-(`docs/research/phase-2/impact-times.md`). What is left of work package 6 is the narrowing of the warnings an
-answer counts, which record 0061 leaves to it.
+(`docs/research/phase-2/impact-times.md`). An answer counts a warning of the analysis only where it can bear on
+it (record 0074), which record 0061 leaves to work package 6.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)

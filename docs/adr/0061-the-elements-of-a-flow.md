@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-23
 - Decisions: none (the analyser of flows of work package 3 of the Phase 2 plan)
+- Changed by: [0074](0074-a-warning-counts-where-it-can-bear-on-the-answer.md), in one point: the narrowing of the warnings an answer counts, which this record leaves to work package 6, is built there
 
 ## Context
 

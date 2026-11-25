@@ -66,6 +66,8 @@ describe('the warnings that bear on what refers to a component', () => {
       other(WEIGHT),
       other(OTHER),
       { code: 'RESOURCE_NOT_FOUND', componentKey: OTHER, notFollowed: null },
+      // Names on another code say nothing: only a path that was not followed keeps names of fields.
+      { code: 'NAME_NOT_READ', componentKey: OTHER, notFollowed: ['Width__c'] },
     ];
     expect(warningsThatBear(warnings, walked([HEAVY]), 'incoming')).toEqual(warnings);
   });

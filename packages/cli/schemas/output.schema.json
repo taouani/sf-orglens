@@ -748,7 +748,7 @@
               "minimum": 0
             },
             "analysisWarnings": {
-              "description": "How many warnings the analysis had: a name that was not read, a path that was not followed, a formula that was not read as a whole, or a part of a file that was not found. Each can hide a reference. For an answer that covers flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading are counted too: such a flow was analysed as a version that may not be the one that runs. They make `complete` false and leave `mayMiss` as it is.",
+              "description": "How many warnings of the analysis can bear on the answer: a name that was not read, a path that was not followed, a formula that was not read as a whole, or a part of a file that was not found. Each can hide a reference from its component. For `outgoing`: a warning of the component, of what it contains, of a result or of an element of a flow of the answer. For `incoming`: a warning of any other component, and a path that was not followed only where its names can be in the answer: an object, a field of such a name, or a record type (decision record 0074). A warning about no component counts for every answer. For an answer that covers flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading are counted too: such a flow was analysed as a version that may not be the one that runs. They make `complete` false and leave `mayMiss` as it is.",
               "type": "integer",
               "minimum": 0
             },

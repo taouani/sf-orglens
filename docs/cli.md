@@ -795,15 +795,25 @@ the answer says whether it is complete, and if not, why. Below the results it na
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
   about a type the answer covers: a type the analysis read, or one of which it analysed a component. Every type
   this version analyses is of the tier, and no snapshot is known to hold such a warning;
-- how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
-  to its end, or a part of a file was not found. A reference may be missing for each. For an answer that covers
-  flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading count with them: such a flow was analysed as a
-  version that may not be the one that runs;
+- how many warnings of the analysis can bear on the answer, as said below. A warning says that a name was not
+  read, a path of names was not followed to its end, or a part of a file was not found. A reference may be missing
+  for each. For an answer that covers flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading count with them:
+  such a flow was analysed as a version that may not be the one that runs;
 - for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a
   component of a package. What such a component refers to is not known.
 
-An answer is complete only if none of these applies. The warnings are those of the whole snapshot, not only
-those of the components in the answer.
+An answer is complete only if none of these applies.
+
+A warning of the analysis is about a component whose names were not all turned into references, and a reference
+that is missing for it starts at that component (decision record 0074). For `--outgoing`, a warning counts where
+its component is the component, something it contains, a result, or an element of a flow of the answer, which
+the walk goes on from. For what refers to a component, a warning of the component, of something it contains or of
+the flow of an element that is asked about does not count: what they name never refers to them. A
+`PATH_NOT_FOLLOWED` keeps the names it did not follow, which are fields or relationships of an object nothing
+says, and the path can end at an object. It counts only where the answer holds an object, a field whose name one
+of the names can be, on whatever object, or a record type where one of the names is `RecordType`. One that kept
+twenty names, which may be fewer than the path has, counts as any other. Every other warning counts for what
+refers to a component. A warning about a file as a whole, which names no component, counts for every answer.
 
 For what refers to a component, a type that is not analysed is left out where its components can name no type
 of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type
@@ -873,8 +883,8 @@ What is not done, and what a user should know:
   records of custom metadata types are analysed. Apex, layouts, permissions and the other types follow in later
   phases. Until then an answer about what refers to a component of a real project says that it is not complete. An
   answer with `--outgoing` can be complete, because it needs only the component and its results to be analysed. It
-  is complete only when the analysis of the snapshot had no warning at all: a warning about any component counts
-  for every answer, also for one it cannot touch.
+  is complete only where no warning of the analysis bears on it: of the component, of something it contains, of a
+  result, or of an element of a flow of the answer.
 - The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
 - An answer can be large: a field that much of an org rests on can have tens of thousands of results.
   `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.

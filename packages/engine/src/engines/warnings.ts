@@ -34,25 +34,35 @@ export function warningsThatBear<T extends AnalysisWarning>(
   direction: 'incoming' | 'outgoing',
 ): T[] {
   if (warnings.length === 0) return [];
-  const start = new Set<string>(walk.start);
-  const held = new Set<string>([...walk.start, ...walk.through, ...walk.results.map((result) => result.key)]);
+  const heldKeys = (): string[] => [...walk.start, ...walk.through, ...walk.results.map((result) => result.key)];
   if (direction === 'outgoing') {
+    const held = new Set<string>(heldKeys());
     return warnings.filter((warning) => warning.componentKey === null || held.has(warning.componentKey));
   }
-  const keys = [...held];
-  const anObject = keys.some((key) => typeOf(key) === 'CustomObject');
-  const aRecordType = keys.some((key) => typeOf(key) === 'RecordType');
-  const fields = new Set(keys.filter((key) => typeOf(key) === 'CustomField').map(fieldNameOf));
+  const start = new Set<string>(walk.start);
+  // What the answer holds is looked at only for a warning whose names say what it can be about.
+  let holds: { readonly anObject: boolean; readonly aRecordType: boolean; readonly fields: Set<string> } | undefined;
+  const answer = (): NonNullable<typeof holds> => {
+    if (holds !== undefined) return holds;
+    const keys = heldKeys();
+    holds = {
+      anObject: keys.some((key) => typeOf(key) === 'CustomObject'),
+      aRecordType: keys.some((key) => typeOf(key) === 'RecordType'),
+      fields: new Set(keys.filter((key) => typeOf(key) === 'CustomField').map(fieldNameOf)),
+    };
+    return holds;
+  };
   return warnings.filter((warning) => {
     if (warning.componentKey !== null && start.has(warning.componentKey)) return false;
     const names = warning.notFollowed;
-    if (warning.code !== 'PATH_NOT_FOLLOWED' || names === null || names.length >= MOST_NAMES_SHOWN || anObject) {
-      return true;
-    }
-    return names.some(
-      (name) =>
-        (aRecordType && fieldsANameCanBe(name).includes('recordtype')) ||
-        fieldsANameCanBe(name).some((field) => fields.has(field)),
+    if (warning.code !== 'PATH_NOT_FOLLOWED' || names === null || names.length >= MOST_NAMES_SHOWN) return true;
+    const { anObject, aRecordType, fields } = answer();
+    return (
+      anObject ||
+      names.some((name) => {
+        const can = fieldsANameCanBe(name);
+        return (aRecordType && can.includes('recordtype')) || can.some((field) => fields.has(field));
+      })
     );
   });
 }
