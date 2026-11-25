@@ -6,6 +6,7 @@
  * shared with every other snapshot that holds the same content.
  */
 import { EngineError, type JsonValue } from '../core/errors.ts';
+import type { EndsAt } from '../extraction/raw-references.ts';
 import type { ProjectLayout } from '../sources/project.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { getBlob, putBlob } from './blobs.ts';
@@ -399,6 +400,12 @@ export interface AnalysisWarning {
    * any other warning, and for one whose details hold no list of texts.
    */
   readonly notFollowed: readonly string[] | null;
+  /**
+   * What the path of a `PATH_NOT_FOLLOWED` ends at: a field, or the object of the record an element writes or
+   * deletes as a whole. `null` for any other warning, and for one an analysis made before decision record 0074
+   * wrote, which may have left a path of an element without a warning.
+   */
+  readonly endsAt: EndsAt | null;
 }
 
 /** The warnings of the analysis of a snapshot, in the order they were recorded (decision record 0074). */
@@ -408,7 +415,10 @@ export function readAnalysisWarnings(store: Store, snapshotId: number): Analysis
       `SELECT code, component_key,
               CASE WHEN code = 'PATH_NOT_FOLLOWED'
                    AND json_type(COALESCE(details, '{}'), '$.notFollowed') IS 'array'
-                   THEN json_extract(details, '$.notFollowed') END AS names
+                   THEN json_extract(details, '$.notFollowed') END AS names,
+              CASE WHEN code = 'PATH_NOT_FOLLOWED'
+                   AND json_type(COALESCE(details, '{}'), '$.endsAt') IS 'text'
+                   THEN json_extract(details, '$.endsAt') END AS ends
          FROM snapshot_issue
         WHERE snapshot_id = ? AND severity = 'warning' AND stage = 'analysis'
         ORDER BY id`,
@@ -417,10 +427,12 @@ export function readAnalysisWarnings(store: Store, snapshotId: number): Analysis
     .map((row) => {
       const names: unknown = typeof row['names'] === 'string' ? JSON.parse(row['names']) : null;
       const texts = Array.isArray(names) && names.every((name) => typeof name === 'string') ? names : null;
+      const ends = row['ends'];
       return {
         code: String(row['code']),
         componentKey: text(row['component_key']),
         notFollowed: texts,
+        endsAt: ends === 'field' || ends === 'object' ? ends : null,
       };
     });
 }

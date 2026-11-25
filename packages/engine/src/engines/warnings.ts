@@ -7,10 +7,13 @@
  * contains, a result, or an element of a flow it found. For what refers to a component, it is a reference to a
  * component of the answer from a component the walk does not start from: what the start names is never what refers
  * to it. Of most warnings it is not known what the names could be. A `PATH_NOT_FOLLOWED` keeps them: each is a
- * field, or the relationship of a field, of an object nothing says. The path can end at the object of its last
- * relationship, and a flow can compare `RecordType.DeveloperName` at its end with the name of a record type. So
- * such a warning bears on an answer that holds an object, a field whose name the names can be, or a record type
- * where the names hold `RecordType`, and on no other, unless it kept fewer names than the path has.
+ * field, or the relationship of a field, of an object nothing says. `endsAt` says whether the path ends at a field
+ * or at the object of a record that an element of a flow writes or deletes, and each field of such an element has
+ * a warning of its own. A flow can compare `RecordType.DeveloperName` at the end of a path with the name of a
+ * record type. So such a warning bears on an answer that holds a field whose name the names can be, a record type
+ * where the names hold `RecordType`, or an object where the path ends at one, and on no other. One that kept twenty
+ * names, which may be fewer than the path has, bears on every answer, and so does one that says nothing of its
+ * end: an analysis made before record 0074 kept no warning for a field of an element behind such a record.
  */
 import type { ComponentKey } from '../core/keys.ts';
 import { fieldsANameCanBe, MOST_NAMES_SHOWN } from '../extraction/raw-references.ts';
@@ -54,11 +57,12 @@ export function warningsThatBear<T extends AnalysisWarning>(
   };
   return warnings.filter((warning) => {
     if (warning.componentKey !== null && start.has(warning.componentKey)) return false;
-    const names = warning.notFollowed;
-    if (warning.code !== 'PATH_NOT_FOLLOWED' || names === null || names.length >= MOST_NAMES_SHOWN) return true;
+    const { notFollowed: names, endsAt } = warning;
+    if (warning.code !== 'PATH_NOT_FOLLOWED' || names === null || endsAt === null) return true;
+    if (names.length >= MOST_NAMES_SHOWN) return true;
     const { anObject, aRecordType, fields } = answer();
     return (
-      anObject ||
+      (endsAt === 'object' && anObject) ||
       names.some((name) => {
         const can = fieldsANameCanBe(name);
         return (aRecordType && can.includes('recordtype')) || can.some((field) => fields.has(field));

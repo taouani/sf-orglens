@@ -1251,7 +1251,7 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
-  it('reads the warnings of the analysis with the names a path that was not followed kept, in their order', () => {
+  it('reads the warnings of the analysis with the names a path that was not followed kept and its end, in their order', () => {
     const store = open();
     const id = snapshot(store);
     const other = snapshot(store, 'other');
@@ -1268,14 +1268,22 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       id,
       analysisOf(project(), {
         issues: [
-          warning('PATH_NOT_FOLLOWED', TOTAL, { relationship: 'Invoice__r', notFollowed: ['Amount__c', 'Owner'] }),
+          warning('PATH_NOT_FOLLOWED', TOTAL, {
+            relationship: 'Invoice__r',
+            notFollowed: ['Amount__c', 'Owner'],
+            endsAt: 'field',
+          }),
           { severity: 'error', code: 'COMPONENT_FAILED', message: 'm', componentKey: AMOUNT, details: null },
-          warning('ELEMENT_NOT_READ', AMOUNT, { notFollowed: ['Amount__c'] }),
-          warning('PATH_NOT_FOLLOWED', null, { notFollowed: [] }),
+          warning('ELEMENT_NOT_READ', AMOUNT, { notFollowed: ['Amount__c'], endsAt: 'field' }),
+          warning('PATH_NOT_FOLLOWED', null, { notFollowed: [], endsAt: 'object' }),
           // Names that are not a list of texts are no names, and the warning is read without them.
           warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c', 7] }),
           warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: 'Amount__c' }),
           warning('PATH_NOT_FOLLOWED', TOTAL, null),
+          // An analysis made before decision record 0074 says nothing of the end, and no other end is read.
+          warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c'] }),
+          warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c'], endsAt: 'record' }),
+          warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c'], endsAt: ['field'] }),
         ],
       }),
     );
@@ -1289,12 +1297,15 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       analysisOf(project(), { issues: [warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c'] })] }),
     );
     expect(readAnalysisWarnings(store, id)).toEqual([
-      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c', 'Owner'] },
-      { code: 'ELEMENT_NOT_READ', componentKey: AMOUNT, notFollowed: null },
-      { code: 'PATH_NOT_FOLLOWED', componentKey: null, notFollowed: [] },
-      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
-      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
-      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c', 'Owner'], endsAt: 'field' },
+      { code: 'ELEMENT_NOT_READ', componentKey: AMOUNT, notFollowed: null, endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: null, notFollowed: [], endsAt: 'object' },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null, endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null, endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null, endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c'], endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c'], endsAt: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c'], endsAt: null },
     ]);
     expect(readAnalysisWarnings(store, 123_456)).toEqual([]);
     store.close();

@@ -301,10 +301,24 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
     /**
      * A workspace whose source `work` holds one object with two fields, and nothing of a type that is not
-     * analysed. The field `Heavy__c` has the formula that is given.
+     * analysed. The field `Heavy__c` has the formula that is given. A flow `Ship` on the records of the object
+     * has the elements that are given, if any.
      */
-    async function parcels(formula = 'Weight__c &gt; 30'): Promise<{ database: string; workspace: Workspace }> {
+    async function parcels(
+      formula = 'Weight__c &gt; 30',
+      elements?: string,
+    ): Promise<{ database: string; workspace: Workspace }> {
       const root = temp.next();
+      if (elements !== undefined) {
+        const flows = join(root, 'force-app', 'main', 'default', 'flows');
+        mkdirSync(flows, { recursive: true });
+        const start =
+          '    <start>\n        <object>Parcel__c</object>\n        <triggerType>RecordAfterSave</triggerType>\n    </start>\n';
+        writeFileSync(
+          join(flows, 'Ship.flow-meta.xml'),
+          xml('Flow', `    <status>Active</status>\n${start}${elements}`),
+        );
+      }
       const object = join(root, OBJECTS, 'Parcel__c');
       mkdirSync(join(object, 'fields'), { recursive: true });
       writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\n');
@@ -447,6 +461,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         complete: true,
         notCovered: NOTHING,
       });
+    });
+
+    it('counts a field of a flow element behind a record of no known object for an answer about a field of its name', async () => {
+      // The element updates the record behind a lookup the snapshot does not hold, and sets its field Weight__c.
+      // Before decision record 0074, only the record had a warning, and that warning did not name the field.
+      const { workspace } = await parcels(
+        undefined,
+        [
+          '    <recordUpdates>',
+          '        <name>Save_Box</name>',
+          '        <inputReference>$Record.ns__Box__r</inputReference>',
+          '        <inputAssignments>',
+          '            <field>Weight__c</field>',
+          '            <value><numberValue>1</numberValue></value>',
+          '        </inputAssignments>',
+          '    </recordUpdates>',
+          '',
+        ].join('\n'),
+      );
+      const counted = async (component: string, outgoing = false): Promise<number> =>
+        (await workspace.impact('work', component, { outgoing })).notCovered.analysisWarnings;
+      // The field: the warning of the field. The object: that of the record, whose object it can be, and that of
+      // the field, which it holds. What refers to Heavy__c: neither. What the element refers to: both.
+      expect(await counted('Parcel__c.Weight__c')).toBe(1);
+      expect(await counted('Parcel__c')).toBe(2);
+      expect(await counted('Parcel__c.Heavy__c')).toBe(0);
+      expect(await counted('Ship.Save_Box', true)).toBe(2);
     });
 
     it('may miss something when the snapshot holds nothing of a type that the analysis reads', async () => {

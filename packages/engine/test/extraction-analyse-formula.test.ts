@@ -341,6 +341,7 @@ describe('a name in a formula', () => {
           column: Number(placeIn(text, 'Gone__r').split(':')[1]),
           relationship: 'Gone__r',
           notFollowed: ['Name'],
+          endsAt: 'field',
           origin: 'parser:formula',
         },
       },

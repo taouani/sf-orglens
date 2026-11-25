@@ -689,7 +689,7 @@ components.
 ```
 $ orglens impact Invoice__c.Amount__c
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "repo".
-The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
 
 28 components refer to it, 26 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -707,7 +707,7 @@ ApexClass      13      13
 ApexTrigger    1       1
 EmailTemplate  1       1
 
-The analysis had 1 warning: …
+1 warning of the analysis bears on the answer: …
 ```
 
 The example is shortened: the command prints every line and every path in full, with the columns as wide as
@@ -809,11 +809,17 @@ that is missing for it starts at that component (decision record 0074). For `--o
 its component is the component, something it contains, a result, or an element of a flow of the answer, which
 the walk goes on from. For what refers to a component, a warning of the component, of something it contains or of
 the flow of an element that is asked about does not count: what they name never refers to them. A
-`PATH_NOT_FOLLOWED` keeps the names it did not follow, which are fields or relationships of an object nothing
-says, and the path can end at an object. It counts only where the answer holds an object, a field whose name one
-of the names can be, on whatever object, or a record type where one of the names is `RecordType`. One that kept
-twenty names, which may be fewer than the path has, counts as any other. Every other warning counts for what
-refers to a component. A warning about a file as a whole, which names no component, counts for every answer.
+`PATH_NOT_FOLLOWED` keeps the names it did not follow (`details.notFollowed`), which are fields or relationships
+of an object nothing says, and says what the path ends at (`details.endsAt`): `object` for the record that an
+element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
+a field whose name one of the names can be, on whatever object, a record type where one of the names is
+`RecordType`, or an object where the path ends at one. One that kept twenty names, which may be fewer than the
+path has, counts as any other. So does one without `details.endsAt`, which an analysis made by an earlier version
+wrote: it kept no warning for a field that an element sets behind a record of no known object, and
+`orglens analyse <source>` analyses the snapshot again. Every other warning counts for what refers to a
+component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
+the warnings that bear on the answer directly: one whose names fit only a component that another missing
+reference would bring into the answer is not counted, and the answer is not complete all the same.
 
 For what refers to a component, a type that is not analysed is left out where its components can name no type
 of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type

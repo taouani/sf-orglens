@@ -21,15 +21,16 @@ const walked = (start: ComponentKey[], results: ComponentKey[] = [], through: Co
   through,
   results: results.map((one) => ({ key: one })),
 });
-const path = (componentKey: ComponentKey | null, notFollowed: string[] | null): AnalysisWarning => ({
-  code: 'PATH_NOT_FOLLOWED',
-  componentKey,
-  notFollowed,
-});
+const path = (
+  componentKey: ComponentKey | null,
+  notFollowed: string[] | null,
+  endsAt: AnalysisWarning['endsAt'] = 'field',
+): AnalysisWarning => ({ code: 'PATH_NOT_FOLLOWED', componentKey, notFollowed, endsAt });
 const other = (componentKey: ComponentKey | null): AnalysisWarning => ({
   code: 'FORMULA_NOT_READ',
   componentKey,
   notFollowed: null,
+  endsAt: null,
 });
 
 describe('the warnings that bear on what a component refers to', () => {
@@ -62,12 +63,12 @@ describe('the warnings that bear on what refers to a component', () => {
   });
 
   it('take every warning of another code, wherever it is', () => {
-    const warnings = [
+    const warnings: AnalysisWarning[] = [
       other(WEIGHT),
       other(OTHER),
-      { code: 'RESOURCE_NOT_FOUND', componentKey: OTHER, notFollowed: null },
+      { code: 'RESOURCE_NOT_FOUND', componentKey: OTHER, notFollowed: null, endsAt: null },
       // Names on another code say nothing: only a path that was not followed keeps names of fields.
-      { code: 'NAME_NOT_READ', componentKey: OTHER, notFollowed: ['Width__c'] },
+      { code: 'NAME_NOT_READ', componentKey: OTHER, notFollowed: ['Width__c'], endsAt: 'field' },
     ];
     expect(warningsThatBear(warnings, walked([HEAVY]), 'incoming')).toEqual(warnings);
   });
@@ -86,12 +87,23 @@ describe('the warnings that bear on what refers to a component', () => {
     expect(warningsThatBear(warnings, walked([HEAVY]), 'incoming')).toEqual([]);
   });
 
-  it('take a path that was not followed where the answer holds an object, at whose end the path can be', () => {
-    const warnings = [path(OTHER, ['Width__c']), path(OTHER, [])];
-    expect(warningsThatBear(warnings, walked([HEAVY], [PARCEL]), 'incoming')).toEqual(warnings);
-    expect(warningsThatBear(warnings, walked([PARCEL, HEAVY, WEIGHT]), 'incoming')).toEqual(warnings);
-    // With no names the path ends at an object, and it bears on no answer without one.
-    expect(warningsThatBear([path(OTHER, [])], walked([HEAVY]), 'incoming')).toEqual([]);
+  it('take a path that ends at an object where the answer holds one: the record an element writes', () => {
+    const record = path(OTHER, ['Box__r'], 'object');
+    const atOnce = path(OTHER, [], 'object');
+    const field = path(OTHER, ['Width__c']);
+    const warnings = [record, atOnce, field];
+    expect(warningsThatBear(warnings, walked([HEAVY], [PARCEL]), 'incoming')).toEqual([record, atOnce]);
+    expect(warningsThatBear(warnings, walked([PARCEL, HEAVY, WEIGHT]), 'incoming')).toEqual([record, atOnce]);
+    // Without an object, such a path bears by its relationships alone: `Box__r` is the field `Box__c`.
+    expect(warningsThatBear(warnings, walked([HEAVY]), 'incoming')).toEqual([]);
+    expect(warningsThatBear(warnings, walked([key('CustomField', 'Crate__c.Box__c')]), 'incoming')).toEqual([record]);
+  });
+
+  it('take a path that says nothing of its end, as an analysis made before record 0074 wrote it, everywhere', () => {
+    // Such an analysis kept no warning for a field of an element behind a record whose object is not known.
+    const old = path(OTHER, ['Box__r'], null);
+    expect(warningsThatBear([old], walked([HEAVY]), 'incoming')).toEqual([old]);
+    expect(warningsThatBear([path(HEAVY, ['Box__r'], null)], walked([HEAVY]), 'incoming')).toEqual([]);
   });
 
   it('take a path through RecordType where the answer holds a record type, which a flow can compare with', () => {

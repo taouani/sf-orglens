@@ -118,6 +118,7 @@ describe('the flows of the fixture project', () => {
         column: one.column - 'Recalculate.invoice.'.length,
         resource: 'Recalculate',
         notFollowed: ['invoice', one.match],
+        endsAt: 'field',
         origin: 'parser:flow',
       });
     }
