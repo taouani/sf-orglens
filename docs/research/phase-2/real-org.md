@@ -44,11 +44,12 @@ In short:
 - **Of a report type the Dependency API reports nothing. Of a quick action it reports the object it creates records
   of and the field `targetParentField`**, and nothing its predefined values set or its formula reads `[run 29]`.
   Run 29 deployed the 120 components, compared 136 rows, and the analysis missed none.
-- **The API keeps the rows of versions of a flow that are neither active nor the latest.** After the deploy of run
-  29 it gave 54 rows that the engine matches to nothing the org lists, and read in parts with every answer cut off
-  at 30 rows, the reading was no longer whole: 58 rows short, all from a flow to a custom field, some of them of the
-  versions the snapshot holds. By my reading of the code, the reader does not ask per component for a part whose
-  rows come from an id it does not know (section 5).
+- **The API keeps the rows of versions of a flow that are neither active nor the latest.** After the deploy of run 29 it
+  gave 54 rows that the engine matches to nothing the org lists, and read in parts with every answer cut off at 30 rows,
+  the reading was no longer whole: 58 rows short, all from a flow to a custom field, some of them of the versions the
+  snapshot holds. By my reading of the code, the reader does not ask per component for a part whose rows come from an id
+  it does not know (section 5). A snapshot now asks the org for the ids of every version of a flow (record
+  [0078](../../adr/0078-the-ids-of-every-version-of-a-flow-are-read.md)), which is not measured yet.
 - The symbol tables are as in Phase 0 and Phase 1: no reference in any of them.
 
 ## Conditions
@@ -562,13 +563,15 @@ All of the following is `[run 29]`, with run 28 for what came before.
   snapshot holds and 41 of the others under either reading of section 4, and a reading that keeps the 30 rows of the
   cut-off answer and asks for none of the rest lacks 58.
 - What that means for a real org: Salesforce keeps the old versions of a flow until they are deleted, by its
-  documentation `[unverified]`. An org whose flows give 1,000 rows or more to one type of target, half the limit
-  from which the reader asks in parts (record [0069](../../adr/0069-an-answer-below-the-limit-can-be-cut-off.md)),
-  and that holds old versions, can get a reading of the rows of its flows that is not whole in the same way. The
-  rows that go missing are not only those of the old versions, which the comparison does not use: the 58 are more
-  than the 54 of run 29, and the comparison loses rows of the versions the snapshot holds, by my count 17 of the 47
-  above. The engine says that the reading is not whole and compares what it read. Whether the snapshot should ask
-  the org for the ids of every version of a flow went to the maintainer on 25 November 2026.
+  documentation `[unverified]`. An org whose flows give 1,000 rows or more to one type of target, half the limit from
+  which the reader asks in parts (record [0069](../../adr/0069-an-answer-below-the-limit-can-be-cut-off.md)), and that
+  holds old versions, can get a reading of the rows of its flows that is not whole in the same way. The rows that go
+  missing are not only those of the old versions, which the comparison does not use: the 58 are more than the 54 of run
+  29, and the comparison loses rows of the versions the snapshot holds, by my count 17 of the 47 above. The engine says
+  that the reading is not whole and compares what it read. Whether the snapshot should ask the org for the ids of every
+  version of a flow went to the maintainer on 25 November 2026. The maintainer chose that it should, the same day
+  (record [0078](../../adr/0078-the-ids-of-every-version-of-a-flow-are-read.md)). That was not measured on the test org
+  when this was written.
 
 ## 6. The symbol tables
 

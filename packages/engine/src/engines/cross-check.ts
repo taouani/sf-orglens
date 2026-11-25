@@ -66,7 +66,7 @@ export interface CrossCheck {
   readonly rowsNotHeld: number;
   /**
    * Rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active
-   * version. They are not compared.
+   * version, or an older version that a deploy left behind. They are not compared.
    */
   readonly rowsOtherVersion: number;
   /** Rows that were compared, and the different pairs of components they are. */
@@ -100,9 +100,9 @@ export interface CrossCheckInput {
   /** The types the analysis read. */
   readonly analysedTypes: readonly string[];
   /**
-   * The ids of the active and of the latest version of each flow, as the org named them when it was asked.
-   * Empty where it was not asked or did not answer: a row from a flow is then matched by the id the org listed the
-   * flow with, which is the id of its latest version.
+   * The ids of the versions of each flow, as the org named them when it was asked: the active one, the latest one,
+   * and every other one. Empty where it was not asked or did not answer: a row from a flow is then matched by the
+   * id the org listed the flow with, which is the id of its latest version.
    */
   readonly flowVersions: readonly FlowVersionIds[];
   /**
@@ -199,8 +199,8 @@ interface FlowVersion {
 
 /**
  * Finds the flow that the end of a row stands for where its id is that of a version of a flow (decision record
- * 0067): by the ids the org named the active and the latest version with, and else by the id it listed the flow
- * with, which is that of its latest version. The flow is the one the org listed with the id of its latest version,
+ * 0067): by the ids the org named the versions with, the active, the latest and every other one (decision record
+ * 0078), and else by the id it listed the flow with, which is that of its latest version. The flow is the one the org listed with the id of its latest version,
  * under the name of the listing, which is the name of the component the snapshot holds. Only a flow that the org
  * did not list with that id goes by the name `FlowDefinition` gives it. The version the snapshot holds is the
  * active one where a newer one is noted, and else the latest. `null`: the end is no version of a flow the org
@@ -217,14 +217,14 @@ export function versionMatcher(
     const key = item.type === 'Flow' && item.id !== null ? keyOf('Flow', item.fullName) : null;
     if (key !== null && item.id !== null) listedFlows.set(shortId(item.id), key);
   }
-  const byId = new Map<string, { readonly key: ComponentKey; readonly versions: Set<'active' | 'latest'> }>();
+  const byId = new Map<string, { readonly key: ComponentKey; readonly versions: Set<'active' | 'latest' | 'other'> }>();
   /** Ids the org named for two flows. An id stands for one version of one flow, so such an id says nothing. */
   const twice = new Set<string>();
-  const add = (id: string | null, key: ComponentKey, version: 'active' | 'latest'): void => {
+  const add = (id: string | null, key: ComponentKey, version: 'active' | 'latest' | 'other'): void => {
     if (id === null || id === '') return;
     const known = byId.get(shortId(id));
     if (known !== undefined && known.key !== key) twice.add(shortId(id));
-    const one = known ?? { key, versions: new Set<'active' | 'latest'>() };
+    const one = known ?? { key, versions: new Set<'active' | 'latest' | 'other'>() };
     one.versions.add(version);
     byId.set(shortId(id), one);
   };
@@ -235,6 +235,8 @@ export function versionMatcher(
     if (key === null) continue;
     add(flow.active, key, 'active');
     add(flow.latest, key, 'latest');
+    // A version that is neither is never the one the snapshot holds. A snapshot taken before record 0078 has none.
+    for (const id of flow.others) add(id, key, 'other');
   }
   // Where the org named no version of a flow, the id it listed the flow with is that of the latest one.
   for (const [id, key] of listedFlows) if (!byId.has(id)) add(id, key, 'latest');

@@ -187,19 +187,35 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     const id = snapshot(store);
     const other = snapshot(store, 'sandbox');
     const versions: FlowVersionIds[] = [
-      { flow: 'Renew', active: '301xx0000000002AAA', latest: '301xx0000000003AAA' },
+      // A flow with two versions that are neither active nor the latest, sorted by their ids (decision record 0078).
+      {
+        flow: 'Renew',
+        active: '301xx0000000002AAA',
+        latest: '301xx0000000003AAA',
+        others: ['301xx0000000005AAA', '301xx0000000006AAA'],
+      },
       // A flow of a package, and a flow of which no version is active.
-      { flow: 'acme__Approve', active: '301xx0000000001AAA', latest: '301xx0000000001AAA' },
-      { flow: 'Draft_Only', active: null, latest: '301xx0000000004AAA' },
+      { flow: 'acme__Approve', active: '301xx0000000001AAA', latest: '301xx0000000001AAA', others: [] },
+      { flow: 'Draft_Only', active: null, latest: '301xx0000000004AAA', others: ['301xx0000000007AAA'] },
     ];
     expect(readFlowVersionIds(store, id)).toEqual([]);
     store.write(() => {
       writeDependencies(store, id, reading(), T1);
-      writeFlowVersions(store, id, versions);
+      // The other versions are written in any order, and an id given twice is kept once.
+      writeFlowVersions(store, id, [
+        {
+          flow: 'Renew',
+          active: '301xx0000000002AAA',
+          latest: '301xx0000000003AAA',
+          others: ['301xx0000000006AAA', '301xx0000000005AAA', '301xx0000000006AAA'],
+        },
+        ...versions.slice(1),
+      ]);
       writeDependencies(store, other, reading(), T1);
       writeFlowVersions(store, other, versions.slice(0, 1));
     });
     expect(readFlowVersionIds(store, id)).toEqual([versions[2], versions[0], versions[1]]);
+    expect(count(store, 'snapshot_flow_other_version')).toBe(5);
     // A snapshot that is continued reads the API again, and keeps the versions of that reading only.
     store.write(() => {
       writeDependencies(store, id, reading({ requests: 2 }), T2);
@@ -207,9 +223,22 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     });
     expect(readFlowVersionIds(store, id)).toEqual(versions.slice(2));
     expect(readFlowVersionIds(store, other)).toEqual(versions.slice(0, 1));
+    expect(count(store, 'snapshot_flow_other_version')).toBe(3);
     // They go with the snapshot, as the rows do.
     store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
     expect(count(store, 'snapshot_flow_version')).toBe(1);
+    expect(count(store, 'snapshot_flow_other_version')).toBe(2);
+    // An other version belongs to a flow the reading names.
+    expect(() =>
+      store.write(() =>
+        store.run(
+          'INSERT INTO snapshot_flow_other_version (snapshot_id, flow, version_id) VALUES (?, ?, ?)',
+          other,
+          'Unknown',
+          '301xx0000000008AAA',
+        ),
+      ),
+    ).toThrow();
     store.close();
   });
 

@@ -90,6 +90,7 @@ decisions of the build either: they hold what the maintainer answered to the Pha
 | [0075](0075-two-more-objects-show-the-fields-of-a-person-account.md)      | The objects `PersonAccount` and `BusinessAccount` show the fields of a person account as the account does                | Accepted                                                               |            |
 | [0076](0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md) | A component is of a package where the org lists it as one, and an answer leaves it out as the thing that refers          | Accepted                                                               |            |
 | [0077](0077-email-templates-report-types-and-quick-actions.md)            | Email templates, report types and quick actions are read, and the folders of email templates stay outside the logic tier | Accepted                                                               |            |
+| [0078](0078-the-ids-of-every-version-of-a-flow-are-read.md)               | A snapshot of an org asks for the ids of every version of a flow                                                         | Accepted                                                               |            |
 
 ## Writing a record
 

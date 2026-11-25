@@ -163,6 +163,11 @@ export interface MockMetadata {
    * package, the id of the definition, of the active version and of the latest one.
    */
   flowDefinitionRows(): Record<string, string | null>[];
+  /**
+   * The rows of `Flow` that the Tooling API gives for the flows of the folder: one per version, with its id and the id
+   * of the definition of its flow, the latest version first and then the older ones by their number.
+   */
+  flowRows(): Record<string, string | null>[];
   /** Answers one request to the Metadata API. */
   answer(body: string): Promise<{ status: number; body: string; type: string }>;
 }
@@ -475,6 +480,14 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
           ActiveVersionId: active === null ? null : metadata.versionIdOf(name, active),
           LatestVersionId: metadata.versionIdOf(name, metadata.flowVersions.get(name)?.latest ?? 1),
         };
+      }),
+    flowRows: () =>
+      [...flows.keys()].flatMap((name) => {
+        const versions = metadata.flowVersions.get(name);
+        return [versions?.latest ?? 1, ...[...(versions?.older.keys() ?? [])].sort((a, b) => a - b)].map((number) => ({
+          Id: metadata.versionIdOf(name, number),
+          DefinitionId: metadata.idOf('FlowDefinition', name),
+        }));
       }),
     answer: async (body) => {
       const operation = /<soapenv:Body[^>]*>\s*<(\w+)/.exec(body)?.[1] ?? '';

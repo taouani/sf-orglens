@@ -996,7 +996,7 @@
       }
     },
     "crossCheckComparison": {
-      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. A row from a flow carries the id of a version of the flow: it is matched by the ids the org named for the active and the latest version of each flow, and else by the id it listed the flow with, which is that of its latest version. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld`, `rowsOtherVersion` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
+      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. A row from a flow carries the id of a version of the flow: it is matched by the ids the org named for the versions of each flow, the active, the latest and every other one, and else by the id it listed the flow with, which is that of its latest version. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld`, `rowsOtherVersion` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
       "type": "object",
       "required": [
         "rows",
@@ -1042,7 +1042,7 @@
           "minimum": 0
         },
         "rowsOtherVersion": {
-          "description": "The rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version. The snapshot holds the active version where it has the note `FLOW_NEWER_VERSION` for the flow, and else the latest one. They are not compared.",
+          "description": "The rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version, or an older version that a deploy left behind. The snapshot holds the active version where it has the note `FLOW_NEWER_VERSION` for the flow, and else the latest one. They are not compared.",
           "type": "integer",
           "minimum": 0
         },

@@ -103,7 +103,7 @@ const CONDITIONS_SHOWN = 40;
 const PRETENDED_LIMIT = 30;
 /** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
 const CROSS_CHECK_HEADING =
-  'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency, and FlowDefinition for the versions of flows)';
+  'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency, and FlowDefinition and Flow for the versions of flows)';
 
 const seconds = (ms: number): string => (ms / 1000).toFixed(1);
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`;
@@ -1033,9 +1033,10 @@ export function flowLines(log: PublicLog, fileOf: (path: string) => string | nul
 const reasonWord = (value: string): string => (/^[a-z][a-z-]{0,39}$/.test(value) ? value : '(not shown)');
 
 /**
- * Says which versions of its flows the org named for the cross-check (decision record 0067): how many flows, and
- * of how many the active version is not the latest or none is active. A flow of the fixture project is named, any
- * other is counted. No id is shown.
+ * Says which versions of its flows the org named for the cross-check (decision records 0067 and 0078): how many
+ * flows, of how many the active version is not the latest or none is active, and how many versions are neither
+ * active nor the latest, of how many flows. A flow of the fixture project is named, any other is counted. No id is
+ * shown.
  */
 export function flowVersionLines(log: PublicLog, versions: readonly FlowVersionIds[]): string[] {
   if (versions.length === 0) {
@@ -1060,10 +1061,14 @@ export function flowVersionLines(log: PublicLog, versions: readonly FlowVersionI
   };
   const newer = versions.filter(({ active, latest }) => active !== null && latest !== null && active !== latest);
   const inactive = versions.filter(({ active }) => active === null);
+  const withOthers = versions.filter(({ others }) => others.length > 0);
+  const others = withOthers.reduce((sum, { others: ids }) => sum + ids.length, 0);
   return [
     `The org named the active and the latest version of ${plural(versions.length, 'flow', 'flows')}. ` +
       `Flows whose active version is not the latest: ${String(newer.length)}${newer.length > 0 ? named(newer) : ''}. ` +
-      `Flows with no active version: ${String(inactive.length)}${inactive.length > 0 ? named(inactive) : ''}.`,
+      `Flows with no active version: ${String(inactive.length)}${inactive.length > 0 ? named(inactive) : ''}. ` +
+      `Versions that are neither active nor the latest: ${String(others)}` +
+      `${others > 0 ? `, of ${plural(withOthers.length, 'flow', 'flows')}${named(withOthers)}` : ''}.`,
   ];
 }
 
@@ -1380,7 +1385,7 @@ export async function readInParts(
   };
   for (const item of readListedIds(store, snapshotId)) if (item.id !== null) add(item.type, item.id);
   for (const flow of readFlowVersionIds(store, snapshotId)) {
-    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
+    for (const id of [flow.active, flow.latest, ...flow.others]) if (id !== null) add('Flow', id);
   }
   const idsOfType = (type: string): readonly string[] => ids.get(type) ?? [];
   const said: Answers = { inOnePage: 0, saidMore: 0 };

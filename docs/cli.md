@@ -300,11 +300,12 @@ they have below a package directory, such as `classes/Foo.cls`.
   again twice. No request to the Metadata API follows a redirect. A retrieve that Salesforce does not end within
   30 minutes stops the command, and the next run asks for the same retrieve again. If it does not end then
   either, it is started anew. A chunk is started three times in all before it is given up.
-- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries two objects:
-  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
-  active and the latest version of each flow (decision record 0067). One thing is not in its hands: when the
-  session of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it and asks
-  the org about the org itself (decision record 0031 names the requests).
+- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries three objects:
+  `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
+  and the latest version of each flow (decision record 0067), and `Flow`, which names every version of a flow (decision
+  record 0078). One thing is not in its hands: when the session of a Salesforce CLI login expires while a snapshot is
+  taken, the Salesforce library renews it and asks the org about the org itself (decision record 0031 names the
+  requests).
 - What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
   `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
   `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
@@ -449,12 +450,16 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
 - A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
   version. So a snapshot of an org that lists a flow asks the Tooling API once more, before the rows, for the object
   `FlowDefinition`, which names the active and the latest version of each flow
-  ([record 0067](adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). The snapshot keeps the ids. A row is
+  ([record 0067](adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)), and then, where it named a flow, for the
+  object `Flow`, which names every version of a flow with its flow
+  ([record 0078](adr/0078-the-ids-of-every-version-of-a-flow-are-read.md)). The snapshot keeps the ids. A row is
   compared where it is from the version the snapshot holds: the active one where the snapshot has the note
-  `FLOW_NEWER_VERSION`, and else the latest. A row from another version, such as a draft, is counted and not
-  compared. Where the org does not name the versions, the snapshot has the warning `FLOW_VERSIONS_NOT_READ`, and a
-  row from a flow is matched by the id the org listed the flow with: a row of the active version of a flow that has
-  a newer one then names a component the org did not list.
+  `FLOW_NEWER_VERSION`, and else the latest. A row from another version, such as a draft or an older version that a
+  deploy left behind, is counted and not compared. Where the org does not name the versions, the snapshot has the
+  warning `FLOW_VERSIONS_NOT_READ`, and a row from a flow is matched by the id the org listed the flow with: a row of
+  the active version of a flow that has a newer one then names a component the org did not list. Where it names the
+  active and the latest versions and not the others, a row of another version names a component the org did not
+  list, and the warning says so as well. A snapshot taken before record 0078 holds no ids of the other versions.
 - A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
   for a standard object, which Salesforce names in the place of an id, and for a component the org listed
   without one. A row that names a component the org did not list is counted and not compared. A component that
@@ -637,11 +642,13 @@ in `details.parts`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce sa
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
 the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` is written where the answer of
-`FlowDefinition` is not whole, or where it is whole and leaves out a flow the org listed. It carries the code of
-the failure in `details.code`, or `null`, the state of the answer in `details.state` (`whole`, `partial` or
-`none`), how many flows the org named in `details.flows`, how many of the flows it listed it named no version of in
-`details.notNamed`, and the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries
-`details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
+`FlowDefinition` is not whole, where it is whole and leaves out a flow the org listed, or where the answer of `Flow`
+is not whole. It carries the code of the failure of `FlowDefinition` in `details.code`, or `null`, the state of its
+answer in `details.state` (`whole`, `partial` or `none`), how many flows the org named in `details.flows`, how many
+of the flows it listed it named no version of in `details.notNamed`, the code of the failure of `Flow` in
+`details.versionsCode`, or `null`, the state of its answer in `details.versionsState` (`none` too where the org
+named no flow and was not asked), and the number of requests of both in `details.requests`.
+`CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
 for an error, `other` for a warning. A warning `NOT_RETRIEVED` with `details.holdsNothing` or `details.ofPackages`
