@@ -585,6 +585,8 @@ describe('the manifest of public codebases', () => {
       'pmm',
       'volunteers-for-salesforce',
       'outbound-funds',
+      'coral-cloud',
+      'eda',
     ]);
     for (const row of rows)
       expect(row).toMatch(/^[a-z0-9-]+ {2}[0-9a-f]{40} {2}\S+ {2}https:\/\/github\.com\/\S+\.git$/);

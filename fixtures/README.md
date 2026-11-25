@@ -504,9 +504,11 @@ object that does not exist.
 
 ## Public codebases
 
-`corpora.toml` lists four public codebases with their repository, licence and a full commit id. `pnpm run
+`corpora.toml` lists eight public codebases with their repository, licence and a full commit id. `pnpm run
 corpora:fetch` downloads each at that commit into `.corpora`, which Git ignores. No file of them is stored in this
 repository. No test needs them. They are for measurements: robustness, speed and memory of the parsers, and samples
-that are checked by hand. `pnpm run corpora:listing` prints what such a check reads: every formula field, default
-value, validation rule, lookup filter and roll-up summary with the references OrgLens reports for it. `pnpm run
-bench:corpora` times the commands on them ([`bench/README.md`](../bench/README.md)).
+that are checked by hand. `pnpm run corpora:listing` prints what such a check reads, in two parts: every formula
+field, default value, validation rule, lookup filter and roll-up summary, and then every flow with its elements,
+every rule and action of a file of workflow rules, every record type and every field set, each with the references
+OrgLens reports for it. `pnpm run bench:corpora` times the commands on them
+([`bench/README.md`](../bench/README.md)).

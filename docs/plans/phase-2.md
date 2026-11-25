@@ -10,11 +10,11 @@ package 3 the analyser of flows is built (record 0061), a snapshot of an org fet
 by its number (record 0062), and run 23 of "Live org" showed it on the test org. Work package 4 is built but for
 one thing: it holds the reader of workflow rules (record 0063) and what the maintainer chose for the name alone of
 an object (record 0064), and the 24 references of the file of workflow rules of NPSP, which this plan wants in the
-note of work package 9, are listed there when that note is written. Run 24 of "Live org" read the test org with it.
+note of work package 9, are listed there. Run 24 of "Live org" read the test org with it.
 Work package 5 is built but for the same thing (record 0065): the 335 records of custom metadata types of the
 public codebases are read without an error and give no reference at the tier `probable`, and record 0065 says why,
 with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
-too, and they are written there when that note is written. Run 26 of "Live org" read the test org with it. Work
+too, and they are written there. Run 26 of "Live org" read the test org with it. Work
 package 6 is built: the answers for flows and elements are built (record 0066), and so is the cross-check of
 the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
 org with it. The actions of a workflow rule that are analysed join the judgement of "complete" (record 0068), so
@@ -33,7 +33,10 @@ answered on 25 November 2026. It reads more than this plan says in two points: t
 action shows, and the flow, component or page it opens. V4S and Outbound Funds are pinned, and at the pinned
 commits the six codebases hold 31 email templates, 8 report types and 54 quick actions, all read without an error.
 What the Dependency API reports of report types and quick actions is measured when "Live org" deploys the project
-again.
+again. Work package 9 is built (`docs/research/phase-2/public-codebases.md`): Coral Cloud and EDA are pinned, and
+every flow of the eight codebases, 23 with 151 elements, was read by hand with the workflow rules and the record
+types. No reference is wrong, and seven names are missed and named with their cause, so pass mark 4 holds. The
+commands were timed on the codebases and on two made-up sources of about 100,000 components, one with flows.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
