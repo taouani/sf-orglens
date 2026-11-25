@@ -46,6 +46,9 @@ The statements below are choices of the author of this record. The maintainer ca
    `CLAUDE.md` that the engine queries two objects of the Tooling API: it queries three.
 2. **A version is another version where its id is neither the active nor the latest one of its flow.** Ids are
    compared by their first 15 characters. A version of a definition that `FlowDefinition` did not name is left out.
+   The id the org listed a flow with is that of its latest version when it was listed. Where the org names that id
+   only as another version, because `FlowDefinition` gave no latest version or because a version was made after
+   the listing, it counts as the latest version all the same, as it did before this record.
 3. **The ids are kept with the reading of the rows**, in the new table `snapshot_flow_other_version` (migration 11).
    Each row belongs to a flow of `snapshot_flow_version`, and goes when that row goes. `analyse` compares again from
    what the snapshot holds, without the org, as record 0045 asks.
@@ -56,7 +59,8 @@ The statements below are choices of the author of this record. The maintainer ca
    those of the active and the latest version are (point 6 of record 0067). A part near the limit whose rows come
    from an old version is then asked for per group of components, and the reading can be whole. Where a type has
    more ids than one query names (200), the query for every other component stays out, and the reading counts that
-   in `queriesNotProven`, as before.
+   in `queriesNotProven`, as before: the rows of the versions it knows come all the same, and the reading is not
+   whole. Old versions add ids of flows, so an org with many flows reaches that number sooner.
 6. **Where the org refuses the query of `Flow`, or its answer breaks off, the snapshot has the warning
    `FLOW_VERSIONS_NOT_READ`** with a sentence of its own: a row from another version then names a component the org
    did not list, and a part that is near the limit and holds such rows can be taken as cut off. The ids that came
@@ -88,6 +92,7 @@ What was not measured, and what this record therefore does not know:
 - Whether `Flow` names the versions of a flow of a managed package. The test org holds components of a package with a
   namespace, and its public log does not say whether a flow is among them.
 - An answer of more than one page. It is written as the Tooling API documents it, and tested on the mock org only.
-- An org that changes a flow while it is read. A version made between the two queries is not among the other
-  versions, and its rows count as not matched.
+- An org that changes a flow while it is read. A version made between the two queries is named by `Flow` and is
+  among the other versions, also where it is the new latest one. A version made after the query of `Flow` is not,
+  and its rows count as not matched.
 - How many versions a real org keeps, and so how many queries the reading per component costs on a large org.

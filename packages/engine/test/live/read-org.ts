@@ -101,7 +101,7 @@ const CONDITIONS_SHOWN = 40;
  * number: whether Salesforce ever says so is not known.
  */
 const PRETENDED_LIMIT = 30;
-/** The heading of the lines about the cross-check, with the two objects of the Tooling API it reads. */
+/** The heading of the lines about the cross-check, with the three objects of the Tooling API it reads. */
 const CROSS_CHECK_HEADING =
   'The cross-check with the Dependency API of Salesforce (MetadataComponentDependency, and FlowDefinition and Flow for the versions of flows)';
 
@@ -573,6 +573,27 @@ export function missingLines(
 }
 
 /** Says what the database holds of a snapshot. Returns whether every component and file of the fixture project is in it. */
+/**
+ * What the warning that the org did not name the versions of its flows says of the two queries behind it (decision
+ * record 0078): how the org answered each, and the code of its failure. The issue alone shows only the code of the
+ * first one, and the line of the versions counts no other version both where there is none and where the org did
+ * not answer.
+ */
+export function flowVersionsNotReadLine(log: PublicLog, details: Record<string, unknown>): string {
+  const answered = (state: unknown, code: unknown): string => {
+    const why = code === null || code === undefined ? '' : ` (${log.code(code) ?? 'a code that is not shown'})`;
+    if (state === 'whole') return `answered in whole${why}`;
+    if (state === 'partial') return `answered in part${why}`;
+    if (state === 'none') return why === '' ? 'not asked' : `not answered${why}`;
+    return 'of a state that is not known';
+  };
+  return (
+    `The warning FLOW_VERSIONS_NOT_READ: the query of FlowDefinition was ${answered(details['state'], details['code'])}, ` +
+    `the query of Flow ${answered(details['versionsState'], details['versionsCode'])}. ` +
+    `Flows the org listed and named no version of: ${log.count(details['notNamed'])}.`
+  );
+}
+
 function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   const files = store.get(
     `SELECT COUNT(*) AS files, COALESCE(SUM(b.raw_size), 0) AS bytes
@@ -681,6 +702,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   const remarks = new Map<string, number>();
   const allRemarks: string[] = [];
   const unread = new Map<string, number>();
+  const versionReadings: string[] = [];
   const typeNames = new Set(types.map((type) => log.name(type['type'])).filter((name) => name !== null));
   let remarksInAll = 0;
   for (const issue of issues) {
@@ -716,6 +738,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
         allRemarks.push(text(remark));
       }
     }
+    if (code === 'FLOW_VERSIONS_NOT_READ') versionReadings.push(flowVersionsNotReadLine(log, details));
     if (code === 'RESOLVE_FAILED') {
       const place = `${placeForm(log, text(details['at']))}. In everyday words: ${everydayWords(text(issue['message']).split(' could not be read as metadata: ')[1] ?? '', typeNames)}`;
       unread.set(place, (unread.get(place) ?? 0) + 1);
@@ -734,6 +757,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
           : ''),
     );
   }
+  for (const line of versionReadings) log.say(line);
   if (remarksInAll > 0) {
     log.say(`Remarks of Salesforce about retrieves: ${String(remarksInAll)}. By form, of the ones that were kept:`);
     for (const [form, times] of [...remarks].sort(([, a], [, b]) => b - a)) {

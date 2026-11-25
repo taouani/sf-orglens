@@ -91,8 +91,8 @@ const DEFINITIONS: Record<string, string | null>[] = [
 /**
  * Rows of `Flow` as the Tooling API gives them, one per version: the active and the latest version of a flow, which
  * the rows above name as well, and two older ones of it, in another length of the id; an older version of the flow
- * of a package and one of the flow with odd ids; a version of no flow the rows above name, and rows whose ids are
- * not ids.
+ * of a package, the latest version of a flow in the short length of its id, and one of the flow with odd ids; a
+ * version of no flow the rows above name, and rows whose ids are not ids.
  */
 const EVERY_VERSION: Record<string, string | null>[] = [
   { Id: '301xx0000000001AAA', DefinitionId: '300xx0000000001AAA' },
@@ -101,6 +101,7 @@ const EVERY_VERSION: Record<string, string | null>[] = [
   { Id: '301xx0000000005', DefinitionId: '300xx0000000001AAA' },
   { Id: '301xx0000000003AAA', DefinitionId: '300xx0000000002AAA' },
   { Id: '301xx0000000007AAA', DefinitionId: '300xx0000000002AAA' },
+  { Id: '301xx0000000004', DefinitionId: '300xx0000000003AAA' },
   { Id: '301xx0000000008AAA', DefinitionId: '300xx0000000004AAA' },
   { Id: '301xx0000000009AAA', DefinitionId: '300xx0000000009AAA' },
   { Id: 'none', DefinitionId: '300xx0000000001AAA' },

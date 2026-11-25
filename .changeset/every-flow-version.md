@@ -8,7 +8,8 @@ one more object, `Flow`, after `FlowDefinition`. Its requests count with those o
 the rows of a version that is neither active nor the latest, such as one that a deploy left behind, and a row carries
 the id of its version. Such a row is now counted in `rowsOtherVersion` and not compared. Before, it was counted in
 `rowsNotMatched`. Its id is also among the ids the rows are asked for with when an answer is near the limit, so the
-reading of the rows of flows in parts no longer counts such a part as cut off.
+reading of the rows of flows in parts no longer counts such a part as cut off, where the ids of flows fit in one
+query (200). Where they do not, the rows come all the same, and the part counts in `queriesNotProven` as before.
 
 Where the org refuses the query of `Flow`, or its answer breaks off, the warning `FLOW_VERSIONS_NOT_READ` says so in
 a sentence of its own, and has two more details: `versionsState` and `versionsCode`. The workspace database moves to

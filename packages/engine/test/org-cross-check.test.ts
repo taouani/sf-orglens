@@ -583,6 +583,45 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         requests: 3 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: 0, rowsOtherVersion: ofDraft.length, missed: [] },
       });
+
+      // The answer of every version breaks off as well, after its first page: the warning says both.
+      const named = report.issues.find((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')?.message ?? '';
+      const versionsNext = '/services/data/v66.0/tooling/query/01gxx0000000002-2000';
+      const ofDefinitions = mock.intercept;
+      mock.intercept = (request) => {
+        const query = request.query.get('q') ?? '';
+        if (request.path.endsWith('/tooling/query') && query.endsWith(` FROM ${EVERY_VERSION_OBJECT}`)) {
+          const records = metadata
+            .flowRows()
+            .slice(0, 1)
+            .map((one) => ({ attributes: { type: EVERY_VERSION_OBJECT }, ...one }));
+          return { status: 200, body: JSON.stringify({ done: false, nextRecordsUrl: versionsNext, records }) };
+        }
+        if (request.path === versionsNext) {
+          return { status: 400, body: JSON.stringify([{ message: 'Not now.', errorCode: 'QUERY_TIMEOUT' }]) };
+        }
+        return ofDefinitions(request);
+      };
+      const both = await snap(workspaceDir());
+      expect(both.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message: `${named} The org did not name all the other versions of its flows (QUERY_TIMEOUT). A row of the Dependency API from a version that is neither active nor the latest names a component the org did not list, and a query of the rows of flows that is near the limit of rows can be taken as cut off.`,
+          component: null,
+          details: {
+            code: 'QUERY_TIMEOUT',
+            state: 'partial',
+            flows: 2,
+            notNamed: rows.length - 2,
+            versionsCode: 'QUERY_TIMEOUT',
+            versionsState: 'partial',
+            requests: 4,
+          },
+        },
+      ]);
+      expect(named).toMatch(/^The org did not name the versions of all of its flows \(QUERY_TIMEOUT\)\. /);
     });
 
     it('counts the rows of a version a deploy left behind as of another version, also when it asks in parts', async () => {

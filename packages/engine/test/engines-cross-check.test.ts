@@ -478,6 +478,28 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       ).toMatchObject({ rowsNotMatched: 0, rowsCompared: 1, missed: [{ from: key('Flow', 'Caller'), to: REMIND }] });
     });
 
+    it('takes the id the org listed a flow with for its latest version where the org names it as another one', () => {
+      const NEW_ID = '301xx0000000004AAA';
+      const { listed } = flowInput([], []);
+      // `FlowDefinition` gave no latest version, so every version but the active one came as another version.
+      const noLatest = [{ flow: 'Remind', active: ACTIVE_ID, latest: null, others: [DRAFT_ID] }];
+      // A version was made after the listing: the org listed the flow with the id of the draft, which the snapshot
+      // holds.
+      const madeAfter = [{ flow: 'Remind', active: ACTIVE_ID, latest: NEW_ID, others: [DRAFT_ID] }];
+      for (const flowVersions of [noLatest, madeAfter]) {
+        expect(versionMatcher(listed, flowVersions, [])(version(DRAFT_ID))).toEqual({ key: REMIND, held: true });
+        expect(versionMatcher(listed, flowVersions, [REMIND])(version(DRAFT_ID))).toEqual({ key: REMIND, held: false });
+        expect(crossCheck(flowInput(rows, analysis, { flowVersions }))).toEqual(
+          crossCheck(flowInput(rows, analysis, { flowVersions: VERSIONS })),
+        );
+      }
+      // The latest version that `FlowDefinition` names is held as well, as before a version was named as another
+      // one. Another version that is not the one the org listed stays another version.
+      expect(versionMatcher(listed, madeAfter, [])(version(NEW_ID))).toEqual({ key: REMIND, held: true });
+      const older = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [NEW_ID] }];
+      expect(versionMatcher(listed, older, [])(version(NEW_ID))).toEqual({ key: REMIND, held: false });
+    });
+
     it('takes a flow under the name the org listed it with, where FlowDefinition writes its name otherwise', () => {
       // `FlowDefinition` gives the prefix of a package in a field of its own, and the listing need not write it.
       const prefixed = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [] }];

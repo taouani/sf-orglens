@@ -331,6 +331,39 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     expect(readDependencyRows(store, id)).toEqual(ROWS);
     store.close();
   });
+
+  it('migrates a database of schema version 10: its versions of flows are there, with no other version', () => {
+    const path = join(temp.next(), 'orglens.sqlite');
+    const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 10) });
+    const id = snapshot(old);
+    const before: FlowVersionIds = {
+      flow: 'Renew',
+      active: '301xx0000000002AAA',
+      latest: '301xx0000000003AAA',
+      others: [],
+    };
+    old.write(() => {
+      writeDependencies(old, id, reading(), T1);
+      writeFlowVersions(old, id, [before]);
+    });
+    old.close();
+
+    const store = openStore({ path, driver });
+    expect(store.migrated).toEqual({ from: 10, to: MIGRATIONS.length });
+    // A snapshot taken before decision record 0078 keeps the active and the latest version, and no other one.
+    expect(readFlowVersionIds(store, id)).toEqual([before]);
+    expect(readDependencyRows(store, id)).toEqual(ROWS);
+    // A reading after the migration keeps the other versions, and they go with the snapshot.
+    const after = { ...before, others: ['301xx0000000005AAA'] };
+    store.write(() => {
+      writeDependencies(store, id, reading({ requests: 2 }), T2);
+      writeFlowVersions(store, id, [after]);
+    });
+    expect(readFlowVersionIds(store, id)).toEqual([after]);
+    store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
+    expect(count(store, 'snapshot_flow_other_version')).toBe(0);
+    store.close();
+  });
 });
 
 /** The row of an analysis as the engine wrote it at schema version 5, before an analysis kept a comparison. */

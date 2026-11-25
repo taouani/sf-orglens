@@ -721,7 +721,8 @@ export interface FlowVersionReading {
    * named a flow.
    * - `whole`: the org answered, and the flows it named have all their other versions.
    * - `partial`: the answer broke off. The flows have the other versions that came before.
-   * - `none`: the org did not answer, or was not asked because it named no flow.
+   * - `none`: the org did not answer, or was not asked: because it named no flow, and then `code` is `null`, or
+   *   because the limit of requests or of pages was reached, and then `code` says which.
    *
    * `code` is the code of the failure, or `null`.
    */

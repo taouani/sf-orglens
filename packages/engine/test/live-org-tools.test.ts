@@ -35,6 +35,7 @@ import {
   fileDifference,
   flowLines,
   flowVersionLines,
+  flowVersionsNotReadLine,
   missingLines,
   nameForm,
   objectKind,
@@ -1811,6 +1812,81 @@ describe('reading the test org', () => {
     expect(older.text()).not.toContain('::error::');
     expect(older.log.failed).toBe(false);
     expectNoSecret(older.text());
+  });
+
+  it('reads in parts with the ids of every version the org names, and says when the org does not name them', async () => {
+    // The state of run 29 on the test org: a deploy made a new version of a flow and left the old one, with its
+    // rows. The org names the old one (decision record 0078), so the reading in parts asks for its rows by its id,
+    // as the snapshot does, and is whole.
+    const kept = await metadataFromSource(FIXTURE);
+    const path = `flows/${FLOW_WITH_DRAFT}.flow-meta.xml`;
+    const file = fixtureFiles().get(path)?.toString('utf8') ?? '';
+    kept.flowVersions.set(FLOW_WITH_DRAFT, {
+      latest: 2,
+      older: new Map([[1, file.replace('<status>Active</status>', '<status>Obsolete</status>')]]),
+    });
+    mock.metadata = kept;
+    const oldId = kept.versionIdOf(FLOW_WITH_DRAFT, 1) ?? '';
+    const rows = fixtureDependencyRows(kept);
+    const ofOld = rows
+      .filter((row) => row['MetadataComponentType'] === 'Flow' && row['MetadataComponentName'] === FLOW_WITH_DRAFT)
+      .map((row) => ({ ...row, MetadataComponentId: oldId }));
+    expect(ofOld.length).toBeGreaterThan(5);
+    // The rows of the old version first, so that an answer that is cut off holds them.
+    const org = (): MockDependencies => mockDependencies([...ofOld, ...rows]);
+    mock.dependencies = org();
+    const named = collected();
+    await readOrg(named.log, { env: environment() });
+    const output = named.text();
+    expect(named.log.failed).toBe(false);
+    expect(output).toContain('Versions that are neither active nor the latest: 1, of 1 flow (Invoice_Recalculate).');
+    expect(output).toContain(
+      `Rows from a version of a flow that the snapshot does not hold, such as a draft, which are not compared: ${String(ofOld.length)}.`,
+    );
+    expect(output).toMatch(
+      /^Read once more with every answer cut off at 30 rows: .+ the engine calls the reading whole\. /m,
+    );
+    expect(output).toContain('The parts give the same rows as the reading just before.');
+    expect(output).not.toContain('FLOW_VERSIONS_NOT_READ');
+    expect(output).not.toContain(oldId.slice(0, 15));
+    expectNoSecret(output);
+
+    // An org that refuses the query of every version: the warning says which query was not answered, with its
+    // code, and the reading in parts counts the part that holds the rows of the old version, as in run 29.
+    const refusing = org();
+    refusing.refuse = (soql) => (soql.endsWith(' FROM Flow') ? 'INVALID_TYPE' : undefined);
+    mock.dependencies = refusing;
+    const unnamed = collected();
+    await readOrg(unnamed.log, { env: environment() });
+    const refused = unnamed.text();
+    expect(refused).toContain(
+      'The warning FLOW_VERSIONS_NOT_READ: the query of FlowDefinition was answered in whole, the query of Flow not answered (INVALID_TYPE). Flows the org listed and named no version of: 0.',
+    );
+    expect(refused).toContain('Versions that are neither active nor the latest: 0.');
+    expect(refused).toMatch(
+      /^Read once more with every answer cut off at 30 rows: \d+ requests, \d+ rows, and the engine calls the reading partial\. Queries counted as cut off: 1\. /m,
+    );
+    expect(unnamed.log.failed).toBe(false);
+    expectNoSecret(refused);
+  });
+
+  it('says how the org answered each query behind the warning about the versions of flows', () => {
+    const line = (details: Record<string, unknown>): string => flowVersionsNotReadLine(collected().log, details);
+    expect(
+      line({ state: 'partial', code: 'QUERY_TIMEOUT', notNamed: 2, versionsState: 'whole', versionsCode: null }),
+    ).toBe(
+      'The warning FLOW_VERSIONS_NOT_READ: the query of FlowDefinition was answered in part (QUERY_TIMEOUT), the query of Flow answered in whole. Flows the org listed and named no version of: 2.',
+    );
+    expect(line({ state: 'none', code: 'INVALID_TYPE', notNamed: 6, versionsState: 'none', versionsCode: null })).toBe(
+      'The warning FLOW_VERSIONS_NOT_READ: the query of FlowDefinition was not answered (INVALID_TYPE), the query of Flow not asked. Flows the org listed and named no version of: 6.',
+    );
+    // What the log may not print is not printed.
+    expect(
+      line({ state: 'whole', code: null, versionsState: 'partial', versionsCode: 'The org said 00Dxx0000001gEREAY' }),
+    ).toBe(
+      'The warning FLOW_VERSIONS_NOT_READ: the query of FlowDefinition was answered in whole, the query of Flow answered in part (a code that is not shown). Flows the org listed and named no version of: unknown.',
+    );
+    expect(line({})).toContain('the query of FlowDefinition was of a state that is not known');
   });
 
   it('fails for answers that do not agree also where a query of the snapshot failed', async () => {

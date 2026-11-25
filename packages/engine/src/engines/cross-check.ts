@@ -200,11 +200,11 @@ interface FlowVersion {
 /**
  * Finds the flow that the end of a row stands for where its id is that of a version of a flow (decision record
  * 0067): by the ids the org named the versions with, the active, the latest and every other one (decision record
- * 0078), and else by the id it listed the flow with, which is that of its latest version. The flow is the one the org listed with the id of its latest version,
- * under the name of the listing, which is the name of the component the snapshot holds. Only a flow that the org
- * did not list with that id goes by the name `FlowDefinition` gives it. The version the snapshot holds is the
- * active one where a newer one is noted, and else the latest. `null`: the end is no version of a flow the org
- * named or listed.
+ * 0078), and by the id it listed the flow with, which is that of its latest version when it was listed. The flow is
+ * the one the org listed with the id of its latest version, under the name of the listing, which is the name of the
+ * component the snapshot holds. Only a flow that the org did not list with that id goes by the name `FlowDefinition`
+ * gives it. The version the snapshot holds is the active one where a newer one is noted, and else the latest.
+ * `null`: the end is no version of a flow the org named or listed.
  */
 export function versionMatcher(
   listed: readonly ListedId[],
@@ -238,8 +238,15 @@ export function versionMatcher(
     // A version that is neither is never the one the snapshot holds. A snapshot taken before record 0078 has none.
     for (const id of flow.others) add(id, key, 'other');
   }
-  // Where the org named no version of a flow, the id it listed the flow with is that of the latest one.
-  for (const [id, key] of listedFlows) if (!byId.has(id)) add(id, key, 'latest');
+  // The id the org listed a flow with is that of the latest version when it was listed: where the org named no
+  // version of the flow with it, or named it only as another version, it is the latest one. That is so where
+  // `FlowDefinition` gave no latest version, and where a version was made after the listing.
+  for (const [id, key] of listedFlows) {
+    const known = byId.get(id);
+    if (known === undefined || (known.key === key && !known.versions.has('active') && !known.versions.has('latest'))) {
+      add(id, key, 'latest');
+    }
+  }
   const activeHeld = new Set(newerVersions);
 
   return (end) => {
