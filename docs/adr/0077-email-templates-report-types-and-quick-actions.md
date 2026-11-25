@@ -112,9 +112,15 @@ of the records it creates, the values it sets, the fields of its form and the fl
 7. **A row of the Dependency API from an email template is compared.** The test org reports the custom fields of
    the merge fields of a template, and the object they are of ([real-org.md of
    Phase 2](../research/phase-2/real-org.md)). A pair of the analysis from a template without a row is listed, but
-   for a standard field or object. What the API reports of a report type and of a quick action was not measured: a
-   row from one of them is compared, and a pair the analysis has without a row is counted with the reasons
-   `report-type` and `quick-action`, and not listed.
+   for a standard field or object. What the API reports of a report type and of a quick action was not measured
+   when this was decided: a row from one of them is compared, and a pair the analysis has without a row is counted
+   with the reasons `report-type` and `quick-action`, and not listed. Run 29 of the workflow "Live org", recorded in
+   that note, measured it after this record was accepted. Of the report type of the fixture project the API reports
+   nothing, so the reason `report-type` stays. Of its quick action the API reports the object it creates records of
+   and the field `targetParentField`, and not the fields its predefined values set or the field its formula reads.
+   The reason `quick-action` stays for every pair of a quick action: the field `targetParentField` names and a field
+   a predefined value sets are both `assignment` and cannot be told apart, and the object, which `via: object` tells
+   apart, was measured for one action of one kind.
 
 ## Consequences
 
@@ -157,4 +163,5 @@ of the records it creates, the values it sets, the fields of its form and the fl
   the names of the 15 child relationships every org has, and how a report type writes a column through a lookup
   field of Salesforce. So are the form of `defaultEmailTemplateName` and of `canvas` of a quick action, and whether
   an org hands out the body of a template in ISO-8859-1. What the Dependency API reports of a report type and of a
-  quick action was not measured: the test org lists neither until the next run of "Live org".
+  quick action was measured on the test org only, with one of each (decision 7). A field that only the layout of an
+  action shows was not measured.
