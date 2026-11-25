@@ -228,7 +228,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     store.close();
   });
 
-  it('gives what the org listed with the id of each component, and nothing that only came back', () => {
+  it('gives what the org listed with the id of each component, under the name it came back with, and nothing that only came back', () => {
     const store = open();
     const id = snapshot(store);
     const listed = (type: string, fullName: string, salesforceId: string | null) => ({
@@ -246,10 +246,18 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
         // A standard object is listed without an id.
         listed('CustomObject', 'Account', null),
       ]);
+      addInventory(store, id, [
+        { ...listed('ApexClass', 'pkg__Billing', '01pxx0000000001AAA'), namespacePrefix: 'pkg' },
+      ]);
       // A component that came back although the org had not listed it has no id of the org.
       markRetrieved(store, id, [{ type: 'CustomObject', fullName: 'Invoice__c' }]);
+      // A component of a package that came back without its prefix has the id under the name it came back with,
+      // which is the name the snapshot holds it under (decision record 0076).
+      const billing = { type: 'ApexClass', fullName: 'pkg__Billing' };
+      markRetrieved(store, id, [{ type: 'ApexClass', fullName: 'Billing' }], { asked: [billing], notFound: [] });
     });
     expect(readListedIds(store, id)).toEqual([
+      { type: 'ApexClass', fullName: 'Billing', id: '01pxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Amount__c', id: '00Nxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Total__c', id: '00Nxx0000000002AAA' },
       { type: 'CustomObject', fullName: 'Account', id: null },

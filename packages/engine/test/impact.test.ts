@@ -5,7 +5,7 @@
  * answer key, from which a test works out what every answer must be. `engines-impact.test.ts` has the rules of
  * the walk on graphs written for them.
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ImpactReport } from '../src/api/impact.ts';
@@ -795,6 +795,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ).toMatchObject({ code: 'INTERNAL' });
     });
 
+    it('has no component of a package in a snapshot of a repository, which has no listing', async () => {
+      // Decision record 0076. `--packages` changes nothing, in either direction.
+      const { workspace } = await setUp();
+      for (const outgoing of [false, true]) {
+        const answer = await workspace.impact('fixture', AMOUNT, { outgoing });
+        expect(await workspace.impact('fixture', AMOUNT, { outgoing, packages: true })).toEqual(answer);
+        expect(answer.packagesLeftOut).toBe(0);
+        expect([answer.component, ...answer.results].filter((one) => one.package !== null)).toEqual([]);
+      }
+    });
+
     it('asks the latest snapshot, or the one that is named', async () => {
       const { project, workspace } = await setUp();
       rmSync(join(project, OBJECTS, 'Invoice__c', 'fields', 'Late_Fee__c.field-meta.xml'));
@@ -1003,3 +1014,28 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
   },
 );
+
+/** NPSP, a public codebase of `fixtures/corpora.toml`, where `pnpm run corpora:fetch` downloaded it. */
+const NPSP = join(import.meta.dirname, '../../../.corpora/npsp');
+
+describe('an impact question about a repository of a package project', () => {
+  it.skipIf(!existsSync(NPSP))(
+    'takes the components of NPSP for its own, also those named after a component of another package',
+    async () => {
+      const root = temp.next();
+      cpSync(join(NPSP, 'force-app'), join(root, 'npsp', 'force-app'), { recursive: true });
+      cpSync(join(NPSP, 'sfdx-project.json'), join(root, 'npsp', 'sfdx-project.json'));
+      writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.npsp]\nkind = "git"\nrepo = "npsp"\n');
+      const workspace = await openWorkspace({ root, env: {} });
+      const report = await workspace.snapshot('npsp');
+      expect(report.types.filter((type) => type.packaged > 0)).toEqual([]);
+      // NPSP holds the tab of an object of another package of the same family, and reads its fields.
+      expect(report.types.find((type) => type.type === 'CustomTab')?.listed).toBeGreaterThan(0);
+      const answer = await workspace.impact('npsp', 'Contact.npo02__TotalOppAmount__c', { packages: false });
+      expect(answer.results).not.toEqual([]);
+      expect(answer.packagesLeftOut).toBe(0);
+      expect([answer.component, ...answer.results].filter((one) => one.package !== null)).toEqual([]);
+    },
+    120_000,
+  );
+});

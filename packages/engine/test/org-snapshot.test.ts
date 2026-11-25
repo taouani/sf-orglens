@@ -1935,15 +1935,23 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
         expect(metadata.retrieves.flat()).toContain('CustomObject:pkg__Invoice__c');
         expect(metadata.retrieves.flat()).toContain('CustomObject:Invoice__c');
-        expect(report.snapshot.status).toBe('partial');
         expect(stored(dir, 1)).toEqual(expectedFiles());
-        expect(ofReading(report).filter((issue) => issue.severity === 'error')).toEqual([
+        // The listed object stays missing. It is of a package, so that is a warning, and the snapshot is complete
+        // (decision record 0076).
+        expect(report.snapshot.status).toBe('complete');
+        expect(ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED')).toEqual([
           {
-            severity: 'error',
+            severity: 'warning',
             code: 'NOT_RETRIEVED',
             message:
-              '1 component of the type CustomObject that the org listed did not come back. The first: pkg__Invoice__c',
-            details: { type: 'CustomObject', count: 1, components: ['pkg__Invoice__c'], tier: 'logic' },
+              '1 component of the type CustomObject that the org listed as of a managed package installed in it did not come back. Salesforce does not hand out a protected component of a package, so the snapshot is not partial for it. The first: pkg__Invoice__c',
+            details: {
+              type: 'CustomObject',
+              count: 1,
+              components: ['pkg__Invoice__c'],
+              tier: 'logic',
+              ofPackages: true,
+            },
           },
         ]);
         expect(ofReading(report).map((issue) => issue.code)).not.toContain('RETRIEVED_WITHOUT_PREFIX');

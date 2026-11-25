@@ -177,15 +177,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         const types = new Map<string, number>();
         for (const component of reading.components) types.set(component.type, (types.get(component.type) ?? 0) + 1);
         for (const [type, count] of types) {
-          addCoverage(old, id, {
-            type,
-            listed: count,
-            retrieved: count,
-            analysed: 0,
-            listing: 'ok',
-            note: null,
-            packaged: 0,
-          });
+          addCoverage(old, id, { type, listed: count, retrieved: count, analysed: 0, listing: 'ok', note: null });
         }
         for (const issue of reading.issues)
           addIssue(old, id, { ...issue, componentKey: null, details: issue.details ?? null });

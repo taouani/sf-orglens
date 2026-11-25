@@ -69,6 +69,7 @@ import {
   type OtherNameRule,
 } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
+import { missingOfPackages } from '../store/packages.ts';
 import {
   addCoverage,
   addIssue,
@@ -1390,7 +1391,8 @@ function finish(store: Store, snapshotId: number): void {
       if (count.listed > count.retrieved) {
         const missing = missingComponents(store, snapshotId, type);
         const tier = tierOf(type);
-        const said = `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`;
+        const said = (names: readonly string[]): string =>
+          `${plural(names.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${names[0] ?? ''}`;
         // A file of parts that the org lists and has no part for. Whether its parts could be listed is told by
         // the listing of their type, which is an error of its own if it failed.
         const parts = HOLDS_ONLY[type];
@@ -1400,15 +1402,33 @@ function finish(store: Store, snapshotId: number): void {
             snapshotId,
             'warning',
             'NOT_RETRIEVED',
-            `${said}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
+            `${said(missing)}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
             { type, ...named(missing), tier, holdsNothing: true },
           );
         } else {
-          issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said), {
-            type,
-            ...named(missing),
-            tier,
-          });
+          // A component of a managed package installed in the org does not make the snapshot partial: Salesforce
+          // does not hand out a protected one, and an answer leaves it out as the thing that refers (decision
+          // record 0076).
+          const ofPackages = missingOfPackages(store, snapshotId, type);
+          const packaged = new Set(ofPackages);
+          const own = missing.filter((name) => !packaged.has(name));
+          if (own.length > 0) {
+            issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said(own)), {
+              type,
+              ...named(own),
+              tier,
+            });
+          }
+          if (ofPackages.length > 0) {
+            issue(
+              store,
+              snapshotId,
+              'warning',
+              'NOT_RETRIEVED',
+              `${plural(ofPackages.length, 'component', 'components')} of the type ${type} that the org listed as of a managed package installed in it did not come back. Salesforce does not hand out a protected component of a package, so the snapshot is not partial for ${ofPackages.length === 1 ? 'it' : 'them'}. The first: ${ofPackages[0] ?? ''}`,
+              { type, ...named(ofPackages), tier, ofPackages: true },
+            );
+          }
         }
       }
       if (count.unlisted > 0) {

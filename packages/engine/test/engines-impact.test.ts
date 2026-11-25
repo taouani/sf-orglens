@@ -814,6 +814,27 @@ describe('what an answer does not cover', () => {
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, true]);
   });
 
+  it('does not take a type for partial for the components of packages that the answer does not count', () => {
+    const types = [
+      type('CustomField', { listed: 60, retrieved: 54, analysed: 54 }),
+      type('Flow', { listed: 10, retrieved: 8, analysed: 8 }),
+      type('ValidationRule', { listed: 4, retrieved: 3, analysed: 3, listing: 'failed' }),
+    ];
+    // Six fields and two flows of packages did not come back, and one rule. A type that could not be listed stays.
+    const ofPackages = new Map([
+      ['CustomField', 6],
+      ['Flow', 1],
+      ['ValidationRule', 1],
+    ]);
+    const gaps = impactGaps(types, none, [...READ, 'Flow'], new Set(), ofPackages);
+    expect(gaps.partial).toEqual([
+      { type: 'Flow', listed: 10, retrieved: 8, listing: 'ok' },
+      { type: 'ValidationRule', listed: 4, retrieved: 3, listing: 'failed' },
+    ]);
+    const counted = impactGaps(types, none, [...READ, 'Flow']);
+    expect(counted.partial.map((gap) => gap.type)).toEqual(['CustomField', 'Flow', 'ValidationRule']);
+  });
+
   it('names a type the configuration leaves out: as not analysed, or as missing if the analysis reads it', () => {
     const leftOut = type('EmailTemplate', { listed: 0, retrieved: 0, analysed: 0, listing: 'excluded' });
     const notRead = impactGaps([type('CustomField'), leftOut], none, READ);

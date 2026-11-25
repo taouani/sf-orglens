@@ -25,7 +25,7 @@ import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import { countInventory } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
-import { readPackages } from '../store/packages.ts';
+import { countMissingOfPackages, readPackages } from '../store/packages.ts';
 import {
   countIssues,
   readAnalysisWarnings,
@@ -264,7 +264,12 @@ export function impactOf(store: Store, source: string, component: string, query:
   const { read, analysis: analysisErrors, readWarnings } = countIssues(store, snapshot.id, covered);
   const bearing = warningsThatBear(readAnalysisWarnings(store, snapshot.id), walk, direction).length;
   const issues = { read, analysis: analysisErrors, analysisWarnings: readWarnings + bearing };
-  const gaps = impactGaps(types, issues, analysis.types, unlisted);
+  // A component of a package that the org listed and did not hand out makes no type partial where the answer
+  // leaves the components of packages out as the thing that refers. As a target, the walk counts it as one the
+  // snapshot does not hold (decision record 0076).
+  const keepsPackages = direction === 'incoming' && query.packages === true;
+  const ofPackages = keepsPackages ? new Map<string, number>() : countMissingOfPackages(store, snapshot.id);
+  const gaps = impactGaps(types, issues, analysis.types, unlisted, ofPackages);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what
   // a component refers to that the snapshot does not hold is not known at all. For what refers to a component,

@@ -39,6 +39,16 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
   const temp = tempDirs();
   afterEach(temp.cleanUp);
   const open = () => openStore({ path: join(temp.next(), 'orglens.sqlite'), driver });
+  /** Each listed name that a component came back for under another name, with that name. */
+  const cameBackAs = (store: ReturnType<typeof open>, id: number, type: string): [unknown, unknown][] =>
+    store
+      .all(
+        `SELECT full_name, came_back_as FROM inventory_item
+          WHERE snapshot_id = ? AND type = ? AND came_back_as IS NOT NULL ORDER BY full_name`,
+        id,
+        type,
+      )
+      .map((row) => [row['full_name'], row['came_back_as']]);
 
   const begin = (store: ReturnType<typeof open>, name = 'prod'): number =>
     insertSnapshot(store, {
@@ -128,25 +138,27 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     ]);
     // A second retrieve with the same component says nothing new.
     expect(markRetrieved(store, id, [bundle('tile')], { asked, notFound: [] })).toEqual([]);
+    // The listed row keeps the name the component came back with (decision record 0076). A component that came
+    // back under the name it was listed with keeps none.
     expect(
       store
         .all(
-          `SELECT full_name, listed, retrieved FROM inventory_item
+          `SELECT full_name, listed, retrieved, came_back_as FROM inventory_item
             WHERE snapshot_id = ? AND type = 'LightningComponentBundle' ORDER BY full_name`,
           id,
         )
-        .map((row) => [row['full_name'], row['listed'], row['retrieved']]),
+        .map((row) => [row['full_name'], row['listed'], row['retrieved'], row['came_back_as']]),
     ).toEqual([
-      ['card', 1, 1],
-      ['grid', 0, 1],
-      ['lone', 0, 1],
-      ['odd', 0, 1],
-      ['one__grid', 1, 0],
-      ['pkg__card', 1, 1],
-      ['pkg__lone', 1, 0],
-      ['pkg__odd', 1, 0],
-      ['pkg__tile', 1, 1],
-      ['two__grid', 1, 0],
+      ['card', 1, 1, null],
+      ['grid', 0, 1, null],
+      ['lone', 0, 1, null],
+      ['odd', 0, 1, null],
+      ['one__grid', 1, 0, null],
+      ['pkg__card', 1, 1, null],
+      ['pkg__lone', 1, 0, null],
+      ['pkg__odd', 1, 0, null],
+      ['pkg__tile', 1, 1, 'tile'],
+      ['two__grid', 1, 0, null],
     ]);
     expect(missingComponents(store, id, 'AuraDefinitionBundle')).toEqual(['pkg__tile']);
     store.close();
@@ -277,6 +289,11 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     );
     // A second retrieve with the same document says nothing new.
     expect(markRetrieved(store, id, [document('Assets/Logo')], retrieve)).toEqual([]);
+    expect(cameBackAs(store, id, 'Document')).toEqual([
+      ['Assets/Logo.png', 'Assets/Logo'],
+      ['Assets/Terms.v2.txt', 'Assets/Terms'],
+      ['My.Files/Logo.png', 'My.Files/Logo'],
+    ]);
     expect(missingComponents(store, id, 'Document')).toEqual([
       'Assets/.hidden',
       'Assets/Both.png',
@@ -363,6 +380,8 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     ]);
     // A second retrieve with the same components says nothing new.
     expect(markRetrieved(store, id, [recordType('PersonAccount.Client')], retrieve)).toEqual([]);
+    expect(cameBackAs(store, id, 'DuplicateRule')).toEqual([['Account.Same_Person', 'PersonAccount.Same_Person']]);
+    expect(cameBackAs(store, id, 'RecordType')).toEqual([['Account.Client', 'PersonAccount.Client']]);
 
     expect(missingComponents(store, id, 'DuplicateRule')).toEqual(['Account.Elsewhere', 'Account.Gone']);
     expect(unlistedComponents(store, id, 'DuplicateRule')).toEqual(['PersonAccount.Elsewhere', 'PersonAccount.Gone']);
@@ -496,6 +515,14 @@ describe.each(DRIVERS)('the journal of an org snapshot with $name', (driver) => 
     ]);
     // A second retrieve with the same components says nothing new.
     expect(markRetrieved(store, id, [report('Finance/Quarterly/Revenue')], retrieve)).toEqual([]);
+    expect(cameBackAs(store, id, 'Report')).toEqual([
+      ['Archive/Old_Revenue', 'Finance/Quarterly/Archive/Old_Revenue'],
+      ['Quarterly/Revenue', 'Finance/Quarterly/Revenue'],
+    ]);
+    expect(cameBackAs(store, id, 'ReportFolder')).toEqual([
+      ['Archive', 'Finance/Quarterly/Archive'],
+      ['Quarterly', 'Finance/Quarterly'],
+    ]);
 
     expect(missingComponents(store, id, 'ReportFolder')).toEqual(['Hidden', 'Shared']);
     expect(unlistedComponents(store, id, 'ReportFolder')).toEqual([

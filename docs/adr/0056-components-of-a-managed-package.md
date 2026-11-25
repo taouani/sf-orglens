@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-22
 - Decisions: none (an answer of the maintainer to the Phase 2 plan)
+- Changed by: [0076](0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md), which builds it in work package 7: a component is of a package where the org lists it with a prefix and a state of an installed package, a repository has none, an answer counts what it left out in `packagesLeftOut` and walks on through it, `--packages` keeps it, a pair of the Dependency API from a package is compared as any other, and a component of a package that is not handed out is a warning
 
 ## Context
 

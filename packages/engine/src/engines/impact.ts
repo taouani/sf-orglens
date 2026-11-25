@@ -589,6 +589,9 @@ export interface ImpactGaps {
  * `unlisted` are the types of which the snapshot holds components that the source did not list. Such a type
  * counts as any other, also where the source listed nothing of it (decision record 0073): its counts are then 0.
  *
+ * `ofPackages` counts per type the components of managed packages that the source listed and the snapshot does
+ * not hold, where the answer does not count them: they make no type partial (decision record 0076).
+ *
  * `notHeld` is 0 here. It is known from a walk.
  */
 export function impactGaps(
@@ -596,6 +599,7 @@ export function impactGaps(
   issues: { readonly read: number; readonly analysis: number; readonly analysisWarnings: number },
   analysedTypes: readonly string[] | null,
   unlisted: ReadonlySet<string> = new Set(),
+  ofPackages: ReadonlyMap<string, number> = new Map(),
 ): ImpactGaps {
   const gap = ({ type, listed, retrieved, listing }: TypeCount): ImpactGap => ({ type, listed, retrieved, listing });
   const sorted = [...types].sort((a, b) => compareText(a.type, b.type));
@@ -607,7 +611,10 @@ export function impactGaps(
     partial: sorted
       .filter(
         (type) =>
-          analysed(type) && (type.retrieved < type.listed || type.listing === 'failed' || type.listing === 'excluded'),
+          analysed(type) &&
+          (type.retrieved + (ofPackages.get(type.type) ?? 0) < type.listed ||
+            type.listing === 'failed' ||
+            type.listing === 'excluded'),
       )
       .map(gap),
     readErrors: issues.read,

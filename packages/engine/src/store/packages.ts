@@ -4,7 +4,8 @@
  * The org says so: it lists a component of an installed package with the prefix of the package and a state of
  * one (`manageableState`). A component of the org's own namespace has a prefix too, and another state. Nothing
  * else is taken: not the prefix of a name, which a component can carry for the component it belongs to, as a tab
- * carries the name of its object. A snapshot of a repository has no listing, so nothing of it is of a package.
+ * carries the name of its object. A snapshot of a repository has no listing, so nothing of it is of a package. A
+ * component of a package that the org lists and does not hand out makes no snapshot partial.
  */
 import { EngineError } from '../core/errors.ts';
 import { buildKey, parentKey, type ComponentKey } from '../core/keys.ts';
@@ -17,7 +18,9 @@ import type { Store } from './open.ts';
  */
 const INSTALLED_STATES: readonly string[] = ['installed', 'installedEditable', 'deprecated', 'deprecatedEditable'];
 
-const INSTALLED = INSTALLED_STATES.map((state) => `'${state}'`).join(', ');
+/** The rows of `inventory_item` the org listed as components of an installed package. */
+const OF_PACKAGE = `listed = 1 AND namespace_prefix IS NOT NULL
+  AND manageable_state IN (${INSTALLED_STATES.map((state) => `'${state}'`).join(', ')})`;
 
 /** What a snapshot knows of the packages of its components. */
 export interface Packages {
@@ -45,8 +48,7 @@ function keyOf(type: string, fullName: string): ComponentKey | null {
 export function readPackages(store: Store, snapshotId: number): Packages {
   const packages = new Map<ComponentKey, string>();
   const rows = store.all(
-    `SELECT type, full_name, came_back_as, namespace_prefix FROM inventory_item
-      WHERE snapshot_id = ? AND listed = 1 AND namespace_prefix IS NOT NULL AND manageable_state IN (${INSTALLED})`,
+    `SELECT type, full_name, came_back_as, namespace_prefix FROM inventory_item WHERE snapshot_id = ? AND ${OF_PACKAGE}`,
     snapshotId,
   );
   for (const row of rows) {
@@ -76,11 +78,37 @@ export function readPackages(store: Store, snapshotId: number): Packages {
 export function countPackaged(store: Store, snapshotId: number): Map<string, number> {
   const counts = new Map<string, number>();
   const rows = store.all(
-    `SELECT type, COUNT(*) AS packaged FROM inventory_item
-      WHERE snapshot_id = ? AND listed = 1 AND namespace_prefix IS NOT NULL AND manageable_state IN (${INSTALLED})
+    `SELECT type, COUNT(*) AS packaged FROM inventory_item WHERE snapshot_id = ? AND ${OF_PACKAGE}
       GROUP BY type ORDER BY type`,
     snapshotId,
   );
   for (const row of rows) counts.set(String(row['type']), Number(row['packaged']));
+  return counts;
+}
+
+/**
+ * The components of a type that the org listed as of an installed package and that did not come back, sorted by
+ * name. They do not make a snapshot partial (decision record 0076).
+ */
+export function missingOfPackages(store: Store, snapshotId: number, type: string): string[] {
+  return store
+    .all(
+      `SELECT full_name FROM inventory_item
+        WHERE snapshot_id = ? AND type = ? AND retrieved = 0 AND ${OF_PACKAGE} ORDER BY full_name`,
+      snapshotId,
+      type,
+    )
+    .map((row) => String(row['full_name']));
+}
+
+/** Per type, how many of the components the org listed as of an installed package did not come back. */
+export function countMissingOfPackages(store: Store, snapshotId: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  const rows = store.all(
+    `SELECT type, COUNT(*) AS missing FROM inventory_item WHERE snapshot_id = ? AND retrieved = 0 AND ${OF_PACKAGE}
+      GROUP BY type ORDER BY type`,
+    snapshotId,
+  );
+  for (const row of rows) counts.set(String(row['type']), Number(row['missing']));
   return counts;
 }

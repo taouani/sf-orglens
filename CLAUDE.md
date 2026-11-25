@@ -172,6 +172,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   refers to it. For `--outgoing`, a flow that is found is walked from its elements, which are no results. A name
   such as `Invoice_After_Save.Update_Account` finds an element. An answer names the flows in it whose active
   version has a newer one beside it (`newerVersions`), and that is no gap.
+- A component of a snapshot of an org is of a managed package where the org lists it with the prefix of the
+  package and a state of an installed one, under the listed name or the name it came back with
+  (`store/packages.ts`, decision record 0076). A part the analysis makes of it, such as an element of a flow, is of
+  its package. The prefix in a name plays no part, and nothing of a snapshot of a repository is of a package. An
+  answer about what refers to a component leaves a component of a package out, counts it (`packagesLeftOut`) and
+  walks on through it. `--packages` keeps it. An answer about what a component refers to leaves nothing out. A
+  component of a package that the org listed and that is not in the snapshot makes no type partial in an answer
+  that does not count it.
 - A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
   (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
@@ -195,7 +203,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   does. What the org listed and did not hand out, a listing it refused, a retrieve that failed and a file that
   cannot be read as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning`
   outside it, which does not. Each such issue says which in `details.tier`. What nothing tells the type of counts
-  against the tier.
+  against the tier. A component of a managed package that the org lists and does not hand out is a warning in any
+  tier (`details.ofPackages`, decision record 0076).
   Where the Salesforce library falls short, the word of the org is taken (decision record 0047): a file in a
   folder the library knows no type for is counted by the type the org describes with that folder, and a
   component of a package that comes back without the prefix of the package is the one the org listed, when the
@@ -204,9 +213,11 @@ packages/cli   the `orglens` binary                            imports only `@sf
   which the org lists under the object `Account` and hands out under `PersonAccount` (decision record 0071), and
   for a report, a dashboard and their folders in a folder that lies in a folder, which the org lists without the
   outer folders and hands out under the whole path (decision record 0072). The keys and the files keep the name
-  that came back. A part comes with its parent and is not named in a retrieve, with one exception (decision
-  record 0049): when Salesforce cannot find a parent the org does not list, its listed parts are asked for by
-  their own names in one more retrieve. That is done only for a parent the Salesforce library keeps with a file
+  that came back, and the row of the listed name keeps it too (`inventory_item.came_back_as`, decision record
+  0076), so that the cross-check matches a row by the id the org listed to the component the snapshot holds. A
+  part comes with its parent and is not named in a retrieve, with one exception (decision record 0049): when
+  Salesforce cannot find a parent the org does not list, its listed parts are asked for by their own names in one
+  more retrieve. That is done only for a parent the Salesforce library keeps with a file
   for every part, such as an object.
   The file of custom labels is not missing when the org lists no label. Where the org hands out a version of a flow
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it

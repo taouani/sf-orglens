@@ -22,7 +22,12 @@ every type analysed so far counts for it. An answer about what refers to a compo
 not analysed where its components can name nothing of the answer (record 0073). The impact times of the synthetic
 org were measured again on 25 November 2026 and have not changed beyond the spread of the runs
 (`docs/research/phase-2/impact-times.md`). An answer counts a warning of the analysis only where it can bear on
-it (record 0074), which record 0061 leaves to work package 6.
+it (record 0074), which record 0061 leaves to work package 6. Work package 7 is built (record 0076): a component
+is of a managed package where the org lists it with the prefix and a state of an installed package, which departs
+from this plan in one point: the prefix in a name is not taken. An answer about what refers to a component leaves
+such a component out, counts it and walks on through it, `--packages` keeps it, and `coverage` counts them per
+type. A component of a package that the org lists and Salesforce does not hand out is a warning, as the maintainer
+answered on 25 November 2026.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
