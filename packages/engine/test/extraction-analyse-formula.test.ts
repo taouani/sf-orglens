@@ -240,6 +240,28 @@ describe('a name in a formula', () => {
     expect(analysis.issues).toEqual([]);
   });
 
+  it('that walks the relationship of a person account reads the lookup of the contact, from every object that shows it', () => {
+    // An org with person accounts hands out parts of the account under `PersonAccount` and `BusinessAccount` too.
+    for (const object of ['Account', 'PersonAccount', 'BusinessAccount']) {
+      const source = billing();
+      source.field('Contact', 'Mentor__c', '<referenceTo>User</referenceTo>', '<type>Lookup</type>');
+      const file = source.field(
+        object,
+        'Probe__c',
+        '<formula>Mentor__pr.Email &amp; Mentor__pc</formula>',
+        '<type>Text</type>',
+      );
+      const text = Buffer.from(source.files.get(file) ?? []).toString('utf8');
+      const analysis = source.analyse();
+      expect(referencesOf(analysis, key('CustomField', `${object}.Probe__c`)).map(line)).toEqual([
+        `${placeIn(text, 'Mentor__pr')} reads CustomField:contact.mentor__c [Mentor__pr] resolved confirmed`,
+        `${placeIn(text, 'Email')} reads CustomField:user.email [Email] external confirmed`,
+        `${placeIn(text, 'Mentor__pc')} reads CustomField:contact.mentor__c [Mentor__pc] resolved confirmed`,
+      ]);
+      expect(analysis.issues).toEqual([]);
+    }
+  });
+
   it('goes where the formula says the owner leads: to a user, or to a queue, which is a group', () => {
     const { analysis, text } = withFormula('Owner:User.Email &amp; Owner:Queue.QueueName &amp; Owner:Queue.Email');
     expect(referencesOf(analysis).map(line)).toEqual([

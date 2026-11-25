@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-16
 - Decisions: none (the formulas of work package 5 of the Phase 1 plan)
+- Changed by: [0075](0075-two-more-objects-show-the-fields-of-a-person-account.md), in one point: `Level__pr` is read the same on the objects `PersonAccount` and `BusinessAccount`
 
 ## Context
 

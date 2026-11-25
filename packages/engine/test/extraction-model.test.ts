@@ -19,7 +19,8 @@ const field = (fullName: string): ComponentKey => key('CustomField', fullName);
 
 /**
  * A small snapshot: an invoice with its file, an account of which the snapshot holds two fields and no file,
- * a user with a hierarchy field, and a custom field each of the activity and of the contact.
+ * a user with a hierarchy field, a custom field of the activity, two of the contact, and two as a person account
+ * shows them, of which one is a field of the contact too.
  */
 function model(): ObjectModel {
   const fields = new Map<ComponentKey, FieldFacts>([
@@ -34,6 +35,8 @@ function model(): ObjectModel {
     [field('Activity.Stage__c'), { type: 'Text', referenceTo: [] }],
     [field('Contact.Level__c'), { type: 'Text', referenceTo: [] }],
     [field('Contact.Mentor__c'), { type: 'Lookup', referenceTo: ['User'] }],
+    [field('PersonAccount.Level__pc'), { type: 'Text', referenceTo: [] }],
+    [field('PersonAccount.Hobby__pc'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
   ]);
   return buildModel({
     defined: new Set([
@@ -194,6 +197,28 @@ describe('what becomes of the name of a field', () => {
       'resolved CustomField:contact.level__c',
     ]);
   });
+
+  it('looks for it at the contact from the objects an org hands out parts of the account under, too', () => {
+    // The snapshot defines `PersonAccount.Level__pc` as well: the field of the contact is the one that is meant.
+    for (const object of ['PersonAccount', 'BusinessAccount', 'personaccount', 'BUSINESSACCOUNT']) {
+      expect(resolutions(object, ['Level__pc', 'Lost__pc', 'ns__Level__pc'])).toEqual([
+        'resolved CustomField:contact.level__c',
+        'unresolved null',
+        'external CustomField:contact.ns__level__c',
+      ]);
+    }
+    // A custom field of another kind is the object's own, as written.
+    expect(resolutions('BusinessAccount', ['Level__c'])).toEqual(['unresolved null']);
+  });
+
+  it('takes the field as the person account shows it where the snapshot defines that and no field of the contact', () => {
+    expect(resolutions('PersonAccount', ['Hobby__pc', 'HOBBY__PC'])).toEqual([
+      'resolved CustomField:personaccount.hobby__pc',
+      'resolved CustomField:personaccount.hobby__pc',
+    ]);
+    // Only the object it is defined on shows it: no file defines it on the account.
+    expect(resolutions('Account', ['Hobby__pc'])).toEqual(['unresolved null']);
+  });
 });
 
 describe('what becomes of the name of another component', () => {
@@ -251,6 +276,14 @@ describe('a step through a relationship', () => {
     expect(step('Account', 'Lost__pr')).toBe('unresolved null -> null');
     // Only an account shows the fields of a contact.
     expect(step('Contact', 'Mentor__pr')).toBe('unresolved null -> null');
+  });
+
+  it('takes it so from the objects an org hands out parts of the account under, too', () => {
+    expect(step('BusinessAccount', 'Mentor__pr')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('PersonAccount', 'Mentor__pr')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('BusinessAccount', 'Lost__pr')).toBe('unresolved null -> null');
+    // The field as the person account shows it, which is all the snapshot defines of it, says where it leads.
+    expect(step('PersonAccount', 'Hobby__pr')).toBe('resolved CustomField:personaccount.hobby__pc -> Sponsor__c');
   });
 
   it('takes a hierarchy field as a field that points at its own object', () => {
@@ -412,12 +445,17 @@ describe('the fields a name of a path that was not followed can be', () => {
     'Level__pr',
     'Mentor__pr',
     'Mentor__c',
+    'Hobby__pc',
+    'Hobby__pr',
     'Owner',
     'Name',
     'npsp__Batch__r',
     'ACCOUNT__R',
   ];
-  const OBJECTS = ['Invoice__c', 'Account', 'Contact', 'User', 'Task', 'Event', 'Sponsor__c'];
+  const OBJECTS = [
+    ...['Invoice__c', 'Account', 'Contact', 'User', 'Task', 'Event', 'Sponsor__c'],
+    ...['PersonAccount', 'BusinessAccount'],
+  ];
 
   it('holds every field the model takes the name for, as the field at the end of a path or behind a relationship', () => {
     let found = 0;
