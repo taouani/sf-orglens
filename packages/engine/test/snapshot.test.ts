@@ -122,9 +122,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
       },
       // The object and its field are analysed. The class has its row and no analyser yet.
       types: [
-        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
       ],
       analysis: {
         engineVersion: report.snapshot.engineVersion,
@@ -216,8 +216,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     expect(report.snapshot).toMatchObject({ status: 'partial', files: 2, commit: null });
     // What is missing is the class, and only the class: the object and its field are in the snapshot.
     expect(report.types).toEqual([
-      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+      { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+      { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
     ]);
     // What was not read makes the snapshot partial. The analysis of what was read is complete.
     expect(report.analysis).toMatchObject({ components: 2, complete: true });

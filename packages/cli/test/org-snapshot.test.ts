@@ -174,7 +174,7 @@ describe('orglens snapshot of an org', () => {
           commit: null,
           files: 4,
         },
-        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null }],
+        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 }],
         analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
         crossCheck: {
           state: 'whole',
@@ -438,6 +438,7 @@ describe('orglens snapshot of an org', () => {
       analysed: 0,
       listing: 'excluded',
       note: 'The configuration leaves this type out (exclude_types).',
+      packaged: 0,
     });
     expect((await orglens(dir, ['coverage', 'prod'])).stdout).toContain('Report     left out  0          0');
   });

@@ -11,7 +11,8 @@
     "key": "CustomField:invoice__c.unused_field__c",
     "type": "CustomField",
     "name": "Invoice__c.Unused_Field__c",
-    "file": "force-app/main/default/objects/Invoice__c/fields/Unused_Field__c.field-meta.xml"
+    "file": "force-app/main/default/objects/Invoice__c/fields/Unused_Field__c.field-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -21,6 +22,7 @@
   "beyondDepth": false,
   "minConfidence": "possible",
   "results": [],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,

@@ -408,15 +408,18 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
       type.listed > 0 || type.retrieved > 0 || type.analysed > 0 || type.listing !== 'ok' || unlisted.has(type.type),
   );
   if (shown.length > 0) {
+    // How many listed components are of a managed package, where any is (decision record 0076).
+    const ofPackages = shown.some((type) => type.packaged > 0);
     lines.push(
       '',
       ...table(
-        ['TYPE', 'LISTED', 'RETRIEVED', 'ANALYSED'],
+        ['TYPE', 'LISTED', ...(ofPackages ? ['OF PACKAGES'] : []), 'RETRIEVED', 'ANALYSED'],
         shown.map((type) => {
           const more = unlisted.get(type.type);
           return [
             typeShown(type.type),
             LISTED[type.listing](type.listed),
+            ...(ofPackages ? [String(type.packaged)] : []),
             `${String(type.retrieved)}${more === undefined ? '' : ` (and ${String(more)} not listed)`}`,
             String(type.analysed),
           ];
@@ -802,6 +805,7 @@ export interface ImpactCommandOptions {
   readonly depth?: string | undefined;
   readonly minConfidence?: ConfidenceTier | undefined;
   readonly outgoing?: boolean | undefined;
+  readonly packages?: boolean | undefined;
 }
 
 /** The value of `--depth`: how many references away the answer goes. */
@@ -878,6 +882,9 @@ function impactLines(report: ImpactReport): string[] {
     .filter((part) => part !== null)
     .join(', ');
   const lines = [incoming ? `What refers to ${named}, ${scope}.` : `What ${named} refers to, ${scope}.`];
+  if (component.package !== null) {
+    lines.push(`It is of the managed package ${component.package}, which is installed in the org.`);
+  }
   // A name alone that fits an object and more means the object. The others are named, so that none is missed.
   if (report.sameName.length > 0) {
     lines.push(
@@ -912,10 +919,15 @@ function impactLines(report: ImpactReport): string[] {
   }
 
   const direct = results.filter((result) => result.depth === 1).length;
+  const leftOut = report.packagesLeftOut;
   lines.push('');
   if (results.length === 0) {
     lines.push(
-      incoming ? 'Nothing that was analysed refers to it.' : 'It refers to no component, as far as it was analysed.',
+      incoming
+        ? leftOut > 0
+          ? 'Nothing of the org itself that was analysed refers to it.'
+          : 'Nothing that was analysed refers to it.'
+        : 'It refers to no component, as far as it was analysed.',
     );
   } else if (incoming) {
     lines.push(
@@ -926,26 +938,46 @@ function impactLines(report: ImpactReport): string[] {
       `It refers to ${count(results.length, 'component', 'components')}, ${direct === results.length ? 'directly' : `to ${String(direct)} of them directly`}.`,
     );
   }
+  // A component of a package is left out as the thing that refers, and never silently (decision record 0076).
+  if (leftOut > 0) {
+    lines.push(
+      `${count(leftOut, 'component of a managed package refers', 'components of managed packages refer')} to it as well, and ${leftOut === 1 ? 'is' : 'are'} left out. --packages keeps ${leftOut === 1 ? 'it' : 'them'}.`,
+    );
+  }
   // A flow refers to what its elements refer to, and is found by the reference of one of them.
   if (incoming && results.some((result) => result.reference.from !== result.key)) {
     lines.push('A flow is listed with the reference of one of its elements, which is listed after it.');
   }
   // Beyond depth 1, the nearer end of a reference is a result, or an element of a flow that is one.
   const listed = new Set(results.map((result) => result.key));
+  if (incoming && leftOut > 0 && results.some((result) => result.depth > 1 && !listed.has(result.reference.to))) {
+    lines.push('REFERS TO can name a component of a managed package, which is left out.');
+  }
   if (!incoming && results.some((result) => result.depth > 1 && !listed.has(result.reference.from))) {
     lines.push(
       'A flow refers to what its elements refer to: REFERRED TO BY can name an element of a listed flow, which is not listed itself.',
     );
   }
   if (results.length > 0) {
+    // The package of a result is shown where one of them is of a package.
+    const ofPackages = results.some((result) => result.package !== null);
     lines.push(
       '',
       ...table(
-        ['DEPTH', 'COMPONENT', 'CONFIDENCE', 'KIND', incoming ? 'REFERS TO' : 'REFERRED TO BY', 'WHERE'],
+        [
+          'DEPTH',
+          'COMPONENT',
+          ...(ofPackages ? ['PACKAGE'] : []),
+          'CONFIDENCE',
+          'KIND',
+          incoming ? 'REFERS TO' : 'REFERRED TO BY',
+          'WHERE',
+        ],
         // The reference a result is found by: it stands in the result itself, or names it.
-        results.map(({ depth, key, confidence, reference }) => [
+        results.map(({ depth, key, confidence, reference, package: of }) => [
           String(depth),
           key,
+          ...(ofPackages ? [of ?? 'none'] : []),
           confidence,
           reference.kind,
           incoming ? reference.to : reference.from,
@@ -1037,6 +1069,7 @@ export async function impact(context: Context, component: string, options: Impac
     depth,
     minConfidence: options.minConfidence,
     outgoing: options.outgoing,
+    packages: options.packages,
   });
   return {
     data: report,

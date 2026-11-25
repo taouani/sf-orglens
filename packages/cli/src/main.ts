@@ -278,6 +278,8 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
         'the shortest chain of references that leads to it. For an object, the answer is about everything it ' +
         'contains too. A flow runs its elements: where the answer finds an element, it finds the flow too, and ' +
         'what refers to the flow. ' +
+        'A component of a managed package installed in the org is left out of what refers to it, and counted; ' +
+        '--packages keeps it. ' +
         'The component is named by its name (Account.Industry, or Invoice_After_Save.Update_Account for an ' +
         'element of a flow), by its type and name (CustomField:Account.Industry) or by its key. ' +
         'The first lines say whether the answer is complete, and if not, why: above all the types of the ' +
@@ -296,6 +298,10 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
         .default('possible'),
     )
     .option('--outgoing', 'show what the component refers to, in place of what refers to it')
+    .option(
+      '--packages',
+      'keep the components of managed packages among what refers to it, which the answer leaves out otherwise',
+    )
     .action((component: string, options: ImpactCommandOptions, command: Command) =>
       run('impact', (context) => impact(context, component, options))(command),
     );

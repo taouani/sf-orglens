@@ -232,6 +232,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 61,
         listing: 'ok',
         note: null,
+        packaged: 0,
       });
       expect(besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis'))).toEqual([]);
 
@@ -327,6 +328,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 46,
         listing: 'ok',
         note: null,
+        packaged: 0,
       });
       // Nothing of the flow is analysed: not the draft, and not its elements.
       const keys = reading(dir, (store) => storedComponents(store, 1).map((one) => one.key));

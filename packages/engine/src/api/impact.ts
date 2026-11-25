@@ -25,6 +25,7 @@ import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import { countInventory } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
+import { readPackages } from '../store/packages.ts';
 import {
   countIssues,
   readAnalysisWarnings,
@@ -44,6 +45,27 @@ export interface ImpactQuery {
   readonly minConfidence?: ConfidenceTier | undefined;
   /** True to ask what the component refers to, in place of what refers to it. */
   readonly outgoing?: boolean | undefined;
+  /**
+   * True to keep the components of managed packages among what refers to the component, which an answer leaves
+   * out otherwise (decision record 0076). It changes nothing for what the component refers to.
+   */
+  readonly packages?: boolean | undefined;
+}
+
+/** A component of an answer, with the managed package it is of (decision record 0076). */
+export interface ImpactReportComponent extends ImpactComponent {
+  /**
+   * The prefix of the managed package installed in the org that the component is of, as the org lists it. `null`
+   * for a component of the org's own, also of the org's own namespace, and for every component of a snapshot of a
+   * repository.
+   */
+  readonly package: string | null;
+}
+
+/** A result of an answer, with the managed package it is of (decision record 0076). */
+export interface ImpactReportResult extends ImpactResult {
+  /** As `ImpactReportComponent.package` says. */
+  readonly package: string | null;
 }
 
 /** What refers to a component, or what it refers to, in one snapshot. */
@@ -60,7 +82,7 @@ export interface ImpactReport {
     readonly analysedBy: string;
   };
   /** The component that was asked about. */
-  readonly component: ImpactComponent;
+  readonly component: ImpactReportComponent;
   /**
    * The keys of the other components of the same name, sorted, where the component was named by its name alone
    * and the name fits an object and more: the answer is about the object (decision record 0064). Empty for a
@@ -86,8 +108,14 @@ export interface ImpactReport {
    * is found by, whose other end is a result of the depth before, or the component and what it contains. A flow
    * is found beside its element, by the reference of the element: `ImpactResult.reference` says what that does to
    * the two ends (decision record 0066).
+   *
+   * For `incoming`, a component of a managed package is left out unless the question keeps it (decision records
+   * 0056 and 0076). The walk goes on through it all the same, so the nearer end of a reference can be such a
+   * component, which is no result then. For `outgoing`, a component of a package is a target and is never left out.
    */
-  readonly results: readonly ImpactResult[];
+  readonly results: readonly ImpactReportResult[];
+  /** How many components of managed packages the answer found and left out of `results`. `0` when it keeps them. */
+  readonly packagesLeftOut: number;
   /** For `outgoing`: the references to a name that has no key, so that no component stands for it. */
   readonly unresolved: readonly ImpactUnresolved[];
   /**
@@ -213,6 +241,13 @@ export function impactOf(store: Store, source: string, component: string, query:
   const direction = query.outgoing === true ? 'outgoing' : 'incoming';
   const minConfidence = query.minConfidence ?? 'possible';
   const walk = walkImpact(graph, start, { direction, depth, minConfidence });
+  // What refers to a component of the org leaves out a component of a package as the thing that refers, unless
+  // the question keeps it. What the walk found through it stays. What a component refers to is a target, which a
+  // component of a package stays (decision records 0056 and 0076).
+  const packages = readPackages(store, snapshot.id);
+  const found = walk.results.map((result) => ({ ...result, package: packages.of(result.key) }));
+  const leaveOut = direction === 'incoming' && query.packages !== true;
+  const results = leaveOut ? found.filter((result) => result.package === null) : found;
   // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
   // component. A warning of the reading about one of them counts. Every type this version analyses is of the
   // logic tier (decision record 0068), and no snapshot is known to hold such a warning: the rule is there for later.
@@ -242,7 +277,7 @@ export function impactOf(store: Store, source: string, component: string, query:
       : { ...gaps, notAnalysed: gaps.notAnalysed.filter((gap) => walked.has(gap.type)), notHeld: walk.notHeld };
 
   const flows = new Set(
-    [start.key, ...walk.results.map((result) => result.key)].map(flowOf).filter((flow) => flow !== null),
+    [start.key, ...results.map((result) => result.key)].map(flowOf).filter((flow) => flow !== null),
   );
   const isElement = start.key.startsWith('Flow:') && start.key.includes('#element:');
 
@@ -255,7 +290,7 @@ export function impactOf(store: Store, source: string, component: string, query:
       finishedAt: snapshot.finishedAt,
       analysedBy: analysis.engineVersion,
     },
-    component: impactComponent(start),
+    component: { ...impactComponent(start), package: packages.of(start.key) },
     sameName,
     parts: walk.parts,
     elementOf: isElement ? (flowOf(start.key) ?? null) : null,
@@ -263,7 +298,8 @@ export function impactOf(store: Store, source: string, component: string, query:
     depth: depth ?? null,
     beyondDepth: walk.beyondDepth,
     minConfidence,
-    results: walk.results,
+    results,
+    packagesLeftOut: found.length - results.length,
     unresolved: walk.unresolved,
     newerVersions: newerVersionsOf(store, snapshot.id, flows),
     complete: coversEverything(notCovered),

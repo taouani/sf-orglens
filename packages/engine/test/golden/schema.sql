@@ -48,7 +48,7 @@ CREATE TABLE inventory_item (
   -- As the org reported it.
   last_modified_at TEXT,
   namespace_prefix TEXT,
-  manageable_state TEXT, listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)), retrieved INTEGER NOT NULL DEFAULT 0 CHECK (retrieved IN (0, 1)),
+  manageable_state TEXT, listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)), retrieved INTEGER NOT NULL DEFAULT 0 CHECK (retrieved IN (0, 1)), came_back_as TEXT CHECK (came_back_as IS NULL OR came_back_as <> ''),
   PRIMARY KEY (snapshot_id, type, full_name)
 ) STRICT, WITHOUT ROWID;
 
