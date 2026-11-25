@@ -7,7 +7,8 @@ and measured.
 The plan is written by the AI assistant that built the phase, addressed to the maintainer. "I" is the assistant and
 "you" is the maintainer.
 
-- Parts A to D need no org and no network after the install. They take about 30 minutes.
+- Parts A to D need no org, and no network after the install but for step A3, which opens a page of GitHub. They
+  take about 30 minutes.
 - **Part E is your reading of ten entries of the answer key**, which you chose with Q6 of the plan. About 20
   minutes.
 - Part F downloads eight public codebases, about 250 MB on disk, and repeats the check of work package 9. **Its step
@@ -40,8 +41,8 @@ Expected: `pnpm install` ends without an error and runs no install script of a d
 `$ tsc -b` and nothing else.
 
 The third line takes the repository to the commit of the version `0.1.0-next.2`: the code of Phase 2 with the version
-number of the pre-release. What came after it on `main` are documents. In a clone you made earlier, run
-`git fetch origin` first. Git says that the clone is in "detached HEAD" state, which is expected.
+number of the pre-release. What came after it on `main` are documents and an update of two development tools. In a clone
+you made earlier, run `git fetch origin` first. Git says that the clone is in "detached HEAD" state, which is expected.
 
 The steps below write `orglens` for the command line of the build. Make that work with the two lines for your shell,
 in the root of the clone:
@@ -149,19 +150,20 @@ SEVERITY  CODE               COUNT  THE FIRST
 warning   PATH_NOT_FOLLOWED  1      force-app/main/default/flows/Invoice_After_Save.flow-meta.xml, line 104: it is not known which object "Recalculate" holds, so "invoice.Amount__c" after it was not followed.
 ```
 
-`ANALYSED` of `Flow` is 61 where 6 are listed: the 6 flows and their 55 elements and resources, each a component of
-its own. The two files of workflow rules hold 10 rules and actions, which the snapshot lists as types of their own.
-Only Apex, the label, the file of labels, the custom permission, the folder of templates and the global value set are
-not analysed. The analysis counts 177 components where the snapshot lists 120: the 55 elements and resources of the
-flows, and the standard objects `Account` and `User`, of which the project holds fields and no file. The 326 references are the 326 of the answer key
-that are not of Apex. The one warning is the entry of a flow under `unknowns` in the key: a field of a record that a
-subflow gives back, whose object the flow does not say.
+`ANALYSED` of `Flow` is 61 where 6 are listed: the 6 flows and their 55 elements and resources, each a component of its
+own. The two files of workflow rules hold 10 rules and actions, which the snapshot lists as types of their own. Only
+Apex, the label, the file of labels, the custom permission, the folder of templates and the global value set are not
+analysed. The analysis counts 177 components where the snapshot lists 120: the 55 elements and resources of the flows,
+and the standard objects `Account` and `User`, of which the project holds fields and no file. The 326 references are the
+326 of the answer key that are not of Apex. The one warning is the entry of a flow under `unknowns` in the key: a field
+of a record that a subflow gives back, whose object the flow does not say.
 
 ## C. Impact answers
 
-Outcomes 3 and 5. Continue in the same folder. The command line has a golden file for most of these answers, in
-`packages/cli/test/golden/` of the clone, which a test compares with what the command prints. Your output must be that
-file, with `"repo"` where the file has `"fixture"`.
+Outcomes 3 and 5. Continue in the same folder. The command line has a golden file for four of these answers, C1, C5, C6
+and C7, in `packages/cli/test/golden/` of the clone, which a test compares with what the command prints. Your output
+must be that file, with the name of your source, `repo`, where the file has `fixture`: in quotes, and after
+`orglens coverage`.
 
 | #   | Do                                                                                             | Expect                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -180,15 +182,15 @@ file, with `"repo"` where the file has `"fixture"`.
 In bash you can compare an answer with its golden file in one line, for example for C1:
 
 ```sh
-diff <(orglens impact Invoice__c.Amount__c) <(sed 's/"fixture"/"repo"/' "$ORGLENS_REPO/packages/cli/test/golden/impact-amount.txt") && echo same
+diff <(orglens impact Invoice__c.Amount__c) <(sed -e 's/"fixture"/"repo"/' -e 's/coverage fixture/coverage repo/' "$ORGLENS_REPO/packages/cli/test/golden/impact-amount.txt") && echo same
 ```
 
 The Apex classes of the fixture project do read `Amount__c`. No answer holds them, and every answer says so.
 
 ## D. An answer follows the files
 
-Outcomes 1 and 3. Each step changes one line of one flow and takes a new snapshot. Continue in the same folder. The
-file is `force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml`. Its line 72 is
+Outcomes 1 and 3. Each step changes one or two lines of one flow and takes a new snapshot. Continue in the same
+folder. The file is `force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml`. Its line 72 is
 `<assignToReference>invoice.Amount__c</assignToReference>`, in the assignment `Set_Amount`, and its line 81 is
 `</assignments>`.
 
@@ -208,24 +210,24 @@ entry of it yet. Run this part in the root of the clone.
 
 | #   | Do                                                                                                                                                                                         | Expect                                                                                                                                                                                                                                                                                                  |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1  | Read [fixtures/README.md](../../fixtures/README.md), the sections "What is keyed in the files of Phase 2" and "What is marked as stretch"                                                  | They say what an entry holds, what each value of `via` means, and which names give no reference by a rule.                                                                                                                                                                                              |
+| E1  | Read [fixtures/README.md](../../fixtures/README.md), the sections "The answer key", "What is not keyed", "What is keyed in the files of Phase 2" and "What is marked as stretch"           | They say what an entry holds, what each value of `via` means, and which names give no reference by a rule.                                                                                                                                                                                              |
 | E2  | For each of the ten components in the table below, find the line `from: <key>` in `fixtures/expected/answer-key.v2.yaml`, and open its file                                                | The entries below that line hold every name of a field, an object, a flow, a class, a record type, a template or an action that you find in the part of the file the component is, with the right line, kind and target (`line`, `match`, `kind`, `to`). Nothing is in the key that is not in the file. |
 | E3  | Read the two entries of flows that the key marks with `stretch: true`, the entry of a flow below the line `unknowns:`, and the entries of the files of Phase 2 below the line `negatives:` | You agree that each of the first is a reference, that the target of the second cannot be known from the file, and that each of the third is none.                                                                                                                                                       |
 
 The ten components of E2, one of each kind, in the folder `fixtures/billing-sfdx/force-app/main/default`:
 
-| #   | Key in the answer key                                           | File                                                     | What it has                                                                       |
-| --- | --------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 1   | `Flow:invoice_before_save#element:set_defaults`                 | `flows/Invoice_Before_Save.flow-meta.xml`                | Assignments to `$Record` before the save, paths across lookups                    |
-| 2   | `Flow:invoice_after_save#element:flow-start`                    | `flows/Invoice_After_Save.flow-meta.xml`                 | The start: the object, a condition, a scheduled path on a date                    |
-| 3   | `Flow:invoice_after_save#element:get_open_lines`                | `flows/Invoice_After_Save.flow-meta.xml`                 | A lookup of records, with a filter, the fields it reads, a sort                   |
-| 4   | `Flow:invoice_review_screen#element:review`                     | `flows/Invoice_Review_Screen.flow-meta.xml`              | A screen: input fields bound to a record, display text with merge fields          |
-| 5   | `Flow:invoice_recalculate#element:is_late`                      | `flows/Invoice_Recalculate.flow-meta.xml`                | A decision with a formula and global variables                                    |
-| 6   | `Flow:invoice_sent_process#element:myrule_1_a1`                 | `flows/Invoice_Sent_Process.flow-meta.xml`               | An action of a process of the Process Builder                                     |
-| 7   | `WorkflowRule:invoice__c.remind_when_sent`                      | `workflows/Invoice__c.workflow-meta.xml`                 | A rule with criteria, actions and a time trigger                                  |
-| 8   | `WorkflowFieldUpdate:invoice_line__c.stamp_tax_code_of_invoice` | `workflows/Invoice_Line__c.workflow-meta.xml`            | A field update that writes a field of the parent record                           |
-| 9   | `CustomMetadata:billing_rule.invoice_amount`                    | `customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml` | A record of a custom metadata type that names an object and a field in its values |
-| 10  | `QuickAction:invoice__c.new_line`                               | `quickActions/Invoice__c.New_Line.quickAction-meta.xml`  | A quick action: what it creates, sets and shows                                   |
+| #   | Key in the answer key                                           | File                                                     | What it has                                                                                                        |
+| --- | --------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1   | `Flow:invoice_before_save#element:set_defaults`                 | `flows/Invoice_Before_Save.flow-meta.xml`                | Assignments to `$Record` before the save, paths across lookups                                                     |
+| 2   | `Flow:invoice_after_save#element:flow-start`                    | `flows/Invoice_After_Save.flow-meta.xml`                 | The start: the object, a condition, a scheduled path on a date                                                     |
+| 3   | `Flow:invoice_after_save#element:get_open_lines`                | `flows/Invoice_After_Save.flow-meta.xml`                 | A lookup of records, with a filter, the fields it reads, a sort                                                    |
+| 4   | `Flow:invoice_review_screen#element:review`                     | `flows/Invoice_Review_Screen.flow-meta.xml`              | A screen: input fields bound to a record, display text with merge fields                                           |
+| 5   | `Flow:invoice_recalculate#element:is_late`                      | `flows/Invoice_Recalculate.flow-meta.xml`                | A formula resource with global variables (`$Setup`, `$Permission`, `$Profile`, `$User`, `$Organization`, `$Label`) |
+| 6   | `Flow:invoice_sent_process#element:myrule_1_a1`                 | `flows/Invoice_Sent_Process.flow-meta.xml`               | An action of a process of the Process Builder                                                                      |
+| 7   | `WorkflowRule:invoice__c.remind_when_sent`                      | `workflows/Invoice__c.workflow-meta.xml`                 | A rule with criteria, actions and a time trigger                                                                   |
+| 8   | `WorkflowFieldUpdate:invoice_line__c.stamp_tax_code_of_invoice` | `workflows/Invoice_Line__c.workflow-meta.xml`            | A field update that writes a field of the parent record                                                            |
+| 9   | `CustomMetadata:billing_rule.invoice_amount`                    | `customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml` | A record of a custom metadata type that names an object and a field in its values                                  |
+| 10  | `QuickAction:invoice__c.new_line`                               | `quickActions/Invoice__c.New_Line.quickAction-meta.xml`  | A quick action: what it creates, sets and shows                                                                    |
 
 Component 10 matters more than its place in the list suggests: its entries were written in the pull request of its
 analyser, not before it, like those of the report type.
@@ -310,7 +312,7 @@ orglens source check prod
 
 | #   | Do                                                                                                                                             | Expect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| H1  | Note the time, then `orglens snapshot prod`                                                                                                    | Lines of progress on the error stream, also for the versions of the flows and the rows of the Dependency API. Then the table per type, with `Flow`, `Workflow` and its parts, `RecordType`, `FieldSet`, `CustomMetadata`, `EmailTemplate`, `ReportType` and `QuickAction` analysed, a column `OF PACKAGES` where the org has managed packages, the issues, the analysis and the cross-check.                                                                                                                                                     |
+| H1  | Note the time, then `orglens snapshot prod`                                                                                                    | Lines of progress on the error stream, for the retrieves and the rows of the Dependency API, and for the versions of the flows where a flow has a version newer than its active one. Then the table per type, with `Flow`, `Workflow` and its parts, `RecordType`, `FieldSet`, `CustomMetadata`, `EmailTemplate`, `ReportType` and `QuickAction` analysed, a column `OF PACKAGES` where the org has managed packages, the issues, the analysis and the cross-check.                                                                              |
 | H2  | Read the issues of H1 against what your run of 23 November 2026 showed                                                                         | What should be gone: an error `NOT_RETRIEVED` for the record type of person accounts, for a component of a managed package that the org never hands out (now a warning with `ofPackages`), and a warning for each document and each report or dashboard in a folder inside a folder. One line for all the files of a type the Salesforce library cannot read, not one per file. For each `NOT_RETRIEVED` that is still an error: is it a component you know, and can you see why Salesforce does not hand it out?                                |
 | H3  | `orglens coverage prod`, the lines of the cross-check at the end                                                                               | `Cross-check: the Dependency API of Salesforce reports N rows.` and whether an answer shows that a row is missing. Then how many rows are not compared, and why, also those of a version of a flow the snapshot does not hold, and the line that counts: `N rows were compared. They are N pairs of components: the analysis has N of them, has N as a reference to a part of the object Salesforce names, and missed N.` **Missed must be 0.** A missed pair is listed with both components, and is an error of the analysis I have to correct. |
 | H4  | Pick five fields whose uses in flows and workflow rules you know. For each: `orglens impact <Object.Field__c>`                                 | Every flow, field update, workflow rule, field set, quick action and email template you know of that reads or writes the field is in the answer, each flow with the element that names it and the line of the file. Nothing is in it that does not name the field. Uses in Apex, layouts or reports are not in the answer, and its first lines say so.                                                                                                                                                                                           |
@@ -318,7 +320,7 @@ orglens source check prod
 | H6  | Pick an element of that flow: `orglens impact <Its_Name>.<Element_Name>`                                                                       | `It is an element of Flow:...` and what calls the flow, as in C6.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | H7  | Only if the org has managed packages: ask for a field of yours that a flow of a package uses, then the same with `--packages`                  | The first answer says how many components of managed packages refer to it and are left out. With `--packages` they are in the answer. `orglens coverage prod` counts the components of packages per type.                                                                                                                                                                                                                                                                                                                                        |
 | H8  | Only if a flow of the org has a draft newer than its active version: look for `FLOW_NEWER_VERSION` in H1, and ask about a field that flow uses | The note names the flow. The answer is about the active version, and names the flow below the results: `has a version newer than its active version`.                                                                                                                                                                                                                                                                                                                                                                                            |
-| H9  | `orglens impact Account`, or another object with workflow rules                                                                                | `The name also fits Workflow:account.` The answer is about the object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| H9  | `orglens impact Account`, or another object with workflow rules                                                                                | A line `The name also fits ...` that names `Workflow:account`, maybe with other components of that name, such as rules of sharing or matching. The answer is about the object.                                                                                                                                                                                                                                                                                                                                                                   |
 
 **Two numbers I ask for, if you are free to tell them:** how long the first snapshot took (H1), and how many requests
 the cross-check sent, which `orglens coverage prod --json` holds in `crossCheck.requests`. The second is the number

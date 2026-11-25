@@ -37,10 +37,11 @@ again. Work package 9 is built (`docs/research/phase-2/public-codebases.md`): Co
 every flow of the eight codebases, 23 with 151 elements, was read by hand with the workflow rules and the record
 types. No reference is wrong, and seven names are missed and named with their cause, so pass mark 4 holds. The
 commands were timed on the codebases and on two made-up sources of about 100,000 components, one with flows.
-Work package 10 is built but for two things: the version `0.1.0-next.2` is set, with its release notes, and the
-workflow "Pre-release" ran on `main` without publishing; the [phase report](../reports/phase-2.md), the
-[test plan](../test-plans/phase-2.md) and the updated overall plan are written. The draft of the Phase 3 plan
-follows in a pull request of its own, and the pre-release waits for the maintainer's word.
+Work package 10 is built but for two things: the draft of the Phase 3 plan, which follows in a pull request of its
+own, and the publish of the pre-release, which waits for the maintainer's word. The version `0.1.0-next.2` is set, with
+its release notes, the workflow "Pre-release" ran on `main` without publishing, and the
+[phase report](../reports/phase-2.md), the [test plan](../test-plans/phase-2.md) and the updated overall plan are
+written.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
