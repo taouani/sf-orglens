@@ -7,8 +7,8 @@
  *   name      the codebases to time. Default: every one that was downloaded (pnpm run corpora:fetch)
  *   --runs    how often each command is run, default 5. The smallest and the largest time are printed
  *   --copies  also time a made-up source: the first named codebase, or the first of the manifest when none is
- *             named, with every object of it copied n times under another name. It stands for a repository
- *             with very many objects and fields. Nothing of it is real, and it is no org
+ *             named, with every object and every flow of it copied n times under another name. It stands for a
+ *             repository with very many objects, fields and flows. Nothing of it is real, and it is no org
  *
  * It needs a build (pnpm run build) and no network. Every run of a codebase gets a workspace of its own in a
  * temporary folder, so that every snapshot is a first snapshot. The folders are removed at the end, also when
@@ -210,8 +210,11 @@ function git(folder, ...command) {
 }
 
 /**
- * A copy of a codebase with every folder of an object copied `count` times under another name, in a package
- * folder of its own. A copy keeps its files as they are, so a lookup of it leads to the object it led to.
+ * A copy of a codebase with every folder of an object and every flow copied `count` times under another name, in
+ * a package folder of its own. A copy of an object keeps its files as they are, so a lookup of it leads to the
+ * object it led to. A copy of a flow names the copies of the objects of the codebase where the flow names them
+ * in an `object` or `objectType` element, so that `$Record` and the records it reads and writes are those of the
+ * copy. Every other name in it, a subflow, an Apex class or an object the codebase does not hold, stays as it is.
  *
  * The copy is a Git repository with one commit, and it has the project file and the `.forceignore` of the
  * codebase, so that it is read the way the codebase is: with a commit to name, and with the same files left out.
@@ -226,15 +229,23 @@ function withCopies(corpus, count) {
     if (fs.existsSync(path.join(original, file))) fs.cpSync(path.join(original, file), path.join(repository, file));
   }
   const objects = [];
+  const flows = [];
   const find = (folder) => {
     for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
       const at = path.join(folder, entry.name);
-      if (entry.name === 'objects') objects.push(...fs.readdirSync(at).map((name) => path.join(at, name)));
+      if (!entry.isDirectory()) {
+        if (entry.name.endsWith('.flow-meta.xml')) flows.push(at);
+      } else if (entry.name === 'objects') objects.push(...fs.readdirSync(at).map((name) => path.join(at, name)));
       else find(at);
     }
   };
   for (const one of corpus.paths) find(path.join(repository, one));
+  const names = new Set(objects.map((folder) => path.basename(folder)));
+  const texts = flows.map((file) => ({
+    flow: path.basename(file, '.flow-meta.xml'),
+    text: fs.readFileSync(file, 'utf8'),
+  }));
+  fs.mkdirSync(path.join(repository, 'copies', 'flows'), { recursive: true });
   for (let n = 1; n <= count; n++) {
     for (const folder of objects) {
       const object = path.basename(folder);
@@ -242,6 +253,13 @@ function withCopies(corpus, count) {
       fs.cpSync(folder, target, { recursive: true });
       const file = path.join(target, `${object}.object-meta.xml`);
       if (fs.existsSync(file)) fs.renameSync(file, path.join(target, `${copyName(object, n)}.object-meta.xml`));
+    }
+    for (const { flow, text } of texts) {
+      // A tag may end on a line of its own, as `<object\n    >`.
+      const copy = text.replace(/<(object|objectType)(\s*)>([^<]*)<\/\1(\s*)>/g, (whole, tag, before, value, after) =>
+        names.has(value.trim()) ? `<${tag}${before}>${copyName(value.trim(), n)}</${tag}${after}>` : whole,
+      );
+      fs.writeFileSync(path.join(repository, 'copies', 'flows', `${flow}_${String(n)}.flow-meta.xml`), copy);
     }
   }
   git(repository, 'init', '--quiet');
@@ -257,7 +275,7 @@ function withCopies(corpus, count) {
     '-m',
     'copies',
   );
-  return { repository, paths: [...corpus.paths, 'copies'], objects: objects.length };
+  return { repository, paths: [...corpus.paths, 'copies'], objects: objects.length, flows: flows.length };
 }
 
 const results = [];
@@ -278,7 +296,7 @@ if (copies > 0 && (first === undefined || base === undefined)) {
   process.exitCode = 1;
 }
 if (copies > 0 && first !== undefined && base !== undefined) {
-  console.error(`${first.name} with ${String(copies)} copies of every object: ${String(runs)} runs`);
+  console.error(`${first.name} with ${String(copies)} copies of every object and flow: ${String(runs)} runs`);
   const made = withCopies(first, copies);
   // The questions are those of the codebase itself, so that the two times can be held side by side.
   const questions = {
@@ -287,7 +305,7 @@ if (copies > 0 && first !== undefined && base !== undefined) {
   };
   results.push({
     ...time(`${first.name}-copies`, made.repository, made.paths, questions),
-    madeUp: { of: first.name, copies, objects: made.objects },
+    madeUp: { of: first.name, copies, objects: made.objects, flows: made.flows },
   });
 }
 

@@ -41,6 +41,7 @@ pnpm run build && pnpm run corpora:fetch       # it needs both
 pnpm run bench:corpora                         # every codebase that was downloaded, 5 runs each
 pnpm run bench:corpora pmm --runs 3            # the named ones
 pnpm run bench:corpora npsp --copies 98        # also a made-up source: NPSP with every object copied 98 times
+pnpm run bench:corpora coral-cloud --copies 580 # Coral Cloud with every object and every flow copied 580 times
 pnpm run bench:corpora npsp --copies 98 --out result.json
 ```
 
@@ -92,12 +93,15 @@ printing:
 
 It prints the least and the most of the runs, the count of files, components and references, and the size of
 the database. With `--copies n` it also builds a source that is not real: the first named codebase, or the
-first of the manifest when none is named, with every folder of an object copied `n` times under another name.
-The copy is a Git repository with one commit, with the project file and the `.forceignore` of the codebase, so
-that it is read the way the codebase is. It stands for a repository with very many objects and fields, and it
+first of the manifest when none is named, with every folder of an object and every flow copied `n` times under
+another name. A copy of a flow names the copies of the objects of the codebase where it names them as its
+objects (`object`, `objectType`), so that its records are those of the copy, and keeps every other name. The
+copy is a Git repository with one commit, with the project file and the `.forceignore` of the codebase, so that
+it is read the way the codebase is. It stands for a repository with very many objects, fields and flows, and it
 is asked the same two questions as the codebase it is made of. It is no org: its files are small, most of its
-components are of the few types Phase 1 analyses, and the copy of a standard object keeps formulas that name
-fields the copy cannot have.
+components are of the few types the analysis reads, and the copy of a standard object keeps formulas and flows
+that name fields the copy cannot have. Only fields in files of their own are asked about, so a codebase in the
+metadata format, such as V4S, gets no impact question.
 
 ## Limits
 
@@ -111,4 +115,5 @@ returns rows as objects and checks every value, so reading many rows through it 
 The numbers of `bench.mjs` are in
 [docs/research/phase-0/store-benchmark.md](../docs/research/phase-0/store-benchmark.md), those of `store.mjs` in
 [docs/research/phase-1/store-benchmark.md](../docs/research/phase-1/store-benchmark.md), and those of
-`corpora.mjs` in [docs/research/phase-1/public-codebases.md](../docs/research/phase-1/public-codebases.md).
+`corpora.mjs` in [docs/research/phase-1/public-codebases.md](../docs/research/phase-1/public-codebases.md) and
+[docs/research/phase-2/public-codebases.md](../docs/research/phase-2/public-codebases.md).

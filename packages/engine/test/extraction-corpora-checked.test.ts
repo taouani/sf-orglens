@@ -6,7 +6,13 @@
  * (`docs/research/phase-1/public-codebases.md`). The author of the analyser read the 133 entries that can hold
  * a name one by one, and the 235 default values that are a literal as a list of values. A sub-agent that
  * reviewed the pull request read the 133 again. No person did. The two codebases added on 25 November 2026 were
- * read the same way: 36 entries that can hold a name, 32 of V4S and 4 of Outbound Funds, and 14 literals.
+ * read the same way: 36 entries that can hold a name, 32 of V4S and 4 of Outbound Funds, and 14 literals. So were
+ * the 36 entries of Coral Cloud and EDA that can hold a name, and their 79 literals, on the same day.
+ *
+ * The listing of Phase 2 was checked on 25 November 2026 (`docs/research/phase-2/public-codebases.md`): every flow
+ * with each of its elements, every rule and action of a file of workflow rules and every record type was read by
+ * hand, and every field set was held against its file by a script. The second half of this file holds that check
+ * the same way, by its own digests.
  *
  * The listing that was read is not stored, because it holds the text of the codebases. Its SHA-256 is. When the
  * analysis reports another reference, another place, another tier or another issue for one of these entries,
@@ -21,7 +27,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
-import { digestOf, isLiteral, LISTED_FILE, listCodebase, viaOf, type EntryKind } from './corpora/listing.ts';
+import {
+  digestOf,
+  digestOfMore,
+  FLOW_FOLDERS,
+  isLiteral,
+  LISTED_FILE,
+  listCodebase,
+  listFlowsAndConfiguration,
+  viaOf,
+  type EntryKind,
+  type MoreKind,
+} from './corpora/listing.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const corpora = join(root, '.corpora');
@@ -92,7 +109,97 @@ const CHECKED: Readonly<Record<string, Checked>> = {
     notFollowed: 0,
     digest: '16342d15d639b476343b6cffa7811f2ee278538a2dc5f5e5c776503652063be4',
   },
+  // Added on 25 November 2026, with the codebases, for the check by hand of Phase 2. Three formulas of Coral Cloud
+  // are written with the tag broken before its bracket, which the listing did not see until it was told to.
+  'coral-cloud': {
+    entries: { default: 2, formula: 19, summary: 4 },
+    literals: 2,
+    references: 49,
+    notFollowed: 0,
+    digest: '21690bb65eeed086ac8c412acab71c5f6a029b4edb34623d205bc6152f709a15',
+  },
+  eda: {
+    entries: { default: 78, formula: 10, rule: 2 },
+    literals: 77,
+    references: 76,
+    notFollowed: 0,
+    digest: '3f523cba8de935d2d90752200c425a2c36fe74c04879b765bcb5fde145bc682b',
+  },
 };
+
+/**
+ * What was checked on 25 November 2026 of Phase 2, in the listing of flows and configuration: every flow with each of
+ * its elements, every rule and action of a file of workflow rules, every record type and every field set, in the
+ * folders of `FLOW_FOLDERS` or, where a codebase has none there, in its package folders
+ * (`docs/research/phase-2/public-codebases.md`).
+ *
+ * - `entries`: the entries by what they are.
+ * - `references`: the references of all entries. Each of the flows, the workflow rules and the record types was
+ *   read by hand, and each of the field sets was held against its file by a script: none is wrong.
+ * - `issues`: the issues of the entries by their code. Each is a name that is not read, and the note names them.
+ * - `digest`: the SHA-256 of the listing that was read.
+ */
+interface CheckedMore {
+  readonly entries: Readonly<Partial<Record<MoreKind, number>>>;
+  readonly references: number;
+  readonly issues: Readonly<Record<string, number>>;
+  readonly digest: string;
+}
+const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
+  'apex-recipes': {
+    entries: { element: 3, flow: 1 },
+    references: 1,
+    issues: {},
+    digest: '9a83f4d69329e5a22fcd4b4d9ac1c02c8e20a62f2991064234481944381eacbe',
+  },
+  'nebula-logger': {
+    entries: { element: 42, 'field-set': 1, flow: 10 },
+    references: 38,
+    issues: {},
+    digest: '911c3ffdd9ec2d64e323504f156ef78cda966bf3981500954fbb3e4852371817',
+  },
+  npsp: {
+    entries: { 'field-set': 18, workflow: 6 },
+    references: 727,
+    issues: {},
+    digest: '0e250f0d56e8ea3b158b508eb5b004de9911c5cbea3bd7b522ef93e7a680f074',
+  },
+  // Both flows of PMM hold a token of its build tool before every name of the package: every name has a warning.
+  pmm: {
+    entries: { element: 21, 'field-set': 7, flow: 2 },
+    references: 384,
+    issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 24 },
+    digest: '201a2c57978cbdda732b967853b1508390a7a4fceee9eed6ad1830a97fedd488',
+  },
+  'volunteers-for-salesforce': {
+    entries: { 'field-set': 15, 'record-type': 1, workflow: 17 },
+    references: 504,
+    issues: {},
+    digest: '974423621c8314343787e90b5006bb0ba5a6c36195a868a9438d25a37f497579',
+  },
+  'outbound-funds': {
+    entries: {},
+    references: 0,
+    issues: {},
+    digest: 'a386af5c01d065a6a878d1194a6ef6c05202cc46f0c5660fb2df5c8f1b14e217',
+  },
+  'coral-cloud': {
+    entries: { element: 85, flow: 10 },
+    references: 49,
+    issues: {},
+    digest: '8f44188697a6560bcd755e7522127e9d549cc9ea29148347c86c23fdc9426e07',
+  },
+  eda: {
+    entries: { 'record-type': 8 },
+    references: 22,
+    issues: {},
+    digest: 'e76a0baedb4cc9ff0c3f9d55ecc0d7d783253e82eb621e0910bfc278851726cf',
+  },
+};
+
+/** The components that have an entry in the listing of Phase 2. A file of workflow rules says nothing of its own. */
+const LISTED_TYPES =
+  /^(?:Flow|Workflow(?:Alert|FieldUpdate|FlowAction|KnowledgePublish|OutboundMessage|Rule|Send|Task)|RecordType|FieldSet):/;
 
 describe('the entries of the public codebases that were checked by hand', () => {
   it('have a record for every codebase of the manifest', () => {
@@ -144,6 +251,56 @@ describe('the entries of the public codebases that were checked by hand', () => 
           .filter((line) => !line.includes(' [confirmed, '));
         expect(tiers).toEqual([]);
         expect(digestOf(name, listing)).toBe(digest);
+      },
+      300_000,
+    );
+  }
+});
+
+describe('the flows and configuration of the public codebases that were checked by hand', () => {
+  it('have a record for every codebase of the manifest', () => {
+    expect(Object.keys(CHECKED_MORE).sort()).toEqual(manifest.corpus.map((one) => one.name).sort());
+  });
+
+  for (const { name, paths } of manifest.corpus) {
+    it.skipIf(!existsSync(join(corpora, name)))(
+      `are those of ${name}, with the references that were checked`,
+      async () => {
+        const listing = await listFlowsAndConfiguration(join(corpora, name), FLOW_FOLDERS[name] ?? paths);
+        const checked = CHECKED_MORE[name];
+        if (checked === undefined) throw new Error(`The codebase "${name}" has no record of a check.`);
+        const { digest, ...counts } = checked;
+        const entries: Partial<Record<MoreKind, number>> = {};
+        for (const entry of listing.entries) entries[entry.kind] = (entries[entry.kind] ?? 0) + 1;
+        const issues: Record<string, number> = {};
+        for (const line of listing.entries.flatMap((entry) => entry.issues)) {
+          const code = /^\w+ (\w+):/.exec(line)?.[1] ?? line;
+          issues[code] = (issues[code] ?? 0) + 1;
+        }
+
+        expect({
+          entries,
+          references: listing.entries.reduce((sum, entry) => sum + entry.references.length, 0),
+          issues: Object.fromEntries(Object.entries(issues).sort()),
+        }).toEqual(counts);
+        // Every component of these types has one entry, and every entry is of a component: nothing of a flow, a file
+        // of workflow rules, a record type or a field set is hidden from the listing, and nothing is shown twice.
+        const listed = listing.analysis.components.filter((one) => LISTED_TYPES.test(one.key)).map((one) => one.key);
+        expect(listing.entries.map((entry) => entry.key).sort()).toEqual([...listed].sort());
+        // A file of workflow rules is a component of its own, and refers to nothing: its rules and actions do.
+        expect(
+          listing.analysis.components.filter((one) => one.key.startsWith('Workflow:')).flatMap((one) => one.references),
+        ).toEqual([]);
+        // Every issue of the analysis about one of these components stands under its entry.
+        const keys = new Set<string>(listed);
+        expect(listing.analysis.issues.filter((issue) => keys.has(issue.componentKey ?? '')).length).toBe(
+          Object.values(counts.issues).reduce((sum, count) => sum + count, 0),
+        );
+        // The check by hand found every reference right as `confirmed`, and found no other tier.
+        expect(
+          listing.entries.flatMap((entry) => entry.references).filter((line) => !line.includes(' [confirmed, ')),
+        ).toEqual([]);
+        expect(digestOfMore(name, listing)).toBe(digest);
       },
       300_000,
     );
