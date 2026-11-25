@@ -19,8 +19,10 @@ package 6 is being built: the answers for flows and elements are built (record 0
 the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
 org with it. The actions of a workflow rule that are analysed join the judgement of "complete" (record 0068), so
 every type analysed so far counts for it. An answer about what refers to a component leaves out a type that is
-not analysed where its components can name nothing of the answer (record 0073). The times of the synthetic org
-follow.
+not analysed where its components can name nothing of the answer (record 0073). The impact times of the synthetic
+org were measured again on 25 November 2026 and have not changed beyond the spread of the runs
+(`docs/research/phase-2/impact-times.md`). What is left of work package 6 is the narrowing of the warnings an
+answer counts, which record 0061 leaves to it.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
