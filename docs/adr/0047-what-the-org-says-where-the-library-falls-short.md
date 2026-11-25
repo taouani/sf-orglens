@@ -6,6 +6,7 @@
   test org with the judgement of record 0046, and the choices their author made)
 - Changed by: [0071](0071-a-component-that-comes-back-under-another-name.md), in one point: a component of a package that comes back without its prefix is not taken for the listed one where the listed name came back itself in the same retrieve
 - Changed by: [0072](0072-a-folder-in-a-folder-comes-back-under-its-whole-path.md), in one point: the note `RETRIEVED_WITHOUT_PREFIX` names the components in the order of the listed names
+- Changed by: [0076](0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md), in one point: the name a component came back with is kept with the row of the listed name, which replaces choice 6
 
 ## Context
 

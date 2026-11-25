@@ -141,7 +141,8 @@ function withoutFileEnding(fullName: string): string {
  * - Salesforce did not remark that it cannot find the listed name, for a folder under the type of what it holds;
  * - no other component that came back in the same retrieve stands for the same listed name.
  *
- * Then the row of the listed name is marked, and no row is made for the name that came back. Without `retrieve`
+ * Then the row of the listed name is marked, with the name that came back (decision record 0076), and no row is
+ * made for the name that came back. Without `retrieve`
  * no component is taken this way. Returned: the listed names that were found this way for the first time, with
  * their type and the rule.
  */
@@ -251,7 +252,8 @@ export function markRetrieved(
   for (const { component, listedAs, listed } of standing) {
     if (listedAs !== undefined && listed !== undefined && times.get(listed) === 1) {
       store.run(
-        'UPDATE inventory_item SET retrieved = 1 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+        'UPDATE inventory_item SET retrieved = 1, came_back_as = ? WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+        component.fullName,
         snapshotId,
         component.type,
         listedAs.fullName,
@@ -293,7 +295,7 @@ export function isListed(store: Store, snapshotId: number, member: ChunkMember):
  */
 export function markNotRetrieved(store: Store, snapshotId: number, member: ChunkMember): void {
   store.run(
-    'UPDATE inventory_item SET retrieved = 0 WHERE snapshot_id = ? AND type = ? AND full_name = ?',
+    'UPDATE inventory_item SET retrieved = 0, came_back_as = NULL WHERE snapshot_id = ? AND type = ? AND full_name = ?',
     snapshotId,
     member.type,
     member.fullName,

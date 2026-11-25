@@ -439,29 +439,37 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
-        { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null },
-        { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 57, retrieved: 57, analysed: 57, listing: 'ok', note: null },
-        { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomMetadata', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null },
-        { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomField', listed: 57, retrieved: 57, analysed: 57, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomMetadata', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         // A flow is counted with its 55 elements.
-        { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null },
-        { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
-        { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'RecordType', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
-        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null },
-        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 3, listing: 'ok', note: null },
-        { type: 'WorkflowOutboundMessage', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null },
-        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null, packaged: 0 },
+        { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'RecordType', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null, packaged: 0 },
+        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 3, listing: 'ok', note: null, packaged: 0 },
+        {
+          type: 'WorkflowOutboundMessage',
+          listed: 1,
+          retrieved: 1,
+          analysed: 1,
+          listing: 'ok',
+          note: null,
+          packaged: 0,
+        },
+        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'ListView')).toEqual({
@@ -471,6 +479,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'ok',
         note: null,
+        packaged: 0,
       });
 
       // The files of the folder, and the same content for what Salesforce does not rewrite.
@@ -782,6 +791,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'failed',
         note: 'INVALID_TYPE: Cannot use: ApexClass in this organization',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -906,6 +916,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 3,
         listing: 'ok',
         note: '1 component more came back that the org had not listed.',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -1213,6 +1224,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'unlistable',
         note: 'Salesforce does not list standard value sets. They are not read yet.',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -1923,15 +1935,23 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
         expect(metadata.retrieves.flat()).toContain('CustomObject:pkg__Invoice__c');
         expect(metadata.retrieves.flat()).toContain('CustomObject:Invoice__c');
-        expect(report.snapshot.status).toBe('partial');
         expect(stored(dir, 1)).toEqual(expectedFiles());
-        expect(ofReading(report).filter((issue) => issue.severity === 'error')).toEqual([
+        // The listed object stays missing. It is of a package, so that is a warning, and the snapshot is complete
+        // (decision record 0076).
+        expect(report.snapshot.status).toBe('complete');
+        expect(ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED')).toEqual([
           {
-            severity: 'error',
+            severity: 'warning',
             code: 'NOT_RETRIEVED',
             message:
-              '1 component of the type CustomObject that the org listed did not come back. The first: pkg__Invoice__c',
-            details: { type: 'CustomObject', count: 1, components: ['pkg__Invoice__c'], tier: 'logic' },
+              '1 component of the type CustomObject that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: pkg__Invoice__c',
+            details: {
+              type: 'CustomObject',
+              count: 1,
+              components: ['pkg__Invoice__c'],
+              tier: 'logic',
+              ofPackages: true,
+            },
           },
         ]);
         expect(ofReading(report).map((issue) => issue.code)).not.toContain('RETRIEVED_WITHOUT_PREFIX');
@@ -2410,6 +2430,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             analysed: 0,
             listing: 'excluded',
             note: 'The configuration leaves this type out (exclude_types).',
+            packaged: 0,
           });
           expect(ofReading(report)).toEqual([
             {

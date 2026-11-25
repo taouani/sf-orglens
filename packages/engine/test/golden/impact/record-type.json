@@ -11,7 +11,8 @@
     "key": "RecordType:invoice__c.credit_note",
     "type": "RecordType",
     "name": "Invoice__c.Credit_Note",
-    "file": "force-app/main/default/objects/Invoice__c/recordTypes/Credit_Note.recordType-meta.xml"
+    "file": "force-app/main/default/objects/Invoice__c/recordTypes/Credit_Note.recordType-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 54,
         "column": 34
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:is_paid_now",
@@ -57,9 +59,11 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 54,
         "column": 34
-      }
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,

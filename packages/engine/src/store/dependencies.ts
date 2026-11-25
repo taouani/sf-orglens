@@ -115,7 +115,14 @@ export function readDependencyRows(store: Store, snapshotId: number): Dependency
 /** A component the org listed, with the id the org gave it. */
 export interface ListedId {
   readonly type: string;
+  /**
+   * The name the snapshot holds the component under: the name it came back with where that is another than the
+   * listed one, such as the name of a component of a package without its prefix (decision record 0076), and else
+   * the listed name.
+   */
   readonly fullName: string;
+  /** The name the org listed the component with, where the snapshot holds it under another. */
+  readonly listedAs?: string;
   /** `null` for a component the org listed without an id, such as a standard object. */
   readonly id: string | null;
 }
@@ -124,12 +131,14 @@ export interface ListedId {
 export function readListedIds(store: Store, snapshotId: number): ListedId[] {
   return store
     .all(
-      'SELECT type, full_name, salesforce_id FROM inventory_item WHERE snapshot_id = ? AND listed = 1 ORDER BY type, full_name',
+      `SELECT type, COALESCE(came_back_as, full_name) AS name, full_name, came_back_as, salesforce_id
+         FROM inventory_item WHERE snapshot_id = ? AND listed = 1 ORDER BY type, name`,
       snapshotId,
     )
     .map((row) => ({
       type: String(row['type']),
-      fullName: String(row['full_name']),
+      fullName: String(row['name']),
+      ...(row['came_back_as'] === null ? {} : { listedAs: String(row['full_name']) }),
       id: text(row['salesforce_id']),
     }));
 }

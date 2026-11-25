@@ -506,9 +506,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot).toMatchObject({ status: 'complete', files: 1 });
       expect(report.analysis).toMatchObject({ components: 4, references: 2, complete: true });
       const types = [
-        { type: 'CustomField', listed: 0, retrieved: 0, analysed: 2, listing: 'ok', note: PARTS_NOTE },
-        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 0, retrieved: 0, analysed: 1, listing: 'ok', note: PARTS_NOTE },
+        { type: 'CustomField', listed: 0, retrieved: 0, analysed: 2, listing: 'ok', note: PARTS_NOTE, packaged: 0 },
+        { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ValidationRule', listed: 0, retrieved: 0, analysed: 1, listing: 'ok', note: PARTS_NOTE, packaged: 0 },
       ];
       expect(report.types).toEqual(types);
       // A second analysis counts them once more, not twice.

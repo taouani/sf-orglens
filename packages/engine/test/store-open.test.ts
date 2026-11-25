@@ -721,6 +721,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       expect(indexes).toEqual([
         'component_by_parent',
         'reference_by_target',
+        'reference_by_unresolved_target',
         'snapshot_by_source',
         'snapshot_component_by_version',
         'snapshot_file_by_blob',

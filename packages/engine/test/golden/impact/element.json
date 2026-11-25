@@ -11,7 +11,8 @@
     "key": "Flow:invoice_recalculate#element:set_amount",
     "type": "Flow",
     "name": "Invoice_Recalculate.Set_Amount",
-    "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml"
+    "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 251,
         "column": 19
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:recalculate",
@@ -57,9 +59,11 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 251,
         "column": 19
-      }
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,

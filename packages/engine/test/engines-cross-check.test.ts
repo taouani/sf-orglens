@@ -216,6 +216,23 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       rowsCompared: 1,
       missed: [{ from: POSITIVE, to: key('CustomMetadata', 'Billing_Rule.Other') }],
     });
+    // One that came back under another name than the org listed it with is found by either name, as the
+    // component the snapshot holds (decision record 0076).
+    const cameBack: ListedId[] = [
+      ...LISTED,
+      { type: 'CustomMetadata', fullName: 'Billing_Rule.Other', listedAs: 'Billing_Rule.pkg__Other', id: null },
+    ];
+    const byListedName = { ...unlisted, namespace: 'pkg' };
+    for (const named of [unlisted, byListedName]) {
+      expect(crossCheck({ ...input([row(rule, named)], analysis), listed: cameBack })).toMatchObject({
+        rowsCompared: 1,
+        missed: [{ from: POSITIVE, to: key('CustomMetadata', 'Billing_Rule.Other') }],
+      });
+    }
+    expect(crossCheck({ ...input([row(rule, byListedName)], analysis), listed })).toMatchObject({
+      rowsNotMatched: 1,
+      rowsCompared: 0,
+    });
   });
 
   it('never takes a custom object by its name, which can be the name of a standard object', () => {

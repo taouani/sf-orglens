@@ -48,7 +48,7 @@ CREATE TABLE inventory_item (
   -- As the org reported it.
   last_modified_at TEXT,
   namespace_prefix TEXT,
-  manageable_state TEXT, listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)), retrieved INTEGER NOT NULL DEFAULT 0 CHECK (retrieved IN (0, 1)),
+  manageable_state TEXT, listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)), retrieved INTEGER NOT NULL DEFAULT 0 CHECK (retrieved IN (0, 1)), came_back_as TEXT CHECK (came_back_as IS NULL OR came_back_as <> ''),
   PRIMARY KEY (snapshot_id, type, full_name)
 ) STRICT, WITHOUT ROWID;
 
@@ -234,3 +234,6 @@ CREATE TABLE snapshot_flow_version (
   latest_id   TEXT CHECK (latest_id IS NULL OR latest_id <> ''),
   PRIMARY KEY (snapshot_id, flow)
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX reference_by_unresolved_target ON reference (target_type, raw_name COLLATE NOCASE)
+  WHERE target_id IS NULL;

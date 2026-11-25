@@ -11,7 +11,8 @@
     "key": "CustomField:user.department",
     "type": "CustomField",
     "name": null,
-    "file": null
+    "file": null,
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Approver__c.field-meta.xml",
         "line": 10,
         "column": 25
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.region__c",
@@ -57,7 +59,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Region__c.field-meta.xml",
         "line": 4,
         "column": 25
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save",
@@ -76,7 +79,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 13,
         "column": 60
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save#element:set_defaults",
@@ -95,7 +99,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 13,
         "column": 60
-      }
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:invoice__c.void_needs_admin",
@@ -114,7 +119,8 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Void_Needs_Admin.validationRule-meta.xml",
         "line": 8,
         "column": 9
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.approver_backup_email__c",
@@ -133,7 +139,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Approver_Backup_Email__c.field-meta.xml",
         "line": 4,
         "column": 14
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowAlert:invoice__c.invoice_overdue_alert",
@@ -152,7 +159,8 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 8,
         "column": 20
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save",
@@ -171,7 +179,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 8,
         "column": 32
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:send_overdue_alert",
@@ -190,7 +199,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 8,
         "column": 32
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowRule:invoice__c.remind_when_sent",
@@ -209,9 +219,11 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 73,
         "column": 19
-      }
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,

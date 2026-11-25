@@ -67,6 +67,8 @@ export interface MockOrg {
   classes: Record<string, string> | null;
   /** Classes the org lists and does not hand out. */
   withheld: string[];
+  /** Classes the org lists as of the managed package `pkg` installed in it. */
+  packaged: string[];
   /** Classes the org does not list and hands out with every retrieve. */
   unlisted: string[];
   /** Types the org describes besides Apex classes, by name. It has no component of them. */
@@ -101,6 +103,7 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
     refusal: null,
     classes: null,
     withheld: [],
+    packaged: [],
     unlisted: [],
     extraTypes: [],
     listed: [],
@@ -152,7 +155,11 @@ export async function startMockOrg(publicKey: string): Promise<MockOrg> {
         .map(
           (name, index) =>
             `<result><fileName>classes/${name}.cls</fileName><fullName>${name}</fullName><id>01pxx${String(index).padStart(10, '0')}AAA</id>` +
-            `<lastModifiedDate>2026-02-01T08:30:00.000Z</lastModifiedDate><manageableState>unmanaged</manageableState><type>ApexClass</type></result>`,
+            `<lastModifiedDate>2026-02-01T08:30:00.000Z</lastModifiedDate>` +
+            (org.packaged.includes(name)
+              ? '<manageableState>installed</manageableState><namespacePrefix>pkg</namespacePrefix>'
+              : '<manageableState>unmanaged</manageableState>') +
+            '<type>ApexClass</type></result>',
         );
       return { status: 200, body: soap(`<listMetadataResponse>${results.join('')}</listMetadataResponse>`) };
     }
