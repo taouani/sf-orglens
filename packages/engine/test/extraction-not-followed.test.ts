@@ -52,16 +52,31 @@ const decision = (left: string, operator: string, right: string): string[] => [
   '    </rules>',
   '</decisions>',
 ];
-/** An element of a flow that updates the record `record`, and sets its field `Weight__c`. */
-const update = (record: string): string[] => [
+/** An element of a flow that updates the record `record`, and sets its field `field`. */
+const update = (record: string, field = 'Weight__c'): string[] => [
   '<recordUpdates>',
   '    <name>Save</name>',
   `    <inputReference>${record}</inputReference>`,
   '    <inputAssignments>',
-  '        <field>Weight__c</field>',
+  `        <field>${field}</field>`,
   '        <value><numberValue>1</numberValue></value>',
   '    </inputAssignments>',
   '</recordUpdates>',
+];
+/** One more object, `Crate__c`, with the field `Weight__c`, and lookups to it from `Parcel__c` and `Box__c`. */
+const crates = (source: Source): void => {
+  source.object('Crate__c', '<label>Crate</label>');
+  source.field('Crate__c', 'Weight__c', '<type>Number</type>');
+  source.field('Parcel__c', 'Crate__c', '<referenceTo>Crate__c</referenceTo>', '<type>Lookup</type>');
+  source.field('Box__c', 'Crate__c', '<referenceTo>Crate__c</referenceTo>', '<type>Lookup</type>');
+};
+/** An element of a flow of a kind that holds one element `child` with the text `text`. */
+const holding = (kind: string, child: string, text: string, ...more: string[]): string[] => [
+  `<${kind}>`,
+  '    <name>Hold</name>',
+  ...more.map((line) => `    ${line}`),
+  `    <${child}>${text}</${child}>`,
+  `</${kind}>`,
 ];
 
 const FORMS: readonly Form[] = [
@@ -171,6 +186,153 @@ const FORMS: readonly Form[] = [
       );
     },
     varied: ['CustomField:map__mdt.field__c'],
+  },
+  {
+    name: 'a record behind two relationships, of which the first leads nowhere known',
+    write: (source) => {
+      crates(source);
+      flow(source, ...update('$Record.Parcel__r.Crate__r'));
+    },
+  },
+  {
+    name: 'a record behind two relationships, of which the second leads nowhere known',
+    write: (source, known) => {
+      crates(source);
+      source.field(
+        'Crate__c',
+        'Parcel__c',
+        ...(known ? ['<referenceTo>Parcel__c</referenceTo>'] : []),
+        '<type>Lookup</type>',
+      );
+      flow(source, ...update('$Record.Crate__r.Parcel__r'));
+    },
+    varied: ['CustomField:crate__c.parcel__c'],
+  },
+  {
+    name: 'a path an element of a flow sets behind its record',
+    write: (source) => {
+      crates(source);
+      flow(source, ...update('$Record.Parcel__r', 'Crate__r.Weight__c'));
+    },
+  },
+  {
+    name: 'a record an element of a flow deletes',
+    write: (source) => {
+      flow(source, ...holding('recordDeletes', 'inputReference', '$Record.Parcel__r'));
+    },
+  },
+  {
+    name: 'the record of what a flow looks up, and the field an element sets',
+    write: (source, known) => {
+      flow(
+        source,
+        ...holding(
+          'recordLookups',
+          'storeOutputAutomatically',
+          'true',
+          '<getFirstRecordOnly>true</getFirstRecordOnly>',
+          ...(known ? ['<object>Parcel__c</object>'] : []),
+        ),
+        ...update('Hold'),
+      );
+    },
+    varied: ['Flow:ship#element:hold'],
+  },
+  {
+    name: 'a merge field in a text of a flow',
+    write: (source) => {
+      flow(source, ...holding('textTemplates', 'text', 'W {!$Record.Parcel__r.Weight__c}'));
+    },
+  },
+  {
+    name: 'a formula of a flow',
+    write: (source) => {
+      flow(
+        source,
+        ...holding('formulas', 'expression', '{!$Record.Parcel__r.Weight__c} + 1', '<dataType>Number</dataType>'),
+      );
+    },
+  },
+  {
+    name: 'an assignment that adds to a field',
+    write: (source) => {
+      flow(
+        source,
+        '<assignments>',
+        '    <name>Add</name>',
+        '    <assignmentItems>',
+        '        <assignToReference>$Record.Parcel__r.Weight__c</assignToReference>',
+        '        <operator>Add</operator>',
+        '        <value><numberValue>1</numberValue></value>',
+        '    </assignmentItems>',
+        '</assignments>',
+      );
+    },
+  },
+  {
+    name: 'a record type a flow compares the prior record with',
+    write: (source) => {
+      flow(
+        source,
+        ...decision(
+          '$Record__Prior.Parcel__r.RecordType.DeveloperName',
+          'EqualTo',
+          '<stringValue>Fragile</stringValue>',
+        ),
+      );
+    },
+  },
+  {
+    name: 'a record type behind two relationships',
+    write: (source, known) => {
+      crates(source);
+      source.field(
+        'Crate__c',
+        'Parcel__c',
+        ...(known ? ['<referenceTo>Parcel__c</referenceTo>'] : []),
+        '<type>Lookup</type>',
+      );
+      flow(
+        source,
+        ...decision(
+          '$Record.Crate__r.Parcel__r.RecordType.DeveloperName',
+          'EqualTo',
+          '<stringValue>Fragile</stringValue>',
+        ),
+      );
+    },
+    varied: ['CustomField:crate__c.parcel__c'],
+  },
+  {
+    name: 'a path in the condition of a validation rule',
+    write: (source) => {
+      source.rule(
+        'Box__c',
+        'Heavy',
+        '<active>true</active>',
+        '<errorConditionFormula>Parcel__r.Weight__c &gt; 1</errorConditionFormula>',
+      );
+    },
+  },
+  {
+    name: 'a path in the filter of a lookup',
+    write: (source) => {
+      source.field(
+        'Box__c',
+        'Other__c',
+        '<lookupFilter>',
+        '    <active>true</active>',
+        '    <filterItems>',
+        '        <field>$Source.Parcel__r.Weight__c</field>',
+        '        <operation>greaterThan</operation>',
+        '        <value>1</value>',
+        '    </filterItems>',
+        '    <isOptional>false</isOptional>',
+        '</lookupFilter>',
+        '<referenceTo>Parcel__c</referenceTo>',
+        '<type>Lookup</type>',
+      );
+    },
   },
 ];
 

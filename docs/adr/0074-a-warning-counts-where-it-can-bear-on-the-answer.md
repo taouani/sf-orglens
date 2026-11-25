@@ -46,7 +46,8 @@ refers to the record type of that name, and makes no reference where the path to
 3. **A path that was not followed has a warning, wherever it stopped, and the warning says what the path ends
    at** (`details.endsAt`): `object` for the record that an element of a flow writes or deletes as a whole, and
    `field` for any other path. A field that an element sets behind such a record has a warning of its own, with
-   the names after the stop, as a path that stops anywhere else has. An analysis made before this record kept no
+   the names after the stop, as a path that stops anywhere else has. Where the walk stops at the last name of the
+   record, the warning says that "its field" was not followed, since the element names it apart. An analysis made before this record kept no
    warning for such a field, and its warnings say nothing of the end.
 4. **For what refers to a component, a `PATH_NOT_FOLLOWED` counts only where its names can be in the answer**:
    the answer holds a field whose name one of the names can be, a record type where one of the names is
@@ -70,7 +71,8 @@ refers to the record type of that name, and makes no reference where the path to
    counts as before, where the answer covers flows. `countIssues` counts it as `readWarnings`, and
    `readAnalysisWarnings` reads the warnings of the analysis for each answer.
 8. **The text of an answer says what is counted**: "1 warning of the analysis bears on the answer", where it said
-   "the analysis had 1 warning". The text of a complete answer about what refers to a component says what it now
+   "the analysis had 1 warning", and "the analysis had 1 error, and 1 of its warnings bears on the answer", where
+   it said "the analysis had 1 error and 1 warning". The text of a complete answer about what refers to a component says what it now
    means: "every type that can refer to it was analysed, and the analysis had no error and no warning that bears
    on it". The old sentence, "every type of the snapshot was analysed, without an error or a warning", said more
    than record [0073](0073-an-answer-leaves-out-a-type-that-can-name-nothing-of-it.md) and this record leave
@@ -106,9 +108,18 @@ of record 0061: a field that an element of a flow sets behind a record whose pat
   every object in an answer makes every `PATH_NOT_FOLLOWED` of a record count. Each errs on the side of counting.
 - A name the model resolves in a way the function does not know would make a warning drop out of an answer it
   bears on. The test holds the function against the model as it is, and a change to the model that the function
-  does not follow fails it only for the names of its table. A second test analyses each form of a name that walks a
-  relationship twice, once where the relationship leads nowhere that is known and once where it leads to an
-  object: every reference that only the second has must be one that a warning of the first bears on
-  (`extraction-not-followed.test.ts`). A form a reader adds later is not in it.
+  does not follow fails it only for the names of its table. A second test writes 19 ways a name walks a
+  relationship and analyses each twice, once where the relationship leads nowhere that is known and once where it
+  leads to an object: every reference that only the second has must be one that a warning of the first bears on
+  (`extraction-not-followed.test.ts`). The ways are a path in a formula, a validation rule, the filter of a lookup,
+  a path, a merge field and a formula of a flow, an assignment that adds, the record an element updates or deletes
+  behind one or two relationships with the field or path it sets, the record of a variable and of what a flow
+  looks up, a record type behind the record or the prior record and behind two relationships, a field update on
+  the parent, and a field a record of custom metadata names. What an action or a subflow gives back cannot be
+  varied that way, and a way a reader adds later is not in it.
+- Two ways the analysis drops a name without a warning are older than this record, and are not fixed here
+  (issue #86): a record type a flow compares with behind a part such as `What:Account`, and a value of a record of
+  custom metadata whose field has no file in the snapshot. With no warning, nothing is narrowed, and an answer that
+  misses such a reference can call itself complete, as before.
 - The other six codes are not narrowed for what refers to a component: of them, nothing says what is missed.
 - Not measured: how many answers about a real org or about the public codebases this makes complete.

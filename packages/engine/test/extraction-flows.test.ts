@@ -826,6 +826,14 @@ describe('small flows that are written here', () => {
       ...whole('recordCreates', 'Make_Text', 'Words'),
       ...whole('recordCreates', 'Make_Nothing', 'Nope'),
       ...whole('recordCreates', 'Make_Odd', '$Record.Bad Name'),
+      ...whole(
+        'recordUpdates',
+        'Save_Nowhere',
+        '$Record.Nowhere__r',
+        '<inputAssignments>',
+        '    <field>Tier__c</field>',
+        '</inputAssignments>',
+      ),
       ...variable('Some', 'SObject'),
       ...variable('Words', 'String'),
     ]);
@@ -839,6 +847,9 @@ describe('small flows that are written here', () => {
       '15:20 writes CustomField:account.tier__c [Tier__c] assignment confirmed',
     ]);
     for (const name of ['drop_some', 'make_text', 'make_nothing', 'make_odd']) expect(from(analysis, name)).toEqual([]);
+    // A relationship that leads nowhere known: the record and the field the element sets behind it each have a
+    // warning, and the warning of the field keeps its name (decision record 0074).
+    expect(from(analysis, 'save_nowhere')).toEqual(['40:33 reads unresolved [Nowhere__r] path confirmed']);
     expect(messages(analysis)).toEqual([
       // A record variable that names no object.
       `${FILE}, line 21: it is not known which object "Some" holds, so the record it names is of no known object.`,
@@ -846,12 +857,26 @@ describe('small flows that are written here', () => {
       `${FILE}, line 25: the element "inputReference" holds "Words", which is not read as a name.`,
       `${FILE}, line 29: the element "inputReference" holds "Nope", and the flow has no resource "Nope". It is not read.`,
       `${FILE}, line 33: the element "inputReference" holds "$Record.Bad Name", which is not read as a name.`,
+      `${FILE}, line 40: it is not known which object "Nowhere__r" leads to, so the record it names is of no known object.`,
+      `${FILE}, line 40: it is not known which object "Nowhere__r" leads to, so its field "Tier__c" was not followed.`,
     ]);
     expect(issuesOf(analysis)).toEqual([
       'warning PATH_NOT_FOLLOWED drop_some 21:25',
       'warning NAME_NOT_READ make_text 25:25',
       'warning RESOURCE_NOT_FOUND make_nothing 29:25',
       'warning NAME_NOT_READ make_odd 33:25',
+      'warning PATH_NOT_FOLLOWED save_nowhere 40:33',
+      'warning PATH_NOT_FOLLOWED save_nowhere 40:33',
+    ]);
+    // The record of a variable and that behind a relationship end at an object, the field at a field.
+    expect(
+      analysis.issues
+        .filter((issue) => issue.code === 'PATH_NOT_FOLLOWED')
+        .map((issue) => [issue.details?.['notFollowed'], issue.details?.['endsAt']]),
+    ).toEqual([
+      [[], 'object'],
+      [[], 'object'],
+      [['Tier__c'], 'field'],
     ]);
   });
 

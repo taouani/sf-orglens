@@ -482,8 +482,10 @@ export function resolveReferences(
       const last = one.names[walk.steps.length - 1];
       // A path that stops within its silent names says so too: the reference that holds those names says that
       // the record is of no known object, and not which of its fields the element names (decision record 0074).
+      // Where it stops at the last of them, the names after it are those the element names apart from the record.
       if (!walk.complete && last !== undefined) {
-        notFollowed(last, one.names.slice(walk.steps.length), 'leads to', 'field');
+        const apart = silent > 0 && walk.steps.length === silent;
+        notFollowed(last, one.names.slice(walk.steps.length), 'leads to', 'field', apart);
       }
     }
   }
