@@ -12,7 +12,9 @@
  * The listing of Phase 2 was checked on 25 November 2026 (`docs/research/phase-2/public-codebases.md`): every flow
  * with each of its elements, every rule and action of a file of workflow rules and every record type was read by
  * hand, and every field set was held against its file by a script. The second half of this file holds that check
- * the same way, by its own digests.
+ * the same way, by its own digests. The listing of Phase 2 also prints the attributes the analysis gives each
+ * component, such as whether a flow, a rule or a record type is active, so the digests hold them too. They were
+ * held against the files by a script on the same day.
  *
  * The listing that was read is not stored, because it holds the text of the codebases. Its SHA-256 is. When the
  * analysis reports another reference, another place, another tier or another issue for one of these entries,
@@ -150,32 +152,32 @@ const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
     entries: { element: 3, flow: 1 },
     references: 1,
     issues: {},
-    digest: '9a83f4d69329e5a22fcd4b4d9ac1c02c8e20a62f2991064234481944381eacbe',
+    digest: 'a5d313650a283a363fa8c7ca1a31b7167592cf49f01dfeb983d1dd2c1d9fbe09',
   },
   'nebula-logger': {
     entries: { element: 42, 'field-set': 1, flow: 10 },
     references: 38,
     issues: {},
-    digest: '911c3ffdd9ec2d64e323504f156ef78cda966bf3981500954fbb3e4852371817',
+    digest: '6fb52984351368cd339c49199d605ac794583a7b7a7699c7c4b63bead5e2604c',
   },
   npsp: {
     entries: { 'field-set': 18, workflow: 6 },
     references: 727,
     issues: {},
-    digest: '0e250f0d56e8ea3b158b508eb5b004de9911c5cbea3bd7b522ef93e7a680f074',
+    digest: '7877361b97d030329785d1076a5c6d10632a53943a3fbba262c603ecaf3b199b',
   },
   // Both flows of PMM hold a token of its build tool before every name of the package: every name has a warning.
   pmm: {
     entries: { element: 21, 'field-set': 7, flow: 2 },
     references: 384,
     issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 24 },
-    digest: '201a2c57978cbdda732b967853b1508390a7a4fceee9eed6ad1830a97fedd488',
+    digest: '537010400fc30467e18acc946a946801e358c8f5d9f5006a37a81427fe80c247',
   },
   'volunteers-for-salesforce': {
     entries: { 'field-set': 15, 'record-type': 1, workflow: 17 },
     references: 504,
     issues: {},
-    digest: '974423621c8314343787e90b5006bb0ba5a6c36195a868a9438d25a37f497579',
+    digest: '7ee8c715ec241d847a0892aa36fa2222f256675d9697b2ad07ff86b4e339551a',
   },
   'outbound-funds': {
     entries: {},
@@ -187,13 +189,13 @@ const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
     entries: { element: 85, flow: 10 },
     references: 49,
     issues: {},
-    digest: '8f44188697a6560bcd755e7522127e9d549cc9ea29148347c86c23fdc9426e07',
+    digest: 'c7f1a46a8f98572b0cc70adc14e3c83d6710065be15b700528a7e5332b34fb18',
   },
   eda: {
     entries: { 'record-type': 8 },
     references: 22,
     issues: {},
-    digest: 'e76a0baedb4cc9ff0c3f9d55ecc0d7d783253e82eb621e0910bfc278851726cf',
+    digest: '5bcbcc294dbd0d65bfe488b3e88492ac4dcadd9953201bfec4c53a6de821c72b',
   },
 };
 
@@ -287,10 +289,12 @@ describe('the flows and configuration of the public codebases that were checked 
         // of workflow rules, a record type or a field set is hidden from the listing, and nothing is shown twice.
         const listed = listing.analysis.components.filter((one) => LISTED_TYPES.test(one.key)).map((one) => one.key);
         expect(listing.entries.map((entry) => entry.key).sort()).toEqual([...listed].sort());
-        // A file of workflow rules is a component of its own, and refers to nothing: its rules and actions do.
-        expect(
-          listing.analysis.components.filter((one) => one.key.startsWith('Workflow:')).flatMap((one) => one.references),
-        ).toEqual([]);
+        // A file of workflow rules is a component of its own, and refers to nothing: its rules and actions do. It is
+        // no entry, so an issue about it would stand nowhere: there is none.
+        const files = listing.analysis.components.filter((one) => one.key.startsWith('Workflow:'));
+        expect(files.flatMap((one) => one.references)).toEqual([]);
+        const fileKeys = new Set<string>(files.map((one) => one.key));
+        expect(listing.analysis.issues.filter((issue) => fileKeys.has(issue.componentKey ?? ''))).toEqual([]);
         // Every issue of the analysis about one of these components stands under its entry.
         const keys = new Set<string>(listed);
         expect(listing.analysis.issues.filter((issue) => keys.has(issue.componentKey ?? '')).length).toBe(

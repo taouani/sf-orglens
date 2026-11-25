@@ -91,17 +91,17 @@ printing:
 - `impact` from the field most components refer to, as text and as JSON, and from the first field that exactly
   one component refers to. It finds the two by asking `impact` for every field, up to 1,000.
 
-It prints the least and the most of the runs, the count of files, components and references, and the size of
-the database. With `--copies n` it also builds a source that is not real: the first named codebase, or the
-first of the manifest when none is named, with every folder of an object and every flow copied `n` times under
-another name. A copy of a flow names the copies of the objects of the codebase where it names them as its
-objects (`object`, `objectType`), so that its records are those of the copy, and keeps every other name. The
-copy is a Git repository with one commit, with the project file and the `.forceignore` of the codebase, so that
-it is read the way the codebase is. It stands for a repository with very many objects, fields and flows, and it
-is asked the same two questions as the codebase it is made of. It is no org: its files are small, most of its
-components are of the few types the analysis reads, and the copy of a standard object keeps formulas and flows
-that name fields the copy cannot have. Only fields in files of their own are asked about, so a codebase in the
-metadata format, such as V4S, gets no impact question.
+It prints the least and the most of the runs, the count of files, components and references, and the size of the
+database. With `--copies n` it also builds a source that is not real: the first named codebase, or the first of
+the manifest when none is named, with every folder of an object and every flow in the source format
+(`.flow-meta.xml`) copied `n` times under another name. A copy of a flow names the copies of the objects of the
+codebase where it names them as its objects (`object`, `objectType`), so that its records are those of the copy,
+and keeps every other name. The copy is a Git repository with one commit, with the project file and the
+`.forceignore` of the codebase, so that it is read the way the codebase is. It stands for a repository with very
+many objects, fields and flows, and it is asked the same two questions as the codebase it is made of. It is no
+org: its files are small, most of its components are of the few types the analysis reads, and the copy of a
+standard object keeps formulas and flows that name fields the copy cannot have. Only fields in files of their own
+are asked about, so a codebase in the metadata format, such as V4S, gets no impact question.
 
 ## Limits
 

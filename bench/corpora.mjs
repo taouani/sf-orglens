@@ -210,10 +210,10 @@ function git(folder, ...command) {
 }
 
 /**
- * A copy of a codebase with every folder of an object and every flow copied `count` times under another name, in
- * a package folder of its own. A copy of an object keeps its files as they are, so a lookup of it leads to the
- * object it led to. A copy of a flow names the copies of the objects of the codebase where the flow names them
- * in an `object` or `objectType` element, so that `$Record` and the records it reads and writes are those of the
+ * A copy of a codebase with every folder of an object and every flow in the source format copied `count` times under
+ * another name, in a package folder of its own. A copy of an object keeps its files as they are, so a lookup of it
+ * leads to the object it led to. A copy of a flow names the copies of the objects of the codebase where the flow names
+ * them in an `object` or `objectType` element, so that `$Record` and the records it reads and writes are those of the
  * copy. Every other name in it, a subflow, an Apex class or an object the codebase does not hold, stays as it is.
  *
  * The copy is a Git repository with one commit, and it has the project file and the `.forceignore` of the
@@ -234,17 +234,20 @@ function withCopies(corpus, count) {
     for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
       const at = path.join(folder, entry.name);
       if (!entry.isDirectory()) {
+        // A flow in the metadata format (`.flow`) is not copied.
         if (entry.name.endsWith('.flow-meta.xml')) flows.push(at);
       } else if (entry.name === 'objects') objects.push(...fs.readdirSync(at).map((name) => path.join(at, name)));
       else find(at);
     }
   };
   for (const one of corpus.paths) find(path.join(repository, one));
-  const names = new Set(objects.map((folder) => path.basename(folder)));
+  // Salesforce reads the name of an object without regard to capitals.
+  const names = new Set(objects.map((folder) => path.basename(folder).toLowerCase()));
   const texts = flows.map((file) => ({
     flow: path.basename(file, '.flow-meta.xml'),
     text: fs.readFileSync(file, 'utf8'),
   }));
+  const flowNames = new Set(texts.map(({ flow }) => flow.toLowerCase()));
   fs.mkdirSync(path.join(repository, 'copies', 'flows'), { recursive: true });
   for (let n = 1; n <= count; n++) {
     for (const folder of objects) {
@@ -257,9 +260,15 @@ function withCopies(corpus, count) {
     for (const { flow, text } of texts) {
       // A tag may end on a line of its own, as `<object\n    >`.
       const copy = text.replace(/<(object|objectType)(\s*)>([^<]*)<\/\1(\s*)>/g, (whole, tag, before, value, after) =>
-        names.has(value.trim()) ? `<${tag}${before}>${copyName(value.trim(), n)}</${tag}${after}>` : whole,
+        names.has(value.trim().toLowerCase())
+          ? `<${tag}${before}>${copyName(value.trim(), n)}</${tag}${after}>`
+          : whole,
       );
-      fs.writeFileSync(path.join(repository, 'copies', 'flows', `${flow}_${String(n)}.flow-meta.xml`), copy);
+      // Two flows of one name in two folders would make one file of two, and a flow of the codebase named as the
+      // copy of another would make two flows of one name. Neither is made.
+      const copyOfFlow = `${flow}_${String(n)}`;
+      if (flowNames.has(copyOfFlow.toLowerCase())) throw new Error(`The codebase has a flow named ${copyOfFlow}.`);
+      fs.writeFileSync(path.join(repository, 'copies', 'flows', `${copyOfFlow}.flow-meta.xml`), copy, { flag: 'wx' });
     }
   }
   git(repository, 'init', '--quiet');

@@ -140,13 +140,16 @@ function partsOf(file: string, text: string): { readonly key: string | null; rea
   const object = /(?:^|\/)([^/]+)\.object$/.exec(file)?.[1];
   if (object === undefined) return [{ key: null, text }];
   const parts: { key: string | null; text: string }[] = [];
-  const rest = text.replace(/<(fields|validationRules)>([\s\S]*?)<\/\1>/g, (whole, group: string, body: string) => {
-    // A compact layout names its fields as `<fields>Name</fields>`: such a group has no name of its own.
-    const name = /<fullName>([^<]*)<\/fullName>/.exec(body)?.[1];
-    if (name === undefined) return whole;
-    parts.push({ key: buildKey({ type: PARTS[group] ?? group, fullName: `${object}.${name}` }), text: body });
-    return '';
-  });
+  const rest = text.replace(
+    /<(fields|validationRules)\s*>([\s\S]*?)<\/\1\s*>/g,
+    (whole, group: string, body: string) => {
+      // A compact layout names its fields as `<fields>Name</fields>`: such a group has no name of its own.
+      const name = /<fullName\s*>([^<]*)<\/fullName\s*>/.exec(body)?.[1];
+      if (name === undefined) return whole;
+      parts.push({ key: buildKey({ type: PARTS[group] ?? group, fullName: `${object}.${name}` }), text: body });
+      return '';
+    },
+  );
   return [{ key: buildKey({ type: 'CustomObject', fullName: object }), text: rest }, ...parts];
 }
 
@@ -209,6 +212,11 @@ export interface MoreEntry {
   readonly file: string;
   /** The key of the component, or `null` if the analysis has no component for it. */
   readonly key: string | null;
+  /**
+   * The attributes the analysis gives the component, as JSON: such as whether it is active, the status and the
+   * type of a flow, and the kind of an element. An answer carries `active` through the component.
+   */
+  readonly attrs: string;
   /** The element of the file, cut out as text and printed in short: one line for each value. */
   readonly text: string;
   /** Every reference of the component, as lines. Each component has one entry. */
@@ -329,7 +337,7 @@ function morePartsOf(
   file: string,
   root: Node,
   flowName: string | undefined,
-): Omit<MoreEntry, 'references' | 'issues'>[] {
+): Omit<MoreEntry, 'attrs' | 'references' | 'issues'>[] {
   const entry = (kind: MoreKind, key: string | null, node: Node | readonly Node[]) => ({
     kind,
     file,
@@ -416,6 +424,7 @@ export async function listFlowsAndConfiguration(root: string, paths: readonly st
       entries.push({
         ...part,
         key: component === undefined ? null : part.key,
+        attrs: component === undefined ? '(no component)' : JSON.stringify(component.attrs),
         references: (component?.references ?? []).map(lineOf),
         issues: (component === undefined
           ? []
@@ -431,7 +440,8 @@ export async function listFlowsAndConfiguration(root: string, paths: readonly st
 function printedMore(name: string, listing: MoreListing): string {
   const lines: string[] = [`# ${name}: flows and configuration`];
   for (const entry of listing.entries) {
-    lines.push('', `## ${entry.kind} ${entry.key ?? '(no component)'}`, entry.file, '', entry.text, '');
+    lines.push('', `## ${entry.kind} ${entry.key ?? '(no component)'}`, entry.file, `attrs ${entry.attrs}`, '');
+    lines.push(entry.text, '');
     lines.push(...(entry.references.length === 0 ? ['(no reference)'] : entry.references.map((one) => `-> ${one}`)));
     lines.push(...entry.issues.map((one) => `!! ${one}`));
   }
@@ -499,5 +509,16 @@ if (import.meta.main) {
     const references = more.entries.flatMap((entry) => entry.references).length;
     const issues = more.entries.flatMap((entry) => entry.issues).length;
     console.error(`  references ${String(references)}, issues ${String(issues)}`);
+    // The references of the entries counted by the kind of the entry, with their kind, the type of their target,
+    // their tier, their resolution and their way, as the note of the check gives them.
+    const ways: Record<string, number> = {};
+    for (const entry of more.entries) {
+      for (const line of entry.references) {
+        const parts = /^(\S+) (\S+) \S+ \[(\w+), (\w+)\] via ([^,]+),/.exec(line)?.slice(1) ?? [line];
+        const counted = [entry.kind, ...parts].join(' ');
+        ways[counted] = (ways[counted] ?? 0) + 1;
+      }
+    }
+    for (const [counted, count] of Object.entries(ways).sort()) console.error(`  ${String(count)} ${counted}`);
   }
 }

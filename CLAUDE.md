@@ -265,7 +265,7 @@ pnpm run bench              # storage benchmark on a synthetic org, not part of 
 pnpm run bench:store        # the same org written and read through the store of the engine, not part of check
 pnpm run bench:corpora      # the time of the built commands on the public codebases, needs a build and the codebases
 pnpm run corpora:fetch      # downloads the public test codebases of fixtures/corpora.toml into .corpora
-pnpm run corpora:listing    # every formula field, rule, filter and summary of them with what the analysis reports
+pnpm run corpora:listing    # their formulas, rules, flows and configuration, with what the analysis reports
 ```
 
 Run `pnpm run check` before every push.

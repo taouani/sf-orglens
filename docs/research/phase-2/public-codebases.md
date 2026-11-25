@@ -12,8 +12,8 @@ the same for formulas, rules and lookups. Its digests did not move, so its check
 - **Every flow of the codebases was read by hand, element by element, with its references**: 23 flows, 3 of them
   processes of the Process Builder, with 151 elements, in Apex Recipes, Nebula Logger, PMM and Coral Cloud. So
   were the 9 files of workflow rules in the package folders (1 of NPSP, 8 of V4S) with their 23 rules and actions,
-  and the 9 record types (8 of EDA, 1 of V4S). The 41 field sets, with 1,424 fields, were held against their files
-  by scripts. `[read]`
+  and the 9 record types in the package folders (8 of EDA, 1 of V4S). The 41 field sets, with 1,424 fields, and the
+  attributes of every component, such as whether it is active, were held against their files by scripts. `[read]`
 - OrgLens reports 1,725 references for them. **None is wrong.** All are at the tier `confirmed`. `[read]`
 - **Seven names are missed**, and the analysis says nothing about them: one flow of Coral Cloud names the flow of
   a package that it overrides, and six actions of Nebula Logger name the object they hand to a generic Apex
@@ -33,8 +33,10 @@ the same for formulas, rules and lookups. Its digests did not move, so its check
 - The 339 records of custom metadata types are read without an error, as record 0065 found for 335 of them. Their
   numbers and the values read by hand move here from that record, as the plan asks.
 - **The check was made by the author of the analysers**, the assistant that builds OrgLens with the maintainer,
-  once. The sub-agent that reviews the pull request reads the flows again. No person read an entry: the reading by
-  the maintainer of five flows (answer 6 of the plan) goes into the test plan of the phase.
+  once. The sub-agent that reviewed the pull request read the 23 flows again, with the workflow rules and the record
+  types, and found no wrong reference and no other missed name. It found mistakes in this note, which are corrected.
+  No person read an entry: the reading by the maintainer of five flows (question 6 of the plan) goes into the test
+  plan of the phase.
 - A first snapshot of the largest codebase, NPSP with 11,722 components, takes 3.2 to 4.3 seconds as a command, as
   it did in Phase 1, and an impact question 0.1 to 0.2 seconds. A made-up source of 100,072 components, Coral Cloud
   with its objects and flows copied 580 times, has 5,810 flows: its snapshot takes 11.6 to 12.2 seconds and an
@@ -72,10 +74,12 @@ the same for formulas, rules and lookups. Its digests did not move, so its check
 - each record type and each field set, from a file of its own in the source format, or from the file of its object
   in the metadata format.
 
-Each entry shows the XML of its component, read by a scanner of the listing's own and not by the reader of the
-engine: a value as `tag: text`, a group of values on one line, and the positions of the builder on the canvas
-left out. Under it stand the references and the issues the analysis reports for that component, each reference
-with its kind, target, tier, resolution, way, the text as written and its line and column.
+Each entry shows the attributes the analysis gives its component, such as `{"status":"Active","active":true,
+"processType":"AutoLaunchedFlow"}` for a flow and `{"kind":"lookup","active":true}` for an element, and the XML of
+the component, read by a scanner of the listing's own and not by the reader of the engine: a value as
+`tag: text`, a group of values on one line, and the positions of the builder on the canvas left out. Under it
+stand the references and the issues the analysis reports for that component, each reference with its kind,
+target, tier, resolution, way, the text as written and its line and column.
 
 | Entries | Apex Recipes | Nebula Logger | PMM | Coral Cloud | NPSP | V4S | EDA | All |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -105,8 +109,10 @@ Outbound Funds has none of these, and its listing is empty.
 
 ## What the analysis reports
 
-`[run]` The listing prints these numbers to the error output, and `extraction-corpora-checked.test.ts` holds
-them by codebase.
+`[run]` The listing prints the references of its entries to the error output, counted by the kind of the entry,
+their kind, the type of their target, their tier, their resolution and their way, and the tables below are from
+it. `extraction-corpora-checked.test.ts` holds the totals and the digest of each listing, and `EXPECTED_FLOWS` of
+`extraction-corpora.test.ts` the resolutions of the references of flows.
 
 | References of the flows | Apex Recipes | Nebula Logger | Coral Cloud |
 | --- | --- | --- | --- |
@@ -155,7 +161,7 @@ fields it assigns were held against its object. A process of the Process Builder
 builder, which say which object it starts on. The rules and actions of the 9 files of workflow rules, and the
 record types, were read the same way.
 
-**Three checks by scripts.** None of the scripts is in the repository, so none can be repeated from it. `[run]`
+**Four checks by scripts.** None of the scripts is in the repository, so none can be repeated from it. `[run]`
 
 - For each of the 1,725 references, the first opened the file of its component at the line and column the
   reference gives, and checked that the text written there is the name as written in the reference. All 1,725
@@ -169,6 +175,12 @@ record types, were read the same way.
   listed, 1,413 give their reference, 11 are `Id` (7 in NPSP, 4 in V4S), which gives no reference by rule, and
   144 are behind a relationship: all 142 of PMM lead where the file of their lookup says, and the 2 of V4S
   (`Volunteer_Job__r.Name`) as well.
+- The fourth held the attributes of the 247 components against their files: the status, the type of process and
+  the type of trigger of each flow, and that it is active exactly where its status is `Active`; the kind of each
+  element by the group that holds it, and that it is active as its flow is; and whether each rule and each record
+  type is active. All match. Four flows are drafts and not active (`Test` of Apex Recipes,
+  `LogEntryHandler_Tests_Scheduled_Flow` and `MockLogBatchPurgerPlugin` of Nebula Logger), as are the two rules of
+  NPSP and one rule of V4S.
 
 **Wrong references: 0.** No reference names a target the file does not name, none has the wrong kind or the wrong
 way, and none stands at a place where its name is not written.
@@ -180,7 +192,7 @@ way, and none stands at a place where its name is not written.
 | 1 | Coral Cloud | the flow `Send_Verification_Code` | `<overriddenFlow>SvcCopilotTmpl__SendVerificationCode</overriddenFlow>` | the flow of a package that this flow overrides |
 | 2, 3 | Nebula Logger | two actions of `Account_Flow_Logger_Example` | `<dataTypeMappings>` with `<typeValue>Account</typeValue>` | the object `Account`, which the action is given records of |
 | 4 | Nebula Logger | an action of `Account_Record_Launched_Flow_Example` | the same | the same |
-| 5 | Nebula Logger | an action of `LogEntryHandler_Screen_Tests_For_Flow` | the same, `User` | the object `User` |
+| 5 | Nebula Logger | an action of `LogEntryHandler_Screen_Tests_for_Flow` | the same, `User` | the object `User` |
 | 6 | Nebula Logger | an action of `LogEntryHandler_Tests_Flow` | the same, `User` | the same |
 | 7 | Nebula Logger | an action of `LogEntryHandler_Tests_Scheduled_Flow` | the same, `Organization` | the object `Organization` |
 
@@ -188,55 +200,64 @@ way, and none stands at a place where its name is not written.
   read it. Record 0061 does not name it among what is not read: it was not thought of. The flow it names is of a
   managed package (the prefix `SvcCopilotTmpl__`) that Coral Cloud does not hold, so the reference would be
   `external`. An org that has the package would show whether the Dependency API reports the pair.
-- **Cause of 2 to 7.** An action of a generic Apex class says, in `dataTypeMappings`, which object stands for the
-  type of the class (`T__record`). The reader does not read the element. In each of the six flows the records the
-  action is given come from an element that reads that object (a lookup, or the start of the flow), and that
-  element refers to the object. So an answer about `Account`, `User` or `Organization` holds the flow, through
-  another element, and misses only the action. By the rule of record 0061 for the object a variable declares,
-  which gives no reference, such a type would give none either. That is for the maintainer to say.
+- **Cause of 2 to 7.** An action of a generic Apex class says, in `dataTypeMappings`, which object stands for the type
+  of the class (`T__record`). The reader does not read the element. In each of the six flows another element refers to
+  that object: in four the records the action is given come from a lookup or from the start of the flow, and in
+  `Account_Flow_Logger_Example` they come from an input variable, which gives no reference, and the element that updates
+  that record (`Save_Account`) refers to `Account`. So an answer about `Account`, `User` or `Organization` holds the
+  flow, through another element, and misses only the action. By the rule of record 0061 for the object a variable
+  declares, which gives no reference, such a type would give none either. That is for the maintainer to say.
 - **What was done: nothing.** Both are additions to the reader of flows, which work package 3 built, and both need
   a line in record 0061. They are named here so that the maintainer can decide whether they are built.
 
 **Names that give no reference, on purpose.** The file holds them and the analysis reports nothing, by a rule.
-They are no misses by the rules as they stand.
+They are no misses by the rules as they stand. The table names each kind of them that was found; it does not
+count every place.
 
 | Codebase | Where | Name | Rule |
 | --- | --- | --- | --- |
 | Nebula Logger | 4 components of screens | `c:loggerLWCGetLoggerImportDemo`, `c:loggerLWCCreateLoggerImportDemo`, `c:loggerLWCEmbedDemo`, `c:loggerAuraEmbedDemo` in `extensionName` | the component of a screen is not read (record 0061) |
 | Coral Cloud | an action of `PersonalizedSchedule` | the prompt template `Generate_Personalized_Schedule`, of the action type `generatePromptResponse`, which `cc-employee-app` holds | an action that is no Apex class, no flow and no alert is not read (record 0061, choice 18) |
 | Coral Cloud | 4 more actions | `routeWork` twice, `emailSimple`, `generateVerificationCode` | standard actions, which name no component |
-| Nebula Logger, PMM, Coral Cloud | 17 variables: 6, 4 and 7 | the object a variable declares (`objectType`) | not read (record 0061) |
+| Apex Recipes, Nebula Logger, PMM, Coral Cloud | 17 variables: 1, 5, 4 and 7 | the object a variable declares (`objectType`) | not read (record 0061) |
 | Nebula Logger | 2 variables of plugins | the Apex types `LoggerBatchableContext` and `LoggerTriggerableContext` (`apexClass`) | not read (record 0061) |
 | Apex Recipes, Nebula Logger, PMM, Coral Cloud | values of the builder | `processMetadataValues` | not read beyond the object of a process (record 0061) |
 | EDA | all 8 record types | the compact layout of a record type (`compactLayoutAssignment`) | not read (record 0065) |
-| NPSP, V4S | 11 fields of field sets | `Id` | gives no reference |
-| Coral Cloud | lookups and their conditions | `Id`, as a field read or filtered on | the same |
+| NPSP, V4S | 11 fields of field sets | `Id` | `Id` at the end of a path gives no reference, as in a formula (record 0042, point 8). Record 0065 does not say it of a field set |
+| Coral Cloud | lookups and their conditions | `Id`, as a field read or filtered on | the same, for a flow (record 0061, choice 15) |
+| Every codebase with flows | every action | `nameSegment`, which repeats `actionName` | not read |
+| Nebula Logger, Coral Cloud | the inputs of actions | the names of their parameters, such as `loggingLevelName`, `record`, `flowErrorEvents` and `Input:contactId` | a value under a name of its own (record 0061, choice 8) |
+| Coral Cloud | the outputs of actions read through a path | `GenerateVerificationCode.verificationCode` and `.authenticationKey`, `Generate_Personalized_Schedule.promptResponse` | the same, and what an action gives back is not read (record 0061) |
 
-**PMM.** Both processes stand in `unpackaged/config/dev`, outside the package, and name every object and field of
-PMM with the token of its build tool: `%%%NAMESPACE%%%ProgramEngagement__c`. Record 0061 (choice 10) reads no such
-value as a name and gives the warning `NAME_NOT_READ` where an object or a field is read: 78 times. A path from a
-record of no known object gives `PATH_NOT_FOLLOWED`: 24 times. So nothing of the two processes is found, and every
-name of them is a warning that `coverage` counts and that makes an answer about the objects of PMM say it may miss
-something. One message quotes the path cut at the second token:
-`myVariable_current.%%%NAMESPACE%%%Program__r.%%%NAMESPACE%%%`. It is a fault of the words, not of the analysis.
-Reading such a token as an empty prefix is not built and is not in the plan.
+**PMM.** Both processes stand in `unpackaged/config/dev`, outside the package, and name every object and field of PMM
+with the token of its build tool: `%%%NAMESPACE%%%ProgramEngagement__c`. Record 0061 (choice 10) reads no such value as
+a name and gives the warning `NAME_NOT_READ` where an object or a field is read: 78 times. The other 24 are
+`PATH_NOT_FOLLOWED`: 17 for a path from the record variable `myVariable_current`, whose object is not read (12 to
+`CreatedDate`, 5 to `Id`), and 7 for the field of an element whose object is not read (5 `Id`, 2 `Name`). So nothing of
+the two processes is found, and every name of them is a warning that `coverage` counts and that makes an answer about
+the objects of PMM say it may miss something. 10 of the 24 are about `Id`, which gives no reference even where the
+object is known (record 0061, choice 15): those can bear on nothing and still count. Not warning about `Id` is a
+possible change to the reader of flows, and is not made here. One message quotes the path cut at the second token:
+`myVariable_current.%%%NAMESPACE%%%Program__r.%%%NAMESPACE%%%`. It is a fault of the words, not of the analysis. Reading
+such a token as an empty prefix is not built and is not in the plan.
 
-**What the listing can hide, and the defect that was found.** The listing shows the references of a component
-under its entry, so a reference of a flow element cannot stand under another element. A test holds that the
-entries are exactly the components of these types the analysis reports, that the file of workflow rules itself
-has no reference, that the issues are the issues of these components, and that every reference is `confirmed`.
-The listing of Phase 1, which this work package extends, cut its entries out of the files with patterns that
-wanted `>` right after the name of a tag. Coral Cloud writes `<formula` with the bracket on the next line in three
-fields (`Booking__c.Status__c`, `Session__c.End_Time__c`, `Session__c.Status__c`), as a formatter writes long
-tags. The analysis read the three. The listing and the scan of the test of the codebases did not, and the counts
-did not agree. Both now allow white space before the bracket, the three were read, and their references are
-right. The four codebases of Phase 1 do not write a tag that way, and their digests did not move.
+**What the listing can hide, and the defect that was found.** The listing shows the references of a component under its
+entry, so a reference of a flow element cannot stand under another element. A test holds that the entries are exactly
+the components of these types the analysis reports, that the file of workflow rules itself has no reference and no
+issue, that the issues are the issues of these components, and that every reference is `confirmed`. An element of a kind
+the reader does not know would be printed inside the entry of its flow, but the test would fail first: the analysis
+keeps it as a component of its own, which no entry is. The listing of Phase 1, which this work package extends, cut its
+entries out of the files with patterns that wanted `>` right after the name of a tag. Coral Cloud writes `<formula` with
+the bracket on the next line in three fields (`Booking__c.Status__c`, `Session__c.End_Time__c`, `Session__c.Status__c`),
+as a formatter writes long tags. The analysis read the three. The listing and the scan of the test of the codebases did
+not, and the counts did not agree. Both now allow white space before the bracket, the three were read, and their
+references are right. The four codebases of Phase 1 do not write a tag that way, and their digests did not move.
 
-**The entries of Phase 1 in the two new codebases.** The listing of Phase 1 of Coral Cloud and EDA was read the
-same way as in Phase 1, by the same author. Coral Cloud: 19 formula fields, 2 default values and 4 roll-up
-summaries, with 49 references. EDA: 10 formula fields, 2 validation rules and 78 default values, with 76
-references. 79 of the default values are literals and have no reference, and one is `now()`. **None of the 125
-references is wrong**, all are `confirmed`, and none is missed. The lookups of their paths lead where the files of
+**The entries of Phase 1 in the two new codebases.** The listing of Phase 1 of Coral Cloud and EDA was read the same way
+as in Phase 1, by the same author. Coral Cloud: 19 formula fields, 2 default values and 4 roll-up summaries, with 49
+references. EDA: 10 formula fields, 2 validation rules and 78 default values, with 76 references. The 2 default values
+of Coral Cloud and 77 of those of EDA are literals and have no reference, and the 78th of EDA is `now()`. **None of the
+125 references is wrong**, all are `confirmed`, and none is missed. The lookups of their paths lead where the files of
 the lookups say.
 
 ## The records of custom metadata types
@@ -335,25 +356,25 @@ behind it. The lookup leads to `Contact`, as its file says.
 
 ## How the check is held
 
-`extraction-corpora-checked.test.ts` holds, for each codebase, the count of entries of the second listing by kind,
-of its references and of its issues by code, and the SHA-256 of the whole listing as it was read. When the
-analysis reports another reference, another place, another tier or another issue for one of these components, or
-another component, the digest moves and the test fails. The test then asks for a new check by hand of what moved,
-as in Phase 1. It also holds that the entries are exactly the components of these types, that every reference is
-`confirmed`, and that the file of workflow rules itself has none. Like the other tests on the public codebases it
-is skipped where the codebases are not downloaded, so CI does not run it. The digests of the listing of Phase 1
-did not move; the two new codebases have their own.
+`extraction-corpora-checked.test.ts` holds, for each codebase, the count of entries of the second listing by kind, of
+its references and of its issues by code, and the SHA-256 of the whole listing as it was read. When the analysis reports
+another reference, another place, another tier, another issue or another attribute for one of these components, or
+another component, the digest moves and the test fails. The test then asks for a new check by hand of what moved, as in
+Phase 1. It also holds that the entries are exactly the components of these types, that every reference is `confirmed`,
+and that the file of workflow rules itself has no reference and no issue. Like the other tests on the public codebases
+it is skipped where the codebases are not downloaded, so CI does not run it. The digests of the listing of Phase 1 did
+not move; the two new codebases have their own.
 
 | Codebase | SHA-256 of the second listing that was read |
 | --- | --- |
-| apex-recipes | `9a83f4d69329e5a22fcd4b4d9ac1c02c8e20a62f2991064234481944381eacbe` |
-| nebula-logger | `911c3ffdd9ec2d64e323504f156ef78cda966bf3981500954fbb3e4852371817` |
-| npsp | `0e250f0d56e8ea3b158b508eb5b004de9911c5cbea3bd7b522ef93e7a680f074` |
-| pmm | `201a2c57978cbdda732b967853b1508390a7a4fceee9eed6ad1830a97fedd488` |
-| volunteers-for-salesforce | `974423621c8314343787e90b5006bb0ba5a6c36195a868a9438d25a37f497579` |
+| apex-recipes | `a5d313650a283a363fa8c7ca1a31b7167592cf49f01dfeb983d1dd2c1d9fbe09` |
+| nebula-logger | `6fb52984351368cd339c49199d605ac794583a7b7a7699c7c4b63bead5e2604c` |
+| npsp | `7877361b97d030329785d1076a5c6d10632a53943a3fbba262c603ecaf3b199b` |
+| pmm | `537010400fc30467e18acc946a946801e358c8f5d9f5006a37a81427fe80c247` |
+| volunteers-for-salesforce | `7ee8c715ec241d847a0892aa36fa2222f256675d9697b2ad07ff86b4e339551a` |
 | outbound-funds | `a386af5c01d065a6a878d1194a6ef6c05202cc46f0c5660fb2df5c8f1b14e217` |
-| coral-cloud | `8f44188697a6560bcd755e7522127e9d549cc9ea29148347c86c23fdc9426e07` |
-| eda | `e76a0baedb4cc9ff0c3f9d55ecc0d7d783253e82eb621e0910bfc278851726cf` |
+| coral-cloud | `c7f1a46a8f98572b0cc70adc14e3c83d6710065be15b700528a7e5332b34fb18` |
+| eda | `5bcbcc294dbd0d65bfe488b3e88492ac4dcadd9953201bfec4c53a6de821c72b` |
 
 | Codebase | SHA-256 of the listing of Phase 1 that was read |
 | --- | --- |
@@ -428,8 +449,9 @@ them is real, and neither is an org.
 | Results of the first impact question | 148 | 2,915 |
 
 - **NPSP with copies takes what it took in Phase 1**, 18.42 to 19.69 seconds for the snapshot then, though it has
-  88,246 references where it had 15,345: the field sets and the file of workflow rules stand in the object folders,
-  so every copy has them.
+  88,246 references where it had 15,345: the field sets and the action overrides stand in the object folders, so
+  every copy has their 715 references, besides the 155 of Phase 1 (88,246 = 2,986 + 98 × 870). The file of
+  workflow rules stands in a folder of its own and is not copied.
 - **5,810 flows with 49,385 elements are snapshotted and analysed in 11.6 to 12.2 seconds**, with about 45,000
   other components. Each copy gives the 109 references that the objects and the flows of Coral Cloud give, so the
   source has the 110 of Coral Cloud and 109 more for each copy.
@@ -460,10 +482,11 @@ not show that 60 minutes can be met: that needs an org.
 
 ## Not measured, and not verified
 
-- **A person as reader.** The author of the analysers read every entry, once, and the sub-agent of the review
-  reads the flows again. A name the reader overlooked in a file is overlooked in the analysis as easily: the same
-  head wrote both. The listing guards against one kind of that, because it shows the file through a scanner of its
-  own. The maintainer reads five flows by hand in the test plan of the phase (answer 6 of the plan).
+- **A person as reader.** The author of the analysers read every entry, once, and the sub-agent of the review read the
+  flows, the workflow rules and the record types again. It is a second reader of the same kind. A name the reader
+  overlooked in a file is overlooked in the analysis as easily: the same head wrote both. The listing guards against one
+  kind of that, because it shows the file through a scanner of its own. The maintainer reads five flows by hand in the
+  test plan of the phase (question 6 of the plan).
 - **Whether Salesforce agrees.** The codebases are in no org, so the Dependency API was not asked about them. For
   flows and workflow rules the test org is that proof, for the fixture project only ([real-org.md](real-org.md)).
 - **The field sets were not read one by one.** The scripts held each of their 1,424 fields against the files, and
@@ -471,12 +494,19 @@ not show that 60 minutes can be met: that needs an org.
 - **PMM's processes.** With the tokens, nothing of them is found, so the reader of flows was not tested on them
   beyond its warnings. A project built with such tokens gets nothing from its flows. The maintainer is told at the
   close of the phase.
-- **Files outside the folders that were read.** Three field sets of PMM in `unpackaged/config/alternate_field_sets`,
-  under an object named with the token (`___NAMESPACE___ServiceDelivery__c`), one field set of a Slack plugin of
-  Nebula Logger, and two files of workflow rules of NPSP for a trial org (`unpackaged/config/trial` and
-  `unpackaged/config/trial_tso`), in the metadata format, with 11 and 26 rules and actions on fields of other
-  packages. None of them is in a package folder or beside a flow, so none was read. Every flow of the eight
-  repositories was.
+- **Files outside the folders that were read.** None of these is in a package folder or beside a flow, so none was
+  read. Every flow of the eight repositories was.
+  - 45 record types in the settings of orgs for development, tests and trials, in the metadata format: 30 of NPSP
+    in `unpackaged/config/dev`, `qa`, `trial` and `trial_tso` and in `unpackaged/pre/account_record_types` and
+    `opportunity_record_types`, and 15 of EDA in `unpackaged/post/case_behavior_record_types` and
+    `course_connection_record_types` (under an object named with the token, `___NAMESPACE___Course_Enrollment__c`),
+    in `unpackaged/pre/acc_record_types`, and in two folders of `unpackaged/test_unpackaged`. EDA was pinned for its
+    record types, and its eight in the package are the ones that were read.
+  - Three field sets of PMM in `unpackaged/config/alternate_field_sets`, under an object named with the token
+    (`___NAMESPACE___ServiceDelivery__c`), and one field set of a Slack plugin of Nebula Logger.
+  - Two files of workflow rules of NPSP for a trial org (`unpackaged/config/trial` and
+    `unpackaged/config/trial_tso`), in the metadata format, with 11 and 26 rules and actions on fields of other
+    packages.
 - **Coral Cloud is retired.** Its flows use newer features of Salesforce (a prompt template, routing, an override
   of a flow of a package), which makes them worth reading, and nobody maintains them now.
 - **Windows and macOS** were not measured.
