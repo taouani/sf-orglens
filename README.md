@@ -3,9 +3,11 @@
 OrgLens tells you what a change to a Salesforce org will affect before you make it. It reads a live org, a sandbox
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
-> **Pre-release.** The project is being built in the open. The first slice is built: the first impact answers
-> cover objects, fields and validation rules only. The newest pre-release, version `0.1.0-next.1`, is on npm as
-> `sf-orglens`, under the tag `next` ([release notes](docs/releases/v0.1.0-next.1.md)). No version without a
+> **Pre-release.** The project is being built in the open. Phases 0 to 2 are built: the impact answers cover
+> objects, fields and validation rules, flows, workflow rules and the other types named below, and not Apex yet. The
+> newest pre-release on npm is version `0.1.0-next.1`, which analyses objects, fields and validation rules only
+> ([release notes](docs/releases/v0.1.0-next.1.md)). Version `0.1.0-next.2` holds what Phase 2 added and is
+> published once the maintainer says so ([release notes](docs/releases/v0.1.0-next.2.md)). No version without a
 > pre-release part exists, and until there is one the names, the JSON output and the exit codes can change from
 > one pre-release to the next. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes
 > when.
@@ -18,15 +20,15 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 > `npx orglens`:** the name `orglens` is not a package of this project, and npx fetches whatever package has that
 > name. To run OrgLens without installing it, use `npx sf-orglens@next`.
 >
-> What exists today: a workspace with its configuration and its database, logins that reuse the Salesforce CLI, and
-> immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects, fields
-> and validation rules, with the formulas in them. On `main`, which no pre-release holds yet, flows are analysed
-> too, element by element, and a snapshot of an org holds the active version of a flow. So are workflow rules with
-> their field updates, email alerts, outbound messages and tasks, record types, field sets, and records of custom
-> metadata types. Nothing else is analysed yet. `orglens impact` shows what refers to a component among those
-> types, and an answer names the types it does not cover. The commands are `init`, `source`, `snapshot`, `analyse`,
-> `coverage`, `impact`, `status` and `doctor`. See [docs/cli.md](docs/cli.md) and
-> [docs/configuration.md](docs/configuration.md).
+> What exists on `main`: a workspace with its configuration and its database, logins that reuse the Salesforce
+> CLI, and immutable snapshots of an org, a sandbox or a repository folder. A snapshot is analysed for its objects,
+> fields and validation rules, with the formulas in them, for its flows, element by element, for its workflow
+> rules with their field updates, email alerts, outbound messages and tasks, and for its record types, field sets,
+> records of custom metadata types, email templates, report types and quick actions. A snapshot of an org holds the
+> active version of a flow, and marks the components of managed packages. Nothing else is analysed yet: Apex
+> follows in Phase 3. `orglens impact` shows what refers to a component among those types, and an answer names the
+> types it does not cover. The commands are `init`, `source`, `snapshot`, `analyse`, `coverage`, `impact`, `status`
+> and `doctor`. See [docs/cli.md](docs/cli.md) and [docs/configuration.md](docs/configuration.md).
 
 ## What it will do
 
