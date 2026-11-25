@@ -4,7 +4,7 @@ OrgLens tells you what a change to a Salesforce org will affect before you make 
 or a Git repository, builds a dependency graph on your own machine, and answers impact questions from that graph.
 
 > **Pre-release.** The project is being built in the open. Phases 0 to 2 are built: the impact answers cover
-> objects, fields and validation rules, flows and the declarative configuration of an org, and not Apex yet. The
+> objects, fields and validation rules, flows, workflow rules and the other types named below, and not Apex yet. The
 > newest pre-release on npm is version `0.1.0-next.1`, which analyses objects, fields and validation rules only
 > ([release notes](docs/releases/v0.1.0-next.1.md)). Version `0.1.0-next.2` holds what Phase 2 added and is
 > published once the maintainer says so ([release notes](docs/releases/v0.1.0-next.2.md)). No version without a
