@@ -6,16 +6,18 @@
  * `formula-names.ts` says what a name stands for. This file gives each part of a name its place in the file,
  * through the function its caller hands it, and says what was not read.
  *
- * Four ways of writing are read. The formula of a field, of a rule and of a workflow rule has plain names, each
- * a path from the object the formula belongs to. The formula of a flow has merge fields where that one has names.
- * A text with merge fields, such as a message of a flow or the subject of an email, is no formula: only what
- * stands between the braces of a merge field is read, and it is read as one name. And a flow writes such a name
- * without braces where an element holds nothing else, as in `elementReference`.
+ * Five ways of writing are read. The formula of a field, of a rule and of a workflow rule has plain names, each
+ * a path from the object the formula belongs to. The formula of a predefined value of a quick action has plain
+ * names that start with the object of the action, as a merge field starts with something the text around it
+ * knows. The formula of a flow has merge fields where that one has names. A text with merge fields, such as a
+ * message of a flow or the subject of an email, is no formula: only what stands between the braces of a merge
+ * field is read, and it is read as one name. And a flow writes such a name without braces where an element holds
+ * nothing else, as in `elementReference`.
  */
 import { cut } from './analysed.ts';
 import { namesOfTokens, namesOfTree, parseFormula, type FormulaName } from './formula.ts';
 import { usesOfMergeField, usesOfName, type MergeStart, type NamePart, type NameUse } from './formula-names.ts';
-import { mergeFieldsOf } from './merge-fields.ts';
+import { mergeFieldsOf, type MergeForm } from './merge-fields.ts';
 import type { PathHint } from './model.ts';
 import { LONGEST_TEXT_SHOWN, type RawReference, type Unread, type Via } from './raw-references.ts';
 import type { NameAt, PlaceOf } from './values.ts';
@@ -113,6 +115,7 @@ function reading(
   at: PlaceOf,
   whyOf: (name: FormulaName) => { readonly why?: 'start' } = () => ({}),
   given?: 'probable',
+  via: Via = 'formula',
 ): FormulaReading {
   const parsed = parseFormula(text, { mergeFields });
   const references: RawReference[] = [];
@@ -127,7 +130,7 @@ function reading(
     }
     const value = name.value === undefined ? {} : { value: name.value };
     // One at a time: a formula can hold more names than a call takes arguments.
-    for (const reference of referencesOf(uses, name.start, at, { via: 'formula', ...tier, ...value })) {
+    for (const reference of referencesOf(uses, name.start, at, { via, ...tier, ...value })) {
       references.push(reference);
     }
   }
@@ -147,6 +150,17 @@ function reading(
  */
 export function readFormula(text: string, own: string, element: string, at: PlaceOf): FormulaReading {
   return reading(text, false, (name) => usesOfName(name.text, own), element, at);
+}
+
+/**
+ * Reads a formula with plain names whose first name is something the caller knows, as the formula of a predefined
+ * value of a quick action names a field of the record the action runs on: `Opportunity.Name`. `startOf` says what
+ * the first name is. A name whose first name it does not know is not read, and the reading says so. A first name
+ * that starts with `$` and that it does not know is a global variable, as in a formula of a field.
+ */
+export function readFormulaOfStarts(text: string, startOf: StartOf, element: string, at: PlaceOf): FormulaReading {
+  const usesOf = (name: FormulaName): readonly NameUse[] | null => usesOfMergeField(name.text, startOf);
+  return reading(text, false, usesOf, element, at, (name) => whyNot(name.text, startOf));
 }
 
 /**
@@ -172,7 +186,11 @@ export function readFormulaOfMergeFields(
 /**
  * Reads the merge fields of a text that is no formula. What stands between two merge fields is left alone, and
  * what stands in one is read as one name. A merge field that holds anything else, a call or an operator, is not
- * read, and the reading says so.
+ * read, and the reading says so. `form` says how the text writes its merge fields.
+ *
+ * With `expressions` set to `formula`, a merge field that holds more than a name is read as a formula with plain
+ * names whose first names `startOf` knows, as an email template writes `{!IF(ISBLANK(Case.Reason), ...)}`. One
+ * that cannot be read as a formula is not read, and the reading says so.
  */
 export function readMergeFields(
   text: string,
@@ -180,20 +198,33 @@ export function readMergeFields(
   element: string,
   at: PlaceOf,
   tier?: 'probable',
+  form: MergeForm = 'classic',
+  expressions?: 'formula',
 ): MergeFieldsReading {
-  const { fields, notClosed } = mergeFieldsOf(text);
+  const { fields, notClosed } = mergeFieldsOf(text, form);
   const references: RawReference[] = [];
   const unread: Unread[] = [];
   const said: Said = { via: 'merge-field', ...(tier === undefined ? {} : { tier }) };
+  const usesOf = (name: FormulaName): readonly NameUse[] | null => usesOfMergeField(name.text, startOf);
+  const whyOf = (name: FormulaName): { readonly why?: 'start' } => whyNot(name.text, startOf);
   for (const field of fields) {
     const uses = usesOfMergeField(field.text, startOf);
-    if (uses === null) {
-      const { line, column } = at(field.start, field.start);
-      const text = cut(field.text, LONGEST_TEXT_SHOWN);
-      unread.push({ element, text, line, column, ...whyNot(field.text, startOf) });
+    if (uses !== null) {
+      for (const reference of referencesOf(uses, field.start, at, said)) references.push(reference);
       continue;
     }
-    for (const reference of referencesOf(uses, field.start, at, said)) references.push(reference);
+    if (expressions === 'formula') {
+      // The places of the formula count from the start of what the merge field holds.
+      const within: PlaceOf = (from, to) => at(field.start + from, field.start + to);
+      const read = reading(field.text, false, usesOf, element, within, whyOf, tier, 'merge-field');
+      if (read.problem === null) {
+        references.push(...read.references);
+        unread.push(...read.unread);
+        continue;
+      }
+    }
+    const { line, column } = at(field.start, field.start);
+    unread.push({ element, text: cut(field.text, LONGEST_TEXT_SHOWN), line, column, ...whyNot(field.text, startOf) });
   }
   return {
     element,

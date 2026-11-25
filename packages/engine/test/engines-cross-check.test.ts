@@ -216,6 +216,23 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       rowsCompared: 1,
       missed: [{ from: POSITIVE, to: key('CustomMetadata', 'Billing_Rule.Other') }],
     });
+    // One that came back under another name than the org listed it with is found by either name, as the
+    // component the snapshot holds (decision record 0076).
+    const cameBack: ListedId[] = [
+      ...LISTED,
+      { type: 'CustomMetadata', fullName: 'Billing_Rule.Other', listedAs: 'Billing_Rule.pkg__Other', id: null },
+    ];
+    const byListedName = { ...unlisted, namespace: 'pkg' };
+    for (const named of [unlisted, byListedName]) {
+      expect(crossCheck({ ...input([row(rule, named)], analysis), listed: cameBack })).toMatchObject({
+        rowsCompared: 1,
+        missed: [{ from: POSITIVE, to: key('CustomMetadata', 'Billing_Rule.Other') }],
+      });
+    }
+    expect(crossCheck({ ...input([row(rule, byListedName)], analysis), listed })).toMatchObject({
+      rowsNotMatched: 1,
+      rowsCompared: 0,
+    });
   });
 
   it('never takes a custom object by its name, which can be the name of a standard object', () => {
@@ -337,7 +354,7 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     /** The active version of the flow, whose id the org does not list, and a newer draft, which it lists. */
     const ACTIVE_ID = '301xx0000000001AAA';
     const DRAFT_ID = '301xx0000000002AAA';
-    const VERSIONS = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID }];
+    const VERSIONS = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [] }];
     const version = (id: string): DependencyEnd => ({ type: 'Flow', id, name: 'Remind', namespace: null });
     const ofFlow = (to: ComponentKey, via: string, more: Partial<Reference> = {}): Reference =>
       reference(DECIDE, to, { origin: 'parser:flow', attrs: { via }, ...more });
@@ -407,7 +424,7 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       expect(versionOf({ ...version(ACTIVE_ID), type: 'ApexClass' })).toBeNull();
       expect(versionOf(version('301xx0000000009AAA'))).toBeNull();
       // An id the org names for two flows stands for neither.
-      const twice = [...VERSIONS, { flow: 'Other', active: ACTIVE_ID, latest: null }];
+      const twice = [...VERSIONS, { flow: 'Other', active: ACTIVE_ID, latest: null, others: [] }];
       expect(versionMatcher([], twice, [])(version(ACTIVE_ID))).toEqual({ key: null, held: false });
       expect(crossCheck(flowInput(rows.slice(0, 1), analysis, { flowVersions: twice }))).toMatchObject({
         rowsNotMatched: 1,
@@ -415,15 +432,77 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       });
       // Also where the org listed a flow with that id: the rows of the draft are not matched, and so are not held
       // against the analysis of the active version.
-      const listedTwice = [...VERSIONS, { flow: 'Other', active: DRAFT_ID, latest: null }];
+      const listedTwice = [...VERSIONS, { flow: 'Other', active: DRAFT_ID, latest: null, others: [] }];
       expect(
         crossCheck(flowInput(rows, analysis, { flowVersions: listedTwice, newerVersions: [REMIND] })),
       ).toMatchObject({ rowsNotMatched: 2, rowsOtherVersion: 0, rowsCompared: 1, agreed: 1, missed: [] });
     });
 
+    it('counts the rows of a version that is neither active nor the latest as of another version', () => {
+      // An older version that a deploy left behind, which reads the total.
+      const OLD_ID = '301xx0000000003AAA';
+      const old = row(version(OLD_ID), end('CustomField', 'Invoice__c.Total__c'));
+      const withOld = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [OLD_ID] }];
+      const { listed } = flowInput([], []);
+      // Without its id, the row names a component the org did not list.
+      expect(
+        crossCheck(flowInput([...rows, old], analysis, { flowVersions: VERSIONS, newerVersions: [REMIND] })),
+      ).toMatchObject({ rowsNotMatched: 1, rowsOtherVersion: 2, rowsCompared: 1, missed: [] });
+      // With it, the row is of another version, whichever version the snapshot holds, and nothing is missed.
+      expect(
+        crossCheck(flowInput([...rows, old], analysis, { flowVersions: withOld, newerVersions: [REMIND] })),
+      ).toMatchObject({ rowsNotMatched: 0, rowsOtherVersion: 3, rowsCompared: 1, agreed: 1, missed: [] });
+      expect(crossCheck(flowInput([...rows, old], analysis, { flowVersions: withOld }))).toMatchObject({
+        rowsNotMatched: 0,
+        rowsOtherVersion: 2,
+        rowsCompared: 2,
+        missed: [{ from: REMIND, to: TOTAL }],
+      });
+      for (const held of [[], [REMIND]]) {
+        expect(versionMatcher(listed, withOld, held)(version(OLD_ID))).toEqual({ key: REMIND, held: false });
+        expect(versionMatcher(listed, withOld, held)(version(OLD_ID.slice(0, 15)))).toEqual({
+          key: REMIND,
+          held: false,
+        });
+      }
+      // A row to the old version is a row to the flow.
+      const caller: DependencyEnd = { type: 'Flow', id: '301xx0000000005AAA', name: 'Caller', namespace: null };
+      expect(versionMatcher(listed, withOld, [])(version(OLD_ID))?.key).toBe(REMIND);
+      expect(
+        crossCheck(
+          flowInput([row(caller, version(OLD_ID))], [component(key('Flow', 'Caller'), { status: 'Active' })], {
+            listed: [...listed, { type: 'Flow', fullName: 'Caller', id: caller.id }],
+            flowVersions: withOld,
+          }),
+        ),
+      ).toMatchObject({ rowsNotMatched: 0, rowsCompared: 1, missed: [{ from: key('Flow', 'Caller'), to: REMIND }] });
+    });
+
+    it('takes the id the org listed a flow with for its latest version where the org names it as another one', () => {
+      const NEW_ID = '301xx0000000004AAA';
+      const { listed } = flowInput([], []);
+      // `FlowDefinition` gave no latest version, so every version but the active one came as another version.
+      const noLatest = [{ flow: 'Remind', active: ACTIVE_ID, latest: null, others: [DRAFT_ID] }];
+      // A version was made after the listing: the org listed the flow with the id of the draft, which the snapshot
+      // holds.
+      const madeAfter = [{ flow: 'Remind', active: ACTIVE_ID, latest: NEW_ID, others: [DRAFT_ID] }];
+      for (const flowVersions of [noLatest, madeAfter]) {
+        expect(versionMatcher(listed, flowVersions, [])(version(DRAFT_ID))).toEqual({ key: REMIND, held: true });
+        expect(versionMatcher(listed, flowVersions, [REMIND])(version(DRAFT_ID))).toEqual({ key: REMIND, held: false });
+        expect(crossCheck(flowInput(rows, analysis, { flowVersions }))).toEqual(
+          crossCheck(flowInput(rows, analysis, { flowVersions: VERSIONS })),
+        );
+      }
+      // The latest version that `FlowDefinition` names is held as well, as before a version was named as another
+      // one. Another version that is not the one the org listed stays another version.
+      expect(versionMatcher(listed, madeAfter, [])(version(NEW_ID))).toEqual({ key: REMIND, held: true });
+      const older = [{ flow: 'Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [NEW_ID] }];
+      expect(versionMatcher(listed, older, [])(version(NEW_ID))).toEqual({ key: REMIND, held: false });
+    });
+
     it('takes a flow under the name the org listed it with, where FlowDefinition writes its name otherwise', () => {
       // `FlowDefinition` gives the prefix of a package in a field of its own, and the listing need not write it.
-      const prefixed = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: DRAFT_ID }];
+      const prefixed = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: DRAFT_ID, others: [] }];
       const { listed } = flowInput([], []);
       expect(versionMatcher(listed, prefixed, [REMIND])(version(ACTIVE_ID))).toEqual({ key: REMIND, held: true });
       expect(crossCheck(flowInput(rows, analysis, { flowVersions: prefixed, newerVersions: [REMIND] }))).toEqual(
@@ -431,7 +510,7 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       );
       // A flow the org did not list with the id of its latest version goes by the name the org named it with, and
       // the id it listed a flow with is that of the latest version of the flow it listed.
-      const elsewhere = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: '301xx0000000003AAA' }];
+      const elsewhere = [{ flow: 'acme__Remind', active: ACTIVE_ID, latest: '301xx0000000003AAA', others: [] }];
       expect(versionMatcher(listed, elsewhere, [])(version(ACTIVE_ID))).toEqual({
         key: key('Flow', 'acme__Remind'),
         held: false,
@@ -447,8 +526,10 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       ];
       expect(flowsNotNamed(listed, [])).toBe(2);
       expect(flowsNotNamed(listed, VERSIONS)).toBe(1);
-      expect(flowsNotNamed(listed, [{ flow: 'acme__Remind', active: null, latest: DRAFT_ID.slice(0, 15) }])).toBe(1);
-      expect(flowsNotNamed(listed, [...VERSIONS, { flow: 'Caller', active: null, latest: null }])).toBe(0);
+      expect(
+        flowsNotNamed(listed, [{ flow: 'acme__Remind', active: null, latest: DRAFT_ID.slice(0, 15), others: [] }]),
+      ).toBe(1);
+      expect(flowsNotNamed(listed, [...VERSIONS, { flow: 'Caller', active: null, latest: null, others: [] }])).toBe(0);
     });
 
     it('takes a row to a flow as a row to the flow, whichever version of it the row names', () => {
@@ -689,6 +770,37 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
       onlyOrgLens: [],
       notReported: [{ reason: 'action-override', pairs: 1 }],
     });
+  });
+
+  it('compares the custom fields of an email template, and counts what a report type and a quick action name', () => {
+    const TEMPLATE = key('EmailTemplate', 'Billing/Overdue');
+    const REPORT_TYPE = key('ReportType', 'Invoices');
+    const ACTION = key('QuickAction', 'Invoice__c.Mark_Paid');
+    const mergeField = { origin: 'parser:xml', attrs: { via: 'merge-field' } } as const;
+    const components = [
+      // The template: its custom field is reported, a standard one is not.
+      component(TEMPLATE, {}, [
+        reference(TEMPLATE, AMOUNT, mergeField),
+        reference(TEMPLATE, ACCOUNT_NAME, { ...mergeField, resolution: 'external' }),
+      ]),
+      // What the API reports of a report type and of a quick action was not measured (decision record 0077).
+      component(REPORT_TYPE, {}, [
+        defined(REPORT_TYPE, INVOICE, 'object'),
+        defined(REPORT_TYPE, AMOUNT, 'listed-field'),
+      ]),
+      component(ACTION, {}, [
+        reference(ACTION, STATUS, { kind: 'writes', origin: 'parser:xml', attrs: { via: 'assignment' } }),
+      ]),
+    ];
+    const analysedTypes = [...TYPES, 'EmailTemplate', 'QuickAction', 'ReportType'];
+    const result = crossCheck({ ...input([], components), analysedTypes });
+    expect(result.onlyOrgLens).toEqual([{ from: TEMPLATE, to: AMOUNT }]);
+    expect(result.notReported).toEqual([
+      { reason: 'quick-action', pairs: 1 },
+      { reason: 'report-type', pairs: 2 },
+      { reason: 'standard-field', pairs: 1 },
+    ]);
+    expect(crossCheckIssues(result)).toEqual([]);
   });
 
   it('leaves out of both lists what a component of a type that was not analysed refers to, and a name without a target', () => {

@@ -20,12 +20,23 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
 };
 
 /**
- * The `-meta.xml` files of each codebase, counted on 15 November 2026, and those of PMM on 17 November 2026:
- * 12,875 in all. They are all the files of that name in the repository, also outside the package folders that
- * `fixtures/corpora.toml` names: 12,307 are inside them. A codebase is pinned by its commit, so a count moves
- * only when the pin moves.
+ * The `-meta.xml` files of each codebase, counted on 15 November 2026, those of PMM on 17 November 2026 and those
+ * of V4S, Outbound Funds, Coral Cloud and EDA on 25 November 2026: 19,475 in all. They are all the files of that name
+ * in the repository, also outside the package folders that `fixtures/corpora.toml` names: 18,877 are inside them.
+ * Coral Cloud writes some tags with a line break before the bracket, as a formatter does. V4S is
+ * in the metadata format, where most files have no such name: they are read by the analysis of the codebase. A
+ * codebase is pinned by its commit, so a count moves only when the pin moves.
  */
-const FILES: Readonly<Record<string, number>> = { 'apex-recipes': 254, 'nebula-logger': 1416, npsp: 9668, pmm: 1537 };
+const FILES: Readonly<Record<string, number>> = {
+  'apex-recipes': 254,
+  'nebula-logger': 1416,
+  npsp: 9668,
+  pmm: 1537,
+  'volunteers-for-salesforce': 155,
+  'outbound-funds': 633,
+  'coral-cloud': 214,
+  eda: 5598,
+};
 
 /** Every element of a tree, the root first. */
 function* elementsOf(element: XmlElement): Generator<XmlElement> {

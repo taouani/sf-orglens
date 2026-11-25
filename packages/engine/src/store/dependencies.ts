@@ -115,7 +115,14 @@ export function readDependencyRows(store: Store, snapshotId: number): Dependency
 /** A component the org listed, with the id the org gave it. */
 export interface ListedId {
   readonly type: string;
+  /**
+   * The name the snapshot holds the component under: the name it came back with where that is another than the
+   * listed one, such as the name of a component of a package without its prefix (decision record 0076), and else
+   * the listed name.
+   */
   readonly fullName: string;
+  /** The name the org listed the component with, where the snapshot holds it under another. */
+  readonly listedAs?: string;
   /** `null` for a component the org listed without an id, such as a standard object. */
   readonly id: string | null;
 }
@@ -124,23 +131,25 @@ export interface ListedId {
 export function readListedIds(store: Store, snapshotId: number): ListedId[] {
   return store
     .all(
-      'SELECT type, full_name, salesforce_id FROM inventory_item WHERE snapshot_id = ? AND listed = 1 ORDER BY type, full_name',
+      `SELECT type, COALESCE(came_back_as, full_name) AS name, full_name, came_back_as, salesforce_id
+         FROM inventory_item WHERE snapshot_id = ? AND listed = 1 ORDER BY type, name`,
       snapshotId,
     )
     .map((row) => ({
       type: String(row['type']),
-      fullName: String(row['full_name']),
+      fullName: String(row['name']),
+      ...(row['came_back_as'] === null ? {} : { listedAs: String(row['full_name']) }),
       id: text(row['salesforce_id']),
     }));
 }
 
 /**
- * Stores the versions of the flows the org named when the Dependency API was read for a snapshot (decision record
- * 0067). It is called inside a write of the caller, after `writeDependencies`, which takes away what the snapshot
- * held of them before.
+ * Stores the versions of the flows the org named when the Dependency API was read for a snapshot (decision records
+ * 0067 and 0078). It is called inside a write of the caller, after `writeDependencies`, which takes away what the
+ * snapshot held of them before.
  */
 export function writeFlowVersions(store: Store, snapshotId: number, flows: readonly FlowVersionIds[]): void {
-  for (const { flow, active, latest } of flows) {
+  for (const { flow, active, latest, others } of flows) {
     store.run(
       'INSERT INTO snapshot_flow_version (snapshot_id, flow, active_id, latest_id) VALUES (?, ?, ?, ?)',
       snapshotId,
@@ -148,12 +157,35 @@ export function writeFlowVersions(store: Store, snapshotId: number, flows: reado
       active,
       latest,
     );
+    for (const id of new Set(others)) {
+      store.run(
+        'INSERT INTO snapshot_flow_other_version (snapshot_id, flow, version_id) VALUES (?, ?, ?)',
+        snapshotId,
+        flow,
+        id,
+      );
+    }
   }
 }
 
 /** The versions of the flows of a snapshot, sorted by flow. Empty where the org was not asked or did not answer. */
 export function readFlowVersionIds(store: Store, snapshotId: number): FlowVersionIds[] {
+  const others = new Map<string, string[]>();
+  for (const row of store.all(
+    'SELECT flow, version_id FROM snapshot_flow_other_version WHERE snapshot_id = ? ORDER BY flow, version_id',
+    snapshotId,
+  )) {
+    const flow = String(row['flow']);
+    const ofFlow = others.get(flow);
+    if (ofFlow === undefined) others.set(flow, [String(row['version_id'])]);
+    else ofFlow.push(String(row['version_id']));
+  }
   return store
     .all('SELECT flow, active_id, latest_id FROM snapshot_flow_version WHERE snapshot_id = ? ORDER BY flow', snapshotId)
-    .map((row) => ({ flow: String(row['flow']), active: text(row['active_id']), latest: text(row['latest_id']) }));
+    .map((row) => ({
+      flow: String(row['flow']),
+      active: text(row['active_id']),
+      latest: text(row['latest_id']),
+      others: others.get(String(row['flow'])) ?? [],
+    }));
 }

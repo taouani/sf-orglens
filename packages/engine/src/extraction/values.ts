@@ -2,7 +2,7 @@
  * The value of an element of XML as a reader of names needs it: the text without the white space around it, and
  * the place in the file of every part of it.
  */
-import { isNil, sourceOf, type XmlDocument, type XmlElement, type XmlText } from './xml.ts';
+import { isNil, sourceOf, type TextDocument, type XmlDocument, type XmlElement, type XmlText } from './xml.ts';
 
 /** A name as a file writes it, and where it stands. Lines and columns start at 1. */
 export interface NameAt {
@@ -45,5 +45,13 @@ export function placesIn(document: XmlDocument, value: Value): PlaceOf {
     const start = value.offset + from;
     const { line, column } = document.place(sourceOf(value.text, start, start).start);
     return { name: value.value.slice(from, to), line, column };
+  };
+}
+
+/** The places of the parts of a file that is no XML, such as the body of an email template, read as a whole. */
+export function placesInText(document: TextDocument): PlaceOf {
+  return (from, to) => {
+    const { line, column } = document.place(from);
+    return { name: document.text.slice(from, to), line, column };
   };
 }

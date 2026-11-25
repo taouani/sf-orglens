@@ -438,7 +438,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["type", "listed", "retrieved", "analysed", "listing", "note"],
+            "required": ["type", "listed", "retrieved", "analysed", "listing", "note", "packaged"],
             "additionalProperties": false,
             "properties": {
               "type": { "description": "The metadata type, as Salesforce names it.", "type": "string" },
@@ -461,7 +461,12 @@
                 "description": "`ok`: the source said which components of the type it has. `failed`: an org refused to say, so `listed` is not the true number. `unlistable`: Salesforce never lists components of this type, and they are not read yet. `excluded`: `exclude_types` of the source leaves the type out, so the org was not asked for its components and `listed` is 0.",
                 "enum": ["ok", "failed", "unlistable", "excluded"]
               },
-              "note": { "type": ["string", "null"] }
+              "note": { "type": ["string", "null"] },
+              "packaged": {
+                "description": "How many of the components the org listed of the type are of a managed package installed in the org, as the org says with the prefix of the package and the state of an installed one. Always 0 for a snapshot of a repository.",
+                "type": "integer",
+                "minimum": 0
+              }
             }
           }
         },
@@ -494,6 +499,7 @@
         "beyondDepth",
         "minConfidence",
         "results",
+        "packagesLeftOut",
         "unresolved",
         "newerVersions",
         "complete",
@@ -574,7 +580,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["key", "type", "name", "file", "depth", "confidence", "reference"],
+            "required": ["key", "type", "name", "file", "package", "depth", "confidence", "reference"],
             "additionalProperties": false,
             "properties": {
               "key": {
@@ -593,6 +599,10 @@
                 "description": "The file that defines the component, inside the source. Null if no file of the snapshot defines it.",
                 "type": ["string", "null"]
               },
+              "package": {
+                "description": "As `package` of the component that was asked about. For `incoming`, a result of a package is left out unless `impact --packages` keeps it.",
+                "type": ["string", "null"]
+              },
               "depth": {
                 "description": "How many references lie between this component and the one that was asked about. 1: it refers to it directly.",
                 "type": "integer",
@@ -608,6 +618,11 @@
               }
             }
           }
+        },
+        "packagesLeftOut": {
+          "description": "For `incoming`: how many components of managed packages refer to the component, directly or through other components, and are left out of `results`. The walk goes on through them, so the nearer end of the reference of a result can be such a component. 0 with `impact --packages`, and always 0 for `outgoing`, where a component of a package is a target and stays.",
+          "type": "integer",
+          "minimum": 0
         },
         "unresolved": {
           "description": "For `outgoing`: the references to a name that has no key, so that no component stands for it. Always empty for `incoming`.",
@@ -767,7 +782,7 @@
     },
     "impactComponent": {
       "type": "object",
-      "required": ["key", "type", "name", "file"],
+      "required": ["key", "type", "name", "file", "package"],
       "additionalProperties": false,
       "properties": {
         "key": {
@@ -784,6 +799,10 @@
         },
         "file": {
           "description": "The file that defines the component, inside the source. Null if no file of the snapshot defines it.",
+          "type": ["string", "null"]
+        },
+        "package": {
+          "description": "The prefix of the managed package installed in the org that the component is of, as the org lists it with the state of an installed package. A part of a component, such as an element of a flow, is of the package of the component. Null for a component of the org's own, also of the org's own namespace, and for every component of a snapshot of a repository.",
           "type": ["string", "null"]
         }
       }
@@ -977,7 +996,7 @@
       }
     },
     "crossCheckComparison": {
-      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. A row from a flow carries the id of a version of the flow: it is matched by the ids the org named for the active and the latest version of each flow, and else by the id it listed the flow with, which is that of its latest version. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld`, `rowsOtherVersion` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
+      "description": "A row names two components. It is matched to two components of the snapshot by the ids the org listed them with. A name is taken only where there is no id: for a standard object, which the API names in the place of an id, and for a component the org listed without one. A row from a flow carries the id of a version of the flow: it is matched by the ids the org named for the versions of each flow, the active, the latest and every other one, and else by the id it listed the flow with, which is that of its latest version. `rows` is the sum of `rowsNotAnalysed`, `rowsNotMatched`, `rowsNotHeld`, `rowsOtherVersion` and `rowsCompared`. `pairs` is the sum of `agreed`, `coveredByPart` and the length of `missed`.",
       "type": "object",
       "required": [
         "rows",
@@ -1023,7 +1042,7 @@
           "minimum": 0
         },
         "rowsOtherVersion": {
-          "description": "The rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version. The snapshot holds the active version where it has the note `FLOW_NEWER_VERSION` for the flow, and else the latest one. They are not compared.",
+          "description": "The rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version, or an older version that a deploy left behind. The snapshot holds the active version where it has the note `FLOW_NEWER_VERSION` for the flow, and else the latest one. They are not compared.",
           "type": "integer",
           "minimum": 0
         },
@@ -1058,7 +1077,7 @@
             "additionalProperties": false,
             "properties": {
               "reason": {
-                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `workflow-rule`: it is from a workflow rule. `workflow-action`: it is from an email alert, an outbound message or a task of a workflow rule. `field-update`: it is from a field update, and not in its formula. `custom-metadata`: it is from a record of a custom metadata type, and not to the type of the record. `record-type`: it is from a record type. `subflow`: it is from a flow, to a flow it starts. `name-in-text`: it is from a flow, and only a text names it, such as the name of a record type a condition compares a text with. `global-variable`: it is from a flow, to a field of a custom setting or a custom permission that only formulas of the flow name. `action-override`: it is from an object, to a Visualforce page, a Lightning component or an s-control that overrides one of its actions. `other`: any other reference from the definition of a component. Reasons can be added.",
+                "description": "`standard-field`, `standard-object`: the reference is to something Salesforce provides. `inactive-rule`: it is from a validation rule that is not active. `default-value`: it is in the default value of a field. `lookup`, `lookup-filter`, `roll-up-summary`, `controlling-field`, `value-set`, `display-field`: it is that part of the definition of a field or an object. `workflow-rule`: it is from a workflow rule. `workflow-action`: it is from an email alert, an outbound message or a task of a workflow rule. `field-update`: it is from a field update, and not in its formula. `custom-metadata`: it is from a record of a custom metadata type, and not to the type of the record. `record-type`: it is from a record type. `subflow`: it is from a flow, to a flow it starts. `name-in-text`: it is from a flow, and only a text names it, such as the name of a record type a condition compares a text with. `global-variable`: it is from a flow, to a field of a custom setting or a custom permission that only formulas of the flow name. `action-override`: it is from an object, to a Visualforce page, a Lightning component or an s-control that overrides one of its actions. `report-type`: it is from a report type. `quick-action`: it is from a quick action. `other`: any other reference from the definition of a component. Reasons can be added.",
                 "type": "string"
               },
               "pairs": { "type": "integer", "minimum": 1 }

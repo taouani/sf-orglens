@@ -11,7 +11,8 @@
     "key": "CustomField:invoice__c.legacy_code__c",
     "type": "CustomField",
     "name": "Invoice__c.Legacy_Code__c",
-    "file": "force-app/main/default/objects/Invoice__c/fields/Legacy_Code__c.field-meta.xml"
+    "file": "force-app/main/default/objects/Invoice__c/fields/Legacy_Code__c.field-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 31,
         "column": 40
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save#element:set_defaults",
@@ -57,7 +59,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 31,
         "column": 40
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowFieldUpdate:invoice__c.stamp_legacy_code",
@@ -76,7 +79,8 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 33,
         "column": 16
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowRule:invoice__c.stamp_code_when_paid",
@@ -95,9 +99,11 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 106,
         "column": 19
-      }
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,
@@ -111,12 +117,6 @@
       },
       {
         "type": "ApexTrigger",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

@@ -69,6 +69,7 @@ import {
   type OtherNameRule,
 } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
+import { missingOfPackages } from '../store/packages.ts';
 import {
   addCoverage,
   addIssue,
@@ -1266,7 +1267,8 @@ function notActiveSaid(
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. An org that lists a flow is therefore asked first for the ids of the active and the latest version
- * of each flow, which are stored with the rows (decision record 0067).
+ * of each flow (decision record 0067), and of every other version (decision record 0078), which are stored with the
+ * rows.
  */
 async function readCrossCheck(
   store: Store,
@@ -1292,7 +1294,7 @@ async function readCrossCheck(
   };
   for (const item of listed) if (item.id !== null) add(item.type, item.id);
   for (const flow of versions?.flows ?? []) {
-    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
+    for (const id of [flow.active, flow.latest, ...flow.others]) if (id !== null) add('Flow', id);
   }
   // Both readings count against the daily limit of requests of the org. They are counted together, and the rows
   // are read with the requests that are left.
@@ -1324,25 +1326,34 @@ async function readCrossCheck(
     }
     // An answer can also be whole and leave out a flow the org listed.
     const notNamed = versions === null ? 0 : flowsNotNamed(listed, versions.flows);
-    if (versions !== null && (versions.state !== 'whole' || notNamed > 0)) {
-      const which =
-        versions.state === 'whole'
-          ? `${plural(notNamed, 'flow', 'flows')} it listed`
-          : `${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'})`;
-      issue(
-        store,
-        snapshotId,
-        'warning',
-        'FLOW_VERSIONS_NOT_READ',
-        `The org did not name the versions of ${which}. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
-        {
+    if (versions !== null) {
+      const said: string[] = [];
+      if (versions.state !== 'whole' || notNamed > 0) {
+        const which =
+          versions.state === 'whole'
+            ? `${plural(notNamed, 'flow', 'flows')} it listed`
+            : `${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'})`;
+        said.push(
+          `The org did not name the versions of ${which}. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
+        );
+      }
+      // The org is asked for every version only where it named a flow.
+      if (versions.flows.length > 0 && versions.versions.state !== 'whole') {
+        said.push(
+          `The org did not name ${versions.versions.state === 'none' ? 'the' : 'all the'} other versions of its flows (${versions.versions.code ?? 'NO_CODE'}). A row of the Dependency API from a version that is neither active nor the latest names a component the org did not list, and a query of the rows of flows that is near the limit of rows can be taken as cut off.`,
+        );
+      }
+      if (said.length > 0) {
+        issue(store, snapshotId, 'warning', 'FLOW_VERSIONS_NOT_READ', said.join(' '), {
           code: versions.code,
           state: versions.state,
           flows: versions.flows.length,
           notNamed,
+          versionsCode: versions.versions.code,
+          versionsState: versions.versions.state,
           requests: versions.requests,
-        },
-      );
+        });
+      }
     }
     if (reading.state === 'partial') {
       const left = reading.cutOff + reading.failed;
@@ -1390,7 +1401,8 @@ function finish(store: Store, snapshotId: number): void {
       if (count.listed > count.retrieved) {
         const missing = missingComponents(store, snapshotId, type);
         const tier = tierOf(type);
-        const said = `${plural(missing.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${missing[0] ?? ''}`;
+        const said = (names: readonly string[]): string =>
+          `${plural(names.length, 'component', 'components')} of the type ${type} that the org listed did not come back. The first: ${names[0] ?? ''}`;
         // A file of parts that the org lists and has no part for. Whether its parts could be listed is told by
         // the listing of their type, which is an error of its own if it failed.
         const parts = HOLDS_ONLY[type];
@@ -1400,15 +1412,33 @@ function finish(store: Store, snapshotId: number): void {
             snapshotId,
             'warning',
             'NOT_RETRIEVED',
-            `${said}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
+            `${said(missing)}. The org lists no component of the type ${parts}, and such a file holds nothing else, so the snapshot is not partial for it.`,
             { type, ...named(missing), tier, holdsNothing: true },
           );
         } else {
-          issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said), {
-            type,
-            ...named(missing),
-            tier,
-          });
+          // A component of a managed package installed in the org does not make the snapshot partial: Salesforce
+          // does not hand out a protected one, and an answer leaves it out as the thing that refers. An answer
+          // counts it as missing where a reference names it (decision record 0076).
+          const ofPackages = missingOfPackages(store, snapshotId, type);
+          const packaged = new Set(ofPackages);
+          const own = missing.filter((name) => !packaged.has(name));
+          if (own.length > 0) {
+            issue(store, snapshotId, severityIn(tier), 'NOT_RETRIEVED', missingIn(tier, said(own)), {
+              type,
+              ...named(own),
+              tier,
+            });
+          }
+          if (ofPackages.length > 0) {
+            issue(
+              store,
+              snapshotId,
+              'warning',
+              'NOT_RETRIEVED',
+              `${plural(ofPackages.length, 'component', 'components')} of the type ${type} that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: ${ofPackages[0] ?? ''}`,
+              { type, ...named(ofPackages), tier, ofPackages: true },
+            );
+          }
         }
       }
       if (count.unlisted > 0) {

@@ -1,8 +1,8 @@
 /**
  * Analyses the public codebases of `fixtures/corpora.toml`: every component gets a row, and the objects, fields
- * and validation rules are read for the references that are written in XML and for those in their formulas.
- * Every flow of them is read too, and every record of a custom metadata type, also those outside the package
- * folders the file names.
+ * and validation rules are read for the references that are written in XML and for those in their formulas, and
+ * so are the email templates, report types and quick actions. Every flow of them is read too, and every record of
+ * a custom metadata type, also those outside the package folders the file names.
  *
  * The codebases are not part of this repository. A codebase that was not downloaded (`pnpm run corpora:fetch`)
  * is skipped, so the test needs no network. CI does not download them.
@@ -15,6 +15,7 @@ import { analyseSource } from '../src/extraction/analyse.ts';
 import { namesOfTree, parseFormula } from '../src/extraction/formula.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents } from '../src/sources/resolve.ts';
+import { FLOW_FOLDERS } from './corpora/listing.ts';
 import { scanNames } from './helpers/formula-scan.ts';
 
 const root = join(import.meta.dirname, '../../..');
@@ -53,7 +54,31 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   one object, and in PMM the record pages of two objects and an Aura component that overrides the action New
  *   of a third. Apex Recipes overrides nothing. Each names a page or a component that the codebase defines.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
- *   through a lookup of another package four times: no file says where that lookup leads.
+ *   through a lookup of another package four times: no file says where that lookup leads. The five of PMM stand in
+ *   the formula of one quick action, which holds `%%%NAMESPACED_ORG%%%` before each name: a token that the build
+ *   tool of that project replaces before it deploys. The formula is not read, and the reader of formulas counts
+ *   its file as one it failed on (`FAILED_FORMULAS`).
+ *
+ * Since 25 November 2026 the email templates, report types and quick actions are read (decision record 0077), and
+ * V4S and Outbound Funds were added for them. In the package folders, Nebula Logger has 2 quick actions, NPSP 26
+ * quick actions, an email template and a report type, PMM 18 quick actions and a report type, V4S 30 email
+ * templates and 4 report types, and Outbound Funds 8 quick actions and 2 report types: they are counted in
+ * `analysed`, and the quick actions that set a field with a formula in `withFormula`. What they refer to was read
+ * beside their files that day: `object` is the object a quick action creates or a report type starts from,
+ * `assignment` a field a quick action sets, `action` the flow, page or component a quick action opens, `join` the
+ * lookup by which a report type joins an object, `listed-field` also a column of a report type and a field the
+ * layout of a quick action shows, twice where the user types in it (`Edit`, `Required`: 7 in Nebula Logger, 135 in
+ * NPSP, 74 in PMM and 24 in Outbound Funds), `template` also the letterhead of an email template (1 in NPSP, 6 in
+ * V4S), and `merge-field` a merge field of an email template. A column `Id` gives none, and `Owner` is the field
+ * `OwnerId`. NPSP and PMM name objects and fields of the packages they build on, which are
+ * `external`. V4S is in the metadata format: an object and its fields are one file. The workflow rules of V4S give
+ * `action`, `assignment` and `template`, as those of NPSP do.
+ *
+ * Coral Cloud and EDA were added on 25 November 2026 for the check by hand of Phase 2: Coral Cloud for its ten flows,
+ * which stand in its package folders, and EDA for its eight record types, which give its `listed-field`. Three
+ * formulas of Coral Cloud are written with the tag broken before its bracket (`<formula` and `>` on the next line), as
+ * a formatter writes them. Its `object`, `output`, `path`, `record` and `assignment` are of its flows, and so are 10
+ * of its 11 `filter`: the other is the condition of a roll-up summary.
  */
 interface Expected {
   readonly components: number;
@@ -79,15 +104,16 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   'nebula-logger': {
     components: 894,
-    analysed: 678,
+    analysed: 680,
     withFormula: 142,
     references: {
+      action: 1,
       'action-override': 10,
       'controlling-field': 3,
       'display-field': 4,
       filter: 7,
       formula: 387,
-      'listed-field': 139,
+      'listed-field': 153,
       lookup: 17,
       'record-of': 55,
       summary: 16,
@@ -98,21 +124,23 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   npsp: {
     components: 11_722,
-    analysed: 1037,
-    withFormula: 171,
+    analysed: 1065,
+    withFormula: 176,
     references: {
-      action: 4,
+      action: 6,
       'action-override': 12,
-      assignment: 3,
+      assignment: 19,
       'controlling-field': 5,
       'display-field': 2,
       filter: 11,
-      formula: 69,
-      'listed-field': 1962,
+      formula: 70,
+      'listed-field': 2241,
       lookup: 77,
+      'merge-field': 8,
+      object: 16,
       'record-of': 193,
       summary: 4,
-      template: 1,
+      template: 2,
       value: 318,
       'value-set': 2,
     },
@@ -121,41 +149,129 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   // Added on 17 November 2026, with the codebase.
   pmm: {
     components: 1667,
-    analysed: 163,
-    withFormula: 38,
+    analysed: 182,
+    withFormula: 44,
     references: {
+      action: 4,
       'action-override': 3,
+      assignment: 16,
       'controlling-field': 1,
       filter: 4,
       formula: 133,
-      'listed-field': 424,
+      join: 1,
+      'listed-field': 652,
       lookup: 26,
+      object: 14,
       'record-of': 27,
       value: 25,
+    },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4 },
+  },
+  // Added on 25 November 2026, with the codebases.
+  'volunteers-for-salesforce': {
+    components: 660,
+    analysed: 195,
+    withFormula: 35,
+    references: {
+      action: 10,
+      'action-override': 2,
+      assignment: 2,
+      'display-field': 7,
+      filter: 11,
+      formula: 43,
+      join: 6,
+      'listed-field': 766,
+      lookup: 10,
+      'merge-field': 404,
+      object: 4,
+      summary: 24,
+      template: 13,
+    },
+    issues: {},
+  },
+  'outbound-funds': {
+    components: 655,
+    analysed: 72,
+    withFormula: 3,
+    references: {
+      action: 1,
+      'action-override': 3,
+      assignment: 3,
+      filter: 3,
+      formula: 3,
+      join: 4,
+      'listed-field': 167,
+      lookup: 15,
+      object: 6,
+      summary: 6,
+    },
+    issues: {},
+  },
+  // Added on 25 November 2026, for the check by hand of Phase 2.
+  'coral-cloud': {
+    components: 312,
+    analysed: 70,
+    withFormula: 23,
+    references: {
+      action: 1,
+      'action-override': 5,
+      assignment: 10,
+      filter: 11,
+      formula: 42,
+      lookup: 6,
+      object: 12,
+      output: 12,
+      path: 4,
+      record: 1,
+      summary: 6,
+    },
+    issues: {},
+  },
+  eda: {
+    components: 6081,
+    analysed: 491,
+    withFormula: 90,
+    references: {
+      'action-override': 10,
+      'display-field': 2,
+      formula: 76,
+      'listed-field': 32,
+      lookup: 69,
+      'record-of': 2,
     },
     issues: {},
   },
 };
 
 /**
- * The folders of a codebase that hold its flows, with the package folders the flows need for their objects.
- * Most flows of the codebases stand outside the package: in recipes, in tests and in the settings of a
- * developer org. NPSP holds no flow.
+ * The elements of flows with a formula, which the analysis counts and the search for formulas below does not: it
+ * searches no file of a flow. Coral Cloud keeps its flows in its package folders, with two formulas in one flow.
  */
-const FLOW_FOLDERS: Readonly<Record<string, readonly string[]>> = {
-  'apex-recipes': ['force-app'],
-  'nebula-logger': [
-    'nebula-logger/core',
-    'nebula-logger/recipes',
-    'nebula-logger/extra-tests',
-    'nebula-logger/plugins/async-failure-additions/plugin',
+const FLOW_FORMULAS: Readonly<Record<string, number>> = { 'coral-cloud': 2 };
+
+/** The files the reader of formulas failed on, of the codebases where it failed on one. */
+const FAILED_FORMULAS: Readonly<Record<string, number>> = { pmm: 1 };
+
+/**
+ * The formulas of quick actions beyond one per action, which the search for formulas below counts and the analysis
+ * does not: 6 quick actions of PMM hold 11 formulas.
+ */
+const MORE_TEXTS: Readonly<Record<string, number>> = { pmm: 5 };
+
+/**
+ * The formulas in which the reader of formulas finds other names than the simple scan: the formula of a quick action
+ * of PMM, which holds a token of its build tool and is not read.
+ */
+const SCAN_DIFFERS: Readonly<Record<string, readonly string[]>> = {
+  pmm: [
+    'force-app/main/default/quickActions/ProgramEngagement__c.CreateServiceDelivery.quickAction-meta.xml: %%%NAMESPACED_ORG%%%ProgramEngagement__c.%%%NAMESPACED_ORG%%%Contact__c',
   ],
-  pmm: ['force-app', 'unpackaged/config/dev'],
 };
 
 /**
- * What the reader of flows gave on 23 November 2026. Nothing of it was checked by hand yet: that is work package
- * 9 of the Phase 2 plan. The numbers say that every flow is read, and how much of it is not known.
+ * What the reader of flows gave on 23 November 2026, and for Coral Cloud on 25 November 2026. Every flow of it was
+ * checked by hand on 25 November 2026, in work package 9 of the Phase 2 plan: `extraction-corpora-checked.test.ts`
+ * holds that check. The numbers say that every flow is read, and how much of it is not known.
  *
  * - `flows`, `elements`: the components. `processes`: the flows of them that the Process Builder made.
  * - `references`: the references of flows and of their elements, by whether their target was found. A target
@@ -180,6 +296,7 @@ interface ExpectedFlows {
 }
 const EXPECTED_FLOWS: Readonly<Record<string, ExpectedFlows>> = {
   'apex-recipes': { flows: 1, processes: 0, elements: 3, references: { resolved: 1 }, issues: {} },
+  'coral-cloud': { flows: 10, processes: 0, elements: 85, references: { external: 19, resolved: 30 }, issues: {} },
   'nebula-logger': {
     flows: 10,
     processes: 1,
@@ -198,8 +315,9 @@ const EXPECTED_FLOWS: Readonly<Record<string, ExpectedFlows>> = {
 
 /**
  * The folders of a codebase that hold its records of custom metadata types, with the package folders the records
- * need for their types. The plan of Phase 2 counts 335 records: every file of a record in the four codebases.
- * Nebula Logger keeps records in its tests and plugins as well, and PMM four in the settings of a developer org.
+ * need for their types. The plan of Phase 2 counts 335 records: every file of a record in the four codebases of
+ * Phase 1. EDA adds four, and the other three codebases have none. Nebula Logger keeps records in its tests and
+ * plugins as well, PMM four in the settings of a developer org, and EDA two in two such folders.
  */
 const RECORD_FOLDERS: Readonly<Record<string, readonly string[]>> = {
   'apex-recipes': ['force-app'],
@@ -211,23 +329,26 @@ const RECORD_FOLDERS: Readonly<Record<string, readonly string[]>> = {
   ],
   npsp: ['force-app'],
   pmm: ['force-app', 'unpackaged/config/cmdts'],
+  eda: ['force-app', 'unpackaged/config/settings_product', 'unpackaged/config/release_gating'],
 };
 
 /**
- * What the analysis gave for the records on 23 November 2026.
+ * What the analysis gave for the records on 23 November 2026, and for those of EDA on 25 November 2026.
  *
- * - `files`: the files of records, 335 in all. `records`: the components. Seven records of Nebula Logger stand in
- *   two folders of its tests, as the same file, and both files are read.
+ * - `files`: the files of records, 335 in the four codebases of Phase 1 and 4 in EDA. `records`: the components.
+ *   Seven records of Nebula Logger stand in two folders of its tests, as the same file, and both files are read.
  * - `references`: the references of the records, by how the record names the target and whether it was found. A
  *   field that a record gives no value is no reference: Nebula Logger has 136 such values and NPSP 139, all nil.
  * - `issues`: the issues about a record, by their code.
  *
- * Only the four records of PMM in `unpackaged/config/cmdts` are not found whole. Their type is named with
- * `___NAMESPACE___`, and their one field with `%%%NAMESPACE%%%`: tokens that the build tool of that project replaces
- * before it deploys. No file defines a type of that name, and the snapshot holds a part of it, the record, so the
- * type is `external`, as the type of any record is that no file defines. The analysis says that the field is not
- * read. No value of a text field gives a reference at the tier `probable`: decision record 0065 reads values of
- * each codebase by hand and says why.
+ * Only the four records of PMM in `unpackaged/config/cmdts`, and the two of EDA in `unpackaged/config`, are not found
+ * whole. Their type is named with `___NAMESPACE___`, and their fields with `%%%NAMESPACE%%%`: tokens that the build
+ * tool of those projects replaces before it deploys. No file defines a type of that name, and the snapshot holds a
+ * part of it, the record, so the type is `external`, as the type of any record is that no file defines. The
+ * analysis says of each field that it is not read: one field in each record of PMM, and four in each of EDA, whose
+ * fifth field has an empty value, which is no value. No value of a text field gives a reference at the tier
+ * `probable`: decision record 0065 reads values of each codebase of Phase 1 by hand and says why, and the note of
+ * work package 9 those of EDA.
  */
 interface ExpectedRecords {
   readonly files: number;
@@ -265,6 +386,12 @@ const EXPECTED_RECORDS: Readonly<Record<string, ExpectedRecords>> = {
     },
     issues: { NAME_NOT_READ: 4 },
   },
+  eda: {
+    files: 4,
+    records: 4,
+    references: { 'listed-field resolved': 10, 'record-of external': 2, 'record-of resolved': 2 },
+    issues: { NAME_NOT_READ: 8 },
+  },
 };
 
 const counted = (values: readonly string[]): Record<string, number> => {
@@ -299,7 +426,7 @@ describe('the analysis of the public codebases', () => {
         }).toEqual(EXPECTED[name]);
         expect(analysis.work.map((work) => `${work.origin} ${String(work.failedFiles)}`)).toEqual([
           'parser:xml 0',
-          'parser:formula 0',
+          `parser:formula ${String(FAILED_FORMULAS[name] ?? 0)}`,
           'parser:flow 0',
         ]);
         // Every name of a formula was found or has a key: none is unresolved, and none is less than confirmed.
@@ -317,7 +444,8 @@ describe('the analysis of the public codebases', () => {
       300_000,
     );
 
-    const folders = FLOW_FOLDERS[name];
+    // Most flows of the codebases stand outside the package: the listing of the check by hand names the folders.
+    const folders = EXPECTED_FLOWS[name] === undefined ? undefined : (FLOW_FOLDERS[name] ?? paths);
     it.skipIf(!existsSync(join(corpora, name)) || folders === undefined)(
       `reads every flow of ${name}`,
       async () => {
@@ -364,7 +492,7 @@ describe('the analysis of the public codebases', () => {
 
         // Every record was read, no file of the codebase was refused, and nothing is an error.
         expect(records.filter((one) => one.attrs === null)).toEqual([]);
-        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, 0, 0]);
+        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0]);
         expect(analysis.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
         expect({
           files: files.length,
@@ -395,14 +523,20 @@ describe('the analysis of the public codebases', () => {
         const differ: string[] = [];
         let formulas = 0;
         for (const path of tree.files) {
-          if (!/\.(?:field|validationRule|object|workflow)(?:-meta\.xml)?$/.test(path)) continue;
+          if (!/\.(?:field|validationRule|object|workflow|quickAction)(?:-meta\.xml)?$/.test(path)) continue;
           const text = Buffer.from(tree.read(path)).toString('utf8');
-          // The files are searched as text here, not read as XML. None of the four writes a formula in CDATA. A
-          // file of workflow rules holds the formulas of its rules and field updates.
+          // The files are searched as text here, not read as XML. None of the codebases writes a formula in CDATA.
+          // A file of workflow rules holds the formulas of its rules and field updates, and a quick action the
+          // formulas that set its fields.
           for (const [, , body = ''] of text.matchAll(
-            /<(formula|errorConditionFormula|defaultValue)>([\s\S]*?)<\/\1>/g,
+            /<(formula|errorConditionFormula|defaultValue)\s*>([\s\S]*?)<\/\1\s*>/g,
           )) {
-            const formula = body.replace(/&(lt|gt|amp|quot|apos);/g, (_, name: string) => entity[name] ?? '').trim();
+            const formula = body
+              .replace(/&#(x?)([0-9A-Fa-f]+);/g, (_, hex: string, code: string) =>
+                String.fromCodePoint(Number.parseInt(code, hex === '' ? 10 : 16)),
+              )
+              .replace(/&(lt|gt|amp|quot|apos);/g, (_, name: string) => entity[name] ?? '')
+              .trim();
             if (formula === '') continue;
             formulas += 1;
             const parsed = parseFormula(formula);
@@ -410,10 +544,12 @@ describe('the analysis of the public codebases', () => {
             if (JSON.stringify(names) !== JSON.stringify(scanNames(formula))) differ.push(`${path}: ${formula}`);
           }
         }
-        expect(differ).toEqual([]);
-        // Texts are counted here and components above. The numbers are the same in these four codebases,
-        // because no field of them has a formula and a default value.
-        expect(formulas).toBe(EXPECTED[name]?.withFormula);
+        expect(differ).toEqual(SCAN_DIFFERS[name] ?? []);
+        // Texts are counted here and components above. The numbers are the same where no field has a formula and
+        // a default value and no quick action has two formulas.
+        expect(formulas + (FLOW_FORMULAS[name] ?? 0)).toBe(
+          (EXPECTED[name]?.withFormula ?? 0) + (MORE_TEXTS[name] ?? 0),
+        );
       },
       300_000,
     );

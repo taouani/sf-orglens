@@ -757,14 +757,20 @@ function placer(text: string, markBytes: number, byteLength: number): (index: nu
 
 const START_OF_FILE: XmlPlace = { offset: 0, line: 1, column: 1 };
 
-/**
- * Reads the bytes of an XML file. It gives a tree, or the one issue that stopped the reading. It throws for
- * nothing a file can hold.
- */
-export function readXml(bytes: Uint8Array): XmlReading {
+/** A file that is no XML, such as the body of an email template, as text. */
+export interface TextDocument {
+  /** The file as text, without the byte order mark. */
+  readonly text: string;
+  /** The place of an index of `text`, as `XmlDocument.place` gives it. */
+  place(index: number): XmlPlace;
+}
+
+/** The text of a file, or why it is none. */
+function decode(
+  bytes: Uint8Array,
+): { readonly text: string; readonly byteOrderMark: boolean; readonly issue: null } | { readonly issue: XmlIssue } {
   if ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0xff && bytes[1] === 0xfe)) {
     return {
-      document: null,
       issue: {
         code: 'XML_UNSUPPORTED',
         message: 'The file starts with the byte order mark of UTF-16 or UTF-32. Only UTF-8 is read.',
@@ -773,15 +779,48 @@ export function readXml(bytes: Uint8Array): XmlReading {
     };
   }
   const byteOrderMark = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
-  let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(byteOrderMark ? bytes.subarray(3) : bytes);
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      byteOrderMark ? bytes.subarray(3) : bytes,
+    );
+    return { text, byteOrderMark, issue: null };
   } catch {
-    return {
-      document: null,
-      issue: { code: 'XML_NOT_UTF8', message: 'The bytes of the file are not text in UTF-8.', place: null },
-    };
+    return { issue: { code: 'XML_NOT_UTF8', message: 'The bytes of the file are not text in UTF-8.', place: null } };
   }
+}
+
+/**
+ * Reads the bytes of a file that is no XML as text in UTF-8, as `readXml` reads them: a byte order mark of UTF-8
+ * is no part of the text, and one of UTF-16 or UTF-32 is refused. It gives the text, or the issue why the bytes
+ * are none.
+ *
+ * `declared` is the encoding the file is said to have elsewhere, such as the `encodingKey` of an email template.
+ * Where it is `ISO-8859-1` and the bytes are no UTF-8, they are read in that encoding, one character to a byte.
+ * Any other encoding is not read.
+ */
+export function readText(
+  bytes: Uint8Array,
+  declared: string | null = null,
+): { readonly document: TextDocument; readonly issue: null } | { readonly document: null; readonly issue: XmlIssue } {
+  const decoded = decode(bytes);
+  if (decoded.issue?.code === 'XML_NOT_UTF8' && declared?.trim().toLowerCase() === 'iso-8859-1') {
+    // The decoder of the web reads ISO-8859-1 as windows-1252, which differs only in 32 characters no name holds.
+    const text = new TextDecoder('iso-8859-1').decode(bytes);
+    return { document: { text, place: placer(text, 0, bytes.length) }, issue: null };
+  }
+  if (decoded.issue !== null) return { document: null, issue: decoded.issue };
+  const { text, byteOrderMark } = decoded;
+  return { document: { text, place: placer(text, byteOrderMark ? 3 : 0, bytes.length) }, issue: null };
+}
+
+/**
+ * Reads the bytes of an XML file. It gives a tree, or the one issue that stopped the reading. It throws for
+ * nothing a file can hold.
+ */
+export function readXml(bytes: Uint8Array): XmlReading {
+  const decoded = decode(bytes);
+  if (decoded.issue !== null) return { document: null, issue: decoded.issue };
+  const { text, byteOrderMark } = decoded;
   const place = placer(text, byteOrderMark ? 3 : 0, bytes.length);
   try {
     const { declaration, root } = parse(text);

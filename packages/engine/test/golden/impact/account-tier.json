@@ -11,7 +11,8 @@
     "key": "CustomField:account.tier__c",
     "type": "CustomField",
     "name": "Account.Tier__c",
-    "file": "force-app/main/default/objects/Account/fields/Tier__c.field-meta.xml"
+    "file": "force-app/main/default/objects/Account/fields/Tier__c.field-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml",
         "line": 5,
         "column": 13
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.account_tier__c",
@@ -57,7 +59,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml",
         "line": 4,
         "column": 30
-      }
+      },
+      "package": null
     },
     {
       "key": "FieldSet:invoice__c.invoice_summary",
@@ -76,7 +79,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml",
         "line": 21,
         "column": 27
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save",
@@ -95,7 +99,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 82,
         "column": 56
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:amount_changed",
@@ -114,7 +119,28 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 82,
         "column": 56
-      }
+      },
+      "package": null
+    },
+    {
+      "key": "ReportType:invoices_with_lines",
+      "type": "ReportType",
+      "name": "Invoices_with_Lines",
+      "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ReportType:invoices_with_lines",
+        "to": "CustomField:account.tier__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+        "line": 25,
+        "column": 31
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_sent_process",
@@ -133,7 +159,8 @@
         "file": "force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml",
         "line": 42,
         "column": 119
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_sent_process#element:formula_myrule_1",
@@ -152,7 +179,8 @@
         "file": "force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml",
         "line": 42,
         "column": 119
-      }
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:account.key_account_needs_contact",
@@ -171,7 +199,8 @@
         "file": "force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml",
         "line": 6,
         "column": 3
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowRule:invoice__c.stamp_code_when_paid",
@@ -190,9 +219,11 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 114,
         "column": 14
-      }
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,
@@ -206,12 +237,6 @@
       },
       {
         "type": "ApexTrigger",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

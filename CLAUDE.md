@@ -51,14 +51,14 @@ These rules come from the maintainer and apply to every phase.
   user of the outbound message becomes the user it logs in as. In a step of its own it sends one more thing, and
   nothing else: one flow of the project as a draft, so that the org holds an active version of it and a newer
   one.
-- OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
-  the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031 names
-  those requests, and a test pins them. Through the Tooling API the engine queries two objects:
-  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
-  active and the latest version of each flow (`sources/dependency-api.ts`, decision record 0067). A test holds
-  every query against them. A tool of the tests asks the test org for more of the same kind
-  (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool asks the
-  Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
+- OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when the
+  Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031 names those
+  requests, and a test pins them. Through the Tooling API the engine queries three objects:
+  `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
+  and the latest version of each flow, and `Flow`, which names every version of a flow (`sources/dependency-api.ts`,
+  decision records 0067 and 0078). A test holds every query against them. A tool of the tests asks the test org for more
+  of the same kind (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool
+  asks the Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
 
 ## Architecture
 
@@ -116,7 +116,7 @@ packages/cli   the `orglens` binary                            imports only `@sf
   something of which that is not known, and then a path from it is not followed and a warning says so. An element
   of a kind the reader does not know is kept, with a warning and its names as `probable`. The analysis has a row of
   its own for flows (`parser:flow`). A row of the Dependency API from a flow is compared where it is from the
-  version the snapshot holds, and counted otherwise (decision record 0067).
+  version the snapshot holds, and counted otherwise (decision records 0067 and 0078).
 - A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
   with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
   under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). The file contains them, as an object
@@ -140,6 +140,19 @@ packages/cli   the `orglens` binary                            imports only `@sf
   that field: then it is `probable`. A field without a value gives nothing, though Salesforce writes one for every
   field a record leaves out. Of these, the Dependency API reports the type of a record and the custom fields of a
   field set.
+- An email template, a report type and a quick action are read by `extraction/email-templates.ts`,
+  `extraction/report-types.ts` and `extraction/quick-actions.ts` (decision record 0077). The body of a template is
+  a file of its own and no XML, and is read as text (`readText`). Its merge fields are written in the form of its
+  kind, classic `{!Object.Field}`, Lightning `{{{Name.Field}}}` (and `{!Name.Field}`) or Visualforce
+  `{!relatedTo.Field}`, and the kind says what their first name is. A merge field `{!...}` that holds more than a
+  name is read as a formula. A report type refers to its object, to the lookup field behind each child relationship
+  it joins (`childRelationship` of the model) and to each field it lists. A quick action refers to the object and
+  the record type it creates records of, writes the fields it sets and those its layout lets the user type in,
+  reads the names in the formula of a value, which start with the object the action runs on, and the fields its
+  layout shows, and names the template it starts with and what it opens. The Dependency API of the test org reports
+  the custom fields of a template and the object they are of, of a quick action the object it creates records of
+  and the field `targetParentField`, and of a report type nothing: a pair of a report type or a quick action that no
+  row reports is counted with a reason, and not listed. `EmailFolder` is outside the logic tier.
 - A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,
   means the object in an impact question, and the answer names the others (`sameName`, decision record 0064). A
   name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.
@@ -172,30 +185,39 @@ packages/cli   the `orglens` binary                            imports only `@sf
   refers to it. For `--outgoing`, a flow that is found is walked from its elements, which are no results. A name
   such as `Invoice_After_Save.Update_Account` finds an element. An answer names the flows in it whose active
   version has a newer one beside it (`newerVersions`), and that is no gap.
+- A component of a snapshot of an org is of a managed package where the org lists it with the prefix of the
+  package and a state of an installed one, under the listed name or the name it came back with
+  (`store/packages.ts`, decision record 0076). A part the analysis makes of it, such as an element of a flow, is of
+  its package. The prefix in a name plays no part, and nothing of a snapshot of a repository is of a package. An
+  answer about what refers to a component leaves a component of a package out, counts it (`packagesLeftOut`) and
+  walks on through it. `--packages` keeps it. An answer about what a component refers to leaves nothing out. A
+  component of a package that the org listed and that is not in the snapshot makes its type partial for an answer
+  only where a reference of the snapshot names it (a chain can go through it), or for what refers to a component
+  with `--packages`.
 - A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
-  (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
-  Every analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
-  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by the
-  id the org listed the component with. A row from a flow carries the id of a version of it, and the org lists a
-  flow with the id of its latest version: so the snapshot asks the org for the ids of the active and the latest
-  version of each flow and keeps them with the rows (decision record 0067). A name is taken only where there is no
-  id: for a standard object, and for a component the org listed without one. A pair Salesforce reports and the
-  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. An
-  answer that Salesforce cut off can hold fewer rows than the limit, so the query for every row never stands for
-  the org: the rows are always asked for per type, then whatever is of another type, and each type that shows
-  there by name. An answer that holds half the limit or more is asked for in parts. An answer of fewer rows, of
-  which every page came, is held against every row the reading holds in the end: a row of its query that another
-  query gave and it lacks shows that it was cut off (decision record 0069). The reading is `whole` only where no
-  answer shows that a row is missing. It never fails a snapshot and never makes it partial: an org that does not
-  answer leaves a warning.
+  (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one. Every
+  analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
+  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by the id
+  the org listed the component with. A row from a flow carries the id of a version of it, and the org lists a flow with
+  the id of its latest version: so the snapshot asks the org for the ids of the active and the latest version of each
+  flow, and of every other version, and keeps them with the rows (decision records 0067 and 0078). A name is taken only
+  where there is no id: for a standard object, and for a component the org listed without one. A pair Salesforce reports
+  and the analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. An
+  answer that Salesforce cut off can hold fewer rows than the limit, so the query for every row never stands for the
+  org: the rows are always asked for per type, then whatever is of another type, and each type that shows there by name.
+  An answer that holds half the limit or more is asked for in parts. An answer of fewer rows, of which every page came,
+  is held against every row the reading holds in the end: a row of its query that another query gave and it lacks shows
+  that it was cut off (decision record 0069). The reading is `whole` only where no answer shows that a row is missing.
+  It never fails a snapshot and never makes it partial: an org that does not answer leaves a warning.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it
   does. What the org listed and did not hand out, a listing it refused, a retrieve that failed and a file that
   cannot be read as metadata are an `error` in the tier, which makes the snapshot `partial`, and a `warning`
   outside it, which does not. Each such issue says which in `details.tier`. What nothing tells the type of counts
-  against the tier.
+  against the tier. A component of a managed package that the org lists and does not hand out is a warning in any
+  tier (`details.ofPackages`, decision record 0076).
   Where the Salesforce library falls short, the word of the org is taken (decision record 0047): a file in a
   folder the library knows no type for is counted by the type the org describes with that folder, and a
   component of a package that comes back without the prefix of the package is the one the org listed, when the
@@ -204,9 +226,11 @@ packages/cli   the `orglens` binary                            imports only `@sf
   which the org lists under the object `Account` and hands out under `PersonAccount` (decision record 0071), and
   for a report, a dashboard and their folders in a folder that lies in a folder, which the org lists without the
   outer folders and hands out under the whole path (decision record 0072). The keys and the files keep the name
-  that came back. A part comes with its parent and is not named in a retrieve, with one exception (decision
-  record 0049): when Salesforce cannot find a parent the org does not list, its listed parts are asked for by
-  their own names in one more retrieve. That is done only for a parent the Salesforce library keeps with a file
+  that came back, and the row of the listed name keeps it too (`inventory_item.came_back_as`, decision record
+  0076), so that the cross-check matches a row by the id the org listed to the component the snapshot holds. A
+  part comes with its parent and is not named in a retrieve, with one exception (decision record 0049): when
+  Salesforce cannot find a parent the org does not list, its listed parts are asked for by their own names in one
+  more retrieve. That is done only for a parent the Salesforce library keeps with a file
   for every part, such as an object.
   The file of custom labels is not missing when the org lists no label. Where the org hands out a version of a flow
   that is not active, the snapshot asks for the active version by the number its definition names, and keeps it
@@ -241,7 +265,7 @@ pnpm run bench              # storage benchmark on a synthetic org, not part of 
 pnpm run bench:store        # the same org written and read through the store of the engine, not part of check
 pnpm run bench:corpora      # the time of the built commands on the public codebases, needs a build and the codebases
 pnpm run corpora:fetch      # downloads the public test codebases of fixtures/corpora.toml into .corpora
-pnpm run corpora:listing    # every formula field, rule, filter and summary of them with what the analysis reports
+pnpm run corpora:listing    # their formulas, rules, flows and configuration, with what the analysis reports
 ```
 
 Run `pnpm run check` before every push.

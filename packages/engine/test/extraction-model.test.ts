@@ -6,6 +6,7 @@ import { buildKey, type ComponentKey } from '../src/core/keys.ts';
 import {
   buildModel,
   GLOBAL_OBJECTS,
+  standardLookupField,
   walkPath,
   type FieldFacts,
   type ObjectModel,
@@ -19,7 +20,9 @@ const field = (fullName: string): ComponentKey => key('CustomField', fullName);
 
 /**
  * A small snapshot: an invoice with its file, an account of which the snapshot holds two fields and no file,
- * a user with a hierarchy field, and a custom field each of the activity and of the contact.
+ * a user with a hierarchy field, a custom field of the activity, two of the contact, and four as an account shows
+ * them: two on the person account, of which one is a field of the contact too, one on the account and one on the
+ * business account.
  */
 function model(): ObjectModel {
   const fields = new Map<ComponentKey, FieldFacts>([
@@ -34,6 +37,10 @@ function model(): ObjectModel {
     [field('Activity.Stage__c'), { type: 'Text', referenceTo: [] }],
     [field('Contact.Level__c'), { type: 'Text', referenceTo: [] }],
     [field('Contact.Mentor__c'), { type: 'Lookup', referenceTo: ['User'] }],
+    [field('PersonAccount.Level__pc'), { type: 'Text', referenceTo: [] }],
+    [field('PersonAccount.Hobby__pc'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
+    [field('Account.Club__pc'), { type: 'Text', referenceTo: [] }],
+    [field('BusinessAccount.Club2__pc'), { type: 'Lookup', referenceTo: ['Sponsor__c'] }],
   ]);
   return buildModel({
     defined: new Set([
@@ -194,6 +201,34 @@ describe('what becomes of the name of a field', () => {
       'resolved CustomField:contact.level__c',
     ]);
   });
+
+  it('looks for it at the contact from the objects an org hands out parts of the account under, too', () => {
+    // The snapshot defines `PersonAccount.Level__pc` as well: the field of the contact is the one that is meant.
+    for (const object of ['PersonAccount', 'BusinessAccount', 'personaccount', 'BUSINESSACCOUNT']) {
+      expect(resolutions(object, ['Level__pc', 'Lost__pc', 'ns__Level__pc'])).toEqual([
+        'resolved CustomField:contact.level__c',
+        'unresolved null',
+        'external CustomField:contact.ns__level__c',
+      ]);
+    }
+    // A custom field of another kind is the object's own, as written.
+    expect(resolutions('BusinessAccount', ['Level__c'])).toEqual(['unresolved null']);
+    // No other object shows the fields of a contact, whatever its name ends with.
+    expect(resolutions('PartnerAccount', ['Level__pc'])).toEqual(['unresolved null']);
+  });
+
+  it('takes the field as the person account shows it where the snapshot defines that and no field of the contact', () => {
+    expect(resolutions('PersonAccount', ['Hobby__pc', 'HOBBY__PC'])).toEqual([
+      'resolved CustomField:personaccount.hobby__pc',
+      'resolved CustomField:personaccount.hobby__pc',
+    ]);
+    // Only the object it is defined on shows it: no file defines it on the account.
+    expect(resolutions('Account', ['Hobby__pc'])).toEqual(['unresolved null']);
+    // So on the account and on the business account, where a file defines it there.
+    expect(resolutions('Account', ['Club__pc'])).toEqual(['resolved CustomField:account.club__pc']);
+    expect(resolutions('PersonAccount', ['Club__pc'])).toEqual(['unresolved null']);
+    expect(resolutions('BusinessAccount', ['Club2__pc'])).toEqual(['resolved CustomField:businessaccount.club2__pc']);
+  });
 });
 
 describe('what becomes of the name of another component', () => {
@@ -253,6 +288,15 @@ describe('a step through a relationship', () => {
     expect(step('Contact', 'Mentor__pr')).toBe('unresolved null -> null');
   });
 
+  it('takes it so from the objects an org hands out parts of the account under, too', () => {
+    expect(step('BusinessAccount', 'Mentor__pr')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('PersonAccount', 'Mentor__pr')).toBe('resolved CustomField:contact.mentor__c -> User');
+    expect(step('BusinessAccount', 'Lost__pr')).toBe('unresolved null -> null');
+    // The field as the person account shows it, which is all the snapshot defines of it, says where it leads.
+    expect(step('PersonAccount', 'Hobby__pr')).toBe('resolved CustomField:personaccount.hobby__pc -> Sponsor__c');
+    expect(step('BusinessAccount', 'Club2__pr')).toBe('resolved CustomField:businessaccount.club2__pc -> Sponsor__c');
+  });
+
   it('takes a hierarchy field as a field that points at its own object', () => {
     expect(step('User', 'Backup__r')).toBe('resolved CustomField:user.backup__c -> User');
   });
@@ -293,6 +337,89 @@ describe('a step through a relationship', () => {
     // A custom relationship whose field is not there, or is a field of a package.
     expect(step('Invoice__c', 'Missing__r')).toBe('unresolved null -> null');
     expect(step('Invoice__c', 'npsp__Batch__r')).toBe('external CustomField:invoice__c.npsp__batch__c -> null');
+  });
+});
+
+describe('a child relationship, as a report type joins one', () => {
+  /**
+   * Lines of an invoice, a payment of an invoice that names its relationship as the lines do, a shipment of a
+   * package, a user with a hierarchy field, a lookup to two objects, and a lookup whose object has no file.
+   */
+  const children = (): ObjectModel => {
+    const fields = new Map<ComponentKey, FieldFacts>([
+      [
+        field('Invoice_Line__c.Invoice__c'),
+        { type: 'MasterDetail', referenceTo: ['Invoice__c'], relationshipName: 'Lines' },
+      ],
+      [field('Payment__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Payments' }],
+      [field('Credit__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Payments' }],
+      [
+        field('ns__Shipment__c.ns__Invoice__c'),
+        { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Shipments' },
+      ],
+      [field('User.Backup__c'), { type: 'Hierarchy', referenceTo: [], relationshipName: 'Backups' }],
+      [
+        field('Note__c.Parent__c'),
+        { type: 'Lookup', referenceTo: ['Invoice__c', 'Account'], relationshipName: 'Notes' },
+      ],
+      [field('Lost__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Losts' }],
+    ]);
+    return buildModel({
+      defined: new Set([key('CustomObject', 'Invoice__c'), ...fields.keys()]),
+      objects: ['Invoice__c', 'Invoice_Line__c', 'Payment__c', 'Credit__c', 'ns__Shipment__c', 'User', 'Note__c'],
+      namedObjects: [],
+      fields,
+    });
+  };
+  const child = (object: string, name: string): string => {
+    const found = children().childRelationship(object, name);
+    return found === null ? 'null' : `${found.field.resolution} ${String(found.field.to)} of ${found.object}`;
+  };
+
+  it('is the lookup field of the child object whose file names it, in any case', () => {
+    expect(child('Invoice__c', 'Lines__r')).toBe('resolved CustomField:invoice_line__c.invoice__c of Invoice_Line__c');
+    expect(child('INVOICE__C', 'lines__R')).toBe('resolved CustomField:invoice_line__c.invoice__c of Invoice_Line__c');
+    // A field of a package names it without the prefix, which the relationship has.
+    expect(child('Invoice__c', 'ns__Shipments__r')).toBe(
+      'resolved CustomField:ns__shipment__c.ns__invoice__c of ns__Shipment__c',
+    );
+    expect(child('Invoice__c', 'Shipments__r')).toBe('null');
+    // A hierarchy field points at its own object, and a lookup to two objects is a child of each.
+    expect(child('User', 'Backups__r')).toBe('resolved CustomField:user.backup__c of User');
+    expect(child('Account', 'Notes__r')).toBe('resolved CustomField:note__c.parent__c of Note__c');
+    expect(child('Invoice__c', 'Notes__r')).toBe('resolved CustomField:note__c.parent__c of Note__c');
+  });
+
+  it('is not known where two fields name it, where the object of the field has no file, or where nothing names it', () => {
+    expect(child('Invoice__c', 'Payments__r')).toBe('null');
+    expect(child('Invoice__c', 'Losts__r')).toBe('null');
+    expect(child('Invoice__c', 'Lines')).toBe('null');
+    expect(child('Account', 'Lines__r')).toBe('null');
+  });
+
+  it('is one of the table of the relationships every org has, where no file names it', () => {
+    expect(child('Account', 'Contacts')).toBe('external CustomField:contact.accountid of Contact');
+    expect(child('account', 'OPPORTUNITIES')).toBe('external CustomField:opportunity.accountid of Opportunity');
+    expect(child('Account', 'ChildAccounts')).toBe('external CustomField:account.parentid of Account');
+    expect(child('Opportunity', 'OpportunityLineItems')).toBe(
+      'external CustomField:opportunitylineitem.opportunityid of OpportunityLineItem',
+    );
+    expect(child('Case', 'CaseComments')).toBe('external CustomField:casecomment.parentid of CaseComment');
+    // Only the table is known of the many Salesforce provides.
+    expect(child('Account', 'Notes')).toBe('null');
+    expect(child('Contact', 'Opportunities')).toBe('null');
+  });
+
+  it('is named by its field where a report type or a quick action names a lookup field of Salesforce', () => {
+    expect(standardLookupField('Owner')).toBe('OwnerId');
+    expect(standardLookupField('account')).toBe('accountId');
+    expect(standardLookupField('CreatedBy')).toBe('CreatedById');
+    expect(standardLookupField('Name')).toBeUndefined();
+    expect(standardLookupField('Account__c')).toBeUndefined();
+    expect(standardLookupField('OwnerId')).toBeUndefined();
+    // The relationships of a task and an event that lead to one of several objects.
+    expect(standardLookupField('What')).toBe('WhatId');
+    expect(standardLookupField('who')).toBe('whoId');
   });
 });
 
@@ -412,12 +539,19 @@ describe('the fields a name of a path that was not followed can be', () => {
     'Level__pr',
     'Mentor__pr',
     'Mentor__c',
+    'Hobby__pc',
+    'Hobby__pr',
+    'Club__pc',
+    'Club2__pr',
     'Owner',
     'Name',
     'npsp__Batch__r',
     'ACCOUNT__R',
   ];
-  const OBJECTS = ['Invoice__c', 'Account', 'Contact', 'User', 'Task', 'Event', 'Sponsor__c'];
+  const OBJECTS = [
+    ...['Invoice__c', 'Account', 'Contact', 'User', 'Task', 'Event', 'Sponsor__c'],
+    ...['PersonAccount', 'BusinessAccount'],
+  ];
 
   it('holds every field the model takes the name for, as the field at the end of a path or behind a relationship', () => {
     let found = 0;

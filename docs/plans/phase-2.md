@@ -10,11 +10,11 @@ package 3 the analyser of flows is built (record 0061), a snapshot of an org fet
 by its number (record 0062), and run 23 of "Live org" showed it on the test org. Work package 4 is built but for
 one thing: it holds the reader of workflow rules (record 0063) and what the maintainer chose for the name alone of
 an object (record 0064), and the 24 references of the file of workflow rules of NPSP, which this plan wants in the
-note of work package 9, are listed there when that note is written. Run 24 of "Live org" read the test org with it.
+note of work package 9, are listed there. Run 24 of "Live org" read the test org with it.
 Work package 5 is built but for the same thing (record 0065): the 335 records of custom metadata types of the
 public codebases are read without an error and give no reference at the tier `probable`, and record 0065 says why,
 with values of each codebase read by hand. This plan wants those numbers and values in the note of work package 9
-too, and they are written there when that note is written. Run 26 of "Live org" read the test org with it. Work
+too, and they are written there. Run 26 of "Live org" read the test org with it. Work
 package 6 is built: the answers for flows and elements are built (record 0066), and so is the cross-check of
 the rows of flows, as the maintainer chose on 23 November 2026 (record 0067). Run 27 of "Live org" read the test
 org with it. The actions of a workflow rule that are analysed join the judgement of "complete" (record 0068), so
@@ -22,7 +22,21 @@ every type analysed so far counts for it. An answer about what refers to a compo
 not analysed where its components can name nothing of the answer (record 0073). The impact times of the synthetic
 org were measured again on 25 November 2026 and have not changed beyond the spread of the runs
 (`docs/research/phase-2/impact-times.md`). An answer counts a warning of the analysis only where it can bear on
-it (record 0074), which record 0061 leaves to work package 6.
+it (record 0074), which record 0061 leaves to work package 6. Work package 7 is built (record 0076): a component
+is of a managed package where the org lists it with the prefix and a state of an installed package, which departs
+from this plan in one point: the prefix in a name is not taken. An answer about what refers to a component leaves
+such a component out, counts it and walks on through it, `--packages` keeps it, and `coverage` counts them per
+type. A component of a package that the org lists and Salesforce does not hand out is a warning, as the maintainer
+answered on 25 November 2026. Work package 8 is built (record 0077): email templates, report types and quick
+actions are read and join the logic tier, and the folders of email templates stay outside it, as the maintainer
+answered on 25 November 2026. It reads more than this plan says in two points: the fields the layout of a quick
+action shows, and the flow, component or page it opens. V4S and Outbound Funds are pinned, and at the pinned
+commits the six codebases hold 31 email templates, 8 report types and 54 quick actions, all read without an error.
+What the Dependency API reports of report types and quick actions is measured when "Live org" deploys the project
+again. Work package 9 is built (`docs/research/phase-2/public-codebases.md`): Coral Cloud and EDA are pinned, and
+every flow of the eight codebases, 23 with 151 elements, was read by hand with the workflow rules and the record
+types. No reference is wrong, and seven names are missed and named with their cause, so pass mark 4 holds. The
+commands were timed on the codebases and on two made-up sources of about 100,000 components, one with flows.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
@@ -421,6 +435,12 @@ Accepted when:
   without an error. The counts are of the pinned codebases, of Volunteers for Salesforce and of Outbound
   Funds. The last two are not pinned yet: this work package pins them by commit in `fixtures/corpora.toml`
   after a look at their licences, and the counts are taken again at those commits.
+
+Built on 25 November 2026 (record 0077). Both codebases are under BSD-3-Clause. At the pinned commits the package
+folders hold 31 email templates, 8 report types and 54 quick actions, and the analysis reads them without an error.
+One formula of a quick action of PMM holds a token of the build tool of that project and is not read, with
+warnings. The key has 19 entries more, for a report type and a quick action of the fixture project, and the
+analysis finds them and no other.
 
 ### WP9 Proof on public codebases, and measurements
 

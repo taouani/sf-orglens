@@ -4,13 +4,13 @@ This page describes the commands of `orglens` that exist today, what they write,
 The `--json` output and the exit codes are a contract: scripts, CI jobs and later the local web UI rely on them.
 The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exit-codes.md).
 
-OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org,
-take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects,
-fields, validation rules, record types and field sets, with the formulas in them, for its flows, element by
-element, for its workflow rules with their actions, and for the records of its custom metadata types. `orglens
-impact` answers what refers to a component from those types alone. Nothing else of a snapshot is analysed yet, and
-an answer names the types it does not cover. Reading an org is tested against a mock org. The code that reads an
-org was also run against one real Developer Edition org, by a tool of the tests
+OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org, take
+snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects, fields,
+validation rules, record types and field sets, with the formulas in them, for its flows, element by element, for its
+workflow rules with their actions, for the records of its custom metadata types, and for its email templates, report
+types and quick actions. `orglens impact` answers what refers to a component from those types alone. Nothing else of a
+snapshot is analysed yet, and an answer names the types it does not cover. Reading an org is tested against a mock org.
+The code that reads an org was also run against one real Developer Edition org, by a tool of the tests
 ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot` itself has not been run against
 Salesforce.
 
@@ -157,14 +157,15 @@ they have below a package directory, such as `classes/Foo.cls`.
   The types of the logic tier are:
 
   `ApexClass`, `ApexTrigger`, `AuraDefinitionBundle`, `CustomField`, `CustomLabel`, `CustomLabels`,
-  `CustomMetadata`, `CustomObject`, `CustomPermission`, `FieldSet`, `Flow`, `GlobalValueSet`,
-  `LightningComponentBundle`, `NamedCredential`, `PermissionSet`, `PermissionSetGroup`, `Profile`, `RecordType`,
-  `ValidationRule`, `Workflow`, `WorkflowAlert`, `WorkflowFieldUpdate`, `WorkflowOutboundMessage`,
-  `WorkflowRule`, `WorkflowTask`.
+  `CustomMetadata`, `CustomObject`, `CustomPermission`, `EmailTemplate`, `FieldSet`, `Flow`, `GlobalValueSet`,
+  `LightningComponentBundle`, `NamedCredential`, `PermissionSet`, `PermissionSetGroup`, `Profile`,
+  `QuickAction`, `RecordType`, `ReportType`, `ValidationRule`, `Workflow`, `WorkflowAlert`,
+  `WorkflowFieldUpdate`, `WorkflowOutboundMessage`, `WorkflowRule`, `WorkflowTask`.
 
   Every type an analyser reads is in the list, among them the email alerts, field updates, outbound messages and
   tasks of a workflow rule, and a type joins it with the version that analyses it. The other actions of a
-  workflow rule, such as `WorkflowFlowAutomation`, are not analysed and are outside the tier.
+  workflow rule, such as `WorkflowFlowAutomation`, are not analysed and are outside the tier. A folder of email
+  templates, `EmailFolder`, is outside the tier too, although its templates are in it (decision record 0077).
 
   A type is of the tier by its own name. A part of an object that is not in the list, such as a list view, is
   outside it although the object is in it. Four cases need a rule. A retrieve that fails counts against the
@@ -175,7 +176,13 @@ they have below a package directory, such as `classes/Foo.cls`.
   for, counts against the tier, because nothing says what it is. And the file of custom labels, `CustomLabels`, is not
   missing when the org lists no custom label: an org without a label lists the file and hands out nothing. The
   issue `NOT_RETRIEVED` is then a warning with `details.holdsNothing` set to `true`, and the first line of the
-  report stays that of a complete snapshot.
+  report stays that of a complete snapshot. A component of a managed package installed in the org that does not
+  come back is no error either: Salesforce does not hand out a protected component of a package, such as a
+  protected custom label. Its issue `NOT_RETRIEVED` is a warning with `details.ofPackages` set to `true`, apart
+  from the issue about the components of the org's own of the same type, and the first line of the report says
+  after the numbers: "Components of managed packages installed in the org are missing, and the warnings below say
+  which." Whether such a component bears on an impact answer, the answer says (decision record
+  [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)).
 
   A snapshot that an earlier version took keeps the status that version gave it. A snapshot of a repository is
   not judged by tier: whatever its folders hold and cannot be read makes it partial.
@@ -293,11 +300,12 @@ they have below a package directory, such as `classes/Foo.cls`.
   again twice. No request to the Metadata API follows a redirect. A retrieve that Salesforce does not end within
   30 minutes stops the command, and the next run asks for the same retrieve again. If it does not end then
   either, it is started anew. A chunk is started three times in all before it is given up.
-- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries two objects:
-  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
-  active and the latest version of each flow (decision record 0067). One thing is not in its hands: when the
-  session of a Salesforce CLI login expires while a snapshot is taken, the Salesforce library renews it and asks
-  the org about the org itself (decision record 0031 names the requests).
+- Only metadata is read. OrgLens makes no request for a record. Through the Tooling API it queries three objects:
+  `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
+  and the latest version of each flow (decision record 0067), and `Flow`, which names every version of a flow (decision
+  record 0078). One thing is not in its hands: when the session of a Salesforce CLI login expires while a snapshot is
+  taken, the Salesforce library renews it and asks the org about the org itself (decision record 0031 names the
+  requests).
 - What stops the command, with the snapshot left to be continued: `LOGIN_FAILED` with the reason
   `SESSION_EXPIRED` or `ORG_UNREACHABLE`, `WORKSPACE_IO` when the work folder cannot be written, and
   `SOURCE_READ_FAILED` with the reason `REQUEST_REFUSED` (the org said no for a reason that holds whatever is
@@ -352,13 +360,23 @@ is an object or a field where the field is a relationship to the definition of o
 where it is a relationship to that type. It is a field, at the tier `probable`, where a text field holds exactly
 `Object.Field`, or exactly the name of a field of an object that the same record names in a relationship, and a
 file of the snapshot defines that field. Of an object itself, it reads the name of the page or component that
-overrides one of its actions, such as the Lightning page of its records: the page itself is not read. Every other
-type is stored and not analysed yet.
+overrides one of its actions, such as the Lightning page of its records: the page itself is not read. It reads the
+merge fields of an email template, in its subject and in its body, which is a file of its own and no XML, in the
+forms of a classic, a Lightning and a Visualforce template, also where a merge field holds a formula. A merge field
+of a record is read where the template says which object the record is of, and a field of the recipient of a
+Lightning template is not followed. It also reads the object a template is written for, its letterhead and the
+documents it attaches. It reads report types: the object, the lookup field behind each child relationship a report
+type joins, and each field it lists. It reads quick actions: the object and the record type of the records an
+action creates, each field it sets and the lookup to the record it runs on, the names in the formula of a value it
+sets, the fields its layout shows, which it also sets where the user types in them, the email template it starts
+with, and the flow, component, page or canvas app it opens. The icon of an action is not read. Every other type is
+stored and not analysed yet.
 Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
 [0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md),
-[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) and
-[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) say what is read and what is not.
+[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md),
+[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) and
+[0077](adr/0077-email-templates-report-types-and-quick-actions.md) say what is read and what is not.
 
 - A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
   snapshot is stored, also for a snapshot of an org that was interrupted and continued.
@@ -432,15 +450,27 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
 - A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
   version. So a snapshot of an org that lists a flow asks the Tooling API once more, before the rows, for the object
   `FlowDefinition`, which names the active and the latest version of each flow
-  ([record 0067](adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)). The snapshot keeps the ids. A row is
+  ([record 0067](adr/0067-a-row-from-a-flow-is-compared-by-its-version.md)), and then, where it named a flow, for the
+  object `Flow`, which names every version of a flow with its flow
+  ([record 0078](adr/0078-the-ids-of-every-version-of-a-flow-are-read.md)). The snapshot keeps the ids. A row is
   compared where it is from the version the snapshot holds: the active one where the snapshot has the note
-  `FLOW_NEWER_VERSION`, and else the latest. A row from another version, such as a draft, is counted and not
-  compared. Where the org does not name the versions, the snapshot has the warning `FLOW_VERSIONS_NOT_READ`, and a
-  row from a flow is matched by the id the org listed the flow with: a row of the active version of a flow that has
-  a newer one then names a component the org did not list.
+  `FLOW_NEWER_VERSION`, and else the latest. A row from another version, such as a draft or an older version that a
+  deploy left behind, is counted and not compared. Where the org does not name the versions, the snapshot has the
+  warning `FLOW_VERSIONS_NOT_READ`, and a row from a flow is matched by the id the org listed the flow with: a row of
+  the active version of a flow that has a newer one then names a component the org did not list. Where it names the
+  active and the latest versions and not the others, a row of another version names a component the org did not
+  list, and the warning says so as well. A snapshot taken before record 0078 holds no ids of the other versions.
 - A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
   for a standard object, which Salesforce names in the place of an id, and for a component the org listed
-  without one. A row that names a component the org did not list is counted and not compared.
+  without one. A row that names a component the org did not list is counted and not compared. A component that
+  came back under another name than the org lists it with is the one the snapshot holds under the name that came
+  back, and one listed without an id is found by either name (decision record
+  [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). That holds for every rule that
+  takes it for the listed one: a component of a package without its prefix, a document without the ending of its
+  file, a part of a person account, and a report or folder under the whole path of its folders. A row about such
+  a component is compared, also in an org without packages, and where the analysis names the component by the
+  name the org lists it with, the pair is `REFERENCE_MISSED`. A snapshot taken before that record keeps no such
+  name, and a row from such a component is counted as one from a component the snapshot does not hold.
 - **A pair that Salesforce reports and the analysis lacks** is the issue `REFERENCE_MISSED` of the analysis, with
   the severity `error`. It makes the analysis incomplete: `snapshot` and `analyse` end with the exit code `5`,
   and an impact answer from the snapshot says that it may miss something.
@@ -456,7 +486,9 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
   starts, a name in a text, such as a record type a condition compares a text with, and a field of a custom setting
   or a custom permission that only its formulas name. A Visualforce page, a Lightning component or an s-control
   that overrides an action of an object is counted too: whether the API reports it was not measured. A Lightning
-  page that does is listed: a large org reported it.
+  page that does is listed: a large org reported it. So is everything of a report type and of a quick action:
+  what the API reports of them was not measured. Of an email template the test org reports the custom fields of
+  its merge fields, and they are listed.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the maintainer took a snapshot of a large org once, with a version that took the query for every
@@ -477,7 +509,10 @@ leaves out, and adds `(listing failed)` to the number of a type the org refused 
 column `ANALYSED` says of how many components of the type the analysis read something. It is `0` for a type that
 is not analysed yet. It can be larger than `RETRIEVED`: the analysis also counts the fields and rules it finds
 inside the file of an object, and the elements of a flow with their flow, and a type of which the source lists
-nothing can have a line for that reason.
+nothing can have a line for that reason. Where the org lists a component of a managed package installed in it, a
+column `OF PACKAGES` after `LISTED` says how many of the listed components of each type are of one (decision record
+[0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). A snapshot of a repository and of an
+org without packages has no such column.
 
 The custom labels have two lines, because they are two types of the Metadata API: `CustomLabel` counts the labels,
 and `CustomLabels` is the component that holds them. Its line says so: `CustomLabels (holds the labels)`. The table
@@ -566,7 +601,7 @@ In `--json`, `crossCheck` is `null` when the API was not asked. Otherwise it hol
 | `rowsNotAnalysed`, `notAnalysed` | Rows from a component of a type the analysis does not read, in all and per `type`, with `rows`. The type is the metadata type where the row was matched, `CustomMetadata` for a record of a custom metadata type, and else the type the API writes. |
 | `rowsNotMatched`                 | Rows with an end that is no component the org listed.                                                                                                                                                                                               |
 | `rowsNotHeld`                    | Rows from a component of an analysed type that the snapshot does not hold or whose analysis failed.                                                                                                                                                 |
-| `rowsOtherVersion`               | Rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active version.                                                                                                                                    |
+| `rowsOtherVersion`               | Rows from a version of a flow that is not the one the snapshot holds: a draft beside the active version, or a version that is neither active nor the latest, such as one a deploy left behind (decision record 0078).                               |
 | `rowsCompared`, `pairs`          | The rows that were compared, and the different pairs of components they are.                                                                                                                                                                        |
 | `agreed`                         | Pairs the analysis has as well.                                                                                                                                                                                                                     |
 | `coveredByPart`                  | Pairs to an object for which the analysis has a reference from the same component to a part of the object, and none to the object.                                                                                                                  |
@@ -582,7 +617,8 @@ record of a custom metadata type that is not to the type of the record), `record
 type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
 text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
 only its formulas name), `action-override` (a reference of an object to a Visualforce page, a Lightning component or
-an s-control that overrides one of its actions) and `other`. A pair to a standard field or a standard object has one
+an s-control that overrides one of its actions), `report-type` (a reference of a report type), `quick-action` (a
+reference of a quick action) and `other`. A pair to a standard field or a standard object has one
 of the first two, from any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):
@@ -606,15 +642,19 @@ in `details.parts`. `RETRIEVE_FAILED` and `CHUNK_SPLIT` carry what Salesforce sa
 the code Salesforce gave for its refusal in `details.code`, or `null` if it gave none. A program reads the code
 there and not out of the text. `CROSS_CHECK_NOT_READ` carries the code of the first failure in `details.code` and
 the number of requests in `details.requests`. `FLOW_VERSIONS_NOT_READ` is written where the answer of
-`FlowDefinition` is not whole, or where it is whole and leaves out a flow the org listed. It carries the code of
-the failure in `details.code`, or `null`, the state of the answer in `details.state` (`whole`, `partial` or
-`none`), how many flows the org named in `details.flows`, how many of the flows it listed it named no version of in
-`details.notNamed`, and the number of requests in `details.requests`. `CROSS_CHECK_PARTIAL` carries
-`details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
+`FlowDefinition` is not whole, where it is whole and leaves out a flow the org listed, or where the answer of `Flow`
+is not whole. It carries the code of the failure of `FlowDefinition` in `details.code`, or `null`, the state of its
+answer in `details.state` (`whole`, `partial` or `none`), how many flows the org named in `details.flows`, how many
+of the flows it listed it named no version of in `details.notNamed`, the code of the failure of `Flow` in
+`details.versionsCode`, or `null`, the state of its answer in `details.versionsState` (`none` too where the org
+named no flow and was not asked), and the number of requests of both in `details.requests`.
+`CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
-for an error, `other` for a warning. `RETRIEVE_FAILED` carries the types of its components in `details.types`,
-sorted. Those are the types that are retrieved by name: a field that fails with its object is not named.
+for an error, `other` for a warning. A warning `NOT_RETRIEVED` with `details.holdsNothing` or `details.ofPackages`
+set to `true` carries the tier of its type, which can be `logic`. `RETRIEVE_FAILED` carries the types of its
+components in `details.types`, sorted. Those are the types that are retrieved by name: a field that fails with its
+object is not named.
 `RESOLVE_FAILED` carries in `details.types` the types the file or component can be of: the type of the
 component, or the types that keep their files in the top folder of the file with the types of their parts. The
 types are those the Salesforce library knows for the folder. Where it knows none, they are the types the org
@@ -657,23 +697,23 @@ a class or a field in two package directories is reported, an object whose file 
 
 The issue codes of the analysis (`stage` is `analysis`), for every kind of source:
 
-| Severity  | Code                                               | Situation                                                                                                                                                                                                                                               |
-| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                                                                                                                                                             |
-| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read.                                                                                                                                            |
-| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                                                                                                                                                          |
-| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                              |
-| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                   |
-| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                         |
-| `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.          |
-| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
-| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule or an override of an action of an object has a type that is not known here, or none. No reference is made for it.                                                  |
-| `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
-| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.      |
-| `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
-| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
-| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                          |
-| `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow is not closed. Nothing is read of it.                                                                                                                                                                                 |
+| Severity  | Code                                               | Situation                                                                                                                                                                                                                                                                                                                      |
+| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                                                                                                                                                                                                                                    |
+| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read. The body of an email template is no XML, and only the first and the last can be said of it.                                                                                                                       |
+| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                                                                                                                                                                                                                                 |
+| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                                                                                                     |
+| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                                                                                          |
+| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                                                                                                |
+| `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.                                                                                 |
+| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently.                                                                        |
+| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, an action of a workflow rule or an override of an action of an object has a type that is not known here, or none, or a merge field of an email template or a name in a formula of a quick action starts with a name that is not known there. No reference is made for it. |
+| `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                                                                                        |
+| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.                                                                             |
+| `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                                                                                         |
+| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                                                                                                      |
+| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                                                                                                 |
+| `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow or of an email template is not closed. Nothing is read of it.                                                                                                                                                                                                                                |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one
 component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
@@ -720,6 +760,7 @@ their longest value.
 | `--depth <number>`        | How many references away from the component the answer goes at most. Default: no limit.            |
 | `--min-confidence <tier>` | Follows only references that are at least this certain: `confirmed`, `probable` or `possible`.     |
 | `--outgoing`              | Shows what the component refers to, in place of what refers to it.                                 |
+| `--packages`              | Keeps the components of managed packages among what refers to the component.                       |
 
 **How the component is named.** By its name (`Account.Industry`), by its type and name
 (`CustomField:Account.Industry`) or by its key (`CustomField:account.industry`). Upper and lower case do not
@@ -779,6 +820,19 @@ in the snapshot nor known to OrgLens by name is not found by its name alone: nam
   refer to. There, `REFERRED TO BY` can name an element of a flow of the answer, which has no line: the line of its
   flow is the next one of the chain, and a line above the table says so. A name that has no key, so that no
   component stands for it, is listed in a table of its own.
+- In a snapshot of an org, a component of a managed package installed in the org is left out of what refers to
+  the component, and counted in a line below the number of results (decision records
+  [0056](adr/0056-components-of-a-managed-package.md) and
+  [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). It is a component the org lists
+  with the prefix of a package and the state `installed`, `installedEditable`, `deprecated` or
+  `deprecatedEditable`, under the name it lists or the name the component came back with, or a part the analysis
+  makes of one, such as an element of a flow. The prefix in a name plays no part. The answer goes on through what
+  it leaves out: a component of the org that refers to the component through one of a package is in the answer,
+  and its `REFERS TO` names the component of the package, which has no line, as a line above the table says.
+  `--packages` keeps them. Where a result is of a package, the table has a column `PACKAGE` with its prefix, and
+  `none` for the others. Where the component that was asked about is of a package, the second line says so. With `--outgoing` nothing is left out:
+  a component of a package is a target, and `--packages` changes nothing. A snapshot of a repository has no
+  component of a package, also where it is the project of one, such as NPSP.
 
 **What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
 the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
@@ -786,11 +840,17 @@ the answer says whether it is complete, and if not, why. Below the results it na
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each. A
   component of such a type can refer to the component and is not in the answer. In this pre-release, that is every
   type except objects, fields, validation rules, flows, workflow rules with their field updates, email alerts,
-  outbound messages and tasks, record types, field sets and records of custom metadata types. A type that
+  outbound messages and tasks, record types, field sets, records of custom metadata types, email templates, report
+  types and quick actions. A type that
   `exclude_types` leaves out of a snapshot of an org is among them, with `left out` for its number. So is a type
   of which the snapshot holds only components that the source did not list, with `0` for both numbers, which
   count what the source listed;
-- the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them;
+- the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them. A
+  component of a managed package that the org listed and that is not in the snapshot counts here where a
+  reference of the snapshot names it, by its key or by its type and its name, with or without the prefix of its
+  package: a chain of references can go through it, and what it refers to is not known. One that nothing names
+  counts only for what refers to a component with `--packages`, where it could be a result. The numbers of such a
+  type are those of `coverage`, with the components of packages;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
   about a type the answer covers: a type the analysis read, or one of which it analysed a component. Every type
@@ -814,10 +874,12 @@ of an object nothing says, and says what the path ends at (`details.endsAt`): `o
 element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
 a field whose name one of the names can be, on whatever object, a record type where one of the names is
 `RecordType`, or an object where the path ends at one. One that kept twenty names, which may be fewer than the
-path has, counts as any other. So does one without `details.endsAt`, which an analysis made by an earlier version
-wrote: it kept no warning for a field that an element sets behind a record of no known object, and
-`orglens analyse <source>` analyses the snapshot again. Every other warning counts for what refers to a
-component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
+path has, counts as any other. So does one without `details.endsAt`. An analysis made by an earlier version wrote
+such a warning: it kept no warning for a field that an element sets behind a record of no known object, and
+`orglens analyse <source>` analyses the snapshot again. A report type writes one for a child relationship that no
+file of the snapshot defines and that is not one of the few the engine knows of every org (`details.relationship`):
+the lookup field behind it can have any name (decision record 0077). Every other warning counts for what refers to
+a component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
 the warnings that bear on the answer directly: one whose names fit only a component that another missing
 reference would bring into the answer is not counted, and the answer is not complete all the same.
 
@@ -852,24 +914,25 @@ needs a complete answer reads `data.complete`: the exit code `0` does not say it
 
 **The data of `--json`:**
 
-| Field           | Meaning                                                                                                                                                                                                                                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `snapshot`      | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                                                                                                           |
-| `component`     | The component that was asked about: `key`, `type`, `name` and `file`. `name` and `file` are `null` for a component the snapshot does not hold.                                                                                                                                                                                    |
-| `sameName`      | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                                                                                                      |
-| `parts`         | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                                                                                                         |
-| `elementOf`     | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                                                                                                         |
-| `direction`     | `incoming` or `outgoing`.                                                                                                                                                                                                                                                                                                         |
-| `depth`         | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                                                                                                             |
-| `beyondDepth`   | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                                                                                                                |
-| `minConfidence` | The least confidence that was asked for.                                                                                                                                                                                                                                                                                          |
-| `results`       | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`.                                                                                         |
-| `reference`     | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse.                                                                                   |
-| `unresolved`    | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.                                                                                      |
-| `newerVersions` | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                                                                                                       |
-| `complete`      | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                                                                                                      |
-| `notCovered`    | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. For `incoming`, `notAnalysed` leaves out a type whose components can name no type of the answer (decision record 0073). `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`. |
-| `mayMiss`       | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                                                                                                       |
+| Field             | Meaning                                                                                                                                                                                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snapshot`        | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                                                                                                           |
+| `component`       | The component that was asked about: `key`, `type`, `name`, `file` and `package`. `name` and `file` are `null` for a component the snapshot does not hold. `package` is the prefix of the managed package it is of, or `null`.                                                                                                     |
+| `sameName`        | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                                                                                                      |
+| `parts`           | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                                                                                                         |
+| `elementOf`       | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                                                                                                         |
+| `direction`       | `incoming` or `outgoing`.                                                                                                                                                                                                                                                                                                         |
+| `depth`           | The depth that was asked for, or `null` for no limit.                                                                                                                                                                                                                                                                             |
+| `beyondDepth`     | `true` if the answer stops at `depth` and references lead further.                                                                                                                                                                                                                                                                |
+| `minConfidence`   | The least confidence that was asked for.                                                                                                                                                                                                                                                                                          |
+| `results`         | Sorted by `depth`, then by `key`. Each has `key`, `type`, `name`, `file`, `package`, `depth`, `confidence` (the weakest on its chain) and `reference`. Where an element of a flow is a result, so is its flow, unless it is the flow of `elementOf`. For `incoming`, a result of a package is there only with `--packages`.       |
+| `packagesLeftOut` | For `incoming` without `--packages`: how many components of managed packages refer to the component and were left out. `0` otherwise.                                                                                                                                                                                             |
+| `reference`       | The reference a result is found by: `from`, `to`, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column`. For `incoming`, `from` is the result, or an element of it, and `to` is one nearer. For `outgoing`, it is the reverse.                                                                                   |
+| `unresolved`      | For `outgoing`: the references to a name without a key. Each has `from`, the `type` and `name` of the target as they were written, `kind`, `origin`, `confidence`, `resolution`, `file`, `line`, `column` and `depth`. Empty for `incoming`.                                                                                      |
+| `newerVersions`   | The flows of the answer whose active version has a newer one, such as a draft, by `flow`: `flow`, `active` (the number of the active version) and `newer` (the state of the newer one). Only a snapshot of an org has them.                                                                                                       |
+| `complete`        | `true` if nothing is known to be missing from the answer: both lists of `notCovered` are empty and its four numbers are `0`.                                                                                                                                                                                                      |
+| `notCovered`      | `notAnalysed` and `partial`: lists of types with `type`, `listed`, `retrieved` and `listing`. For `incoming`, `notAnalysed` leaves out a type whose components can name no type of the answer (decision record 0073). `readErrors`, `analysisErrors`, `analysisWarnings` and `notHeld`: numbers. `notHeld` is `0` for `incoming`. |
+| `mayMiss`         | `true` if `partial` is not empty, or `readErrors` or `analysisErrors` is not `0`. This is what the exit code `5` says. `analysisWarnings` and `notHeld` make `complete` false and leave `mayMiss` as it is.                                                                                                                       |
 
 **The chain behind a result.** A result holds one reference and not its whole chain. The nearer end of that
 reference is the key of another result, of the depth before, which holds the next reference. At depth 1 the nearer
@@ -885,8 +948,8 @@ What is not done, and what a user should know:
 
 - The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
   changes. That is a later phase.
-- Only objects, fields, validation rules, flows, workflow rules with their actions, record types, field sets and
-  records of custom metadata types are analysed. Apex, layouts, permissions and the other types follow in later
+- Only objects, fields, validation rules, flows, workflow rules with their actions, record types, field sets,
+  records of custom metadata types, email templates, report types and quick actions are analysed. Apex, layouts, permissions and the other types follow in later
   phases. Until then an answer about what refers to a component of a real project says that it is not complete. An
   answer with `--outgoing` can be complete, because it needs only the component and its results to be analysed. It
   is complete only where no warning of the analysis bears on it: of the component, of something it contains, of a
@@ -1038,20 +1101,20 @@ with exactly and allows no other fields.
 
 `data` in short:
 
-| Command         | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                                                                                                                                            |
-| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `crossCheck` (how the Dependency API was read, and `comparison`), or `null` for a snapshot the API was not asked for, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
-| `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `impact`        | `snapshot`, `component`, `sameName`, `parts`, `elementOf`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `unresolved`, `newerVersions`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Command         | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`          | `root` (absolute path), `created` (the files this run created, relative to the workspace), `existing` (true if `orglens.toml` was already there).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `source add`    | `source`: the declaration as it was written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `source list`   | `sources`: the declarations, in the order of the file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `source remove` | `removed`: the name of the source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `source link`   | `source`, `login` (as it was given), `username`, `orgId` (of the login, as the Salesforce CLI knows it, or `null`), `declaredOrgId` (of the source, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `source check`  | For an org or a sandbox: `source`, `kind`, `login` (`via`, `alias`, `username`), `org` (`id`, `instanceUrl`, `apiVersion`), `declaredOrgId`. For a source of the kind `git`: `source`, `kind`, `complete`, `commit`, `dirs`, `components`, `files`, `bytes`, `issues`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `status`        | `root`, `name`, `configFiles`, `store` (file, driver, `state`, schema version, size, problem), `sources` (declaration, `snapshots`: the number of snapshots that ended as complete or partial, `latestSnapshot`: the latest of them, with `analysis`: `engineVersion` and `analysedAt`, or `null` if it is not analysed, `unfinishedSnapshot`: `id`, `startedAt`, `chunksDone`, `chunks`, or `null`).                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `snapshot`      | `snapshot` (`id`, `source`, `kind`, `status`, `startedAt`, `finishedAt`, `engineVersion`, `apiVersion`, `commit`, `files`, `bytes`), `types` (per metadata type: `listed`, `retrieved`, `analysed`, `listing`, `note`, `packaged`: how many of the listed components are of a managed package installed in the org), `analysis` (`engineVersion`, `analysedAt`, `components`, `references`, `complete`, `origins`: per origin `origin`, `components`, `failedFiles`, `references`, `unresolved`, `pathsNotFollowed`), or `null` for a snapshot that is not analysed, `crossCheck` (how the Dependency API was read, and `comparison`), or `null` for a snapshot the API was not asked for, `issues` (`stage`, `severity`, `code`, `message`, `component`, `details`): those of the reading first, then those of the analysis. |
+| `analyse`       | The same as `snapshot`, for the snapshot that was analysed again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `impact`        | `snapshot`, `component`, `sameName`, `parts`, `elementOf`, `direction`, `depth`, `beyondDepth`, `minConfidence`, `results`, `packagesLeftOut`, `unresolved`, `newerVersions`, `complete`, `notCovered`, `mayMiss`. The section [Impact](#impact) describes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `coverage`      | The same as `snapshot`, for a snapshot that was taken before.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `doctor`        | `ok`, `engineVersion`, `checks`: one object per check with `id`, `status` (`ok`, `warning`, `failed`, `skipped`), `summary` and `details`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 A source is written with all keys of its kind, and `null` for what is not set. `excludeTypes` of a source of the
 kind `org` or `sandbox` is the list of `exclude_types`, sorted, and an empty list when the key is not set. Only

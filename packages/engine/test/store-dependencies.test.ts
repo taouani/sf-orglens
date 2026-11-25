@@ -187,19 +187,35 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     const id = snapshot(store);
     const other = snapshot(store, 'sandbox');
     const versions: FlowVersionIds[] = [
-      { flow: 'Renew', active: '301xx0000000002AAA', latest: '301xx0000000003AAA' },
+      // A flow with two versions that are neither active nor the latest, sorted by their ids (decision record 0078).
+      {
+        flow: 'Renew',
+        active: '301xx0000000002AAA',
+        latest: '301xx0000000003AAA',
+        others: ['301xx0000000005AAA', '301xx0000000006AAA'],
+      },
       // A flow of a package, and a flow of which no version is active.
-      { flow: 'acme__Approve', active: '301xx0000000001AAA', latest: '301xx0000000001AAA' },
-      { flow: 'Draft_Only', active: null, latest: '301xx0000000004AAA' },
+      { flow: 'acme__Approve', active: '301xx0000000001AAA', latest: '301xx0000000001AAA', others: [] },
+      { flow: 'Draft_Only', active: null, latest: '301xx0000000004AAA', others: ['301xx0000000007AAA'] },
     ];
     expect(readFlowVersionIds(store, id)).toEqual([]);
     store.write(() => {
       writeDependencies(store, id, reading(), T1);
-      writeFlowVersions(store, id, versions);
+      // The other versions are written in any order, and an id given twice is kept once.
+      writeFlowVersions(store, id, [
+        {
+          flow: 'Renew',
+          active: '301xx0000000002AAA',
+          latest: '301xx0000000003AAA',
+          others: ['301xx0000000006AAA', '301xx0000000005AAA', '301xx0000000006AAA'],
+        },
+        ...versions.slice(1),
+      ]);
       writeDependencies(store, other, reading(), T1);
       writeFlowVersions(store, other, versions.slice(0, 1));
     });
     expect(readFlowVersionIds(store, id)).toEqual([versions[2], versions[0], versions[1]]);
+    expect(count(store, 'snapshot_flow_other_version')).toBe(5);
     // A snapshot that is continued reads the API again, and keeps the versions of that reading only.
     store.write(() => {
       writeDependencies(store, id, reading({ requests: 2 }), T2);
@@ -207,9 +223,22 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     });
     expect(readFlowVersionIds(store, id)).toEqual(versions.slice(2));
     expect(readFlowVersionIds(store, other)).toEqual(versions.slice(0, 1));
+    expect(count(store, 'snapshot_flow_other_version')).toBe(3);
     // They go with the snapshot, as the rows do.
     store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
     expect(count(store, 'snapshot_flow_version')).toBe(1);
+    expect(count(store, 'snapshot_flow_other_version')).toBe(2);
+    // An other version belongs to a flow the reading names.
+    expect(() =>
+      store.write(() =>
+        store.run(
+          'INSERT INTO snapshot_flow_other_version (snapshot_id, flow, version_id) VALUES (?, ?, ?)',
+          other,
+          'Unknown',
+          '301xx0000000008AAA',
+        ),
+      ),
+    ).toThrow();
     store.close();
   });
 
@@ -228,7 +257,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
     store.close();
   });
 
-  it('gives what the org listed with the id of each component, and nothing that only came back', () => {
+  it('gives what the org listed with the id of each component, under the name it came back with, and nothing that only came back', () => {
     const store = open();
     const id = snapshot(store);
     const listed = (type: string, fullName: string, salesforceId: string | null) => ({
@@ -246,10 +275,18 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
         // A standard object is listed without an id.
         listed('CustomObject', 'Account', null),
       ]);
+      addInventory(store, id, [
+        { ...listed('ApexClass', 'pkg__Billing', '01pxx0000000001AAA'), namespacePrefix: 'pkg' },
+      ]);
       // A component that came back although the org had not listed it has no id of the org.
       markRetrieved(store, id, [{ type: 'CustomObject', fullName: 'Invoice__c' }]);
+      // A component of a package that came back without its prefix has the id under the name it came back with,
+      // which is the name the snapshot holds it under (decision record 0076).
+      const billing = { type: 'ApexClass', fullName: 'pkg__Billing' };
+      markRetrieved(store, id, [{ type: 'ApexClass', fullName: 'Billing' }], { asked: [billing], notFound: [] });
     });
     expect(readListedIds(store, id)).toEqual([
+      { type: 'ApexClass', fullName: 'Billing', listedAs: 'pkg__Billing', id: '01pxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Amount__c', id: '00Nxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Total__c', id: '00Nxx0000000002AAA' },
       { type: 'CustomObject', fullName: 'Account', id: null },
@@ -292,6 +329,39 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
       writeDependencies(store, id, reading(), T1);
     });
     expect(readDependencyRows(store, id)).toEqual(ROWS);
+    store.close();
+  });
+
+  it('migrates a database of schema version 10: its versions of flows are there, with no other version', () => {
+    const path = join(temp.next(), 'orglens.sqlite');
+    const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 10) });
+    const id = snapshot(old);
+    const before: FlowVersionIds = {
+      flow: 'Renew',
+      active: '301xx0000000002AAA',
+      latest: '301xx0000000003AAA',
+      others: [],
+    };
+    old.write(() => {
+      writeDependencies(old, id, reading(), T1);
+      writeFlowVersions(old, id, [before]);
+    });
+    old.close();
+
+    const store = openStore({ path, driver });
+    expect(store.migrated).toEqual({ from: 10, to: MIGRATIONS.length });
+    // A snapshot taken before decision record 0078 keeps the active and the latest version, and no other one.
+    expect(readFlowVersionIds(store, id)).toEqual([before]);
+    expect(readDependencyRows(store, id)).toEqual(ROWS);
+    // A reading after the migration keeps the other versions, and they go with the snapshot.
+    const after = { ...before, others: ['301xx0000000005AAA'] };
+    store.write(() => {
+      writeDependencies(store, id, reading({ requests: 2 }), T2);
+      writeFlowVersions(store, id, [after]);
+    });
+    expect(readFlowVersionIds(store, id)).toEqual([after]);
+    store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
+    expect(count(store, 'snapshot_flow_other_version')).toBe(0);
     store.close();
   });
 });

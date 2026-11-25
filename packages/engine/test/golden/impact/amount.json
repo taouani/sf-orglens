@@ -11,7 +11,8 @@
     "key": "CustomField:invoice__c.amount__c",
     "type": "CustomField",
     "name": "Invoice__c.Amount__c",
-    "file": "force-app/main/default/objects/Invoice__c/fields/Amount__c.field-meta.xml"
+    "file": "force-app/main/default/objects/Invoice__c/fields/Amount__c.field-meta.xml",
+    "package": null
   },
   "sameName": [],
   "parts": 0,
@@ -38,7 +39,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Late_Fee__c.field-meta.xml",
         "line": 6,
         "column": 3
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.summary__c",
@@ -57,7 +59,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml",
         "line": 5,
         "column": 29
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.total__c",
@@ -76,7 +79,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Total__c.field-meta.xml",
         "line": 4,
         "column": 14
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomMetadata:billing_rule.invoice_amount",
@@ -95,7 +99,28 @@
         "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml",
         "line": 11,
         "column": 38
-      }
+      },
+      "package": null
+    },
+    {
+      "key": "EmailTemplate:billing/invoice_overdue",
+      "type": "EmailTemplate",
+      "name": "Billing/Invoice_Overdue",
+      "file": "force-app/main/default/email/Billing/Invoice_Overdue.email-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "EmailTemplate:billing/invoice_overdue",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/email/Billing/Invoice_Overdue.email",
+        "line": 3,
+        "column": 46
+      },
+      "package": null
     },
     {
       "key": "FieldSet:invoice__c.invoice_summary",
@@ -114,7 +139,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml",
         "line": 16,
         "column": 16
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save",
@@ -133,7 +159,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 75,
         "column": 45
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:amount_changed",
@@ -152,7 +179,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 75,
         "column": 45
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:check_result",
@@ -171,7 +199,8 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 107,
         "column": 47
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save",
@@ -190,7 +219,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 44,
         "column": 48
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save#element:block_large_invoice",
@@ -209,7 +239,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 44,
         "column": 48
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_before_save#element:is_above_limit",
@@ -228,7 +259,8 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 62,
         "column": 45
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_recalculate",
@@ -247,7 +279,8 @@
         "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
         "line": 72,
         "column": 40
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_recalculate#element:set_amount",
@@ -266,7 +299,8 @@
         "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
         "line": 72,
         "column": 40
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen",
@@ -285,7 +319,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 313,
         "column": 80
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:confirmation",
@@ -304,7 +339,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 313,
         "column": 80
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:fee",
@@ -323,7 +359,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 89,
         "column": 34
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:get_invoice",
@@ -342,7 +379,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 193,
         "column": 24
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:is_paid_now",
@@ -361,7 +399,8 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 36,
         "column": 48
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_review_screen#element:save_invoice",
@@ -380,7 +419,48 @@
         "file": "force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml",
         "line": 215,
         "column": 20
-      }
+      },
+      "package": null
+    },
+    {
+      "key": "QuickAction:invoice__c.new_line",
+      "type": "QuickAction",
+      "name": "Invoice__c.New_Line",
+      "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "QuickAction:invoice__c.new_line",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+        "line": 14,
+        "column": 29
+      },
+      "package": null
+    },
+    {
+      "key": "ReportType:invoices_with_lines",
+      "type": "ReportType",
+      "name": "Invoices_with_Lines",
+      "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ReportType:invoices_with_lines",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+        "line": 20,
+        "column": 20
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:invoice__c.amount_within_credit_limit",
@@ -399,7 +479,8 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml",
         "line": 5,
         "column": 28
-      }
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:invoice__c.credit_note_is_negative",
@@ -418,7 +499,8 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml",
         "line": 8,
         "column": 3
-      }
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:invoice__c.large_amount_needs_permission",
@@ -437,7 +519,8 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Large_Amount_Needs_Permission.validationRule-meta.xml",
         "line": 6,
         "column": 3
-      }
+      },
+      "package": null
     },
     {
       "key": "ValidationRule:invoice__c.locked_when_paid",
@@ -456,7 +539,8 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Locked_When_Paid.validationRule-meta.xml",
         "line": 7,
         "column": 13
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowOutboundMessage:invoice__c.notify_ledger",
@@ -475,7 +559,8 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 45,
         "column": 17
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowRule:invoice__c.remind_when_sent",
@@ -494,7 +579,8 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 87,
         "column": 31
-      }
+      },
+      "package": null
     },
     {
       "key": "WorkflowRule:invoice_line__c.stamp_when_billed",
@@ -513,7 +599,8 @@
         "file": "force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml",
         "line": 21,
         "column": 75
-      }
+      },
+      "package": null
     },
     {
       "key": "CustomField:invoice__c.grand_total__c",
@@ -532,7 +619,8 @@
         "file": "force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml",
         "line": 4,
         "column": 14
-      }
+      },
+      "package": null
     },
     {
       "key": "Flow:invoice_after_save#element:recalculate",
@@ -551,9 +639,51 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 251,
         "column": 19
-      }
+      },
+      "package": null
+    },
+    {
+      "key": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+      "type": "WorkflowAlert",
+      "name": "Invoice__c.Invoice_Overdue_Alert",
+      "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "to": "EmailTemplate:billing/invoice_overdue",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
+        "line": 19,
+        "column": 27
+      },
+      "package": null
+    },
+    {
+      "key": "Flow:invoice_after_save#element:send_overdue_alert",
+      "type": "Flow",
+      "name": "Invoice_After_Save.Send_Overdue_Alert",
+      "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_after_save#element:send_overdue_alert",
+        "to": "WorkflowAlert:invoice__c.invoice_overdue_alert",
+        "kind": "references",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
+        "line": 8,
+        "column": 32
+      },
+      "package": null
     }
   ],
+  "packagesLeftOut": 0,
   "unresolved": [],
   "newerVersions": [],
   "complete": false,
@@ -567,12 +697,6 @@
       },
       {
         "type": "ApexTrigger",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

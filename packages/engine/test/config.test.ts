@@ -72,13 +72,13 @@ describe('readConfig', () => {
 
   it('reads the types a snapshot of an org or a sandbox leaves out, sorted', () => {
     const result = readConfig({
-      shared: changed(
-        'description = "EMEA production"',
-        'exclude_types = ["Report", "Dashboard", "EmailTemplate"]',
-      ).replace('sandbox_name = "uat"', 'exclude_types = ["Report"]'),
+      shared: changed('description = "EMEA production"', 'exclude_types = ["Report", "Dashboard", "Document"]').replace(
+        'sandbox_name = "uat"',
+        'exclude_types = ["Report"]',
+      ),
     });
     expect(result.ok && result.config.sources.slice(0, 2)).toMatchObject([
-      { name: 'prod', excludeTypes: ['Dashboard', 'EmailTemplate', 'Report'] },
+      { name: 'prod', excludeTypes: ['Dashboard', 'Document', 'Report'] },
       { name: 'uat', excludeTypes: ['Report'] },
     ]);
   });

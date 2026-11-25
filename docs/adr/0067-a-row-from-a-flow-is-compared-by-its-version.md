@@ -4,6 +4,7 @@
 - Date: 2026-11-23
 - Decisions: none (an answer of the maintainer to a question of work package 6 of the Phase 2 plan, with the
   choices the author made in building it)
+- Changed by: [0078](0078-the-ids-of-every-version-of-a-flow-are-read.md), in two points: the engine reads a third object of the Tooling API, `Flow`, for the ids of every version of a flow, and a row from a version that is neither active nor the latest is counted in `rowsOtherVersion`, where this record counted it in `rowsNotMatched`
 
 ## Context
 

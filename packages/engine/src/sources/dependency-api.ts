@@ -25,14 +25,22 @@
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. So the versions of the flows are asked for as well: one more object of the Tooling API,
- * `FlowDefinition`, names the active and the latest version of each flow (decision record 0067).
+ * `FlowDefinition`, names the active and the latest version of each flow (decision record 0067), and another,
+ * `Flow`, names every version with the flow it is of (decision record 0078).
  *
- * The two objects describe metadata. No record of the data of the org is read, and nothing is written. A failure
+ * The three objects describe metadata. No record of the data of the org is read, and nothing is written. A failure
  * of the org never throws here: the reading says how far it came. Only a fault of this machine or of the code
  * is thrown.
  */
 import type { OrgSession } from './org.ts';
-import { MetadataRequestError, openOrgHttp, repeated, requestFailure, type RequestLimits } from './org-http.ts';
+import {
+  MetadataRequestError,
+  openOrgHttp,
+  repeated,
+  requestFailure,
+  type OrgHttp,
+  type RequestLimits,
+} from './org-http.ts';
 
 /** One end of a row, as Salesforce names it. */
 export interface DependencyEnd {
@@ -155,7 +163,10 @@ export interface DependencyOptions {
 const FIELDS =
   'MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, ' +
   'RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType';
-/** The object of the rows. The other one is `FLOW_VERSION_OBJECT`. A test holds every query against each. */
+/**
+ * The object of the rows. The others are `FLOW_VERSION_OBJECT` and `EVERY_VERSION_OBJECT`. A test holds every query
+ * against each.
+ */
 export const DEPENDENCY_OBJECT = 'MetadataComponentDependency';
 const BASE = `SELECT ${FIELDS} FROM ${DEPENDENCY_OBJECT}`;
 
@@ -675,7 +686,7 @@ export async function readDependencies(
   };
 }
 
-/** The ids of the active and of the latest version of a flow, as the org names them. */
+/** The ids of the versions of a flow, as the org names them. */
 export interface FlowVersionIds {
   /** The full name of the flow, with the prefix of its package before two underscores. */
   readonly flow: string;
@@ -683,11 +694,17 @@ export interface FlowVersionIds {
   readonly active: string | null;
   /** The id of the latest version, or `null` where the org names none. */
   readonly latest: string | null;
+  /**
+   * The ids of the other versions, sorted: those that are neither active nor the latest, such as one that a deploy
+   * left behind (decision record 0078). Empty where the org named none.
+   */
+  readonly others: readonly string[];
 }
 
 /** What the org said about the versions of its flows. */
 export interface FlowVersionReading {
   /**
+   * What the org said about its flows (`FlowDefinition`):
    * - `whole`: the org answered, and `flows` names every flow it knows.
    * - `partial`: the answer broke off. `flows` holds what came before.
    * - `none`: the org did not answer.
@@ -695,60 +712,60 @@ export interface FlowVersionReading {
   readonly state: 'whole' | 'partial' | 'none';
   /** Sorted by flow. */
   readonly flows: readonly FlowVersionIds[];
-  /** Requests that were sent. */
+  /** Requests that were sent, for both objects. */
   readonly requests: number;
-  /** The code of the failure, such as `INVALID_TYPE`, or `null`. */
+  /** The code of the failure of the query of `FlowDefinition`, such as `INVALID_TYPE`, or `null`. */
   readonly code: string | null;
+  /**
+   * What the org said about every version of its flows (`Flow`, decision record 0078). The org is asked where it
+   * named a flow.
+   * - `whole`: the org answered, and the flows it named have all their other versions.
+   * - `partial`: the answer broke off. The flows have the other versions that came before.
+   * - `none`: the org did not answer, or was not asked: because it named no flow, and then `code` is `null`, or
+   *   because the limit of requests or of pages was reached, and then `code` says which.
+   *
+   * `code` is the code of the failure, or `null`.
+   */
+  readonly versions: { readonly state: 'whole' | 'partial' | 'none'; readonly code: string | null };
 }
 
-/** The other object that is queried, once per reading. A test holds every query against it and the one above. */
+/** The second object that is queried, once per reading. A test holds every query against each of the three. */
 export const FLOW_VERSION_OBJECT = 'FlowDefinition';
 const FLOW_VERSIONS = `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`;
+/** The third object that is queried, after the second, where the org named a flow (decision record 0078). */
+export const EVERY_VERSION_OBJECT = 'Flow';
+const EVERY_VERSION = `SELECT Id, DefinitionId FROM ${EVERY_VERSION_OBJECT}`;
 
 /**
- * Asks the org which version of each of its flows is active and which is the latest: one query, followed over its
- * pages (decision record 0067).
- *
- * Never fails because of the org: an org that refuses the query, or stops answering, gives a reading that is
- * `none` or `partial`.
+ * Asks one query of the Tooling API and follows its answer over its pages, handing each record to `take`. Returns
+ * `null` where the answer is whole, and else the code of why it broke off: the code of the org, or one of OrgLens
+ * where the answer went nowhere that is allowed or the limits stopped it. Only a fault of this machine or of the
+ * code is thrown.
  */
-export async function readFlowVersions(
+async function followed(
   session: OrgSession,
-  options: Pick<DependencyOptions, 'limits' | 'apiVersion'> = {},
-): Promise<FlowVersionReading> {
-  const limits = dependencyLimits(options.limits);
-  const apiVersion = options.apiVersion ?? session.apiVersion;
-  const http = await openOrgHttp();
-  const flows = new Map<string, FlowVersionIds>();
-  let requests = 0;
+  http: OrgHttp,
+  limits: DependencyLimits,
+  apiVersion: string,
+  query: string,
+  sent: { requests: number },
+  take: (record: Row) => void,
+): Promise<string | null> {
   /** The only address an answer may go on at: the same query of the Tooling API, further on. */
   const furtherOn = new RegExp(`^/services/data/v${apiVersion.replaceAll('.', '\\.')}/tooling/query/[A-Za-z0-9_-]+$`);
-  const idIn = (record: Row, field: string): string | null => {
-    const id = text(record[field]);
-    return ID.test(id) ? id : null;
-  };
-  const sorted = (): FlowVersionIds[] =>
-    [...flows.values()].sort((a, b) => (a.flow < b.flow ? -1 : a.flow > b.flow ? 1 : 0));
-  /** What came before the answer broke off. The versions it names are right all the same. */
-  const ended = (code: string): FlowVersionReading => ({
-    state: flows.size === 0 ? 'none' : 'partial',
-    flows: sorted(),
-    requests,
-    code,
-  });
   try {
-    let url: string | null = `/services/data/v${apiVersion}/tooling/query?q=${encodeURIComponent(FLOW_VERSIONS)}`;
+    let url: string | null = `/services/data/v${apiVersion}/tooling/query?q=${encodeURIComponent(query)}`;
     for (let pages = 0; url !== null; pages += 1) {
-      if (pages >= limits.pages) return ended('PAGES_LEFT');
-      if (requests >= limits.requestsInAll) return ended(USED_UP);
+      if (pages >= limits.pages) return 'PAGES_LEFT';
+      if (sent.requests >= limits.requestsInAll) return USED_UP;
       const address: string = url;
       const late: { failure: MetadataRequestError | null } = { failure: null };
       const page = await repeated(http, limits, async () => {
-        requests += 1;
+        sent.requests += 1;
         try {
           // What sends the request is an option the declaration of the client does not name.
-          const sent = { transport: http.transport(limits.requestMs) } as never;
-          return await session.connection.request<Page | null>(address, sent);
+          const options = { transport: http.transport(limits.requestMs) } as never;
+          return await session.connection.request<Page | null>(address, options);
         } catch (error) {
           const thrown = requestFailure(error);
           // A query that took too long takes as long when it is asked again.
@@ -758,23 +775,90 @@ export async function readFlowVersions(
         }
       });
       if (late.failure !== null) throw late.failure;
-      for (const record of Array.isArray(page?.records) ? (page.records as Row[]) : []) {
-        const name = text(record['DeveloperName']);
-        if (name === '') continue;
-        const namespace = text(record['NamespacePrefix']);
-        const flow = namespace === '' ? name : `${namespace}__${name}`;
-        flows.set(flow, { flow, active: idIn(record, 'ActiveVersionId'), latest: idIn(record, 'LatestVersionId') });
-      }
+      for (const record of Array.isArray(page?.records) ? (page.records as Row[]) : []) take(record);
       const next = text(page?.nextRecordsUrl);
       if (page?.done === true) url = null;
       else if (furtherOn.test(next)) url = next;
-      else return ended('NOT_DONE');
+      else return 'NOT_DONE';
     }
+    return null;
   } catch (error) {
     if (!(error instanceof MetadataRequestError)) throw error;
-    return ended(error.code ?? 'NO_CODE');
+    return error.code ?? 'NO_CODE';
+  }
+}
+
+/**
+ * Asks the org which version of each of its flows is active and which is the latest (decision record 0067), and
+ * then for the ids of all their versions (decision record 0078): two queries, each followed over its pages. A row of
+ * the Dependency API from a flow can carry the id of any of its versions.
+ *
+ * Never fails because of the org: an org that refuses a query, or stops answering, gives a reading that says so.
+ * What came before is kept: the versions an answer names are right all the same.
+ */
+export async function readFlowVersions(
+  session: OrgSession,
+  options: Pick<DependencyOptions, 'limits' | 'apiVersion'> = {},
+): Promise<FlowVersionReading> {
+  const limits = dependencyLimits(options.limits);
+  const apiVersion = options.apiVersion ?? session.apiVersion;
+  const http = await openOrgHttp();
+  const sent = { requests: 0 };
+  /** The ids of an org have 15 characters, or 18 with three more that repeat the case of the first 15. */
+  const short = (id: string): string => id.slice(0, 15);
+  const idIn = (record: Row, field: string): string | null => {
+    const id = text(record[field]);
+    return ID.test(id) ? id : null;
+  };
+  const flows = new Map<string, { active: string | null; latest: string | null; others: Set<string> }>();
+  /** The flows by the id of their definition, which a version names. */
+  const byDefinition = new Map<string, string>();
+  try {
+    const code = await followed(session, http, limits, apiVersion, FLOW_VERSIONS, sent, (record) => {
+      const name = text(record['DeveloperName']);
+      if (name === '') return;
+      const namespace = text(record['NamespacePrefix']);
+      const flow = namespace === '' ? name : `${namespace}__${name}`;
+      flows.set(flow, {
+        active: idIn(record, 'ActiveVersionId'),
+        latest: idIn(record, 'LatestVersionId'),
+        others: new Set(),
+      });
+      const definition = idIn(record, 'Id');
+      if (definition !== null) byDefinition.set(short(definition), flow);
+    });
+    const state = code === null ? 'whole' : flows.size === 0 ? 'none' : 'partial';
+    let versions: FlowVersionReading['versions'] = { state: 'none', code: null };
+    if (flows.size > 0) {
+      let named = 0;
+      const failure = await followed(session, http, limits, apiVersion, EVERY_VERSION, sent, (record) => {
+        const id = idIn(record, 'Id');
+        const definition = idIn(record, 'DefinitionId');
+        if (id === null || definition === null) return;
+        named += 1;
+        const flow = flows.get(byDefinition.get(short(definition)) ?? '');
+        if (flow === undefined) return;
+        if (![flow.active, flow.latest].some((known) => known !== null && short(known) === short(id))) {
+          flow.others.add(id);
+        }
+      });
+      versions = { state: failure === null ? 'whole' : named === 0 ? 'none' : 'partial', code: failure };
+    }
+    return {
+      state,
+      flows: [...flows]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([flow, { active, latest, others }]) => ({
+          flow,
+          active,
+          latest,
+          others: [...others].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        })),
+      requests: sent.requests,
+      code,
+      versions,
+    };
   } finally {
     await http.close();
   }
-  return { state: 'whole', flows: sorted(), requests, code: null };
 }

@@ -16,6 +16,7 @@ import { engineVersion } from '../core/version.ts';
 import { readLocalSource, type LocalReading } from '../sources/local.ts';
 import { byCodeUnit, pathDetails, systemCode } from '../sources/tree.ts';
 import type { Store } from '../store/open.ts';
+import { countPackaged } from '../store/packages.ts';
 import {
   addCoverage,
   addIssue,
@@ -84,6 +85,11 @@ export interface TypeCoverage {
    */
   readonly listing: 'ok' | 'failed' | 'unlistable' | 'excluded';
   readonly note: string | null;
+  /**
+   * How many of the components the org listed of the type are of a managed package installed in the org, as the
+   * org says (decision record 0076). Always `0` for a snapshot of a repository.
+   */
+  readonly packaged: number;
 }
 
 export interface SnapshotIssue {
@@ -120,6 +126,12 @@ export interface CoverageReport {
   readonly issues: readonly SnapshotIssue[];
 }
 
+/** The coverage of each type of a snapshot, with how many of its listed components are of a package. */
+function typesOf(store: Store, snapshotId: number): TypeCoverage[] {
+  const packaged = countPackaged(store, snapshotId);
+  return readCoverage(store, snapshotId).map((type) => ({ ...type, packaged: packaged.get(type.type) ?? 0 }));
+}
+
 /** The report of the latest finished snapshot of a source, or of the one with the given id. */
 export function snapshotReport(store: Store, source: string, id?: number): CoverageReport | undefined {
   const snapshot = readSnapshot(store, source, id);
@@ -140,7 +152,7 @@ export function snapshotReport(store: Store, source: string, id?: number): Cover
       files: snapshot.files,
       bytes: snapshot.bytes,
     },
-    types: readCoverage(store, snapshot.id),
+    types: typesOf(store, snapshot.id),
     analysis: analysisReport(store, snapshot.id, issues),
     crossCheck: crossCheckReport(store, snapshot.id),
     issues: [...issues.filter(ofReading), ...issues.filter((issue) => !ofReading(issue))].map(

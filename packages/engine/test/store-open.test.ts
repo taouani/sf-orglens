@@ -707,6 +707,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
         'snapshot_dependency',
         'snapshot_dependency_reading',
         'snapshot_file',
+        'snapshot_flow_other_version',
         'snapshot_flow_version',
         'snapshot_issue',
         'snapshot_origin_coverage',
@@ -721,6 +722,7 @@ describe.each(DRIVERS)('openStore with $name', (driver) => {
       expect(indexes).toEqual([
         'component_by_parent',
         'reference_by_target',
+        'reference_by_unresolved_target',
         'snapshot_by_source',
         'snapshot_component_by_version',
         'snapshot_file_by_blob',

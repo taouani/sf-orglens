@@ -48,6 +48,8 @@ export type NotReportedReason =
   | 'name-in-text'
   | 'global-variable'
   | 'action-override'
+  | 'report-type'
+  | 'quick-action'
   | 'other';
 
 /** What the comparison of the rows of the Dependency API with an analysis found. */
@@ -64,7 +66,7 @@ export interface CrossCheck {
   readonly rowsNotHeld: number;
   /**
    * Rows from a version of a flow that is not the one the snapshot holds, such as a draft beside the active
-   * version. They are not compared.
+   * version, or an older version that a deploy left behind. They are not compared.
    */
   readonly rowsOtherVersion: number;
   /** Rows that were compared, and the different pairs of components they are. */
@@ -98,9 +100,9 @@ export interface CrossCheckInput {
   /** The types the analysis read. */
   readonly analysedTypes: readonly string[];
   /**
-   * The ids of the active and of the latest version of each flow, as the org named them when it was asked.
-   * Empty where it was not asked or did not answer: a row from a flow is then matched by the id the org listed the
-   * flow with, which is the id of its latest version.
+   * The ids of the versions of each flow, as the org named them when it was asked: the active one, the latest one,
+   * and every other one. Empty where it was not asked or did not answer: a row from a flow is then matched by the
+   * id the org listed the flow with, which is the id of its latest version.
    */
   readonly flowVersions: readonly FlowVersionIds[];
   /**
@@ -139,13 +141,18 @@ const isStandardObject = (key: string): boolean =>
 /** Finds the components of the snapshot that the ends of rows stand for. */
 export function listedMatcher(listed: readonly ListedId[]): (end: DependencyEnd) => ComponentKey | null {
   const byId = new Map<string, { readonly type: string; readonly key: ComponentKey }[]>();
-  /** The components the org listed without an id, by type and full name. */
+  /**
+   * The components the org listed without an id, by type and full name: the name the snapshot holds one under,
+   * and the name the org listed it with where that is another.
+   */
   const withoutId = new Map<string, ComponentKey>();
   for (const item of listed) {
     const key = keyOf(item.type, item.fullName);
     if (key === null) continue;
     if (item.id === null || item.id === '') {
-      withoutId.set(`${item.type.toLowerCase()}\u0000${item.fullName.toLowerCase()}`, key);
+      for (const name of item.listedAs === undefined ? [item.fullName] : [item.listedAs, item.fullName]) {
+        withoutId.set(`${item.type.toLowerCase()}\u0000${name.toLowerCase()}`, key);
+      }
     } else {
       const sameId = byId.get(shortId(item.id)) ?? [];
       sameId.push({ type: item.type, key });
@@ -192,12 +199,12 @@ interface FlowVersion {
 
 /**
  * Finds the flow that the end of a row stands for where its id is that of a version of a flow (decision record
- * 0067): by the ids the org named the active and the latest version with, and else by the id it listed the flow
- * with, which is that of its latest version. The flow is the one the org listed with the id of its latest version,
- * under the name of the listing, which is the name of the component the snapshot holds. Only a flow that the org
- * did not list with that id goes by the name `FlowDefinition` gives it. The version the snapshot holds is the
- * active one where a newer one is noted, and else the latest. `null`: the end is no version of a flow the org
- * named or listed.
+ * 0067): by the ids the org named the versions with, the active, the latest and every other one (decision record
+ * 0078), and by the id it listed the flow with, which is that of its latest version when it was listed. The flow is
+ * the one the org listed with the id of its latest version, under the name of the listing, which is the name of the
+ * component the snapshot holds. Only a flow that the org did not list with that id goes by the name `FlowDefinition`
+ * gives it. The version the snapshot holds is the active one where a newer one is noted, and else the latest.
+ * `null`: the end is no version of a flow the org named or listed.
  */
 export function versionMatcher(
   listed: readonly ListedId[],
@@ -210,14 +217,14 @@ export function versionMatcher(
     const key = item.type === 'Flow' && item.id !== null ? keyOf('Flow', item.fullName) : null;
     if (key !== null && item.id !== null) listedFlows.set(shortId(item.id), key);
   }
-  const byId = new Map<string, { readonly key: ComponentKey; readonly versions: Set<'active' | 'latest'> }>();
+  const byId = new Map<string, { readonly key: ComponentKey; readonly versions: Set<'active' | 'latest' | 'other'> }>();
   /** Ids the org named for two flows. An id stands for one version of one flow, so such an id says nothing. */
   const twice = new Set<string>();
-  const add = (id: string | null, key: ComponentKey, version: 'active' | 'latest'): void => {
+  const add = (id: string | null, key: ComponentKey, version: 'active' | 'latest' | 'other'): void => {
     if (id === null || id === '') return;
     const known = byId.get(shortId(id));
     if (known !== undefined && known.key !== key) twice.add(shortId(id));
-    const one = known ?? { key, versions: new Set<'active' | 'latest'>() };
+    const one = known ?? { key, versions: new Set<'active' | 'latest' | 'other'>() };
     one.versions.add(version);
     byId.set(shortId(id), one);
   };
@@ -228,9 +235,18 @@ export function versionMatcher(
     if (key === null) continue;
     add(flow.active, key, 'active');
     add(flow.latest, key, 'latest');
+    // A version that is neither is never the one the snapshot holds. A snapshot taken before record 0078 has none.
+    for (const id of flow.others) add(id, key, 'other');
   }
-  // Where the org named no version of a flow, the id it listed the flow with is that of the latest one.
-  for (const [id, key] of listedFlows) if (!byId.has(id)) add(id, key, 'latest');
+  // The id the org listed a flow with is that of the latest version when it was listed: where the org named no
+  // version of the flow with it, or named it only as another version, it is the latest one. That is so where
+  // `FlowDefinition` gave no latest version, and where a version was made after the listing.
+  for (const [id, key] of listedFlows) {
+    const known = byId.get(id);
+    if (known === undefined || (known.key === key && !known.versions.has('active') && !known.versions.has('latest'))) {
+      add(id, key, 'latest');
+    }
+  }
   const activeHeld = new Set(newerVersions);
 
   return (end) => {
@@ -310,6 +326,14 @@ function notReported(
   if (type === 'CustomMetadata') return found.vias.has('record-of') ? null : 'custom-metadata';
   if (type === 'RecordType') return 'record-type';
   if (type === 'FieldSet') return null;
+  // Of an email template, the test org reports the custom fields its merge fields name, and the object they are
+  // of. Of a report type it reports nothing. Of a quick action it reports the object it creates records of and the
+  // field `targetParentField`, which is `assignment` as a field a predefined value sets is, and the object was
+  // measured for one action of one kind: a pair of a quick action without a row is counted and not listed too
+  // (decision record 0077).
+  if (type === 'EmailTemplate') return null;
+  if (type === 'ReportType') return 'report-type';
+  if (type === 'QuickAction') return 'quick-action';
   // Of an object, a large org reported the Lightning page that overrides one of its actions. Whether the API
   // reports a Visualforce page, a Lightning component or an s-control that does was not measured (decision record
   // 0070).

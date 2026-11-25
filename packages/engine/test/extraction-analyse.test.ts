@@ -60,10 +60,16 @@ describe('the analysis of the fixture project', () => {
     tree = readFolders(project, ['force-app']).tree;
     listed = (await resolveComponents(tree, ['force-app'])).components;
     analysis = analyseSource(tree, listed);
-    // What the objects, fields and rules say. What the flows, the workflow rules, the record types, the field sets
-    // and the records of custom metadata say is measured in their files.
+    // What the objects, fields and rules say. What the flows, the workflow rules, the record types, the field sets,
+    // the records of custom metadata, the email templates, the report types and the quick actions say is measured
+    // in their files.
     references = analysis.components
-      .filter((one) => !/^(?:Flow|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata):/.test(one.key))
+      .filter(
+        (one) =>
+          !/^(?:Flow|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction):/.test(
+            one.key,
+          ),
+      )
       .flatMap((one) => one.references);
   });
 
@@ -77,7 +83,7 @@ describe('the analysis of the fixture project', () => {
     );
     expect(elements).toHaveLength(55);
     expect(elements.every((one) => one.key.startsWith('Flow:'))).toBe(true);
-    expect(analysis.components).toHaveLength(175);
+    expect(analysis.components).toHaveLength(177);
     // Only those two are not defined: the project holds fields of them and no file of the object.
     expect(analysis.components.filter((one) => one.definition === null)).toEqual([
       { key: account, name: 'Account', definition: null, attrs: null, references: [] },
@@ -183,12 +189,12 @@ describe('the analysis of the fixture project', () => {
       'PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
     // 5 objects, 57 fields and 11 rules, 2 files of workflow rules with 4 rules and 6 actions, 2 record types, a
-    // field set and 4 records of custom metadata. The two objects without a file were not looked at. 35 of the
-    // fields and rules hold a formula or a default value, and so do 7 elements of flows and 2 workflow rules and 2
-    // field updates. The 6 flows have 55 elements.
+    // field set, 4 records of custom metadata, an email template, a report type and a quick action. The two objects
+    // without a file were not looked at. 35 of the fields and rules hold a formula or a default value, and so do 7
+    // elements of flows, 2 workflow rules, 2 field updates and the quick action. The 6 flows have 55 elements.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 92, failedFiles: 0 },
-      { origin: 'parser:formula', components: 46, failedFiles: 0 },
+      { origin: 'parser:xml', components: 95, failedFiles: 0 },
+      { origin: 'parser:formula', components: 47, failedFiles: 0 },
       { origin: 'parser:flow', components: 61, failedFiles: 0 },
     ]);
     const withFormula = analysis.components.filter((one) =>
@@ -239,11 +245,11 @@ describe('the analysis of the fixture project', () => {
   it('leaves the components of every other type without attributes and without references', () => {
     const others = analysis.components.filter(
       (one) =>
-        !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata):/.test(
+        !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction):/.test(
           one.key,
         ),
     );
-    expect(others).toHaveLength(20);
+    expect(others).toHaveLength(19);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -308,9 +314,9 @@ describe('the analysis of the fixture project', () => {
         work: analysis.work,
         issues: analysis.issues,
       });
-      // 112 references of fields and rules, 126 of flows, 33 of workflow rules and 28 of record types, a field set
-      // and records of custom metadata.
-      expect(written).toMatchObject({ components: 175, references: 299 });
+      // 112 references of fields and rules, 126 of flows, 33 of workflow rules, 28 of record types, a field set
+      // and records of custom metadata, and 27 of an email template, a report type and a quick action.
+      expect(written).toMatchObject({ components: 177, references: 326 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
@@ -324,6 +330,8 @@ describe('the analysis of the fixture project', () => {
         'CustomField:invoice__c.days_overdue__c reads formula parser:formula',
         'CustomField:invoice__c.status_rank__c reads formula parser:formula',
         'CustomField:invoice__c.sub_status__c references controlling-field parser:xml',
+        // The email template, in its body.
+        'EmailTemplate:billing/invoice_overdue reads merge-field parser:xml',
         // Four elements of flows: two starts that filter by the field, and two formulas.
         'Flow:invoice_after_save#element:flow-start reads filter parser:flow',
         'Flow:invoice_before_save#element:flow-start reads formula parser:formula',

@@ -36,6 +36,7 @@ afterEach(() => {
   mock.paths.length = 0;
   mock.operations.length = 0;
   mock.withheld = [];
+  mock.packaged = [];
   mock.unlisted = [];
   mock.extraFiles = {};
   mock.extraTypes = [];
@@ -174,7 +175,7 @@ describe('orglens snapshot of an org', () => {
           commit: null,
           files: 4,
         },
-        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null }],
+        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 }],
         analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
         crossCheck: {
           state: 'whole',
@@ -239,6 +240,27 @@ describe('orglens snapshot of an org', () => {
         ...classesAnalysed('1 component'),
         ...CROSS_CHECKED,
       ].join('\n'),
+    );
+  });
+
+  it('ends with 0 when what is missing is of a managed package, and says that something is', async () => {
+    const { dir, env } = setUp();
+    // A class of a package that Salesforce does not hand out, as a protected component of a package (decision
+    // record 0076).
+    mock.packaged = ['GreeterTest'];
+    mock.withheld = ['GreeterTest'];
+    const run = await orglens(dir, ['snapshot', 'prod'], env);
+    expect(run.code).toBe(0);
+    const lines = run.stdout.split('\n');
+    expect(lines[0]).toBe(
+      'Snapshot #1 of "prod" is complete: 1 component in 2 files (245 bytes). Components of managed packages installed in the org are missing, and the warnings below say which.',
+    );
+    expect(lines.slice(2, 4)).toEqual([
+      'TYPE       LISTED  OF PACKAGES  RETRIEVED  ANALYSED',
+      'ApexClass  2       1            1          0',
+    ]);
+    expect(lines).toContain(
+      'warning   NOT_RETRIEVED      1 component of the type ApexClass that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: GreeterTest',
     );
   });
 
@@ -438,6 +460,7 @@ describe('orglens snapshot of an org', () => {
       analysed: 0,
       listing: 'excluded',
       note: 'The configuration leaves this type out (exclude_types).',
+      packaged: 0,
     });
     expect((await orglens(dir, ['coverage', 'prod'])).stdout).toContain('Report     left out  0          0');
   });

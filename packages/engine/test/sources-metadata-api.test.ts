@@ -74,7 +74,9 @@ describe('the requests to the Metadata API', () => {
       'Flow',
       'FlowDefinition',
       'GlobalValueSet',
+      'QuickAction',
       'Report',
+      'ReportType',
       'Workflow',
     ]);
     expect(types.find((type) => type.name === 'CustomLabels')?.children).toEqual(['CustomLabel']);

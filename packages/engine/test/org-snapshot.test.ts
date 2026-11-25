@@ -439,29 +439,39 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
-        { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null },
-        { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomField', listed: 57, retrieved: 57, analysed: 57, listing: 'ok', note: null },
-        { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'CustomMetadata', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null },
-        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null },
-        { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'ApexClass', listed: 13, retrieved: 13, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ApexTrigger', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomField', listed: 57, retrieved: 57, analysed: 57, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomMetadata', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         // A flow is counted with its 55 elements.
-        { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null },
-        { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null },
-        { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null },
-        { type: 'RecordType', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null },
-        { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null },
-        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null },
-        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 3, listing: 'ok', note: null },
-        { type: 'WorkflowOutboundMessage', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
-        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null },
-        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null },
+        { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null, packaged: 0 },
+        { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'QuickAction', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'RecordType', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ReportType', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null, packaged: 0 },
+        { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowFieldUpdate', listed: 3, retrieved: 3, analysed: 3, listing: 'ok', note: null, packaged: 0 },
+        {
+          type: 'WorkflowOutboundMessage',
+          listed: 1,
+          retrieved: 1,
+          analysed: 1,
+          listing: 'ok',
+          note: null,
+          packaged: 0,
+        },
+        { type: 'WorkflowRule', listed: 4, retrieved: 4, analysed: 4, listing: 'ok', note: null, packaged: 0 },
+        { type: 'WorkflowTask', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
       ]);
       // A type the org describes and has nothing of is in the report as well: it was asked for.
       expect(typeOf(report, 'ListView')).toEqual({
@@ -471,6 +481,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'ok',
         note: null,
+        packaged: 0,
       });
 
       // The files of the folder, and the same content for what Salesforce does not rewrite.
@@ -483,16 +494,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       const fromPlan = events.slice(events.findIndex((event) => event.step === 'planned'));
       expect(fromPlan.slice(0, 3)).toEqual([
-        { step: 'planned', snapshot: 1, components: 126, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 128, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
         // Before the first request to the Dependency API.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
       ]);
       // After every query for rows, none of which gave a row here: the query for every row, one for each of the 17
-      // types that are known to refer, and one for the rest (decision record 0069). The query for the versions of
-      // the flows came before them, and counts with them.
+      // types that are known to refer, and one for the rest (decision record 0069). The two queries for the versions
+      // of the flows came before them, and count with them (decision records 0067 and 0078).
       expect(fromPlan.slice(3, -1)).toEqual(
-        Array.from({ length: 19 }, (_, at) => ({ step: 'cross-checking', snapshot: 1, requests: at + 2, rows: 0 })),
+        Array.from({ length: 19 }, (_, at) => ({ step: 'cross-checking', snapshot: 1, requests: at + 3, rows: 0 })),
       );
       expect(fromPlan.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.
@@ -513,7 +524,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 126, listed: 126, retrieved: 126, ids: 126, dates: 126 });
+        ).toEqual({ items: 128, listed: 128, retrieved: 128, ids: 128, dates: 128 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -569,9 +580,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(175);
+      expect(org.components).toHaveLength(177);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(299);
+      expect(org.references).toHaveLength(326);
       // The flows among them: 6 flows with 55 elements, and the 126 references of the answer key.
       const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
       expect(org.components.filter(ofFlow)).toHaveLength(61);
@@ -603,32 +614,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
       // The 12 components of the two files of workflow rules are read as XML too, with 21 references, and so are
-      // the 2 record types, the field set and the 4 records of custom metadata, with 28.
-      const xml = { failedFiles: 0, references: 79, unresolved: 0, pathsNotFollowed: 0 };
-      // The formulas of 35 fields and rules, of 7 elements of flows and of 2 workflow rules and 2 field updates:
-      // 82 names, 19 and 12. Of the 126 references of flows, the other 107 are of the reader of flows. One path
-      // of a flow is not followed.
-      const formula = { components: 46, failedFiles: 0, references: 113, unresolved: 0, pathsNotFollowed: 0 };
+      // the 2 record types, the field set and the 4 records of custom metadata, with 28, and the email template,
+      // the report type and the quick action, with 26.
+      const xml = { failedFiles: 0, references: 105, unresolved: 0, pathsNotFollowed: 0 };
+      // The formulas of 35 fields and rules, of 7 elements of flows, of 2 workflow rules and 2 field updates and of
+      // the quick action: 82 names, 19, 12 and 1. Of the 126 references of flows, the other 107 are of the reader
+      // of flows. One path of a flow is not followed.
+      const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 61, failedFiles: 0, references: 107, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 181,
-        references: 299,
+        components: 183,
+        references: 326,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 94, ...xml },
+          { origin: 'parser:xml', components: 97, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 175,
-        references: 299,
+        components: 177,
+        references: 326,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 92, ...xml },
+          { origin: 'parser:xml', components: 95, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
@@ -638,8 +650,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // A flow is counted with its elements. The other types of Phase 2:
       const ofPhase2 = {
         CustomMetadata: 4,
+        EmailTemplate: 1,
         FieldSet: 1,
+        QuickAction: 1,
         RecordType: 2,
+        ReportType: 1,
         Workflow: 2,
         WorkflowAlert: 1,
         WorkflowFieldUpdate: 3,
@@ -782,6 +797,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'failed',
         note: 'INVALID_TYPE: Cannot use: ApexClass in this organization',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -906,6 +922,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 3,
         listing: 'ok',
         note: '1 component more came back that the org had not listed.',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -1213,6 +1230,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         analysed: 0,
         listing: 'unlistable',
         note: 'Salesforce does not list standard value sets. They are not read yet.',
+        packaged: 0,
       });
       expect(ofReading(report)).toEqual([
         {
@@ -1923,15 +1941,23 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
         expect(metadata.retrieves.flat()).toContain('CustomObject:pkg__Invoice__c');
         expect(metadata.retrieves.flat()).toContain('CustomObject:Invoice__c');
-        expect(report.snapshot.status).toBe('partial');
         expect(stored(dir, 1)).toEqual(expectedFiles());
-        expect(ofReading(report).filter((issue) => issue.severity === 'error')).toEqual([
+        // The listed object stays missing. It is of a package, so that is a warning, and the snapshot is complete
+        // (decision record 0076).
+        expect(report.snapshot.status).toBe('complete');
+        expect(ofReading(report).filter((issue) => issue.code === 'NOT_RETRIEVED')).toEqual([
           {
-            severity: 'error',
+            severity: 'warning',
             code: 'NOT_RETRIEVED',
             message:
-              '1 component of the type CustomObject that the org listed did not come back. The first: pkg__Invoice__c',
-            details: { type: 'CustomObject', count: 1, components: ['pkg__Invoice__c'], tier: 'logic' },
+              '1 component of the type CustomObject that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: pkg__Invoice__c',
+            details: {
+              type: 'CustomObject',
+              count: 1,
+              components: ['pkg__Invoice__c'],
+              tier: 'logic',
+              ofPackages: true,
+            },
           },
         ]);
         expect(ofReading(report).map((issue) => issue.code)).not.toContain('RETRIEVED_WITHOUT_PREFIX');
@@ -2410,6 +2436,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             analysed: 0,
             listing: 'excluded',
             note: 'The configuration leaves this type out (exclude_types).',
+            packaged: 0,
           });
           expect(ofReading(report)).toEqual([
             {

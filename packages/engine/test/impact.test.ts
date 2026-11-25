@@ -5,7 +5,7 @@
  * answer key, from which a test works out what every answer must be. `engines-impact.test.ts` has the rules of
  * the walk on graphs written for them.
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ImpactReport } from '../src/api/impact.ts';
@@ -64,7 +64,6 @@ const NOT_ANALYSED: readonly (readonly [string, number])[] = [
   ['CustomLabels', 1],
   ['CustomPermission', 1],
   ['EmailFolder', 1],
-  ['EmailTemplate', 1],
   ['GlobalValueSet', 1],
 ];
 
@@ -138,11 +137,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const { workspace } = await setUp();
       const answers = loadAnswerKey();
       // What the analysers must find so far: the references of fields and rules, of flows, of workflow rules, of
-      // record types, of field sets and of records of custom metadata.
+      // record types, of field sets, of records of custom metadata, of the email template, of the report type and
+      // of the quick action.
       const keyed = answers.references.filter(
         (reference) =>
           reference.phase === 1 ||
-          /^force-app\/main\/default\/(?:flows\/|workflows\/|customMetadata\/|objects\/[^/]+\/(?:recordTypes|fieldSets)\/)/.test(
+          /^force-app\/main\/default\/(?:flows\/|workflows\/|customMetadata\/|email\/|reportTypes\/|quickActions\/|objects\/[^/]+\/(?:recordTypes|fieldSets)\/)/.test(
             reference.file,
           ),
       );
@@ -168,7 +168,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       for (const one of keyed.flatMap((reference) => [reference.from, reference.to])) asked.add(one);
       for (const one of answers.components) {
         if (
-          /^(?:CustomObject|CustomField|CustomMetadata|FieldSet|Flow|RecordType|ValidationRule|Workflow[A-Za-z]*)$/.test(
+          /^(?:CustomObject|CustomField|CustomMetadata|EmailTemplate|FieldSet|Flow|QuickAction|RecordType|ReportType|ValidationRule|Workflow[A-Za-z]*)$/.test(
             one.type,
           )
         ) {
@@ -238,8 +238,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(169);
-      expect(results).toBe(602);
+      expect(asked.size).toBe(173);
+      expect(results).toBe(654);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
       // other fields have one too.
@@ -266,7 +266,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // Of the types that are not analysed, the answer names those whose components can name a field: a label, the
       // file of labels, a custom permission, a folder and a global value set cannot (decision record 0073).
       expect(report.notCovered).toEqual({
-        notAnalysed: NOT_ANALYSED.filter(([type]) => ['ApexClass', 'ApexTrigger', 'EmailTemplate'].includes(type)).map(
+        notAnalysed: NOT_ANALYSED.filter(([type]) => ['ApexClass', 'ApexTrigger'].includes(type)).map(
           ([type, held]) => ({ type, listed: held, retrieved: held, listing: 'ok' }),
         ),
         partial: [],
@@ -281,18 +281,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // answer about one of their own.
       const named = async (component: string): Promise<string[]> =>
         (await workspace.impact('fixture', component)).notCovered.notAnalysed.map((gap) => gap.type);
-      expect(await named('CustomLabel:Overdue_Notice')).toEqual([
-        'ApexClass',
-        'ApexTrigger',
-        'CustomLabels',
-        'EmailTemplate',
-      ]);
-      expect(await named('Approve_Large_Invoices')).toEqual([
-        'ApexClass',
-        'ApexTrigger',
-        'CustomPermission',
-        'EmailTemplate',
-      ]);
+      expect(await named('CustomLabel:Overdue_Notice')).toEqual(['ApexClass', 'ApexTrigger', 'CustomLabels']);
+      expect(await named('Approve_Large_Invoices')).toEqual(['ApexClass', 'ApexTrigger', 'CustomPermission']);
     });
 
     /** A file of metadata of a type, with the elements that are given. */
@@ -534,8 +524,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await again.impact('fixture', AMOUNT);
       expect(report.snapshot.status).toBe('partial');
       // 8 fields and validation rules, 10 elements of flows and the 4 flows they are of, an element that calls one
-      // of those flows, 2 workflow rules and an outbound message, a field set and a record of custom metadata.
-      expect(report.results).toHaveLength(28);
+      // of those flows, 2 workflow rules and an outbound message, a field set, a record of custom metadata, the email
+      // template with the alert that sends it and the element of a flow that starts the alert, the report type and
+      // the quick action.
+      expect(report.results).toHaveLength(33);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -551,7 +543,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(26);
+      expect(report.results).toHaveLength(31);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -795,14 +787,25 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ).toMatchObject({ code: 'INTERNAL' });
     });
 
+    it('has no component of a package in a snapshot of a repository, which has no listing', async () => {
+      // Decision record 0076. `--packages` changes nothing, in either direction.
+      const { workspace } = await setUp();
+      for (const outgoing of [false, true]) {
+        const answer = await workspace.impact('fixture', AMOUNT, { outgoing });
+        expect(await workspace.impact('fixture', AMOUNT, { outgoing, packages: true })).toEqual(answer);
+        expect(answer.packagesLeftOut).toBe(0);
+        expect([answer.component, ...answer.results].filter((one) => one.package !== null)).toEqual([]);
+      }
+    });
+
     it('asks the latest snapshot, or the one that is named', async () => {
       const { project, workspace } = await setUp();
       rmSync(join(project, OBJECTS, 'Invoice__c', 'fields', 'Late_Fee__c.field-meta.xml'));
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 27]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 28]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 32]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 33]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -906,7 +909,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ['EmailTemplate:billing/invoice_overdue', 'references', ALERT],
       ]);
       expect(outgoing.results.filter((result) => result.type.startsWith('Workflow'))).toEqual([]);
-      expect(outgoing).toMatchObject({ complete: false, notCovered: { notAnalysed: [{ type: 'EmailTemplate' }] } });
+      // The email template is analysed, and the walk goes on from it to the fields it names. Eight of the fields
+      // and objects the walk reaches are provided by Salesforce, and the snapshot does not hold them.
+      expect(outgoing).toMatchObject({ complete: false, notCovered: { notAnalysed: [], notHeld: 8 } });
     });
 
     it('refuses a snapshot that was never analysed, and says how to analyse it', async () => {
@@ -931,7 +936,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(28);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(33);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {
@@ -1003,3 +1008,28 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     });
   },
 );
+
+/** NPSP, a public codebase of `fixtures/corpora.toml`, where `pnpm run corpora:fetch` downloaded it. */
+const NPSP = join(import.meta.dirname, '../../../.corpora/npsp');
+
+describe('an impact question about a repository of a package project', () => {
+  it.skipIf(!existsSync(NPSP))(
+    'takes the components of NPSP for its own, also those named after a component of another package',
+    async () => {
+      const root = temp.next();
+      cpSync(join(NPSP, 'force-app'), join(root, 'npsp', 'force-app'), { recursive: true });
+      cpSync(join(NPSP, 'sfdx-project.json'), join(root, 'npsp', 'sfdx-project.json'));
+      writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.npsp]\nkind = "git"\nrepo = "npsp"\n');
+      const workspace = await openWorkspace({ root, env: {} });
+      const report = await workspace.snapshot('npsp');
+      expect(report.types.filter((type) => type.packaged > 0)).toEqual([]);
+      // NPSP holds the tab of an object of another package of the same family, and reads its fields.
+      expect(report.types.find((type) => type.type === 'CustomTab')?.listed).toBeGreaterThan(0);
+      const answer = await workspace.impact('npsp', 'Contact.npo02__TotalOppAmount__c', { packages: false });
+      expect(answer.results).not.toEqual([]);
+      expect(answer.packagesLeftOut).toBe(0);
+      expect([answer.component, ...answer.results].filter((one) => one.package !== null)).toEqual([]);
+    },
+    120_000,
+  );
+});
