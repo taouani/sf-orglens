@@ -178,8 +178,9 @@ packages/cli   the `orglens` binary                            imports only `@sf
   its package. The prefix in a name plays no part, and nothing of a snapshot of a repository is of a package. An
   answer about what refers to a component leaves a component of a package out, counts it (`packagesLeftOut`) and
   walks on through it. `--packages` keeps it. An answer about what a component refers to leaves nothing out. A
-  component of a package that the org listed and that is not in the snapshot makes no type partial in an answer
-  that does not count it.
+  component of a package that the org listed and that is not in the snapshot makes its type partial for an answer
+  only where a reference of the snapshot names it (a chain can go through it), or for what refers to a component
+  with `--packages`.
 - A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
   (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.

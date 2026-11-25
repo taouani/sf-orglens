@@ -234,3 +234,6 @@ CREATE TABLE snapshot_flow_version (
   latest_id   TEXT CHECK (latest_id IS NULL OR latest_id <> ''),
   PRIMARY KEY (snapshot_id, flow)
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX reference_by_unresolved_target ON reference (target_type, raw_name COLLATE NOCASE)
+  WHERE target_id IS NULL;

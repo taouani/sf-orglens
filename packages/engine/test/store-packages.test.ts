@@ -5,10 +5,18 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildKey, type ComponentKey } from '../src/core/keys.ts';
+import { validateReference } from '../src/core/references.ts';
+import { writeAnalysis } from '../src/store/analysis.ts';
 import { addInventory, markNotRetrieved, markRetrieved, type InventoryRow } from '../src/store/journal.ts';
 import { MIGRATIONS } from '../src/store/migrate.ts';
 import { openStore, type Store } from '../src/store/open.ts';
-import { countMissingOfPackages, countPackaged, missingOfPackages, readPackages } from '../src/store/packages.ts';
+import {
+  countMissingOfPackages,
+  countMissingOfPackagesNothingNames,
+  countPackaged,
+  missingOfPackages,
+  readPackages,
+} from '../src/store/packages.ts';
 import { ensureSource, insertSnapshot } from '../src/store/snapshots.ts';
 import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 
@@ -150,16 +158,78 @@ describe.each(DRIVERS)('the packages of the components of a snapshot with $name'
     store.close();
   });
 
+  it('counts a component of a package that did not come back where no reference of the snapshot names it', () => {
+    const store = open();
+    const id = begin(store);
+    const other = begin(store, 'sandbox');
+    const own = key('ApexClass', 'Own');
+    store.write(() => {
+      for (const snapshot of [id, other]) {
+        addInventory(store, snapshot, [
+          listed('ApexClass', 'Own'),
+          // Named by its key.
+          listed('CustomLabel', 'pkg__Greeting', 'pkg', 'installed'),
+          // Named by a reference without a target, by its name without the prefix, in other letters.
+          listed('Flow', 'pkg__Route', 'pkg', 'installed'),
+          // Named by nothing.
+          listed('Flow', 'pkg__Gone', 'pkg', 'installed'),
+        ]);
+        markRetrieved(store, snapshot, [{ type: 'ApexClass', fullName: 'Own' }]);
+      }
+    });
+    const at = { file: 'classes/Own.cls', line: 3, column: 5 };
+    const references = [
+      validateReference({
+        from: own,
+        to: key('CustomLabel', 'pkg__Greeting'),
+        toType: 'CustomLabel',
+        toNameRaw: 'pkg__Greeting',
+        kind: 'reads',
+        origin: 'parser:apex',
+        confidence: 'confirmed',
+        resolution: 'external',
+        location: at,
+      }),
+      validateReference({
+        from: own,
+        to: null,
+        toType: 'Flow',
+        toNameRaw: 'route',
+        kind: 'calls',
+        origin: 'parser:apex',
+        confidence: 'confirmed',
+        resolution: 'unresolved',
+        location: at,
+      }),
+    ];
+    writeAnalysis(store, id, {
+      engineVersion: '1.2.3',
+      analysedAt: T0,
+      types: ['ApexClass'],
+      components: [{ key: own, name: 'Own', definition: null, attrs: null, references }],
+      work: [{ origin: 'parser:apex', components: 1, failedFiles: 0 }],
+      issues: [],
+    });
+    expect(countMissingOfPackagesNothingNames(store, id)).toEqual(new Map([['Flow', 1]]));
+    // What a component of another snapshot refers to names nothing of this one.
+    expect(countMissingOfPackagesNothingNames(store, other)).toEqual(countMissingOfPackages(store, other));
+    expect(countMissingOfPackages(store, other)).toEqual(
+      new Map([
+        ['CustomLabel', 1],
+        ['Flow', 2],
+      ]),
+    );
+    store.close();
+  });
+
   it('migrates a database of schema version 9: its components of a package are known under their listed names', () => {
     const path = join(temp.next(), 'orglens.sqlite');
     const old = open(path, MIGRATIONS.slice(0, 9));
     const id = begin(old);
     old.write(() => {
+      // The flow came back as `Route`, and the rule of the prefix took it for the listed one.
       addInventory(old, id, [listed('Flow', 'pkg__Route', 'pkg', 'installed')]);
-      old.run(
-        `INSERT INTO inventory_item (snapshot_id, type, full_name, listed, retrieved) VALUES (?, 'Flow', 'Route', 0, 1)`,
-        id,
-      );
+      old.run(`UPDATE inventory_item SET retrieved = 1 WHERE snapshot_id = ? AND full_name = 'pkg__Route'`, id);
     });
     old.close();
 

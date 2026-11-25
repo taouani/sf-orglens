@@ -257,7 +257,7 @@ describe.each(DRIVERS)('the rows of the Dependency API of a snapshot with $name'
       markRetrieved(store, id, [{ type: 'ApexClass', fullName: 'Billing' }], { asked: [billing], notFound: [] });
     });
     expect(readListedIds(store, id)).toEqual([
-      { type: 'ApexClass', fullName: 'Billing', id: '01pxx0000000001AAA' },
+      { type: 'ApexClass', fullName: 'Billing', listedAs: 'pkg__Billing', id: '01pxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Amount__c', id: '00Nxx0000000001AAA' },
       { type: 'CustomField', fullName: 'Invoice__c.Total__c', id: '00Nxx0000000002AAA' },
       { type: 'CustomObject', fullName: 'Account', id: null },

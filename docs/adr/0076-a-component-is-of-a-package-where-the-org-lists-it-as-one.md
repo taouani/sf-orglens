@@ -50,7 +50,8 @@ should make a snapshot partial, and answered on the same day: no, it is a warnin
 3. **The name a listed component came back with is kept with its row** (`inventory_item.came_back_as`, migration
    10), where it is another name, whichever rule took it for the listed one. The package of the component is read
    from the row, and the cross-check matches a row of the Dependency API by the id of the listed component to the
-   component the snapshot holds. This replaces choice 6 of record 0047.
+   component the snapshot holds, and a row about one listed without an id by either name. This replaces choice 6
+   of record 0047.
 4. **An answer about what refers to a component leaves a result of a package out, counts it
    (`packagesLeftOut`), and says so in a line of its own.** `impact --packages` keeps it. Every result and the
    component that was asked about say which package they are of (`package`). The text shows a column `PACKAGE`
@@ -65,10 +66,16 @@ should make a snapshot partial, and answered on the same day: no, it is a warnin
    answer of 2026-11-25. The issue keeps the code `NOT_RETRIEVED`, with `details.ofPackages` set to `true` and the
    tier of its type, and does not make the snapshot partial. The components of the org's own that did not come
    back are an issue of their own, judged by the tier as before.
-8. **Such a component makes no type partial in an answer that does not count it**: in an answer about what refers
-   to a component, unless it keeps the components of packages, and in an answer about what a component refers to,
-   where it is a target the snapshot does not hold and is counted as such (`notHeld`). With `--packages` the type
-   is partial, and the answer may miss something.
+8. **Such a component makes no type partial in an answer where no reference of the snapshot names it**: by its
+   key, or, for a reference whose target has no key, by its type and the name the org lists it with or that name
+   without the prefix of the package. A chain of references can go through a component that a reference names,
+   and what that component refers to is not known: what of the org refers to a component through it is missing
+   from an answer about what refers to the component, and what a component refers to through it from an answer
+   about what the component refers to. So its type is partial for both, as for a component of the org's own. One
+   that nothing names lies on no chain. It counts only for an answer about what refers to a component that keeps
+   the components of packages, where it could be a result. Migration 10 adds an index of the references whose
+   target has no key, by type and name, for the question. In the gaps of an answer, the numbers of such a type
+   are those of `coverage`, with the components of packages.
 9. **`coverage` counts per type how many of the components the org listed are of a package** (`packaged`), and
    the text shows a column `OF PACKAGES` where a type has one.
 10. **A pair of the Dependency API from a component of a package is compared as any other.** A pair that the
@@ -93,14 +100,24 @@ should make a snapshot partial, and answered on the same day: no, it is a warnin
   that component by the name the org lists it with, the pair is `REFERENCE_MISSED`. That is a reference an answer
   about the component the snapshot holds misses.
 - The JSON of `impact` has two fields more, `package` on the component and on each result and `packagesLeftOut`,
-  and that of `coverage`, `snapshot` and `analyse` one more on each type, `packaged`. The text of `impact` has one
-  line and one column more where a package is in the answer, and that of `coverage` one column more where the org
-  lists a component of a package.
-- The text of a snapshot of a repository and of an org without packages does not change.
+  and that of `coverage`, `snapshot` and `analyse` one more on each type, `packaged`. The text of `impact` has up
+  to three lines more where a package is in the answer: that the component is of one, how many results were left
+  out, and that a `REFERS TO` can name one of them, and a column `PACKAGE`. That of `coverage`, `snapshot` and
+  `analyse` has a column `OF PACKAGES` where the org lists a component of a package, and the first line says so
+  where one did not come back.
+- The text of a snapshot of a repository does not change. That of an org without packages changes only where the
+  cross-check now compares a row about a component that came back under another name, as the consequence above
+  says.
+- The warning names the rule, not the cause. A component of a package can also be missing where it came back
+  under a name that no rule of record 0047 takes for it, such as where the retrieve asked for both names. The
+  component that came back is then one the org did not list, and of the org's own for an answer.
 - Not done: a reference that names a component of a package by the name the org lists it with, with the prefix,
   does not reach the component the snapshot holds under the name it came back with. Only bundles of Lightning web
   components were seen to come back without the prefix, and no analyser reads a bundle. The mock org of the tests
   hands out every component of a package without the prefix, and the references to it are written without it.
 - Not verified on an org: the test org has no package. The mock org of the tests lists components of a package
   as an org does, with the prefix and the state `installed`. Whether an org with a namespace of its own lists its
-  components with `released`, as the documentation of the Metadata API says, is not verified either.
+  components with `released`, as the documentation of the Metadata API says, is not verified either. Nor is how
+  an org lists the components of a managed package that is installed in beta, which `beta` would leave to the
+  org's own, and those of an unlocked package with a namespace: with `installed` or `installedEditable`, the code
+  a customer builds as such a package would be taken for a package and left out of an answer.

@@ -178,7 +178,9 @@ they have below a package directory, such as `classes/Foo.cls`.
   report stays that of a complete snapshot. A component of a managed package installed in the org that does not
   come back is no error either: Salesforce does not hand out a protected component of a package, such as a
   protected custom label. Its issue `NOT_RETRIEVED` is a warning with `details.ofPackages` set to `true`, apart
-  from the issue about the components of the org's own of the same type (decision record
+  from the issue about the components of the org's own of the same type, and the first line of the report says
+  after the numbers: "Components of managed packages installed in the org are missing, and the warnings below say
+  which." Whether such a component bears on an impact answer, the answer says (decision record
   [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)).
 
   A snapshot that an earlier version took keeps the status that version gave it. A snapshot of a repository is
@@ -445,11 +447,14 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
 - A component of a row is found by the id the org listed it with. A name is taken only where there is no id:
   for a standard object, which Salesforce names in the place of an id, and for a component the org listed
   without one. A row that names a component the org did not list is counted and not compared. A component that
-  came back under another name than the org lists it with, such as a component of a package without its prefix,
-  is the one the snapshot holds under the name that came back (decision record
-  [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). A snapshot taken before that
-  record keeps no such name, and a row from such a component is counted as one from a component the snapshot
-  does not hold.
+  came back under another name than the org lists it with is the one the snapshot holds under the name that came
+  back, and one listed without an id is found by either name (decision record
+  [0076](adr/0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). That holds for every rule that
+  takes it for the listed one: a component of a package without its prefix, a document without the ending of its
+  file, a part of a person account, and a report or folder under the whole path of its folders. A row about such
+  a component is compared, also in an org without packages, and where the analysis names the component by the
+  name the org lists it with, the pair is `REFERENCE_MISSED`. A snapshot taken before that record keeps no such
+  name, and a row from such a component is counted as one from a component the snapshot does not hold.
 - **A pair that Salesforce reports and the analysis lacks** is the issue `REFERENCE_MISSED` of the analysis, with
   the severity `error`. It makes the analysis incomplete: `snapshot` and `analyse` end with the exit code `5`,
   and an impact answer from the snapshot says that it may miss something.
@@ -819,9 +824,11 @@ the answer says whether it is complete, and if not, why. Below the results it na
   of which the snapshot holds only components that the source did not list, with `0` for both numbers, which
   count what the source listed;
 - the analysed types of which the snapshot holds less than the source has, also when it holds nothing of them. A
-  component of a managed package that the org listed and that is not in the snapshot counts here only with
-  `--packages`. Without it, the answer leaves such a component out, and with `--outgoing` it is a component the
-  snapshot does not hold, as the last point says;
+  component of a managed package that the org listed and that is not in the snapshot counts here where a
+  reference of the snapshot names it, by its key or by its type and its name, with or without the prefix of its
+  package: a chain of references can go through it, and what it refers to is not known. One that nothing names
+  counts only for what refers to a component with `--packages`, where it could be a result. The numbers of such a
+  type are those of `coverage`, with the components of packages;
 - how many files or folders could not be read, and how many errors the analysis had, with the command that shows
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
   about a type the answer covers: a type the analysis read, or one of which it analysed a component. Every type

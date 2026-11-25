@@ -1944,7 +1944,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             severity: 'warning',
             code: 'NOT_RETRIEVED',
             message:
-              '1 component of the type CustomObject that the org listed as of a managed package installed in it did not come back. Salesforce does not hand out a protected component of a package, so the snapshot is not partial for it. The first: pkg__Invoice__c',
+              '1 component of the type CustomObject that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: pkg__Invoice__c',
             details: {
               type: 'CustomObject',
               count: 1,

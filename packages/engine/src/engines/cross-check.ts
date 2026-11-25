@@ -139,13 +139,18 @@ const isStandardObject = (key: string): boolean =>
 /** Finds the components of the snapshot that the ends of rows stand for. */
 export function listedMatcher(listed: readonly ListedId[]): (end: DependencyEnd) => ComponentKey | null {
   const byId = new Map<string, { readonly type: string; readonly key: ComponentKey }[]>();
-  /** The components the org listed without an id, by type and full name. */
+  /**
+   * The components the org listed without an id, by type and full name: the name the snapshot holds one under,
+   * and the name the org listed it with where that is another.
+   */
   const withoutId = new Map<string, ComponentKey>();
   for (const item of listed) {
     const key = keyOf(item.type, item.fullName);
     if (key === null) continue;
     if (item.id === null || item.id === '') {
-      withoutId.set(`${item.type.toLowerCase()}\u0000${item.fullName.toLowerCase()}`, key);
+      for (const name of item.listedAs === undefined ? [item.fullName] : [item.listedAs, item.fullName]) {
+        withoutId.set(`${item.type.toLowerCase()}\u0000${name.toLowerCase()}`, key);
+      }
     } else {
       const sameId = byId.get(shortId(item.id)) ?? [];
       sameId.push({ type: item.type, key });

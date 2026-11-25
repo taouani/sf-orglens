@@ -820,7 +820,8 @@ describe('what an answer does not cover', () => {
       type('Flow', { listed: 10, retrieved: 8, analysed: 8 }),
       type('ValidationRule', { listed: 4, retrieved: 3, analysed: 3, listing: 'failed' }),
     ];
-    // Six fields and two flows of packages did not come back, and one rule. A type that could not be listed stays.
+    // The six fields that did not come back are of packages, one of the two flows is, and so is the rule. A type
+    // that could not be listed stays.
     const ofPackages = new Map([
       ['CustomField', 6],
       ['Flow', 1],

@@ -1407,8 +1407,8 @@ function finish(store: Store, snapshotId: number): void {
           );
         } else {
           // A component of a managed package installed in the org does not make the snapshot partial: Salesforce
-          // does not hand out a protected one, and an answer leaves it out as the thing that refers (decision
-          // record 0076).
+          // does not hand out a protected one, and an answer leaves it out as the thing that refers. An answer
+          // counts it as missing where a reference names it (decision record 0076).
           const ofPackages = missingOfPackages(store, snapshotId, type);
           const packaged = new Set(ofPackages);
           const own = missing.filter((name) => !packaged.has(name));
@@ -1425,7 +1425,7 @@ function finish(store: Store, snapshotId: number): void {
               snapshotId,
               'warning',
               'NOT_RETRIEVED',
-              `${plural(ofPackages.length, 'component', 'components')} of the type ${type} that the org listed as of a managed package installed in it did not come back. Salesforce does not hand out a protected component of a package, so the snapshot is not partial for ${ofPackages.length === 1 ? 'it' : 'them'}. The first: ${ofPackages[0] ?? ''}`,
+              `${plural(ofPackages.length, 'component', 'components')} of the type ${type} that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: ${ofPackages[0] ?? ''}`,
               { type, ...named(ofPackages), tier, ofPackages: true },
             );
           }

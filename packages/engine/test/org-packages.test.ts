@@ -151,7 +151,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
     it('takes a component of a package that the org does not hand out for a warning, and its own for an error', async () => {
       metadata.withheld.add(`Flow:${RECALCULATE}`);
-      const { workspace, report } = await snapshotWith([RECALCULATE]);
+      const { report } = await snapshotWith([RECALCULATE]);
       const notRetrieved = (of: CoverageReport): unknown[] =>
         of.issues
           .filter((issue) => issue.code === 'NOT_RETRIEVED')
@@ -163,7 +163,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         {
           severity: 'warning',
           message:
-            '1 component of the type Flow that the org listed as of a managed package installed in it did not come back. Salesforce does not hand out a protected component of a package, so the snapshot is not partial for it. The first: pkg__Invoice_Recalculate',
+            '1 component of the type Flow that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: pkg__Invoice_Recalculate',
           details: {
             type: 'Flow',
             count: 1,
@@ -175,21 +175,6 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       const flows = report.types.find((type) => type.type === 'Flow');
       expect(flows).toMatchObject({ packaged: 1, retrieved: (flows?.listed ?? 0) - 1 });
-
-      // An answer that leaves the components of packages out misses nothing for it, and one that keeps them may.
-      const answer = await workspace.impact('prod', 'Account.Credit_Limit__c');
-      expect(answer.notCovered.partial).toEqual([]);
-      expect(answer.mayMiss).toBe(false);
-      const all = await workspace.impact('prod', 'Account.Credit_Limit__c', { packages: true });
-      expect(all.notCovered.partial).toEqual([
-        { type: 'Flow', listed: flows?.listed, retrieved: flows?.retrieved, listing: 'ok' },
-      ]);
-      expect(all.mayMiss).toBe(true);
-      // As a target, it is a component the snapshot does not hold.
-      const outgoing = await workspace.impact('prod', `Flow:${AFTER_SAVE}`, { outgoing: true });
-      expect(outgoing.notCovered.partial).toEqual([]);
-      expect(outgoing.notCovered.notHeld).toBeGreaterThan(0);
-      expect(outgoing.mayMiss).toBe(false);
 
       // A flow of the org's own that does not come back makes the snapshot partial, as before.
       metadata.withheld.add('Flow:Invoice_Before_Save');
@@ -213,6 +198,46 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           },
         },
       ]);
+    });
+
+    it('counts a component of a package that is not handed out as missing where a reference names it', async () => {
+      metadata.withheld.add(`Flow:${RECALCULATE}`);
+      const { workspace, report } = await snapshotWith([RECALCULATE]);
+      const flows = report.types.find((type) => type.type === 'Flow');
+      const gap = { type: 'Flow', listed: flows?.listed, retrieved: flows?.retrieved, listing: 'ok' };
+
+      // A flow of the org's own calls it, and the walk goes on through a component of a package: what refers to
+      // the field through it is not known. An answer that leaves the components of packages out may miss it too.
+      const answer = await workspace.impact('prod', 'Account.Credit_Limit__c');
+      expect(answer.results.map((result) => result.key)).not.toContain('Flow:invoice_after_save');
+      expect(answer.notCovered.partial).toEqual([gap]);
+      expect(answer.mayMiss).toBe(true);
+      const all = await workspace.impact('prod', 'Account.Credit_Limit__c', { packages: true });
+      expect(all.notCovered.partial).toEqual([gap]);
+      expect(all.mayMiss).toBe(true);
+      // What the flow that calls it refers to through it is not known either. The flow the snapshot does not hold
+      // has no key, so the reference to it is one without a target.
+      const outgoing = await workspace.impact('prod', `Flow:${AFTER_SAVE}`, { outgoing: true });
+      expect(outgoing.unresolved.map(({ type, name }) => [type, name])).toContainEqual(['Flow', RECALCULATE]);
+      expect(outgoing.notCovered.partial).toEqual([gap]);
+      expect(outgoing.mayMiss).toBe(true);
+
+      // Once the flow that calls it is not handed out either, nothing the snapshot holds names a flow of the
+      // package that is missing. An answer that leaves them out misses nothing for them, and one that keeps them may.
+      metadata.withheld.add(`Flow:${AFTER_SAVE}`);
+      const unnamed = await snapshotWith([AFTER_SAVE]);
+      const now = unnamed.report.types.find((type) => type.type === 'Flow');
+      expect(now).toMatchObject({ packaged: 2, retrieved: (now?.listed ?? 0) - 2 });
+      const left = await unnamed.workspace.impact('prod', 'Account.Credit_Limit__c');
+      expect(left.notCovered.partial).toEqual([]);
+      expect(left.mayMiss).toBe(false);
+      const kept = await unnamed.workspace.impact('prod', 'Account.Credit_Limit__c', { packages: true });
+      expect(kept.notCovered.partial).toEqual([
+        { type: 'Flow', listed: now?.listed, retrieved: now?.retrieved, listing: 'ok' },
+      ]);
+      expect(kept.mayMiss).toBe(true);
+      const before = await unnamed.workspace.impact('prod', 'Flow:Invoice_Before_Save', { outgoing: true });
+      expect(before.notCovered.partial).toEqual([]);
     });
 
     it('leaves nothing out of what a component refers to', async () => {

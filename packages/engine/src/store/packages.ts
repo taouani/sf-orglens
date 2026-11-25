@@ -48,9 +48,12 @@ function keyOf(type: string, fullName: string): ComponentKey | null {
 export function readPackages(store: Store, snapshotId: number): Packages {
   const packages = new Map<ComponentKey, string>();
   const rows = store.all(
-    `SELECT type, full_name, came_back_as, namespace_prefix FROM inventory_item WHERE snapshot_id = ? AND ${OF_PACKAGE}`,
+    `SELECT type, full_name, came_back_as, namespace_prefix FROM inventory_item WHERE snapshot_id = ? AND ${OF_PACKAGE}
+      ORDER BY type, full_name`,
     snapshotId,
   );
+  // Two components of two packages can come back under one name where they came back in two retrieves (record
+  // 0047). The row read last is taken, in the order of the names, so that the answer is the same every time.
   for (const row of rows) {
     const type = String(row['type']);
     const prefix = String(row['namespace_prefix']);
@@ -101,7 +104,10 @@ export function missingOfPackages(store: Store, snapshotId: number, type: string
     .map((row) => String(row['full_name']));
 }
 
-/** Per type, how many of the components the org listed as of an installed package did not come back. */
+/**
+ * Per type, how many of the components the org listed as of an installed package did not come back. As a target,
+ * such a component is one the snapshot does not hold.
+ */
 export function countMissingOfPackages(store: Store, snapshotId: number): Map<string, number> {
   const counts = new Map<string, number>();
   const rows = store.all(
@@ -111,4 +117,61 @@ export function countMissingOfPackages(store: Store, snapshotId: number): Map<st
   );
   for (const row of rows) counts.set(String(row['type']), Number(row['missing']));
   return counts;
+}
+
+/**
+ * Per type, how many of the components the org listed as of an installed package did not come back and that no
+ * reference of the snapshot names: by its key or, for a reference whose target has no key, by its type and its
+ * name. A name is the one the org listed or that name without the prefix of the package, as a component can come
+ * back. A reference that names one can lead through it to what an answer is about, and what the component refers
+ * to is not known. Such a component counts as missing for an answer (decision record 0076).
+ */
+export function countMissingOfPackagesNothingNames(store: Store, snapshotId: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  const rows = store.all(
+    `SELECT type, full_name, namespace_prefix FROM inventory_item
+      WHERE snapshot_id = ? AND retrieved = 0 AND ${OF_PACKAGE} ORDER BY type, full_name`,
+    snapshotId,
+  );
+  for (const row of rows) {
+    const type = String(row['type']);
+    const fullName = String(row['full_name']);
+    const prefix = `${String(row['namespace_prefix'])}__`;
+    const names = fullName.startsWith(prefix) ? [fullName, fullName.slice(prefix.length)] : [fullName];
+    if (!names.some((name) => isNamed(store, snapshotId, type, name))) counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * True if a reference of a component of the snapshot names the component of this type and name. The joins go
+ * from the target to the references that name it, and then to the snapshot: a snapshot holds many more
+ * components than one is named by.
+ */
+function isNamed(store: Store, snapshotId: number, type: string, name: string): boolean {
+  const key = keyOf(type, name);
+  const byKey =
+    key !== null &&
+    store.get(
+      `SELECT 1 AS named FROM component AS target
+         CROSS JOIN reference ON reference.target_id = target.id AND reference.target_id IS NOT NULL
+         CROSS JOIN snapshot_component AS holder
+           ON holder.version_id = reference.version_id AND holder.snapshot_id = ?
+        WHERE target.key = ? LIMIT 1`,
+      snapshotId,
+      key,
+    ) !== undefined;
+  return (
+    byKey ||
+    store.get(
+      `SELECT 1 AS named FROM reference
+         CROSS JOIN snapshot_component AS holder
+           ON holder.version_id = reference.version_id AND holder.snapshot_id = ?
+        WHERE reference.target_id IS NULL AND reference.target_type = ? AND reference.raw_name = ? COLLATE NOCASE
+        LIMIT 1`,
+      snapshotId,
+      type,
+      name,
+    ) !== undefined
+  );
 }

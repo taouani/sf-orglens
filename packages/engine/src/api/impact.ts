@@ -25,7 +25,7 @@ import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import { countInventory } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
-import { countMissingOfPackages, readPackages } from '../store/packages.ts';
+import { countMissingOfPackagesNothingNames, readPackages } from '../store/packages.ts';
 import {
   countIssues,
   readAnalysisWarnings,
@@ -264,11 +264,11 @@ export function impactOf(store: Store, source: string, component: string, query:
   const { read, analysis: analysisErrors, readWarnings } = countIssues(store, snapshot.id, covered);
   const bearing = warningsThatBear(readAnalysisWarnings(store, snapshot.id), walk, direction).length;
   const issues = { read, analysis: analysisErrors, analysisWarnings: readWarnings + bearing };
-  // A component of a package that the org listed and did not hand out makes no type partial where the answer
-  // leaves the components of packages out as the thing that refers. As a target, the walk counts it as one the
-  // snapshot does not hold (decision record 0076).
+  // A component of a package that the org listed and did not hand out makes no type partial where no reference of
+  // the snapshot names it: no chain of references goes through it. An answer that keeps the components of
+  // packages as the thing that refers counts every one, as it can be a result (decision record 0076).
   const keepsPackages = direction === 'incoming' && query.packages === true;
-  const ofPackages = keepsPackages ? new Map<string, number>() : countMissingOfPackages(store, snapshot.id);
+  const ofPackages = keepsPackages ? new Map<string, number>() : countMissingOfPackagesNothingNames(store, snapshot.id);
   const gaps = impactGaps(types, issues, analysis.types, unlisted, ofPackages);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what

@@ -399,7 +399,11 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
   const lines = [
     `${headline} ${count(components, 'component', 'components')} in ${count(snapshot.files, 'file', 'files')} (${size(snapshot.bytes)})${
       snapshot.commit === null ? '' : `, commit ${shortCommit(snapshot.commit)}`
-    }.${lacksOtherTypes(report) ? ' Something of other types is missing, and the warnings below say what.' : ''}`,
+    }.${lacksOtherTypes(report) ? ' Something of other types is missing, and the warnings below say what.' : ''}${
+      lacksOfPackages(report)
+        ? ' Components of managed packages installed in the org are missing, and the warnings below say which.'
+        : ''
+    }`,
   ];
   // An org describes hundreds of types and has components of a few of them. A type of which it listed none says
   // nothing in a table. A type it could not list always does, and so does one of which something came back.
@@ -703,6 +707,15 @@ const lacksOtherTypes = (report: CoverageReport): boolean =>
   report.snapshot.status === 'complete' &&
   report.issues.some(
     (issue) => issue.stage === 'read' && issue.severity === 'warning' && issue.details['tier'] === 'other',
+  );
+
+/**
+ * True for a snapshot of an org that lacks components of a managed package installed in it, which make no
+ * snapshot partial (decision record 0076). The warnings of its reading say which.
+ */
+const lacksOfPackages = (report: CoverageReport): boolean =>
+  report.issues.some(
+    (issue) => issue.stage === 'read' && issue.code === 'NOT_RETRIEVED' && issue.details['ofPackages'] === true,
   );
 
 /** What a snapshot is called. One that lacks something outside the logic tier is called complete for that tier. */
