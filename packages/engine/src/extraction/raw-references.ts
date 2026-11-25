@@ -5,8 +5,9 @@
  * nothing else, so the file can be let go. Resolving needs the model of all objects, which exists only once
  * every file was read. Every reader of this layer hands its names over in this form: the reader of objects,
  * fields, rules, record types and field sets (`objects.ts`), the reader of flows (`flows.ts`), the reader of
- * workflow rules (`workflows.ts`), the reader of records of custom metadata types (`custom-metadata.ts`) and the
- * readers of formulas and of merge fields (`names-in-text.ts`).
+ * workflow rules (`workflows.ts`), the reader of records of custom metadata types (`custom-metadata.ts`), the
+ * readers of email templates, report types and quick actions (`email-templates.ts`, `report-types.ts` and
+ * `quick-actions.ts`) and the readers of formulas and of merge fields (`names-in-text.ts`).
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
@@ -38,17 +39,25 @@ export type Via =
    * field it goes through to the parent it writes on.
    */
   | 'path'
-  /** In a flow: the field a record element sets by its name. The field a field update writes. */
+  /**
+   * In a flow: the field a record element sets by its name. The field a field update writes. The field a quick
+   * action sets, and the record type it gives the records it creates.
+   */
   | 'assignment'
   /** In a flow: a field a query asks for or stores. */
   | 'output'
   | 'sort'
   /** The date field a scheduled path, a time trigger or the due date of a task counts from. */
   | 'time'
-  /** What a flow starts: an Apex class, a subflow, an alert. What a workflow rule starts: an action of its object. */
+  /**
+   * What a flow starts: an Apex class, a subflow, an alert. What a workflow rule starts: an action of its object.
+   * What a quick action opens: a flow, a component, a page, a canvas app.
+   */
   | 'action'
-  /** The email template of an alert. */
+  /** The email template of an alert and of a quick action that sends email, and the letterhead of a template. */
   | 'template'
+  /** A document an email template attaches. */
+  | 'attachment'
   /**
    * A field in a list: of the recipients of an alert, of the fields an outbound message sends, of the picklists
    * of a record type, of a field set, or of the fields a record of a custom metadata type gives a value.
@@ -71,7 +80,9 @@ export type Via =
    */
   | 'value'
   /** The page or component that overrides an action of an object, such as the Lightning page of its records. */
-  | 'action-override';
+  | 'action-override'
+  /** A child relationship a report type joins: the reference is to the lookup field that defines it. */
+  | 'join';
 
 /** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
 export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
@@ -151,6 +162,34 @@ export type RawReference = Raw &
      * is that name, or `null` where the element names nothing that could say it.
      */
     | { readonly form: 'unfollowed'; readonly after: NameAt | null; readonly names: readonly NameAt[] }
+    /**
+     * A child relationship that a report type joins, at `at`, of the object reached from `start` through the child
+     * relationships `joins`, which earlier joins of the same report type name. The reference is to the lookup
+     * field of the child object that defines the relationship.
+     */
+    | {
+        readonly form: 'join';
+        readonly start: string;
+        readonly joins: readonly string[];
+        readonly at: NameAt;
+        /**
+         * Where the name can be a relationship to a parent as well, as in a Visualforce template: the names of the
+         * path from `start` that it is then. The path is followed where the name is no child relationship that is
+         * known and is a lookup field the snapshot holds or knows to be outside it.
+         */
+        readonly orPath?: readonly (NameAt & PathHint)[];
+      }
+    /**
+     * A field that a report type lists: a path of names from the object reached from `start` through the child
+     * relationships `joins`, the table of the field. Every name before the last is a lookup field, and is read.
+     * The field at the end is referred to.
+     */
+    | {
+        readonly form: 'column';
+        readonly start: string;
+        readonly joins: readonly string[];
+        readonly names: readonly (NameAt & PathHint)[];
+      }
     /**
      * A value of a record of a custom metadata type that is one name, or two joined by a dot, given the field
      * `field` of the type `start`. What it names depends on that field, which only the model knows. `record`
@@ -232,7 +271,7 @@ export function fieldsANameCanBe(name: string): string[] {
  * The relationship of a lookup field, by the name of the field, in any case: `Invoice__c` is `Invoice__r`, and
  * `AccountId` is `Account`. Any other name is taken for the name of a relationship.
  */
-const relationshipOf = (field: string): string =>
+export const relationshipOf = (field: string): string =>
   /__p?c$/i.test(field) ? `${field.slice(0, -1)}r` : /[A-Za-z0-9]id$/i.test(field) ? field.slice(0, -2) : field;
 
 /** The component the names of a file are resolved for. */
@@ -424,6 +463,72 @@ export function resolveReferences(
     return current;
   };
 
+  /**
+   * Walks child relationships from an object, as the joins of a report type do. Gives the object at the end, or
+   * `null` where one of them is not known. Nothing is recorded: the reference of each join says what it found.
+   */
+  const children = (start: string, names: readonly string[]): string | null => {
+    let current: string = start;
+    for (const name of names) {
+      const child = model.childRelationship(current, name);
+      if (child === null) return null;
+      current = child.object;
+    }
+    return current;
+  };
+
+  /**
+   * Says that it is not known which object a child relationship of the object `of` leads to. The reference that is
+   * missing is to a lookup field whose name is not known either, so the warning says nothing of its end, and bears
+   * on every answer about what refers to a component (decision records 0074 and 0077).
+   */
+  const unknownChild = (at: NameAt, of: string, child = true): void => {
+    const what = child ? 'child relationship' : 'relationship';
+    issues.push({
+      severity: 'warning',
+      code: 'PATH_NOT_FOLLOWED',
+      message: `${owner.file}, line ${String(at.line)}: it is not known which object the ${what} "${cut(at.name, LONGEST_TEXT_SHOWN)}" of "${cut(of, LONGEST_TEXT_SHOWN)}" leads to, so it was not followed.`,
+      componentKey: owner.key,
+      details: {
+        path: owner.file,
+        line: at.line,
+        column: at.column,
+        relationship: at.name,
+        notFollowed: [],
+        origin,
+      },
+    });
+  };
+
+  /** A path of names from an object: relationships, and a field at the end. */
+  const path = (one: Extract<RawReference, { form: 'path' }>): void => {
+    const silent = one.silent ?? 0;
+    const walk = walkPath(
+      model,
+      one.start,
+      one.names.map((at) => at.name),
+      one.names,
+    );
+    walk.steps.forEach((target, index) => {
+      const at = one.names[index];
+      const on = walk.on[index];
+      if (at === undefined || on === undefined || index < silent) return;
+      const last = index === one.names.length - 1;
+      if (last && foldName(at.name) === 'id') return;
+      const value = last && one.value !== undefined ? { value: one.value } : {};
+      add(at, target, last ? one.kind : 'reads', one, { object: on, ...value });
+      if (last && one.and !== undefined) add(at, target, one.and, one, { object: on });
+    });
+    const last = one.names[walk.steps.length - 1];
+    // A path that stops within its silent names says so too: the reference that holds those names says that
+    // the record is of no known object, and not which of its fields the element names (decision record 0074).
+    // Where it stops at the last of them, the names after it are those the element names apart from the record.
+    if (!walk.complete && last !== undefined) {
+      const apart = silent > 0 && walk.steps.length === silent;
+      notFollowed(last, one.names.slice(walk.steps.length), 'leads to', 'field', apart);
+    }
+  };
+
   for (const one of raw) {
     if (one.form === 'object') add(one.at, model.object(one.at.name), one.kind ?? 'references', one);
     else if (one.form === 'field') {
@@ -461,33 +566,28 @@ export function resolveReferences(
       else nothingSays(one.names, endsAt);
     } else if (one.form === 'record-value') {
       recordValue(one);
-    } else {
-      const silent = one.silent ?? 0;
-      const walk = walkPath(
-        model,
-        one.start,
-        one.names.map((at) => at.name),
-        one.names,
-      );
-      walk.steps.forEach((target, index) => {
-        const at = one.names[index];
-        const on = walk.on[index];
-        if (at === undefined || on === undefined || index < silent) return;
-        const last = index === one.names.length - 1;
-        if (last && foldName(at.name) === 'id') return;
-        const value = last && one.value !== undefined ? { value: one.value } : {};
-        add(at, target, last ? one.kind : 'reads', one, { object: on, ...value });
-        if (last && one.and !== undefined) add(at, target, one.and, one, { object: on });
-      });
-      const last = one.names[walk.steps.length - 1];
-      // A path that stops within its silent names says so too: the reference that holds those names says that
-      // the record is of no known object, and not which of its fields the element names (decision record 0074).
-      // Where it stops at the last of them, the names after it are those the element names apart from the record.
-      if (!walk.complete && last !== undefined) {
-        const apart = silent > 0 && walk.steps.length === silent;
-        notFollowed(last, one.names.slice(walk.steps.length), 'leads to', 'field', apart);
-      }
-    }
+    } else if (one.form === 'join') {
+      // Where an earlier join was not followed, its own reference says so.
+      const object = children(one.start, one.joins);
+      const child = object === null ? null : model.childRelationship(object, one.at.name);
+      const lookup = object === null || one.orPath === undefined ? null : model.relationship(object, one.at.name).field;
+      if (child !== null) add(one.at, child.field, 'references', one);
+      else if (one.orPath !== undefined && lookup !== null && lookup.resolution !== 'unresolved') {
+        const { orPath, start, tier } = one;
+        path({
+          form: 'path',
+          start,
+          names: orPath,
+          kind: 'reads',
+          via: one.via,
+          ...(tier === undefined ? {} : { tier }),
+        });
+      } else if (object !== null) unknownChild(one.at, object, one.orPath === undefined);
+    } else if (one.form === 'column') {
+      const object = children(one.start, one.joins);
+      if (object === null) nothingSays(one.names, 'field');
+      else path({ form: 'path', start: object, names: one.names, kind: 'references', via: one.via });
+    } else path(one);
   }
   return { references, issues };
 }

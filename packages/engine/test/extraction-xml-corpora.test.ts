@@ -20,12 +20,20 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
 };
 
 /**
- * The `-meta.xml` files of each codebase, counted on 15 November 2026, and those of PMM on 17 November 2026:
- * 12,875 in all. They are all the files of that name in the repository, also outside the package folders that
- * `fixtures/corpora.toml` names: 12,307 are inside them. A codebase is pinned by its commit, so a count moves
- * only when the pin moves.
+ * The `-meta.xml` files of each codebase, counted on 15 November 2026, those of PMM on 17 November 2026 and those
+ * of V4S and Outbound Funds on 25 November 2026: 13,663 in all. They are all the files of that name in the
+ * repository, also outside the package folders that `fixtures/corpora.toml` names: 13,092 are inside them. V4S is
+ * in the metadata format, where most files have no such name: they are read by the analysis of the codebase. A
+ * codebase is pinned by its commit, so a count moves only when the pin moves.
  */
-const FILES: Readonly<Record<string, number>> = { 'apex-recipes': 254, 'nebula-logger': 1416, npsp: 9668, pmm: 1537 };
+const FILES: Readonly<Record<string, number>> = {
+  'apex-recipes': 254,
+  'nebula-logger': 1416,
+  npsp: 9668,
+  pmm: 1537,
+  'volunteers-for-salesforce': 155,
+  'outbound-funds': 633,
+};
 
 /** Every element of a tree, the root first. */
 function* elementsOf(element: XmlElement): Generator<XmlElement> {

@@ -6,6 +6,7 @@ import { buildKey, type ComponentKey } from '../src/core/keys.ts';
 import {
   buildModel,
   GLOBAL_OBJECTS,
+  standardLookupField,
   walkPath,
   type FieldFacts,
   type ObjectModel,
@@ -336,6 +337,89 @@ describe('a step through a relationship', () => {
     // A custom relationship whose field is not there, or is a field of a package.
     expect(step('Invoice__c', 'Missing__r')).toBe('unresolved null -> null');
     expect(step('Invoice__c', 'npsp__Batch__r')).toBe('external CustomField:invoice__c.npsp__batch__c -> null');
+  });
+});
+
+describe('a child relationship, as a report type joins one', () => {
+  /**
+   * Lines of an invoice, a payment of an invoice that names its relationship as the lines do, a shipment of a
+   * package, a user with a hierarchy field, a lookup to two objects, and a lookup whose object has no file.
+   */
+  const children = (): ObjectModel => {
+    const fields = new Map<ComponentKey, FieldFacts>([
+      [
+        field('Invoice_Line__c.Invoice__c'),
+        { type: 'MasterDetail', referenceTo: ['Invoice__c'], relationshipName: 'Lines' },
+      ],
+      [field('Payment__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Payments' }],
+      [field('Credit__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Payments' }],
+      [
+        field('ns__Shipment__c.ns__Invoice__c'),
+        { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Shipments' },
+      ],
+      [field('User.Backup__c'), { type: 'Hierarchy', referenceTo: [], relationshipName: 'Backups' }],
+      [
+        field('Note__c.Parent__c'),
+        { type: 'Lookup', referenceTo: ['Invoice__c', 'Account'], relationshipName: 'Notes' },
+      ],
+      [field('Lost__c.Invoice__c'), { type: 'Lookup', referenceTo: ['Invoice__c'], relationshipName: 'Losts' }],
+    ]);
+    return buildModel({
+      defined: new Set([key('CustomObject', 'Invoice__c'), ...fields.keys()]),
+      objects: ['Invoice__c', 'Invoice_Line__c', 'Payment__c', 'Credit__c', 'ns__Shipment__c', 'User', 'Note__c'],
+      namedObjects: [],
+      fields,
+    });
+  };
+  const child = (object: string, name: string): string => {
+    const found = children().childRelationship(object, name);
+    return found === null ? 'null' : `${found.field.resolution} ${String(found.field.to)} of ${found.object}`;
+  };
+
+  it('is the lookup field of the child object whose file names it, in any case', () => {
+    expect(child('Invoice__c', 'Lines__r')).toBe('resolved CustomField:invoice_line__c.invoice__c of Invoice_Line__c');
+    expect(child('INVOICE__C', 'lines__R')).toBe('resolved CustomField:invoice_line__c.invoice__c of Invoice_Line__c');
+    // A field of a package names it without the prefix, which the relationship has.
+    expect(child('Invoice__c', 'ns__Shipments__r')).toBe(
+      'resolved CustomField:ns__shipment__c.ns__invoice__c of ns__Shipment__c',
+    );
+    expect(child('Invoice__c', 'Shipments__r')).toBe('null');
+    // A hierarchy field points at its own object, and a lookup to two objects is a child of each.
+    expect(child('User', 'Backups__r')).toBe('resolved CustomField:user.backup__c of User');
+    expect(child('Account', 'Notes__r')).toBe('resolved CustomField:note__c.parent__c of Note__c');
+    expect(child('Invoice__c', 'Notes__r')).toBe('resolved CustomField:note__c.parent__c of Note__c');
+  });
+
+  it('is not known where two fields name it, where the object of the field has no file, or where nothing names it', () => {
+    expect(child('Invoice__c', 'Payments__r')).toBe('null');
+    expect(child('Invoice__c', 'Losts__r')).toBe('null');
+    expect(child('Invoice__c', 'Lines')).toBe('null');
+    expect(child('Account', 'Lines__r')).toBe('null');
+  });
+
+  it('is one of the table of the relationships every org has, where no file names it', () => {
+    expect(child('Account', 'Contacts')).toBe('external CustomField:contact.accountid of Contact');
+    expect(child('account', 'OPPORTUNITIES')).toBe('external CustomField:opportunity.accountid of Opportunity');
+    expect(child('Account', 'ChildAccounts')).toBe('external CustomField:account.parentid of Account');
+    expect(child('Opportunity', 'OpportunityLineItems')).toBe(
+      'external CustomField:opportunitylineitem.opportunityid of OpportunityLineItem',
+    );
+    expect(child('Case', 'CaseComments')).toBe('external CustomField:casecomment.parentid of CaseComment');
+    // Only the table is known of the many Salesforce provides.
+    expect(child('Account', 'Notes')).toBe('null');
+    expect(child('Contact', 'Opportunities')).toBe('null');
+  });
+
+  it('is named by its field where a report type or a quick action names a lookup field of Salesforce', () => {
+    expect(standardLookupField('Owner')).toBe('OwnerId');
+    expect(standardLookupField('account')).toBe('accountId');
+    expect(standardLookupField('CreatedBy')).toBe('CreatedById');
+    expect(standardLookupField('Name')).toBeUndefined();
+    expect(standardLookupField('Account__c')).toBeUndefined();
+    expect(standardLookupField('OwnerId')).toBeUndefined();
+    // The relationships of a task and an event that lead to one of several objects.
+    expect(standardLookupField('What')).toBe('WhatId');
+    expect(standardLookupField('who')).toBe('whoId');
   });
 });
 

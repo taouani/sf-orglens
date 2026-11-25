@@ -31,7 +31,7 @@ export interface ElementReading {
   readonly unread: readonly Unread[];
   /** The formulas of the element. */
   readonly formulas: readonly FormulaReading[];
-  /** The texts of the element that hold merge fields. Only an element of a flow has such texts. */
+  /** The texts of the element that hold merge fields: of an element of a flow and of an email template. */
   readonly texts?: readonly MergeFieldsReading[];
   /** Of an element of a flow: the elements in it, or itself, that are of a kind the reader does not know. */
   readonly unknown?: readonly { readonly element: string; readonly line: number; readonly column: number }[];
@@ -45,7 +45,10 @@ const child = (element: XmlElement | null, local: string): XmlElement | null =>
 const children = (element: XmlElement | null, local: string): XmlElement[] =>
   element === null ? [] : childrenOf(element, local);
 
-/** Reads one file: its values, with the place of each part of a value. The reader of workflow rules uses it too. */
+/**
+ * Reads one file: its values, with the place of each part of a value. The readers of workflow rules, report types
+ * and quick actions use it too.
+ */
 export class Reader {
   readonly references: RawReference[] = [];
   readonly unread: Unread[] = [];
@@ -78,8 +81,8 @@ export class Reader {
     this.unread.push({ element: element.local, text, line, column, ...(why === undefined ? {} : { why }) });
   }
 
-  /** A value that is not read, for a reason the caller knows. */
-  refuse(element: XmlElement | null, why: NonNullable<Unread['why']>): void {
+  /** A value that is not read, for a reason the caller knows where it gives one. */
+  refuse(element: XmlElement | null, why?: Unread['why']): void {
     const value = valueOf(element);
     if (element !== null && value !== null) this.#refuse(element, value, why);
   }
@@ -123,18 +126,27 @@ export class Reader {
   }
 
   /**
+   * A value that is a path of names joined by dots, such as `Account__r.Tier__c`, each name with its place. `null`
+   * for no value, and for a value with a part that is no name, which is not read.
+   */
+  pathOf(element: XmlElement | null): NameAt[] | null {
+    const value = valueOf(element);
+    if (element === null || value === null) return null;
+    const names = this.#parts(value);
+    if (names.some((one) => !NAME.test(one.name) || one.name.startsWith('$'))) {
+      this.#refuse(element, value);
+      return null;
+    }
+    return names;
+  }
+
+  /**
    * A value that names a field of the object `own`, by its name or through relationships: `Amount__c`,
    * `Account__r.Tier__c`. Every name before the last is a relationship.
    */
   fieldPath(element: XmlElement | null, own: string, kind: 'reads' | 'references', via: Via): void {
-    const value = valueOf(element);
-    if (element === null || value === null) return;
-    const names = this.#parts(value);
-    if (names.some((one) => !NAME.test(one.name) || one.name.startsWith('$'))) {
-      this.#refuse(element, value);
-      return;
-    }
-    this.references.push({ form: 'path', start: own, names, kind, via });
+    const names = this.pathOf(element);
+    if (names !== null) this.references.push({ form: 'path', start: own, names, kind, via });
   }
 
   /**
@@ -237,7 +249,12 @@ export function readField(document: XmlDocument, element: XmlElement, object: st
       ...(relationshipName === null ? {} : { relationshipName }),
       ...(textOf(childOf(element, 'formula')) === null ? {} : { formula: true }),
     },
-    facts: { type, referenceTo, ...(controllingField === null ? {} : { controllingField }) },
+    facts: {
+      type,
+      referenceTo,
+      ...(controllingField === null ? {} : { controllingField }),
+      ...(relationshipName === null ? {} : { relationshipName }),
+    },
     references: reader.references,
     unread: reader.unread,
     formulas: reader.formulas,

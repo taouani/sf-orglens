@@ -36,6 +36,11 @@ export interface FieldFacts {
    * value says which object the field is of, as the file names it (`Billing_Rule__mdt.Object__c`).
    */
   readonly controllingField?: string;
+  /**
+   * Of a lookup or a master-detail field: the name of the relationship from the object it points at, as the file
+   * names it: `Lines` is the child relationship `Lines__r`.
+   */
+  readonly relationshipName?: string;
 }
 
 export interface ObjectModel {
@@ -50,6 +55,12 @@ export interface ObjectModel {
    * `null` when that is not known. `Account__r` is the field `Account__c`, and `Owner` is the field `OwnerId`.
    */
   relationship(object: string, name: string): { readonly field: Target; readonly leadsTo: string | null };
+  /**
+   * A child relationship of the object `object`: the lookup field of the child object that defines it, and the
+   * name of that object. `null` where it is not known. `Lines__r` of an invoice is the field `Invoice__c` of the
+   * line where the file of that field names the relationship `Lines`.
+   */
+  childRelationship(object: string, name: string): { readonly field: Target; readonly object: string } | null;
   /** What the file of the field `name` of the object `object` says. `undefined` where no file defines the field. */
   facts(object: string, name: string): FieldFacts | undefined;
 }
@@ -113,6 +124,43 @@ const STANDARD_RELATIONSHIPS: ReadonlyMap<string, string> = new Map(
     userrole: 'UserRole',
   }),
 );
+
+/**
+ * The child relationships that every org has, which no file names: by the folded name of the parent object and of
+ * the relationship, the child object and its lookup field. Only these are known, of the many Salesforce provides.
+ */
+const STANDARD_CHILD_RELATIONSHIPS: ReadonlyMap<string, { readonly object: string; readonly field: string }> = new Map(
+  Object.entries({
+    'account\nchildaccounts': { object: 'Account', field: 'ParentId' },
+    'account\ncontacts': { object: 'Contact', field: 'AccountId' },
+    'account\nopportunities': { object: 'Opportunity', field: 'AccountId' },
+    'account\ncases': { object: 'Case', field: 'AccountId' },
+    'account\nassets': { object: 'Asset', field: 'AccountId' },
+    'account\ncontracts': { object: 'Contract', field: 'AccountId' },
+    'account\norders': { object: 'Order', field: 'AccountId' },
+    'contact\ncases': { object: 'Case', field: 'ContactId' },
+    'contact\nassets': { object: 'Asset', field: 'ContactId' },
+    'opportunity\nopportunitylineitems': { object: 'OpportunityLineItem', field: 'OpportunityId' },
+    'opportunity\nopportunitycontactroles': { object: 'OpportunityContactRole', field: 'OpportunityId' },
+    'campaign\ncampaignmembers': { object: 'CampaignMember', field: 'CampaignId' },
+    'campaign\nopportunities': { object: 'Opportunity', field: 'CampaignId' },
+    'order\norderitems': { object: 'OrderItem', field: 'OrderId' },
+    'case\ncasecomments': { object: 'CaseComment', field: 'ParentId' },
+  }),
+);
+
+/** The relationships of a task and an event that lead to a record of one of several objects: `What`, `Who`. */
+const POLYMORPHIC_RELATIONSHIPS: ReadonlySet<string> = new Set(['what', 'who']);
+
+/**
+ * The field behind a name that stands where a field does and that is a relationship every org has, as a report
+ * type, a quick action and a classic email template name a lookup field of Salesforce: `Owner` is the field
+ * `OwnerId`, and `What` of a task `WhatId`. `undefined` for any other name.
+ */
+export function standardLookupField(name: string): string | undefined {
+  const folded = foldName(name);
+  return STANDARD_RELATIONSHIPS.has(folded) || POLYMORPHIC_RELATIONSHIPS.has(folded) ? `${name}Id` : undefined;
+}
 
 /**
  * The objects behind the global variables that stand for a record: `$User.Department` is a field of the user.
@@ -216,7 +264,43 @@ export function buildModel(input: ModelInput): ObjectModel {
     return target.resolution === 'resolved' && target.to !== null ? fields.get(target.to) : undefined;
   };
 
-  return { object, field, component, relationship, facts: factsOf };
+  /**
+   * The child relationships the files of the snapshot define, by the folded name of the parent object and of the
+   * relationship. A custom field names its relationship without `__r`, and with the prefix of its package where
+   * it has one. `null` for a relationship that two fields define. Made when it is first needed.
+   */
+  let children: Map<string, { field: Target; object: string } | null> | undefined;
+  const childrenOf = (): Map<string, { field: Target; object: string } | null> => {
+    if (children !== undefined) return children;
+    children = new Map();
+    for (const [key, facts] of fields) {
+      if (facts.relationshipName === undefined) continue;
+      const fieldName = key.slice(key.indexOf(':') + 1);
+      const dot = fieldName.indexOf('.');
+      const child = objects.get(fieldName.slice(0, dot));
+      if (child === undefined) continue;
+      const own = fieldName.slice(dot + 1);
+      const prefix = namespaceOf(own);
+      const relationship = foldName(`${prefix === null ? '' : `${prefix}__`}${facts.relationshipName}__r`);
+      // A hierarchy field names no object: it points at the object it is a field of.
+      const parents = facts.type === 'Hierarchy' ? [child] : facts.referenceTo;
+      for (const parent of new Set(parents.map(foldName))) {
+        const id = `${parent}\n${relationship}`;
+        children.set(id, children.has(id) ? null : { field: resolved(key, 'CustomField'), object: child });
+      }
+    }
+    return children;
+  };
+
+  const childRelationship = (objectName: string, name: string): { field: Target; object: string } | null => {
+    const id = `${foldName(objectName)}\n${foldName(name)}`;
+    const defined = childrenOf().get(id);
+    if (defined !== undefined) return defined;
+    const known = STANDARD_CHILD_RELATIONSHIPS.get(id);
+    return known === undefined ? null : { field: field(known.object, known.field), object: known.object };
+  };
+
+  return { object, field, component, relationship, childRelationship, facts: factsOf };
 }
 
 /** What the source says about one name of a path beyond the name. */
@@ -225,6 +309,11 @@ export interface PathHint {
   readonly leadsTo?: string;
   /** Of the field at the end: the name it is looked for under, where the source has another name for it. */
   readonly resolveAs?: string;
+  /**
+   * Of a relationship: the name it is walked under, where the source names it by its field, as a report type does:
+   * `Contact__c.Email` goes through the relationship `Contact__r`.
+   */
+  readonly asRelationship?: string;
 }
 
 /** What walking a path of names gave. */
@@ -261,7 +350,7 @@ export function walkPath(
       steps.push(model.field(current, hint?.resolveAs ?? name));
       break;
     }
-    const { field, leadsTo } = model.relationship(current, name);
+    const { field, leadsTo } = model.relationship(current, hint?.asRelationship ?? name);
     steps.push(field);
     const next = hint?.leadsTo ?? leadsTo;
     if (next === null) return { steps, on, complete: false };

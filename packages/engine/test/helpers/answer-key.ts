@@ -56,6 +56,7 @@ const KEY_VIAS = [
   'listed-field',
   'value',
   'record-of',
+  'join',
   'field',
   'soql',
   'sosl',

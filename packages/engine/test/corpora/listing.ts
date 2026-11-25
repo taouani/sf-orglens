@@ -17,6 +17,7 @@ import { hash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
+import { buildKey } from '../../src/core/keys.ts';
 import type { Reference } from '../../src/core/references.ts';
 import { analyseSource, type SourceAnalysis } from '../../src/extraction/analyse.ts';
 import { readFolders } from '../../src/sources/folder.ts';
@@ -33,9 +34,9 @@ export interface ListingEntry {
   /** The text to check: a formula with its entities undone, or the elements of a filter or a summary. */
   readonly text: string;
   /**
-   * The references of the component that belong to this entry, as lines. They are chosen by `via`, so a file
-   * with two entries of one `via` would show the references of both under each. No file of the codebases has
-   * two entries, and the test that holds the check says so.
+   * The references of the component that belong to this entry, as lines. They are chosen by `via`, so a
+   * component with two entries of one `via` would show the references of both under each. No component of the
+   * codebases has two entries, and the test that holds the check says so.
    */
   readonly references: readonly string[];
   /** The issues of the analysis about the component, as lines. */
@@ -120,6 +121,28 @@ function entriesOfFile(text: string): { kind: EntryKind; text: string }[] {
 /** The files whose entries are listed: those of fields, validation rules and objects. */
 export const LISTED_FILE = /\.(?:field|validationRule|object)(?:-meta\.xml)?$/;
 
+/** The groups of a file of an object in the metadata format that are components with entries of their own. */
+const PARTS: Readonly<Record<string, string>> = { fields: 'CustomField', validationRules: 'ValidationRule' };
+
+/**
+ * The parts of a file, each with the key of the component it is of. A file of an object in the metadata format,
+ * such as `objects/Contact.object`, holds every field and rule of the object: each of them is a part, and what is
+ * left is a part of the object. Any other file is one part, of the component the file defines.
+ */
+function partsOf(file: string, text: string): { readonly key: string | null; readonly text: string }[] {
+  const object = /(?:^|\/)([^/]+)\.object$/.exec(file)?.[1];
+  if (object === undefined) return [{ key: null, text }];
+  const parts: { key: string | null; text: string }[] = [];
+  const rest = text.replace(/<(fields|validationRules)>([\s\S]*?)<\/\1>/g, (whole, group: string, body: string) => {
+    // A compact layout names its fields as `<fields>Name</fields>`: such a group has no name of its own.
+    const name = /<fullName>([^<]*)<\/fullName>/.exec(body)?.[1];
+    if (name === undefined) return whole;
+    parts.push({ key: buildKey({ type: PARTS[group] ?? group, fullName: `${object}.${name}` }), text: body });
+    return '';
+  });
+  return [{ key: buildKey({ type: 'CustomObject', fullName: object }), text: rest }, ...parts];
+}
+
 export async function listCodebase(root: string, paths: readonly string[]): Promise<Listing> {
   const { tree } = readFolders(root, paths);
   const listed = (await resolveComponents(tree, paths)).components;
@@ -127,21 +150,24 @@ export async function listCodebase(root: string, paths: readonly string[]): Prom
   const analysis = analyseSource(tree, listed);
   const milliseconds = performance.now() - start;
   const byFile = new Map(analysis.components.map((one) => [one.definition?.path ?? '', one]));
+  const byKey = new Map(analysis.components.map((one) => [String(one.key), one]));
   const entries: ListingEntry[] = [];
   for (const file of tree.files) {
     if (!LISTED_FILE.test(file)) continue;
-    const component = byFile.get(file);
-    // An issue without a component is of no entry, and neither is one of a file without a component.
-    const issues =
-      component === undefined ? [] : analysis.issues.filter((issue) => issue.componentKey === component.key);
-    for (const entry of entriesOfFile(Buffer.from(tree.read(file)).toString('utf8'))) {
-      entries.push({
-        ...entry,
-        file,
-        key: component?.key ?? null,
-        references: (component?.references ?? []).filter((one) => VIA[entry.kind].includes(viaOf(one))).map(lineOf),
-        issues: issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`),
-      });
+    for (const part of partsOf(file, Buffer.from(tree.read(file)).toString('utf8'))) {
+      const component = part.key === null ? byFile.get(file) : byKey.get(part.key);
+      // An issue without a component is of no entry, and neither is one of a file without a component.
+      const issues =
+        component === undefined ? [] : analysis.issues.filter((issue) => issue.componentKey === component.key);
+      for (const entry of entriesOfFile(part.text)) {
+        entries.push({
+          ...entry,
+          file,
+          key: component?.key ?? null,
+          references: (component?.references ?? []).filter((one) => VIA[entry.kind].includes(viaOf(one))).map(lineOf),
+          issues: issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`),
+        });
+      }
     }
   }
   return { entries, analysis, milliseconds };

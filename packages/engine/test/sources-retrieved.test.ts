@@ -97,6 +97,8 @@ describe('the files of a retrieve', () => {
         (path) => `Flow:${path.slice(path.lastIndexOf('/') + 1, -'.flow-meta.xml'.length)}`,
       ),
       'GlobalValueSet:Billing_Region',
+      'QuickAction:Invoice__c.New_Line',
+      'ReportType:Invoices_with_Lines',
       'Workflow:Invoice__c',
       'Workflow:Invoice_Line__c',
     ]);

@@ -1,5 +1,5 @@
 What refers to CustomField:account.credit_limit__c (Account.Credit_Limit__c), in snapshot #1 of "fixture".
-The answer is not complete: 3 types are not analysed yet. The details are below the answer.
+The answer is not complete: 2 types are not analysed yet. The details are below the answer.
 
 13 components refer to it, 7 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -20,7 +20,6 @@ DEPTH  COMPONENT                                             PACKAGE  CONFIDENCE
 2      WorkflowRule:invoice__c.stamp_code_when_paid          none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE           LISTED  RETRIEVED
-ApexClass      13      13
-ApexTrigger    1       1
-EmailTemplate  1       1
+TYPE         LISTED  RETRIEVED
+ApexClass    13      13
+ApexTrigger  1       1

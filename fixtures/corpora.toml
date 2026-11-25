@@ -42,3 +42,19 @@ commit = "4c5f3c79b930485f1fafb65b5acd6e1becf8a071"
 licence = "BSD-3-Clause"
 paths = ["force-app"]
 use = "Validation rules and lookup filters. Every formula field, rule, filter and roll-up summary is checked by hand in Phase 1."
+
+[[corpus]]
+name = "volunteers-for-salesforce"
+url = "https://github.com/SalesforceFoundation/Volunteers-for-Salesforce.git"
+commit = "332a6756de3654d8f1f669230a193acfe3a4ad59"
+licence = "BSD-3-Clause"
+paths = ["src"]
+use = "Email templates and report types, in the metadata format. Read without an error in Phase 2."
+
+[[corpus]]
+name = "outbound-funds"
+url = "https://github.com/SalesforceFoundation/OutboundFundsModule.git"
+commit = "8acc96b477ee6978c90123b96408737068946b35"
+licence = "BSD-3-Clause"
+paths = ["force-app"]
+use = "Report types and quick actions. Read without an error in Phase 2."

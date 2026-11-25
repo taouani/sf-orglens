@@ -5,7 +5,8 @@
  * `fixtures/corpora.toml` was held against the references the analysis reports for it
  * (`docs/research/phase-1/public-codebases.md`). The author of the analyser read the 133 entries that can hold
  * a name one by one, and the 235 default values that are a literal as a list of values. A sub-agent that
- * reviewed the pull request read the 133 again. No person did.
+ * reviewed the pull request read the 133 again. No person did. The two codebases added on 25 November 2026 were
+ * read the same way: 36 entries that can hold a name, 32 of V4S and 4 of Outbound Funds, and 14 literals.
  *
  * The listing that was read is not stored, because it holds the text of the codebases. Its SHA-256 is. When the
  * analysis reports another reference, another place, another tier or another issue for one of these entries,
@@ -29,7 +30,8 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
 };
 
 /**
- * What was checked on 17 November 2026, at the commits that `fixtures/corpora.toml` pins.
+ * What was checked on 17 November 2026, and for V4S and Outbound Funds on 25 November 2026, at the commits that
+ * `fixtures/corpora.toml` pins.
  *
  * - `entries`: the entries by what they are.
  * - `literals`: the default values among them that are a literal, such as `false` or `0`, and can hold no name.
@@ -74,6 +76,22 @@ const CHECKED: Readonly<Record<string, Checked>> = {
     notFollowed: 0,
     digest: 'ac9d3f04b93df69ca952ef7b86799722d704482e809a9286a7e99ebf8d42eadc',
   },
+  // Added on 25 November 2026, with the codebases. V4S is in the metadata format: a file of an object holds its
+  // fields and rules, and the listing shows each of them as an entry of its own.
+  'volunteers-for-salesforce': {
+    entries: { default: 13, filter: 1, formula: 11, rule: 7, summary: 13 },
+    literals: 13,
+    references: 64,
+    notFollowed: 0,
+    digest: 'e33e0a266a189d48474076faa5609ded0779467e947d4677beace605c201dd2b',
+  },
+  'outbound-funds': {
+    entries: { default: 1, formula: 1, summary: 3 },
+    literals: 1,
+    references: 12,
+    notFollowed: 0,
+    digest: '16342d15d639b476343b6cffa7811f2ee278538a2dc5f5e5c776503652063be4',
+  },
 };
 
 describe('the entries of the public codebases that were checked by hand', () => {
@@ -103,11 +121,13 @@ describe('the entries of the public codebases that were checked by hand', () => 
           // Of the whole codebase. Every such warning of these codebases is about an entry.
           notFollowed: listing.analysis.issues.filter((issue) => issue.code === 'PATH_NOT_FOLLOWED').length,
         }).toEqual(counts);
-        // The listing shows a reference under an entry of its file by its `via`. So it shows every reference
-        // once only while a file has one entry, and it hides none only while every reference with one of
-        // these `via` of a file of fields, rules or objects is of a file with an entry. The formulas and the
+        // The listing shows a reference under an entry of its component by its `via`. So it shows every reference
+        // once only while a component has one entry, and it hides none only while every reference with one of
+        // these `via` of a file of fields, rules or objects is of a component with an entry. The formulas and the
         // criteria of flows and workflow rules are in files of their own, which the listing does not show.
-        expect(new Set(listing.entries.map((entry) => entry.file)).size).toBe(listing.entries.length);
+        expect(new Set(listing.entries.map((entry) => `${entry.file} ${String(entry.key)}`)).size).toBe(
+          listing.entries.length,
+        );
         expect(
           listing.analysis.components
             .filter((one) => LISTED_FILE.test(one.definition?.path ?? ''))

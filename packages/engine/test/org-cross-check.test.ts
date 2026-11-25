@@ -208,13 +208,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         state: 'whole',
         readAt: expect.stringMatching(UTC) as string,
         requests: 1 + QUERIES_FOR_ROWS,
-        rows: pairs.length + 2,
+        rows: pairs.length + 3,
         queriesCutOff: 0,
         queriesFailed: 0,
         queriesNotProven: 0,
         code: null,
         comparison: {
-          rows: pairs.length + 2,
+          rows: pairs.length + 3,
           // The rows of Apex, which this phase does not analyse.
           rowsNotAnalysed: apex,
           notAnalysed: [
@@ -226,11 +226,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           rowsNotHeld: 0,
           // The project has one version of each flow, which is the one the snapshot holds.
           rowsOtherVersion: 0,
-          rowsCompared: compared + 2,
-          pairs: compared + 2,
+          rowsCompared: compared + 3,
+          pairs: compared + 3,
           agreed: compared,
-          // The two rows from a rule to an object: the analysis has the field and the record of it.
-          coveredByPart: 2,
+          // The two rows from a rule to an object, where the analysis has the field and the record of it, and the
+          // row from the email template to the object whose fields it names.
+          coveredByPart: 3,
           missed: [],
           onlyOrgLens: [],
           notReported: expect.any(Array) as unknown[],
@@ -245,7 +246,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // workflow rules, it reports what the test org reports: the custom fields the formula of a field update
       // reads. Of the records of custom metadata types, the type, and of a record type, nothing. Of a flow, what
       // the test org reports: not a flow it starts, not a record type a condition names in a text, and not a field
-      // of a custom setting or a custom permission that only a formula names.
+      // of a custom setting or a custom permission that only a formula names. Of an email template, its custom
+      // fields and their object. Of a report type and a quick action, nothing: that was not measured.
       const reasons = report.crossCheck?.comparison?.notReported.map((one) => one.reason);
       expect(reasons).toEqual([
         'controlling-field',
@@ -255,7 +257,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         'lookup',
         'lookup-filter',
         'name-in-text',
+        'quick-action',
         'record-type',
+        'report-type',
         'roll-up-summary',
         'standard-field',
         'standard-object',
@@ -278,7 +282,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(queryPaths()).toEqual(['/services/data/v66.0/tooling/query']);
 
       // The rows are kept as Salesforce wrote them, and none of them became a reference.
-      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_dependency')).toBe(pairs.length + 2);
+      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_dependency')).toBe(pairs.length + 3);
       expect(count(dir, `SELECT count(*) AS n FROM reference WHERE origin = 'dependency-api'`)).toBe(0);
       // The coverage of the snapshot says the same later.
       expect(await workspace.coverage('prod')).toEqual(report);
@@ -410,17 +414,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
         requests: 1 + QUERIES_FOR_ROWS,
-        rows: pairs.length + 2 + ofDraft.length,
+        rows: pairs.length + 3 + ofDraft.length,
         queriesNotProven: 0,
         comparison: {
-          rows: pairs.length + 2 + ofDraft.length,
+          rows: pairs.length + 3 + ofDraft.length,
           rowsNotAnalysed: apex,
           rowsNotMatched: 0,
           rowsNotHeld: 0,
           // The rows of the draft, also the one to the field only the draft reads, which is no error.
           rowsOtherVersion: ofDraft.length,
           // The rows of the active version are compared in the place of those the project has.
-          rowsCompared: pairs.length - apex + 2,
+          rowsCompared: pairs.length - apex + 3,
           missed: [],
           onlyOrgLens: [],
         },
@@ -434,7 +438,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // answer off at 20 rows, and the reader is given twice that: it takes an answer of half its limit as near it.
       dependencies.limit = 20;
       const parts = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 40 } } });
-      expect(parts.crossCheck).toMatchObject({ state: 'whole', rows: pairs.length + 2 + ofDraft.length });
+      expect(parts.crossCheck).toMatchObject({ state: 'whole', rows: pairs.length + 3 + ofDraft.length });
       expect(parts.crossCheck?.comparison).toEqual(report.crossCheck?.comparison);
       expect(
         dependencies.queries.some((soql) => soql.includes('MetadataComponentId IN (') && soql.includes(activeId)),

@@ -1,8 +1,8 @@
 /**
  * Analyses the public codebases of `fixtures/corpora.toml`: every component gets a row, and the objects, fields
- * and validation rules are read for the references that are written in XML and for those in their formulas.
- * Every flow of them is read too, and every record of a custom metadata type, also those outside the package
- * folders the file names.
+ * and validation rules are read for the references that are written in XML and for those in their formulas, and
+ * so are the email templates, report types and quick actions. Every flow of them is read too, and every record of
+ * a custom metadata type, also those outside the package folders the file names.
  *
  * The codebases are not part of this repository. A codebase that was not downloaded (`pnpm run corpora:fetch`)
  * is skipped, so the test needs no network. CI does not download them.
@@ -53,7 +53,25 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *   one object, and in PMM the record pages of two objects and an Aura component that overrides the action New
  *   of a third. Apex Recipes overrides nothing. Each names a page or a component that the codebase defines.
  * - `issues`: the issues by their code. The four of NPSP stand in one formula of an opportunity, which goes
- *   through a lookup of another package four times: no file says where that lookup leads.
+ *   through a lookup of another package four times: no file says where that lookup leads. The five of PMM stand in
+ *   the formula of one quick action, which holds `%%%NAMESPACED_ORG%%%` before each name: a token that the build
+ *   tool of that project replaces before it deploys. The formula is not read, and the reader of formulas counts
+ *   its file as one it failed on (`FAILED_FORMULAS`).
+ *
+ * Since 25 November 2026 the email templates, report types and quick actions are read (decision record 0077), and
+ * V4S and Outbound Funds were added for them. In the package folders, Nebula Logger has 2 quick actions, NPSP 26
+ * quick actions, an email template and a report type, PMM 18 quick actions and a report type, V4S 30 email
+ * templates and 4 report types, and Outbound Funds 8 quick actions and 2 report types: they are counted in
+ * `analysed`, and the quick actions that set a field with a formula in `withFormula`. What they refer to was read
+ * beside their files that day: `object` is the object a quick action creates or a report type starts from,
+ * `assignment` a field a quick action sets, `action` the flow, page or component a quick action opens, `join` the
+ * lookup by which a report type joins an object, `listed-field` also a column of a report type and a field the
+ * layout of a quick action shows, twice where the user types in it (`Edit`, `Required`: 7 in Nebula Logger, 135 in
+ * NPSP, 74 in PMM and 24 in Outbound Funds), `template` also the letterhead of an email template (1 in NPSP, 6 in
+ * V4S), and `merge-field` a merge field of an email template. A column `Id` gives none, and `Owner` is the field
+ * `OwnerId`. NPSP and PMM name objects and fields of the packages they build on, which are
+ * `external`. V4S is in the metadata format: an object and its fields are one file. The workflow rules of V4S give
+ * `action`, `assignment` and `template`, as those of NPSP do.
  */
 interface Expected {
   readonly components: number;
@@ -79,15 +97,16 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   'nebula-logger': {
     components: 894,
-    analysed: 678,
+    analysed: 680,
     withFormula: 142,
     references: {
+      action: 1,
       'action-override': 10,
       'controlling-field': 3,
       'display-field': 4,
       filter: 7,
       formula: 387,
-      'listed-field': 139,
+      'listed-field': 153,
       lookup: 17,
       'record-of': 55,
       summary: 16,
@@ -98,21 +117,23 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   npsp: {
     components: 11_722,
-    analysed: 1037,
-    withFormula: 171,
+    analysed: 1065,
+    withFormula: 176,
     references: {
-      action: 4,
+      action: 6,
       'action-override': 12,
-      assignment: 3,
+      assignment: 19,
       'controlling-field': 5,
       'display-field': 2,
       filter: 11,
-      formula: 69,
-      'listed-field': 1962,
+      formula: 70,
+      'listed-field': 2241,
       lookup: 77,
+      'merge-field': 8,
+      object: 16,
       'record-of': 193,
       summary: 4,
-      template: 1,
+      template: 2,
       value: 318,
       'value-set': 2,
     },
@@ -121,20 +142,83 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   // Added on 17 November 2026, with the codebase.
   pmm: {
     components: 1667,
-    analysed: 163,
-    withFormula: 38,
+    analysed: 182,
+    withFormula: 44,
     references: {
+      action: 4,
       'action-override': 3,
+      assignment: 16,
       'controlling-field': 1,
       filter: 4,
       formula: 133,
-      'listed-field': 424,
+      join: 1,
+      'listed-field': 652,
       lookup: 26,
+      object: 14,
       'record-of': 27,
       value: 25,
     },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4 },
+  },
+  // Added on 25 November 2026, with the codebases.
+  'volunteers-for-salesforce': {
+    components: 660,
+    analysed: 195,
+    withFormula: 35,
+    references: {
+      action: 10,
+      'action-override': 2,
+      assignment: 2,
+      'display-field': 7,
+      filter: 11,
+      formula: 43,
+      join: 6,
+      'listed-field': 766,
+      lookup: 10,
+      'merge-field': 404,
+      object: 4,
+      summary: 24,
+      template: 13,
+    },
     issues: {},
   },
+  'outbound-funds': {
+    components: 655,
+    analysed: 72,
+    withFormula: 3,
+    references: {
+      action: 1,
+      'action-override': 3,
+      assignment: 3,
+      filter: 3,
+      formula: 3,
+      join: 4,
+      'listed-field': 167,
+      lookup: 15,
+      object: 6,
+      summary: 6,
+    },
+    issues: {},
+  },
+};
+
+/** The files the reader of formulas failed on, of the codebases where it failed on one. */
+const FAILED_FORMULAS: Readonly<Record<string, number>> = { pmm: 1 };
+
+/**
+ * The formulas of quick actions beyond one per action, which the search for formulas below counts and the analysis
+ * does not: 6 quick actions of PMM hold 11 formulas.
+ */
+const MORE_TEXTS: Readonly<Record<string, number>> = { pmm: 5 };
+
+/**
+ * The formulas in which the reader of formulas finds other names than the simple scan: the formula of a quick action
+ * of PMM, which holds a token of its build tool and is not read.
+ */
+const SCAN_DIFFERS: Readonly<Record<string, readonly string[]>> = {
+  pmm: [
+    'force-app/main/default/quickActions/ProgramEngagement__c.CreateServiceDelivery.quickAction-meta.xml: %%%NAMESPACED_ORG%%%ProgramEngagement__c.%%%NAMESPACED_ORG%%%Contact__c',
+  ],
 };
 
 /**
@@ -299,7 +383,7 @@ describe('the analysis of the public codebases', () => {
         }).toEqual(EXPECTED[name]);
         expect(analysis.work.map((work) => `${work.origin} ${String(work.failedFiles)}`)).toEqual([
           'parser:xml 0',
-          'parser:formula 0',
+          `parser:formula ${String(FAILED_FORMULAS[name] ?? 0)}`,
           'parser:flow 0',
         ]);
         // Every name of a formula was found or has a key: none is unresolved, and none is less than confirmed.
@@ -364,7 +448,7 @@ describe('the analysis of the public codebases', () => {
 
         // Every record was read, no file of the codebase was refused, and nothing is an error.
         expect(records.filter((one) => one.attrs === null)).toEqual([]);
-        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, 0, 0]);
+        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0]);
         expect(analysis.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
         expect({
           files: files.length,
@@ -395,14 +479,20 @@ describe('the analysis of the public codebases', () => {
         const differ: string[] = [];
         let formulas = 0;
         for (const path of tree.files) {
-          if (!/\.(?:field|validationRule|object|workflow)(?:-meta\.xml)?$/.test(path)) continue;
+          if (!/\.(?:field|validationRule|object|workflow|quickAction)(?:-meta\.xml)?$/.test(path)) continue;
           const text = Buffer.from(tree.read(path)).toString('utf8');
-          // The files are searched as text here, not read as XML. None of the four writes a formula in CDATA. A
-          // file of workflow rules holds the formulas of its rules and field updates.
+          // The files are searched as text here, not read as XML. None of the codebases writes a formula in CDATA.
+          // A file of workflow rules holds the formulas of its rules and field updates, and a quick action the
+          // formulas that set its fields.
           for (const [, , body = ''] of text.matchAll(
             /<(formula|errorConditionFormula|defaultValue)>([\s\S]*?)<\/\1>/g,
           )) {
-            const formula = body.replace(/&(lt|gt|amp|quot|apos);/g, (_, name: string) => entity[name] ?? '').trim();
+            const formula = body
+              .replace(/&#(x?)([0-9A-Fa-f]+);/g, (_, hex: string, code: string) =>
+                String.fromCodePoint(Number.parseInt(code, hex === '' ? 10 : 16)),
+              )
+              .replace(/&(lt|gt|amp|quot|apos);/g, (_, name: string) => entity[name] ?? '')
+              .trim();
             if (formula === '') continue;
             formulas += 1;
             const parsed = parseFormula(formula);
@@ -410,10 +500,10 @@ describe('the analysis of the public codebases', () => {
             if (JSON.stringify(names) !== JSON.stringify(scanNames(formula))) differ.push(`${path}: ${formula}`);
           }
         }
-        expect(differ).toEqual([]);
-        // Texts are counted here and components above. The numbers are the same in these four codebases,
-        // because no field of them has a formula and a default value.
-        expect(formulas).toBe(EXPECTED[name]?.withFormula);
+        expect(differ).toEqual(SCAN_DIFFERS[name] ?? []);
+        // Texts are counted here and components above. The numbers are the same where no field has a formula and
+        // a default value and no quick action has two formulas.
+        expect(formulas).toBe((EXPECTED[name]?.withFormula ?? 0) + (MORE_TEXTS[name] ?? 0));
       },
       300_000,
     );

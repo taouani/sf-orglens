@@ -21,6 +21,7 @@ import { buildModel, type FieldFacts, type ObjectModel } from '../src/extraction
 import {
   readFormula,
   readFormulaOfMergeFields,
+  readFormulaOfStarts,
   readMergeFields,
   type StartOf,
 } from '../src/extraction/names-in-text.ts';
@@ -136,6 +137,55 @@ describe('the merge fields of a text', () => {
         // Every `{!` of the text opens a merge field or is told as not closed.
         expect(fields.length + notClosed.length).toBe(text.split('{!').length - 1);
         for (const open of notClosed) expect(text.slice(open, open + 2)).toBe('{!');
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
+describe('the merge fields of a Lightning email template', () => {
+  /** A merge field as `text@start open-close`. */
+  const lightning = (text: string): string[] =>
+    mergeFieldsOf(text, 'lightning').fields.map(
+      (field) => `${field.text}@${String(field.start)} ${String(field.open)}-${String(field.close)}`,
+    );
+
+  it('are opened by three braces and closed by the next three, without the white space around what they hold', () => {
+    //                 0         1         2         3
+    //                 0123456789012345678901234567890123456789
+    expect(lightning('Hi {{{Recipient.Name}}}, {{{ Sender.Email }}}')).toEqual([
+      'Recipient.Name@6 3-23',
+      'Sender.Email@29 25-45',
+    ]);
+    expect(lightning('{{{a}}}{{{b}}}')).toEqual(['a@3 0-7', 'b@10 7-14']);
+    // The form of a classic template is no merge field here, and the other way round.
+    expect(lightning('{!Contact.Name} {{a}} {a}')).toEqual([]);
+    expect(fieldsOf('{{{Recipient.Name}}}')).toEqual([]);
+  });
+
+  it('are not read where a brace stands before the three that close them, or where the text ends', () => {
+    expect(mergeFieldsOf('x {{{a', 'lightning')).toEqual({ fields: [], notClosed: [2] });
+    expect(mergeFieldsOf('{{{a}} b', 'lightning')).toEqual({ fields: [], notClosed: [0] });
+    expect(mergeFieldsOf('{{{a {b}}}', 'lightning')).toEqual({ fields: [], notClosed: [0] });
+    // The next one is looked for after the three braces of the one that is not closed.
+    const mixed = mergeFieldsOf('{{{a {{{b}}} {{{c', 'lightning');
+    expect(mixed.fields.map((field) => field.text)).toEqual(['b']);
+    expect(mixed.notClosed).toEqual([0, 13]);
+  });
+
+  it('never throw, and each lies between three braces that open it and three that close it', () => {
+    const piece = fc.constantFrom('{{{', '}}}', '{', '}', 'a', 'b.c', ' ', '\n', '😀');
+    fc.assert(
+      fc.property(fc.array(piece, { maxLength: 24 }), (pieces) => {
+        const text = pieces.join('');
+        const { fields, notClosed } = mergeFieldsOf(text, 'lightning');
+        for (const field of fields) {
+          expect(text.slice(field.open, field.open + 3)).toBe('{{{');
+          expect(text.slice(field.close - 3, field.close)).toBe('}}}');
+          expect(text.slice(field.start, field.start + field.text.length)).toBe(field.text);
+          expect(field.text).not.toMatch(/[{}]/);
+        }
+        for (const open of notClosed) expect(text.slice(open, open + 3)).toBe('{{{');
       }),
       { numRuns: 500 },
     );
@@ -873,6 +923,18 @@ describe('the texts of the fixture project', () => {
     const reading = readMergeFields(body, ofObject, '', inBody);
     for (const unread of reading.unread) notRead.push(`${bodyFile}:${String(unread.line)}: ${unread.text}`);
     keep(bodyFile, '', reading.references, 'parser:xml');
+
+    // The formula of a quick action starts each name with the object of the record the action runs on.
+    const action = `${folder}/quickActions/Invoice__c.New_Line.quickAction-meta.xml`;
+    const ofInvoice: StartOf = (first) => (first === 'Invoice__c' ? { object: first } : undefined);
+    for (const element of withText(documentOf(action).root)) {
+      const formula = valueOf(element);
+      if (formula === null || element.local !== 'formula') continue;
+      const read = readFormulaOfStarts(formula.value, ofInvoice, 'formula', placesIn(documentOf(action), formula));
+      if (read.problem !== null) notRead.push(`${action}: ${read.problem.message}`);
+      for (const unread of read.unread) notRead.push(`${action}:${String(unread.line)}: ${unread.text}`);
+      keep(action, '', read.references, 'parser:formula');
+    }
   });
 
   it('give every reference the answer key holds for a formula or a merge field of Phase 2, and no other', () => {
@@ -883,8 +945,9 @@ describe('the texts of the fixture project', () => {
       lines.push(entry(one.line, one.column, one.kind, one.to, one.match, one.tier, one.via));
       expected.set(one.file, lines);
     }
-    // 30 entries in the six flows, 12 in the two files of workflow rules and 8 in the email template.
-    expect([...expected.values()].flat()).toHaveLength(50);
+    // 30 entries in the six flows, 12 in the two files of workflow rules, 8 in the email template and 1 in the
+    // quick action.
+    expect([...expected.values()].flat()).toHaveLength(51);
     expect([...found.keys()].filter((file) => (found.get(file) ?? []).length > 0).sort()).toEqual(
       [...expected.keys()].sort(),
     );
@@ -909,7 +972,7 @@ describe('the texts of the fixture project', () => {
     expect(hit).toEqual([]);
     // The negatives of these files that stand in a text or a formula are there to be missed.
     const inTexts = answerKey.negatives.filter((negative) => found.has(negative.file));
-    expect(inTexts).toHaveLength(28);
+    expect(inTexts).toHaveLength(29);
   });
 });
 

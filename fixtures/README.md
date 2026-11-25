@@ -20,13 +20,12 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 118 components: 5 custom objects, 57 custom fields on them, on `Account` and on `User`, 11
-validation rules, 13 Apex classes and 1 trigger, 6 flows, the workflow rules of two objects (2 files with 4 rules
-and the 6 actions they start), 2 record types, a field set, an email template with its folder, 4 records of a
-custom metadata type, and four components that are only there to be referred to: the file of custom labels with
-one label, a custom permission and a global value set. Three of the objects are targets too: a custom setting, a
-custom metadata type and `Tax_Code__c`. It is small on purpose. Each file is there for a case that an analyser can
-get wrong:
+`billing-sfdx` has 120 components: 5 custom objects, 57 custom fields on them, on `Account` and on `User`, 11 validation
+rules, 13 Apex classes and 1 trigger, 6 flows, the workflow rules of two objects (2 files with 4 rules and the 6 actions
+they start), 2 record types, a field set, an email template with its folder, a report type, a quick action, 4 records of
+a custom metadata type, and four components that are only there to be referred to: the file of custom labels with one
+label, a custom permission and a global value set. Three of the objects are targets too: a custom setting, a custom
+metadata type and `Tax_Code__c`. It is small on purpose. Each file is there for a case that an analyser can get wrong:
 
 - formulas on formulas, across a lookup, through the owner, with a comment and with a field name inside text;
 - two roll-up summaries and a lookup filter;
@@ -110,6 +109,16 @@ to now. The new files are these cases:
   object the record names, and inside a sentence;
 - an email template with merge fields of the record, of the recipient, of the user and of the organisation, and
   with the name of a field as plain text.
+
+Work package 8 of Phase 2 added two components more, on 25 November 2026 (decision record 0077), and changed no
+file that was there:
+
+- a report type on `Invoice__c` that joins its lines through the child relationship `Lines__r`, and lists a
+  standard field, a field across a lookup, which a report type names by the lookup field (`Account__c.Tier__c`),
+  the owner, which it names by the relationship (`Owner`), and two fields of the line;
+- a quick action of `Invoice__c` that creates a line: its object, the lookup of the line to the invoice it runs
+  on, three predefined values, one of them a literal and one a formula that names a field of the invoice, and a
+  layout with two fields.
 
 **The 31 components went to Salesforce for the first time on 23 November 2026**, with the rest of the project in
 one deploy. Salesforce counted all 118 components, found no error in 116 and refused two flows, so nothing was
@@ -316,6 +325,21 @@ check_amount`. The start block with its scheduled paths is `#element:flow-start`
   an element updates is a read of the lookup field and a `references` to the object behind it.
 - The field of a field set, of a recipient of an alert and of an outbound message is `reads`. The picklist of a
   record type and the field a record of a custom metadata type gives a value for are `references`.
+- A merge field of an email template is `reads`, in the subject and in the body, whose file is no XML. The first
+  name of a merge field of a classic template is an object, or a user (`User`, `Sending_User`,
+  `Receiving_User`), or the org (`Organization`).
+- A report type is a `references` to its object, `via: object`, to the lookup field that defines each child
+  relationship it joins, `via: join`, and to each field it lists, `via: listed-field`. A column that goes through
+  a lookup field, such as `Account__c.Tier__c`, is a `reads` of the lookup field. The table of a column says
+  whose field it is: `Invoice__c.Lines__r` is the line. It names the relationships again that the joins name, and
+  has no entry of its own: the join is the reference to the lookup field. `Owner` is the field `OwnerId`.
+- A quick action is a `references` to the object of the records it creates, `via: object`. Each field it sets,
+  and the lookup field of the new record to the record it runs on (`targetParentField`), is `writes`,
+  `via: assignment`. A field its layout shows is `reads`, `via: listed-field`, and one the user types in
+  (`uiBehavior` `Edit` or `Required`) is one of each, as a field of a screen of a flow is. The formula of a
+  predefined value names a field of the record the action runs on by its object, `Invoice__c.Amount__c`, and is
+  `reads`, `via: formula`. The fields are of the object the action creates records of, or of its own object where
+  it updates the record it runs on.
 - A record of a custom metadata type is a `references` to its type. No element of its file names the type, so
   the place is the root element of the file.
 - A value of such a record in a field that is a relationship to a definition is `confirmed`, `via: value`. For an
@@ -379,8 +403,8 @@ analyser. It checks that:
 - a value of a record of a custom metadata type is `value` in a field that is a relationship and `text` in every
   other field, the object of a process is the value at the top of its file, and a text that names a record type
   is compared with `RecordType.DeveloperName`;
-- the numbers this page quotes are the numbers of the key: 491 references (112 in fields and rules, 195 in the
-  files of Phase 2, 184 in Apex), 9 of them stretch, 63 negatives and 6 unknowns;
+- the numbers this page quotes are the numbers of the key: 510 references (112 in fields and rules, 214 in the
+  files of Phase 2, 184 in Apex), 9 of them stretch, 64 negatives and 6 unknowns;
 - versions 0 and 1 of the key still name places that exist, have nothing that version 2 has not, and have the same
   Apex part. Version 2 says nothing else about a file of fields or rules than version 1 does;
 - the three flows of `flow-negative/` are what their `expected.yaml` says, as far as text can tell: the places

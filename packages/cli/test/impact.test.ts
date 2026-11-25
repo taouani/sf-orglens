@@ -45,12 +45,7 @@ async function fixtureWorkspace(change: (dir: string) => void = () => undefined,
  * field prints them. A label, the file of labels, a custom permission, a folder and a global value set cannot
  * (decision record 0073).
  */
-const NOT_ANALYSED = [
-  'TYPE           LISTED  RETRIEVED',
-  'ApexClass      13      13',
-  'ApexTrigger    1       1',
-  'EmailTemplate  1       1',
-];
+const NOT_ANALYSED = ['TYPE         LISTED  RETRIEVED', 'ApexClass    13      13', 'ApexTrigger  1       1'];
 
 describe('orglens impact', () => {
   it.each([
@@ -152,9 +147,9 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
       '',
-      '9 components refer to it, 5 of them directly.',
+      '10 components refer to it, 6 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
@@ -175,7 +170,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('13 components refer to it, 9 of them directly.');
+    expect(lines).toContain('15 components refer to it, 11 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -187,7 +182,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('26 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('29 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -286,10 +281,10 @@ describe('orglens impact', () => {
     // it. Nor does what refers to the object Invoice_Line__c, which has no field of that name: the path of a
     // formula ends at a field, never at an object (decision record 0074).
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
     );
     expect((await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n')).toContain(
-      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
     );
   });
 
@@ -304,10 +299,10 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
+      'The answer is not complete: 2 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
-    // The 28 of the project without the field that could not be read, and without the one that reads it.
-    expect(lines).toContain('26 components refer to it, 25 of them directly.');
+    // The 33 of the project without the field that could not be read, and without the one that reads it.
+    expect(lines).toContain('31 components refer to it, 28 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
@@ -329,7 +324,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 3 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 2 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',

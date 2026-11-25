@@ -497,6 +497,8 @@ describe('the inventory of the mock org', () => {
       // The mock org keeps a definition of every flow, as an org does.
       'FlowDefinition',
       'GlobalValueSet',
+      'QuickAction',
+      'ReportType',
       'Workflow',
     ]);
     const counts = new Map<string, number>();
@@ -514,6 +516,8 @@ describe('the inventory of the mock org', () => {
       Flow: 6,
       FlowDefinition: 6,
       GlobalValueSet: 1,
+      QuickAction: 1,
+      ReportType: 1,
       Workflow: 2,
     });
     expect(counts.get('CustomField')).toBeGreaterThan(10);
