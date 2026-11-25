@@ -51,14 +51,14 @@ These rules come from the maintainer and apply to every phase.
   user of the outbound message becomes the user it logs in as. In a step of its own it sends one more thing, and
   nothing else: one flow of the project as a draft, so that the org holds an active version of it and a newer
   one.
-- OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when
-  the Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031 names
-  those requests, and a test pins them. Through the Tooling API the engine queries two objects:
-  `MetadataComponentDependency`, which says which component refers to which, and `FlowDefinition`, which names the
-  active and the latest version of each flow (`sources/dependency-api.ts`, decision record 0067). A test holds
-  every query against them. A tool of the tests asks the test org for more of the same kind
-  (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool asks the
-  Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
+- OrgLens reads metadata only. Nothing here may query record data. One thing is outside the code of OrgLens: when the
+  Salesforce library renews an expired login, it asks the org about the org itself. Decision record 0031 names those
+  requests, and a test pins them. Through the Tooling API the engine queries three objects:
+  `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
+  and the latest version of each flow, and `Flow`, which names every version of a flow (`sources/dependency-api.ts`,
+  decision records 0067 and 0078). A test holds every query against them. A tool of the tests asks the test org for more
+  of the same kind (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool
+  asks the Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
 
 ## Architecture
 
@@ -116,7 +116,7 @@ packages/cli   the `orglens` binary                            imports only `@sf
   something of which that is not known, and then a path from it is not followed and a warning says so. An element
   of a kind the reader does not know is kept, with a warning and its names as `probable`. The analysis has a row of
   its own for flows (`parser:flow`). A row of the Dependency API from a flow is compared where it is from the
-  version the snapshot holds, and counted otherwise (decision record 0067).
+  version the snapshot holds, and counted otherwise (decision records 0067 and 0078).
 - A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
   with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
   under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). The file contains them, as an object
@@ -196,21 +196,20 @@ packages/cli   the `orglens` binary                            imports only `@sf
   with `--packages`.
 - A snapshot of an org is cross-checked (decision records 0034 and 0045). `snapshot` asks the Dependency API of
   Salesforce after the last chunk and stores its rows beside the snapshot, as Salesforce wrote them
-  (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one.
-  Every analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
-  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by the
-  id the org listed the component with. A row from a flow carries the id of a version of it, and the org lists a
-  flow with the id of its latest version: so the snapshot asks the org for the ids of the active and the latest
-  version of each flow and keeps them with the rows (decision record 0067). A name is taken only where there is no
-  id: for a standard object, and for a component the org listed without one. A pair Salesforce reports and the
-  analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. An
-  answer that Salesforce cut off can hold fewer rows than the limit, so the query for every row never stands for
-  the org: the rows are always asked for per type, then whatever is of another type, and each type that shows
-  there by name. An answer that holds half the limit or more is asked for in parts. An answer of fewer rows, of
-  which every page came, is held against every row the reading holds in the end: a row of its query that another
-  query gave and it lacks shows that it was cut off (decision record 0069). The reading is `whole` only where no
-  answer shows that a row is missing. It never fails a snapshot and never makes it partial: an org that does not
-  answer leaves a warning.
+  (`store/dependencies.ts`). They are no references: the graph never reads them, and `impact` never shows one. Every
+  analysis holds them against what it found (`engines/cross-check.ts`) and keeps the comparison
+  (`snapshot_analysis.cross_check`), so `analyse` compares again without the org. An end of a row is matched by the id
+  the org listed the component with. A row from a flow carries the id of a version of it, and the org lists a flow with
+  the id of its latest version: so the snapshot asks the org for the ids of the active and the latest version of each
+  flow, and of every other version, and keeps them with the rows (decision records 0067 and 0078). A name is taken only
+  where there is no id: for a standard object, and for a component the org listed without one. A pair Salesforce reports
+  and the analysis lacks is the error `REFERENCE_MISSED` of the analysis. A pair only the analysis has is no error. An
+  answer that Salesforce cut off can hold fewer rows than the limit, so the query for every row never stands for the
+  org: the rows are always asked for per type, then whatever is of another type, and each type that shows there by name.
+  An answer that holds half the limit or more is asked for in parts. An answer of fewer rows, of which every page came,
+  is held against every row the reading holds in the end: a row of its query that another query gave and it lacks shows
+  that it was cut off (decision record 0069). The reading is `whole` only where no answer shows that a row is missing.
+  It never fails a snapshot and never makes it partial: an org that does not answer leaves a warning.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it

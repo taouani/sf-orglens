@@ -186,17 +186,17 @@ What follows is not verified:
 - **A flow can have 50 versions.** Whether a run of "deploy" adds a version to each of the six flows when nothing
   in them changed is not verified. The probe prints the number of versions of each flow.
 
-The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for
-describe metadata: `MetadataComponentDependency`, which it reads with the reader of the engine
-(`packages/engine/src/sources/dependency-api.ts`), `ApexClass` with its symbol table, and `CustomObject`,
-`CustomField`, `ValidationRule`, `ApexTrigger`, `FlowDefinition` and `Flow` for the names behind the ids. The last
-two also say which versions of a flow the org holds and which one is active. The test org answered the queries for
-them as they are written on 23 November 2026. A query an org refuses is said in the log, and the step goes on. No
-record of the data of the org is read. The read step asks for what the engine asks for:
-`MetadataComponentDependency`, and `FlowDefinition` for the ids of the versions of flows (decision record 0067). It
-finds the components of a row by the ids the org listed them with, and a version of a flow by the ids
-`FlowDefinition` names. A symbol table with references to other classes can only be had by compiling a copy of a
-class in the org, which writes to the org, so the probe does not do that.
+The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for describe
+metadata: `MetadataComponentDependency`, which it reads with the reader of the engine
+(`packages/engine/src/sources/dependency-api.ts`), `ApexClass` with its symbol table, and `CustomObject`, `CustomField`,
+`ValidationRule`, `ApexTrigger`, `FlowDefinition` and `Flow` for the names behind the ids. The last two also say which
+versions of a flow the org holds and which one is active. The test org answered the queries for them as they are written
+on 23 November 2026. A query an org refuses is said in the log, and the step goes on. No record of the data of the org
+is read. The read step asks for what the engine asks for: `MetadataComponentDependency`, and `FlowDefinition` and `Flow`
+for the ids of the versions of flows (decision records 0067 and 0078). It finds the components of a row by the ids the
+org listed them with, and a version of a flow by the ids `FlowDefinition` and `Flow` name. A symbol table with
+references to other classes can only be had by compiling a copy of a class in the org, which writes to the org, so the
+probe does not do that.
 
 Last, the probe asks the Metadata API for one flow of the fixture project, the one the step "draft" sends once
 more: by its name, by the file of its `FlowDefinition`, and by its name with the number of a version, such as

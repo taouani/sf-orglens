@@ -14,7 +14,7 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { DEPENDENCY_OBJECT, FLOW_VERSION_OBJECT } from '../src/sources/dependency-api.ts';
+import { DEPENDENCY_OBJECT, EVERY_VERSION_OBJECT, FLOW_VERSION_OBJECT } from '../src/sources/dependency-api.ts';
 import { readDependencyRows, writeDependencies } from '../src/store/dependencies.ts';
 import { openStore } from '../src/store/open.ts';
 import { addIssue } from '../src/store/snapshots.ts';
@@ -100,6 +100,8 @@ function workspaceDir(): string {
  * is written out, so that a reading that asks more is seen here.
  */
 const QUERIES_FOR_ROWS = 21;
+/** The queries for the versions of the flows of an org that lists a flow: `FlowDefinition`, then `Flow`. */
+const QUERIES_FOR_VERSIONS = 2;
 
 /** The requests for rows of the Dependency API, and every other request that is a query. */
 const queryPaths = (): string[] => [
@@ -195,19 +197,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.snapshot.status).toBe('complete');
       expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
-      // One query for the versions of the flows, then the query for every row, one for each type of component that
-      // refers and one for the rest. No answer is near the limit here, and the first does not stand for the org
-      // however few rows it holds (decision record 0069).
-      const where = dependencies.queries.slice(1).map((soql) => soql.split(' WHERE ')[1] ?? '');
+      // Two queries for the versions of the flows, then the query for every row, one for each type of component
+      // that refers and one for the rest. No answer is near the limit here, and the first does not stand for the
+      // org however few rows it holds (decision record 0069).
+      const where = dependencies.queries.slice(QUERIES_FOR_VERSIONS).map((soql) => soql.split(' WHERE ')[1] ?? '');
       expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
+      expect(dependencies.queries[1]).toContain(` FROM ${EVERY_VERSION_OBJECT}`);
       expect(where[0]).toBe('');
       expect(where.slice(1, -1).every((one) => /^MetadataComponentType = '\w+'$/.test(one))).toBe(true);
       expect(where.at(-1)).toMatch(/^MetadataComponentType NOT IN \(/);
-      expect(dependencies.queries).toHaveLength(1 + QUERIES_FOR_ROWS);
+      expect(dependencies.queries).toHaveLength(QUERIES_FOR_VERSIONS + QUERIES_FOR_ROWS);
       expect(report.crossCheck).toEqual({
         state: 'whole',
         readAt: expect.stringMatching(UTC) as string,
-        requests: 1 + QUERIES_FOR_ROWS,
+        requests: QUERIES_FOR_VERSIONS + QUERIES_FOR_ROWS,
         rows: pairs.length + 3,
         queriesCutOff: 0,
         queriesFailed: 0,
@@ -269,16 +272,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         'workflow-rule',
       ]);
 
-      // Only metadata is read: two objects of the Tooling API are queried, the versions of the flows first, and
+      // Only metadata is read: three objects of the Tooling API are queried, the versions of the flows first, and
       // nothing else is.
-      expect(dependencies.queries[0]).toBe(
+      expect(dependencies.queries.slice(0, QUERIES_FOR_VERSIONS)).toEqual([
         `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`,
-      );
-      for (const soql of dependencies.queries.slice(1)) {
+        `SELECT Id, DefinitionId FROM ${EVERY_VERSION_OBJECT}`,
+      ]);
+      for (const soql of dependencies.queries.slice(QUERIES_FOR_VERSIONS)) {
         expect(soql).toMatch(new RegExp(` FROM ${DEPENDENCY_OBJECT}(?: WHERE |$)`));
       }
       expect(DEPENDENCY_OBJECT).toBe('MetadataComponentDependency');
       expect(FLOW_VERSION_OBJECT).toBe('FlowDefinition');
+      expect(EVERY_VERSION_OBJECT).toBe('Flow');
       expect(queryPaths()).toEqual(['/services/data/v66.0/tooling/query']);
 
       // The rows are kept as Salesforce wrote them, and none of them became a reference.
@@ -413,7 +418,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(report.analysis?.complete).toBe(true);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 1 + QUERIES_FOR_ROWS,
+        requests: QUERIES_FOR_VERSIONS + QUERIES_FOR_ROWS,
         rows: pairs.length + 3 + ofDraft.length,
         queriesNotProven: 0,
         comparison: {
@@ -463,6 +468,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             state: 'none',
             flows: 0,
             notNamed: metadata.flowDefinitionRows().length,
+            // The org is not asked for every version where it named no flow.
+            versionsCode: null,
+            versionsState: 'none',
             requests: 1,
           },
         },
@@ -509,7 +517,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           message:
             'The org did not name the versions of 1 flow it listed. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.',
           component: null,
-          details: { code: null, state: 'whole', flows: others.length, notNamed: 1, requests: 1 },
+          details: {
+            code: null,
+            state: 'whole',
+            flows: others.length,
+            notNamed: 1,
+            versionsCode: null,
+            versionsState: 'whole',
+            requests: 2,
+          },
         },
       ]);
       expect(report.crossCheck?.comparison).toMatchObject({
@@ -552,19 +568,138 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
             state: 'partial',
             flows: 2,
             notNamed: rows.length - 2,
-            requests: 2,
+            versionsCode: null,
+            versionsState: 'whole',
+            requests: 3,
           },
         },
       ]);
       // The flow with the draft was named: the rows of its active version are compared all the same.
-      // The two pages of the versions, and the queries for rows.
+      // The two pages of the versions, the query for every version, and the queries for rows.
       const ofRows = dependencies.queries.filter((soql) => soql.includes(` FROM ${DEPENDENCY_OBJECT}`)).length;
       expect(ofRows).toBe(QUERIES_FOR_ROWS);
       expect(report.crossCheck).toMatchObject({
         state: 'whole',
-        requests: 2 + QUERIES_FOR_ROWS,
+        requests: 3 + QUERIES_FOR_ROWS,
         comparison: { rowsNotMatched: 0, rowsOtherVersion: ofDraft.length, missed: [] },
       });
+
+      // The answer of every version breaks off as well, after its first page: the warning says both.
+      const named = report.issues.find((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')?.message ?? '';
+      const versionsNext = '/services/data/v66.0/tooling/query/01gxx0000000002-2000';
+      const ofDefinitions = mock.intercept;
+      mock.intercept = (request) => {
+        const query = request.query.get('q') ?? '';
+        if (request.path.endsWith('/tooling/query') && query.endsWith(` FROM ${EVERY_VERSION_OBJECT}`)) {
+          const records = metadata
+            .flowRows()
+            .slice(0, 1)
+            .map((one) => ({ attributes: { type: EVERY_VERSION_OBJECT }, ...one }));
+          return { status: 200, body: JSON.stringify({ done: false, nextRecordsUrl: versionsNext, records }) };
+        }
+        if (request.path === versionsNext) {
+          return { status: 400, body: JSON.stringify([{ message: 'Not now.', errorCode: 'QUERY_TIMEOUT' }]) };
+        }
+        return ofDefinitions(request);
+      };
+      const both = await snap(workspaceDir());
+      expect(both.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message: `${named} The org did not name all the other versions of its flows (QUERY_TIMEOUT). A row of the Dependency API from a version that is neither active nor the latest names a component the org did not list, and a query of the rows of flows that is near the limit of rows can be taken as cut off.`,
+          component: null,
+          details: {
+            code: 'QUERY_TIMEOUT',
+            state: 'partial',
+            flows: 2,
+            notNamed: rows.length - 2,
+            versionsCode: 'QUERY_TIMEOUT',
+            versionsState: 'partial',
+            requests: 4,
+          },
+        },
+      ]);
+      expect(named).toMatch(/^The org did not name the versions of all of its flows \(QUERY_TIMEOUT\)\. /);
+    });
+
+    it('counts the rows of a version a deploy left behind as of another version, also when it asks in parts', async () => {
+      // The flow is active in its latest version, and the org keeps the version before it, with its rows: a deploy
+      // makes a new version and leaves the old one (run 29 of "Live org", decision record 0078).
+      metadata = await metadataFromSource(WHOLE);
+      const file = readFileSync(join(WHOLE, DRAFTED_FILE), 'utf8');
+      metadata.flowVersions.set(FLOW_WITH_DRAFT, {
+        latest: 2,
+        older: new Map([[1, file.replace('<status>Active</status>', '<status>Obsolete</status>')]]),
+      });
+      mock.metadata = metadata;
+      const oldId = metadata.versionIdOf(FLOW_WITH_DRAFT, 1) ?? '';
+      const ofOld = rowsOf(metadata)
+        .filter((row) => row['MetadataComponentType'] === 'Flow' && row['MetadataComponentName'] === FLOW_WITH_DRAFT)
+        .map((row) => ({ ...row, MetadataComponentId: oldId }));
+      expect(ofOld.length).toBeGreaterThan(5);
+      // The rows of the old version come first, so that an answer that is cut off holds them.
+      const withOld = (): void => {
+        dependencies = mockDependencies([...ofOld, ...rowsOf(metadata)]);
+        mock.dependencies = dependencies;
+      };
+      withOld();
+      const dir = workspaceDir();
+      const report = await snap(dir);
+      expect(ofReading(report)).toEqual([]);
+      expect(report.crossCheck).toMatchObject({
+        state: 'whole',
+        requests: QUERIES_FOR_VERSIONS + QUERIES_FOR_ROWS,
+        comparison: { rowsNotMatched: 0, rowsOtherVersion: ofOld.length, missed: [], onlyOrgLens: [] },
+      });
+      // The id is kept with the snapshot, so that an analysis compares again without the org.
+      expect(count(dir, 'SELECT count(*) AS n FROM snapshot_flow_other_version')).toBe(1);
+      const again = await (await openWorkspace({ root: dir, env })).analyse('prod');
+      expect(again.crossCheck).toEqual(report.crossCheck);
+
+      // Asked in parts, the rows of the old version are asked for by its id, and the reading is whole.
+      const parts = { tuning: { dependencies: { rowsPerQuery: 40 } } };
+      dependencies.limit = 20;
+      const inParts = await snap(workspaceDir(), parts);
+      expect(inParts.crossCheck).toMatchObject({ state: 'whole', queriesCutOff: 0, rows: report.crossCheck?.rows });
+      expect(inParts.crossCheck?.comparison).toEqual(report.crossCheck?.comparison);
+      expect(
+        dependencies.queries.some((soql) => soql.includes('MetadataComponentId IN (') && soql.includes(oldId)),
+      ).toBe(true);
+
+      // An org that refuses the query of every version: the rows of the old version name a component it did not
+      // list, and a part that is near the limit and holds them is taken as cut off, as in run 29.
+      withOld();
+      dependencies.refuse = (soql) => (soql.endsWith(` FROM ${EVERY_VERSION_OBJECT}`) ? 'INVALID_TYPE' : undefined);
+      const refused = await snap(workspaceDir());
+      expect(refused.issues.filter((issue) => issue.code === 'FLOW_VERSIONS_NOT_READ')).toEqual([
+        {
+          stage: 'read',
+          severity: 'warning',
+          code: 'FLOW_VERSIONS_NOT_READ',
+          message:
+            'The org did not name the other versions of its flows (INVALID_TYPE). A row of the Dependency API from a version that is neither active nor the latest names a component the org did not list, and a query of the rows of flows that is near the limit of rows can be taken as cut off.',
+          component: null,
+          details: {
+            code: null,
+            state: 'whole',
+            flows: metadata.flowDefinitionRows().length,
+            notNamed: 0,
+            versionsCode: 'INVALID_TYPE',
+            versionsState: 'none',
+            requests: 2,
+          },
+        },
+      ]);
+      expect(refused.crossCheck).toMatchObject({
+        state: 'whole',
+        comparison: { rowsNotMatched: ofOld.length, rowsOtherVersion: 0, missed: [] },
+      });
+      dependencies.limit = 20;
+      const refusedInParts = await snap(workspaceDir(), parts);
+      expect(refusedInParts.crossCheck?.state).toBe('partial');
+      expect(refusedInParts.crossCheck?.queriesCutOff).toBeGreaterThan(0);
     });
 
     it('takes a flow under the name the org listed it with, where FlowDefinition writes it with a prefix', async () => {
@@ -684,7 +819,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(dependencies.queries.some((soql) => soql.includes('MetadataComponentId NOT IN ('))).toBe(true);
       expect(report.crossCheck?.requests).toBe(dependencies.queries.length);
       expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
-      for (const soql of dependencies.queries.slice(1)) expect(soql).toContain(` FROM ${DEPENDENCY_OBJECT}`);
+      expect(dependencies.queries[1]).toContain(` FROM ${EVERY_VERSION_OBJECT}`);
+      for (const soql of dependencies.queries.slice(QUERIES_FOR_VERSIONS)) {
+        expect(soql).toContain(` FROM ${DEPENDENCY_OBJECT}`);
+      }
 
       // The same rows as one query gives of an org that has no limit.
       const store = openStore({ path: databaseOf(dir), driver, readOnly: true });
@@ -754,10 +892,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       dependencies.limit = 20;
       const report = await snap(workspaceDir(), { tuning: { dependencies: { rowsPerQuery: 20, requestsInAll: 3 } } });
       expect(report.snapshot.status).toBe('complete');
-      // The query for the versions took one of the three requests, and the rows the two that were left.
+      // The queries for the versions took two of the three requests, and the rows the one that was left.
       expect(report.crossCheck).toMatchObject({ state: 'partial', requests: 3, code: 'REQUESTS_USED_UP' });
       expect(dependencies.queries).toHaveLength(3);
       expect(dependencies.queries[0]).toContain(` FROM ${FLOW_VERSION_OBJECT}`);
+      expect(dependencies.queries[1]).toContain(` FROM ${EVERY_VERSION_OBJECT}`);
       expect(ofReading(report)).toEqual(['warning CROSS_CHECK_PARTIAL']);
     });
 
@@ -771,17 +910,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const events: SnapshotProgress[] = [];
       const report = await snap(dir, { onProgress: (event) => events.push(event) });
       expect(report.snapshot).toMatchObject({ id: 1, status: 'complete' });
-      // The step is told before the first request, and after every query for rows with how far it is. The query for
-      // the versions of the flows counts with them.
+      // The step is told before the first request, and after every query for rows with how far it is. The queries
+      // for the versions of the flows count with them.
       const told = events.filter((event) => event.step === 'cross-checking');
-      const asked = 1 + QUERIES_FOR_ROWS;
+      const asked = QUERIES_FOR_VERSIONS + QUERIES_FOR_ROWS;
       expect(dependencies.queries).toHaveLength(asked);
       expect(told).toEqual([
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
-        ...Array.from({ length: asked - 1 }, (_, at) => ({
+        ...Array.from({ length: QUERIES_FOR_ROWS }, (_, at) => ({
           step: 'cross-checking',
           snapshot: 1,
-          requests: at + 2,
+          requests: at + 1 + QUERIES_FOR_VERSIONS,
           rows: expect.any(Number) as number,
         })),
       ]);

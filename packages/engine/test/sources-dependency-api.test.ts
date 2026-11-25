@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { OrgSource } from '../src/core/config/config.ts';
 import {
   DEPENDENCY_OBJECT,
+  EVERY_VERSION_OBJECT,
   FLOW_VERSION_OBJECT,
   readDependencies,
   readFlowVersions,
@@ -50,7 +51,7 @@ async function read(options: DependencyOptions = {}): Promise<DependencyReading>
   return readDependencies(session, { ...options, limits: { ...FAST, ...options.limits } });
 }
 
-/** Asks the mock org which versions of its flows are active and latest. */
+/** Asks the mock org which versions of its flows are active and latest, and which other versions they have. */
 async function readVersions(limits: Partial<DependencyLimits> = {}): Promise<FlowVersionReading> {
   await seedCliLogin({ username: 'dev@example.com', orgId: ORG_ID, instanceUrl: mock.url, accessToken: 'the-session' });
   mock.sessions.add('the-session');
@@ -87,12 +88,38 @@ const DEFINITIONS: Record<string, string | null>[] = [
   // A row without a name says nothing.
   { Id: '300xx0000000005AAA', DeveloperName: '', NamespacePrefix: null, ActiveVersionId: null, LatestVersionId: null },
 ];
-/** What the reading makes of them, sorted by flow. */
+/**
+ * Rows of `Flow` as the Tooling API gives them, one per version: the active and the latest version of a flow, which
+ * the rows above name as well, and two older ones of it, in another length of the id; an older version of the flow
+ * of a package, the latest version of a flow in the short length of its id, and one of the flow with odd ids; a
+ * version of no flow the rows above name, and rows whose ids are not ids.
+ */
+const EVERY_VERSION: Record<string, string | null>[] = [
+  { Id: '301xx0000000001AAA', DefinitionId: '300xx0000000001AAA' },
+  { Id: '301xx0000000002AAA', DefinitionId: '300xx0000000001AAA' },
+  { Id: '301xx0000000006AAA', DefinitionId: '300xx0000000001' },
+  { Id: '301xx0000000005', DefinitionId: '300xx0000000001AAA' },
+  { Id: '301xx0000000003AAA', DefinitionId: '300xx0000000002AAA' },
+  { Id: '301xx0000000007AAA', DefinitionId: '300xx0000000002AAA' },
+  { Id: '301xx0000000004', DefinitionId: '300xx0000000003AAA' },
+  { Id: '301xx0000000008AAA', DefinitionId: '300xx0000000004AAA' },
+  { Id: '301xx0000000009AAA', DefinitionId: '300xx0000000009AAA' },
+  { Id: 'none', DefinitionId: '300xx0000000001AAA' },
+  { Id: '301xx0000000010AAA', DefinitionId: null },
+];
+/** What the reading makes of the rows of `FlowDefinition` alone, sorted by flow. */
 const VERSIONS = [
-  { flow: 'Invoice_Recalculate', active: '301xx0000000001AAA', latest: '301xx0000000002AAA' },
-  { flow: 'Never_Active', active: null, latest: '301xx0000000004AAA' },
-  { flow: 'Odd', active: null, latest: null },
-  { flow: 'acme__Renew', active: '301xx0000000003AAA', latest: '301xx0000000003AAA' },
+  { flow: 'Invoice_Recalculate', active: '301xx0000000001AAA', latest: '301xx0000000002AAA', others: [] },
+  { flow: 'Never_Active', active: null, latest: '301xx0000000004AAA', others: [] },
+  { flow: 'Odd', active: null, latest: null, others: [] },
+  { flow: 'acme__Renew', active: '301xx0000000003AAA', latest: '301xx0000000003AAA', others: [] },
+];
+/** What it makes of them with the rows of `Flow`: the other versions of each flow, sorted. */
+const WITH_OTHERS = [
+  { ...VERSIONS[0], others: ['301xx0000000005', '301xx0000000006AAA'] },
+  VERSIONS[1],
+  { ...VERSIONS[2], others: ['301xx0000000008AAA'] },
+  { ...VERSIONS[3], others: ['301xx0000000007AAA'] },
 ];
 
 /** Rows from `count` components of one type to one component each of another type. */
@@ -1428,18 +1455,40 @@ describe('reading the Dependency API', () => {
     }
   });
 
-  it('asks one query of the versions of the flows, which names the active and the latest version of each', async () => {
+  it('asks one query of the versions of the flows, and one of every version, and names the other versions', async () => {
     mock.dependencies = mockDependencies([]);
     mock.dependencies.flowDefinitions = DEFINITIONS;
-    expect(await readVersions()).toEqual({ state: 'whole', flows: VERSIONS, requests: 1, code: null });
+    mock.dependencies.flows = EVERY_VERSION;
+    const whole = { state: 'whole', code: null };
+    expect(await readVersions()).toEqual({
+      state: 'whole',
+      flows: WITH_OTHERS,
+      requests: 2,
+      code: null,
+      versions: whole,
+    });
     expect(mock.dependencies.queries).toEqual([
       `SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM ${FLOW_VERSION_OBJECT}`,
+      `SELECT Id, DefinitionId FROM ${EVERY_VERSION_OBJECT}`,
     ]);
     expect(FLOW_VERSION_OBJECT).toBe('FlowDefinition');
+    expect(EVERY_VERSION_OBJECT).toBe('Flow');
     expect(new Set(mock.asked())).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
-    // An org without flows names none.
+    // An org whose flows have one version each names no other one.
+    mock.dependencies.flows = [];
+    expect(await readVersions()).toEqual({ state: 'whole', flows: VERSIONS, requests: 2, code: null, versions: whole });
+    // An org without flows names none, and is not asked for their versions.
+    mock.dependencies.queries.length = 0;
     mock.dependencies.flowDefinitions = [];
-    expect(await readVersions()).toEqual({ state: 'whole', flows: [], requests: 1, code: null });
+    mock.dependencies.flows = EVERY_VERSION;
+    expect(await readVersions()).toEqual({
+      state: 'whole',
+      flows: [],
+      requests: 1,
+      code: null,
+      versions: { state: 'none', code: null },
+    });
+    expect(mock.dependencies.queries).toHaveLength(1);
   });
 
   it('follows the versions of the flows over their pages, and keeps what came where the answer breaks off', async () => {
@@ -1447,43 +1496,125 @@ describe('reading the Dependency API', () => {
       status: 200,
       body: JSON.stringify({ done: next === null, ...(next === null ? {} : { nextRecordsUrl: next }), records }),
     });
+    const ofFlow = (request: { readonly query: URLSearchParams }): boolean =>
+      (request.query.get('q') ?? '').endsWith(`FROM ${EVERY_VERSION_OBJECT}`);
     mock.intercept = (request) => {
-      if (request.path.endsWith('/tooling/query'))
-        return page(DEFINITIONS.slice(0, 2), '/services/data/v66.0/tooling/query/01gxx-2');
+      if (request.path.endsWith('/tooling/query')) {
+        return ofFlow(request)
+          ? page(EVERY_VERSION.slice(0, 3), '/services/data/v66.0/tooling/query/01gxx-4')
+          : page(DEFINITIONS.slice(0, 2), '/services/data/v66.0/tooling/query/01gxx-2');
+      }
       if (request.path.endsWith('/01gxx-2')) return page(DEFINITIONS.slice(2), null);
+      if (request.path.endsWith('/01gxx-4')) return page(EVERY_VERSION.slice(3), null);
       return undefined;
     };
-    expect(await readVersions()).toEqual({ state: 'whole', flows: VERSIONS, requests: 2, code: null });
-    // The limit of requests is reached after the first page: what it named is right all the same.
+    const whole = { state: 'whole', code: null };
+    expect(await readVersions()).toEqual({
+      state: 'whole',
+      flows: WITH_OTHERS,
+      requests: 4,
+      code: null,
+      versions: whole,
+    });
+    // The limit of requests is reached after the first page: what it named is right all the same, and the versions
+    // are not asked for.
     expect(await readVersions({ requestsInAll: 1 })).toEqual({
       state: 'partial',
       flows: [VERSIONS[0], VERSIONS[3]],
       requests: 1,
       code: 'REQUESTS_USED_UP',
+      versions: { state: 'none', code: 'REQUESTS_USED_UP' },
     });
-    expect(await readVersions({ pages: 1 })).toMatchObject({ state: 'partial', requests: 1, code: 'PAGES_LEFT' });
+    // It is reached after the first page of the versions: the other versions on it are kept.
+    expect(await readVersions({ requestsInAll: 3 })).toEqual({
+      state: 'whole',
+      flows: [{ ...VERSIONS[0], others: ['301xx0000000006AAA'] }, ...VERSIONS.slice(1)],
+      requests: 3,
+      code: null,
+      versions: { state: 'partial', code: 'REQUESTS_USED_UP' },
+    });
+    expect(await readVersions({ pages: 1 })).toMatchObject({
+      state: 'partial',
+      requests: 2,
+      code: 'PAGES_LEFT',
+      versions: { state: 'partial', code: 'PAGES_LEFT' },
+    });
     // An answer that is not done and does not say where it goes on, or goes on somewhere else.
     mock.intercept = (request) =>
-      request.path.endsWith('/tooling/query')
+      request.path.endsWith('/tooling/query') && !ofFlow(request)
         ? page(DEFINITIONS.slice(0, 1), '/services/data/v66.0/query?q=SELECT+Id+FROM+Account')
         : undefined;
-    expect(await readVersions()).toEqual({ state: 'partial', flows: [VERSIONS[0]], requests: 1, code: 'NOT_DONE' });
+    mock.dependencies = mockDependencies([]);
+    expect(await readVersions()).toEqual({
+      state: 'partial',
+      flows: [VERSIONS[0]],
+      requests: 2,
+      code: 'NOT_DONE',
+      versions: whole,
+    });
+    mock.intercept = (request) =>
+      request.path.endsWith('/tooling/query') && ofFlow(request)
+        ? page(EVERY_VERSION.slice(0, 3), '/services/data/v66.0/query?q=SELECT+Id+FROM+Account')
+        : undefined;
+    mock.dependencies.flowDefinitions = DEFINITIONS;
+    expect(await readVersions()).toEqual({
+      state: 'whole',
+      flows: [{ ...VERSIONS[0], others: ['301xx0000000006AAA'] }, ...VERSIONS.slice(1)],
+      requests: 2,
+      code: null,
+      versions: { state: 'partial', code: 'NOT_DONE' },
+    });
     expect(new Set(mock.asked())).toEqual(new Set(['GET /services/data/v66.0/tooling/query']));
   });
 
   it('gives a reading that says so when the org refuses the versions of its flows or does not answer', async () => {
     mock.dependencies = mockDependencies([]);
     mock.dependencies.refuse = (soql) => (soql.includes(FLOW_VERSION_OBJECT) ? 'INVALID_TYPE' : undefined);
-    expect(await readVersions()).toEqual({ state: 'none', flows: [], requests: 1, code: 'INVALID_TYPE' });
+    const notAsked = { state: 'none', code: null };
+    expect(await readVersions()).toEqual({
+      state: 'none',
+      flows: [],
+      requests: 1,
+      code: 'INVALID_TYPE',
+      versions: notAsked,
+    });
+    // An org that names its flows and refuses the query of every version: the active and the latest are known.
+    mock.dependencies.flowDefinitions = DEFINITIONS;
+    mock.dependencies.flows = EVERY_VERSION;
+    mock.dependencies.refuse = (soql) => (soql.endsWith(`FROM ${EVERY_VERSION_OBJECT}`) ? 'INVALID_TYPE' : undefined);
+    expect(await readVersions()).toEqual({
+      state: 'whole',
+      flows: VERSIONS,
+      requests: 2,
+      code: null,
+      versions: { state: 'none', code: 'INVALID_TYPE' },
+    });
     // A query that takes too long is not asked again.
+    mock.dependencies.refuse = null;
     mock.intercept = (request) =>
       request.path.endsWith('/tooling/query')
         ? { status: 200, body: JSON.stringify({ done: true, records: [] }), halfway: 'stall' }
         : undefined;
-    expect(await readVersions({ requestMs: 300 })).toEqual({ state: 'none', flows: [], requests: 1, code: 'TIMEOUT' });
+    expect(await readVersions({ requestMs: 300 })).toEqual({
+      state: 'none',
+      flows: [],
+      requests: 1,
+      code: 'TIMEOUT',
+      versions: notAsked,
+    });
+    mock.intercept = (request) =>
+      request.path.endsWith('/tooling/query') && (request.query.get('q') ?? '').endsWith(`FROM ${EVERY_VERSION_OBJECT}`)
+        ? { status: 200, body: JSON.stringify({ done: true, records: [] }), halfway: 'stall' }
+        : undefined;
+    expect(await readVersions({ requestMs: 300 })).toEqual({
+      state: 'whole',
+      flows: VERSIONS,
+      requests: 2,
+      code: null,
+      versions: { state: 'none', code: 'TIMEOUT' },
+    });
     // Nor is one whose session the org no longer accepts.
     mock.intercept = null;
-    mock.dependencies.refuse = null;
     await seedCliLogin({
       username: 'dev@example.com',
       orgId: ORG_ID,
@@ -1496,6 +1627,7 @@ describe('reading the Dependency API', () => {
     expect(await readFlowVersions(session, { limits: FAST })).toMatchObject({
       state: 'none',
       code: 'INVALID_SESSION_ID',
+      versions: notAsked,
     });
   });
 

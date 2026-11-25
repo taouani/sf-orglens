@@ -500,10 +500,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
       ]);
       // After every query for rows, none of which gave a row here: the query for every row, one for each of the 17
-      // types that are known to refer, and one for the rest (decision record 0069). The query for the versions of
-      // the flows came before them, and counts with them.
+      // types that are known to refer, and one for the rest (decision record 0069). The two queries for the versions
+      // of the flows came before them, and count with them (decision records 0067 and 0078).
       expect(fromPlan.slice(3, -1)).toEqual(
-        Array.from({ length: 19 }, (_, at) => ({ step: 'cross-checking', snapshot: 1, requests: at + 2, rows: 0 })),
+        Array.from({ length: 19 }, (_, at) => ({ step: 'cross-checking', snapshot: 1, requests: at + 3, rows: 0 })),
       );
       expect(fromPlan.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
       // One retrieve of every component by its name, asked for until it was done, and its zip file fetched once.

@@ -1267,7 +1267,8 @@ function notActiveSaid(
  *
  * A row from a flow carries the id of a version of the flow, and the org lists a flow with the id of its latest
  * version only. An org that lists a flow is therefore asked first for the ids of the active and the latest version
- * of each flow, which are stored with the rows (decision record 0067).
+ * of each flow (decision record 0067), and of every other version (decision record 0078), which are stored with the
+ * rows.
  */
 async function readCrossCheck(
   store: Store,
@@ -1293,7 +1294,7 @@ async function readCrossCheck(
   };
   for (const item of listed) if (item.id !== null) add(item.type, item.id);
   for (const flow of versions?.flows ?? []) {
-    for (const id of [flow.active, flow.latest]) if (id !== null) add('Flow', id);
+    for (const id of [flow.active, flow.latest, ...flow.others]) if (id !== null) add('Flow', id);
   }
   // Both readings count against the daily limit of requests of the org. They are counted together, and the rows
   // are read with the requests that are left.
@@ -1325,25 +1326,34 @@ async function readCrossCheck(
     }
     // An answer can also be whole and leave out a flow the org listed.
     const notNamed = versions === null ? 0 : flowsNotNamed(listed, versions.flows);
-    if (versions !== null && (versions.state !== 'whole' || notNamed > 0)) {
-      const which =
-        versions.state === 'whole'
-          ? `${plural(notNamed, 'flow', 'flows')} it listed`
-          : `${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'})`;
-      issue(
-        store,
-        snapshotId,
-        'warning',
-        'FLOW_VERSIONS_NOT_READ',
-        `The org did not name the versions of ${which}. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
-        {
+    if (versions !== null) {
+      const said: string[] = [];
+      if (versions.state !== 'whole' || notNamed > 0) {
+        const which =
+          versions.state === 'whole'
+            ? `${plural(notNamed, 'flow', 'flows')} it listed`
+            : `${versions.state === 'none' ? 'its flows' : 'all of its flows'} (${versions.code ?? 'NO_CODE'})`;
+        said.push(
+          `The org did not name the versions of ${which}. A row of the Dependency API from the active version of a flow that has a newer version is not compared: the org does not list the id of that version.`,
+        );
+      }
+      // The org is asked for every version only where it named a flow.
+      if (versions.flows.length > 0 && versions.versions.state !== 'whole') {
+        said.push(
+          `The org did not name ${versions.versions.state === 'none' ? 'the' : 'all the'} other versions of its flows (${versions.versions.code ?? 'NO_CODE'}). A row of the Dependency API from a version that is neither active nor the latest names a component the org did not list, and a query of the rows of flows that is near the limit of rows can be taken as cut off.`,
+        );
+      }
+      if (said.length > 0) {
+        issue(store, snapshotId, 'warning', 'FLOW_VERSIONS_NOT_READ', said.join(' '), {
           code: versions.code,
           state: versions.state,
           flows: versions.flows.length,
           notNamed,
+          versionsCode: versions.versions.code,
+          versionsState: versions.versions.state,
           requests: versions.requests,
-        },
-      );
+        });
+      }
     }
     if (reading.state === 'partial') {
       const left = reading.cutOff + reading.failed;

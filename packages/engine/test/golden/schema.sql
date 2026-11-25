@@ -237,3 +237,13 @@ CREATE TABLE snapshot_flow_version (
 
 CREATE INDEX reference_by_unresolved_target ON reference (target_type, raw_name COLLATE NOCASE)
   WHERE target_id IS NULL;
+
+CREATE TABLE snapshot_flow_other_version (
+  snapshot_id INTEGER NOT NULL,
+  -- The full name of the flow, as in snapshot_flow_version.
+  flow        TEXT NOT NULL,
+  -- The id of the version.
+  version_id  TEXT NOT NULL CHECK (version_id <> ''),
+  PRIMARY KEY (snapshot_id, flow, version_id),
+  FOREIGN KEY (snapshot_id, flow) REFERENCES snapshot_flow_version (snapshot_id, flow) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;

@@ -1,7 +1,8 @@
 /**
  * The Dependency API of a mock org: the rows of `MetadataComponentDependency`, and the queries of the Tooling
- * API that the engine asks for them. It also answers the one query of `FlowDefinition` that names the versions of
- * the flows (decision record 0067).
+ * API that the engine asks for them. It also answers the one query of `FlowDefinition` that names the active and the
+ * latest version of the flows (decision record 0067), and the one query of `Flow` that names every version (decision
+ * record 0078).
  *
  * It answers the way the probe of the test org saw Salesforce answer (`docs/research/phase-1/real-org.md`):
  * a query gives at most `limit` rows and says that it is done, a field and a rule are named without their
@@ -47,6 +48,11 @@ export interface MockDependencies {
    * (`MockMetadata.flowDefinitionRows`), and none without it.
    */
   flowDefinitions: Record<string, string | null>[] | null;
+  /**
+   * The rows of `Flow`, one per version of a flow, or `null` for those the metadata of the mock org gives
+   * (`MockMetadata.flowRows`), and none without it.
+   */
+  flows: Record<string, string | null>[] | null;
   /** Answers one query of the Tooling API, with the metadata of the mock org if it has one. */
   answer(soql: string, metadata?: MockMetadata | null): { status: number; body: string };
 }
@@ -97,6 +103,8 @@ const refused = (errorCode: string, message: string): { status: number; body: st
 
 /** The query of the versions of the flows, the one query of `FlowDefinition` the engine asks. */
 const FLOW_VERSIONS = 'SELECT Id, DeveloperName, NamespacePrefix, ActiveVersionId, LatestVersionId FROM FlowDefinition';
+/** The query of every version of the flows, the one query of `Flow` the engine asks. */
+const EVERY_VERSION = 'SELECT Id, DefinitionId FROM Flow';
 
 const answered = (entityTypeName: string, rows: readonly Readonly<Record<string, unknown>>[], total = rows.length) => {
   const records = rows.map((row) => ({ attributes: { type: entityTypeName }, ...row }));
@@ -147,6 +155,7 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
     queries: [],
     refuse: null,
     flowDefinitions: null,
+    flows: null,
     answer: (soql, metadata = null) => {
       dependencies.queries.push(soql);
       const code = dependencies.refuse?.(soql);
@@ -154,6 +163,7 @@ export function mockDependencies(rows: readonly MockDependencyRow[] = []): MockD
       if (soql === FLOW_VERSIONS) {
         return answered('FlowDefinition', dependencies.flowDefinitions ?? metadata?.flowDefinitionRows() ?? []);
       }
+      if (soql === EVERY_VERSION) return answered('Flow', dependencies.flows ?? metadata?.flowRows() ?? []);
       const parsed = SELECT.exec(soql);
       if (parsed === null) return refused('MALFORMED_QUERY', 'The mock org does not know this query.');
       if (parsed[1] !== 'MetadataComponentDependency') {
