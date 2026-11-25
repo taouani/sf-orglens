@@ -1,8 +1,8 @@
 /**
  * The analysis of a source: a component for everything it holds, and for objects, fields, validation rules,
- * record types, field sets, records of custom metadata types, flows, workflow rules and their actions their
- * attributes, the references that are written in XML and those that stand in a formula or a text. A flow gets a
- * component for each of its elements and resources as well.
+ * record types, field sets, records of custom metadata types, flows, workflow rules and their actions, email
+ * templates, report types and quick actions their attributes, the references that are written in XML and those
+ * that stand in a formula or a text. A flow gets a component for each of its elements and resources as well.
  *
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
@@ -18,12 +18,15 @@ import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
 import { readRecord } from './custom-metadata.ts';
+import { readEmailTemplate } from './email-templates.ts';
 import { readFlow, type FlowReading } from './flows.ts';
 import { buildModel, type FieldFacts } from './model.ts';
 import { readField, readFieldSet, readObject, readRecordType, readRule, type ElementReading } from './objects.ts';
+import { readQuickAction } from './quick-actions.ts';
 import { resolveReferences, type Unread } from './raw-references.ts';
+import { readReportType } from './report-types.ts';
 import { readWorkflow, readWorkflowPart, WORKFLOW_PARTS } from './workflows.ts';
-import { childOf, childrenOf, readXml, type XmlDocument, type XmlElement } from './xml.ts';
+import { childOf, childrenOf, readText, readXml, type XmlDocument, type XmlElement, type XmlReading } from './xml.ts';
 
 export interface SourceAnalysis {
   /** The metadata types that are read, sorted. A component of another type gets a row and nothing else. */
@@ -39,9 +42,12 @@ const ANALYSED: ReadonlySet<string> = new Set([
   'CustomObject',
   'CustomField',
   'CustomMetadata',
+  'EmailTemplate',
   'FieldSet',
   'Flow',
+  'QuickAction',
   'RecordType',
+  'ReportType',
   'ValidationRule',
   'Workflow',
   ...WORKFLOW_PARTS,
@@ -136,19 +142,37 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     }
   };
 
+  /** Says why a file was not read, once for each file. */
+  const refuse = (path: string, issue: NonNullable<XmlReading['issue']>): void => {
+    if (refused.has(path)) return;
+    refused.add(path);
+    issues.push({
+      severity: 'error',
+      code: issue.code,
+      message: `${path}: ${issue.message}`,
+      componentKey: null,
+      details: { path, line: issue.place?.line ?? null, column: issue.place?.column ?? null },
+    });
+  };
+
   const parse = (path: string, bytes: Uint8Array): XmlDocument | null => {
     const { document, issue } = readXml(bytes);
-    if (issue !== null && !refused.has(path)) {
-      refused.add(path);
-      issues.push({
-        severity: 'error',
-        code: issue.code,
-        message: `${path}: ${issue.message}`,
-        componentKey: null,
-        details: { path, line: issue.place?.line ?? null, column: issue.place?.column ?? null },
-      });
-    }
+    if (issue !== null) refuse(path, issue);
     return document;
+  };
+
+  /** True if the root element of the file of a component is of its type. Says so where it is not. */
+  const rootIs = (key: ComponentKey, type: string, file: string, document: XmlDocument): boolean => {
+    if (document.root.local === type) return true;
+    const { line, column } = document.place(document.root.start);
+    issues.push({
+      severity: 'error',
+      code: 'METADATA_UNEXPECTED',
+      message: `${file} is the file of a ${type}, and its root element is "${cut(document.root.local, 60)}".`,
+      componentKey: key,
+      details: { path: file, line, column },
+    });
+    return false;
   };
 
   const sharedDocument = (path: string): XmlDocument | null => {
@@ -278,6 +302,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
       if (type === 'RecordType') return readRecordType(document, element, beforeDot(fullName));
       if (type === 'FieldSet') return readFieldSet(document, element, beforeDot(fullName));
       if (type === 'CustomMetadata') return readRecord(document, element, typeOfRecord(fullName));
+      if (type === 'ReportType') return readReportType(document, element);
+      if (type === 'QuickAction') return readQuickAction(document, element, fullName);
       if (type === 'Workflow') return readWorkflow();
       // The parts of a file of workflow rules are of the object the file is named after.
       if (WORKFLOW_PARTS.has(type)) return readWorkflowPart(type, document, element, beforeDot(fullName));
@@ -350,6 +376,39 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     }
   };
 
+  /**
+   * What an email template says. The file of its metadata is XML, and the file of its body is read as text, in
+   * the way the metadata says. Nothing is read of the body where the metadata cannot be read.
+   */
+  const templateReadings = (
+    key: ComponentKey,
+    contents: readonly { readonly file: string; readonly bytes: Uint8Array | null }[],
+  ): Entry['readings'] => {
+    const meta = contents.find((one) => one.file.endsWith('-meta.xml'));
+    const document = meta === undefined || meta.bytes === null ? null : parse(meta.file, meta.bytes);
+    if (meta === undefined || document === null || !rootIs(key, 'EmailTemplate', meta.file, document)) return [];
+    const bodies = contents.flatMap(({ file, bytes }) => {
+      if (file === meta.file || bytes === null) return [];
+      const { document: body, issue } = readText(bytes);
+      if (issue !== null) refuse(file, issue);
+      return body === null ? [] : [{ file, body }];
+    });
+    try {
+      const read = readEmailTemplate(
+        document,
+        bodies.map((one) => one.body),
+      );
+      const ofBodies = bodies.flatMap(({ file }, index) => {
+        const reading = read.bodies[index];
+        return reading === undefined ? [] : [{ file, reading }];
+      });
+      return [{ file: meta.file, reading: read.meta }, ...ofBodies];
+    } catch (error) {
+      failed(key, 'EmailTemplate', meta.file, error);
+      return [];
+    }
+  };
+
   const add = (component: ResolvedComponent, key: ComponentKey): void => {
     const { type, fullName: name, files, within } = component;
 
@@ -383,25 +442,15 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
     const contents = files.map((file) => ({ file, bytes: bytesOf(file) }));
     const definition = definitionOf(component, contents);
     // An object, a field and a rule have no file that is not XML. An object that lies in two package folders
-    // can have a file of its own in each, and both are read.
+    // can have a file of its own in each, and both are read. An email template is read on its own.
     const readings: { file: string; reading: ElementReading }[] = [];
     const documents: { file: string; document: XmlDocument }[] = [];
     const flows: { file: string; document: XmlDocument; read: FlowReading }[] = [];
     if (type === 'Flow') for (const file of files) flowFiles.add(file);
-    for (const { file, bytes } of ANALYSED.has(type) ? contents : []) {
+    if (type === 'EmailTemplate') for (const one of templateReadings(key, contents)) readings.push(one);
+    for (const { file, bytes } of ANALYSED.has(type) && type !== 'EmailTemplate' ? contents : []) {
       const document = bytes === null ? null : parse(file, bytes);
-      if (document === null) continue;
-      if (document.root.local !== type) {
-        const { line, column } = document.place(document.root.start);
-        issues.push({
-          severity: 'error',
-          code: 'METADATA_UNEXPECTED',
-          message: `${file} is the file of a ${type}, and its root element is "${cut(document.root.local, 60)}".`,
-          componentKey: key,
-          details: { path: file, line, column },
-        });
-        continue;
-      }
+      if (document === null || !rootIs(key, type, file, document)) continue;
       if (type === 'Flow') {
         try {
           const flow = readFlow(document);
@@ -479,23 +528,34 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
   let withFormula = 0;
   const formulasNotRead = new Set<string>();
 
-  /** The issue for something a reader did not read as a name. `where` says in what it stands. */
-  const notRead = (key: ComponentKey, file: string, unread: Unread, where: string): AnalysisIssue => {
-    const details = { path: file, line: unread.line, column: unread.column, element: unread.element };
+  /**
+   * The issue for something a reader did not read as a name. `where` says in what it stands, and `type` is the
+   * type of the component. The body of an email template is no XML, so a merge field there stands in no element.
+   */
+  const notRead = (key: ComponentKey, type: string, file: string, unread: Unread, where: string): AnalysisIssue => {
+    const inElement = unread.element !== '';
+    const details = {
+      path: file,
+      line: unread.line,
+      column: unread.column,
+      ...(inElement ? { element: unread.element } : {}),
+    };
     const place = `${file}, line ${String(unread.line)}`;
+    const holder = inElement ? `${where} "${unread.element}"` : 'a merge field';
+    const issue = (code: string, message: string): AnalysisIssue => ({
+      severity: 'warning',
+      code,
+      message: `${place}: ${holder} holds "${unread.text}", ${message}`,
+      componentKey: key,
+      details,
+    });
     if (unread.why === 'action-type') {
       // The type of an action that is not known here, or the name of an action that has no type.
       const said =
         unread.element === 'type'
           ? 'which is no type of action of a workflow rule that is known here'
           : 'and the action has no type';
-      return {
-        severity: 'warning',
-        code: 'NAME_NOT_READ',
-        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", ${said}. The action is not read.`,
-        componentKey: key,
-        details,
-      };
+      return issue('NAME_NOT_READ', `${said}. The action is not read.`);
     }
     if (unread.why === 'override-type') {
       // The type of an override that is not known here, or the name in an override that has no type.
@@ -503,31 +563,23 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
         unread.element === 'type'
           ? 'which is no type of an override of an action that is known here'
           : 'and the override has no type';
-      return {
-        severity: 'warning',
-        code: 'NAME_NOT_READ',
-        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", ${said}. The override is not read.`,
-        componentKey: key,
-        details,
-      };
+      return issue('NAME_NOT_READ', `${said}. The override is not read.`);
     }
     if (unread.why === 'start') {
       const [first = ''] = unread.text.split('.', 1);
-      return {
-        severity: 'warning',
-        code: 'RESOURCE_NOT_FOUND',
-        message: `${place}: ${where} "${unread.element}" holds "${unread.text}", and the flow has no resource "${first}". It is not read.`,
-        componentKey: key,
-        details,
-      };
+      if (type === 'Flow')
+        return issue('RESOURCE_NOT_FOUND', `and the flow has no resource "${first}". It is not read.`);
+      // The first name of a merge field of an email template, of a name in a formula of a quick action, or of the
+      // table of a column of a report type.
+      const said =
+        type === 'QuickAction'
+          ? `and "${first}" is not the object of the record the action runs on`
+          : type === 'ReportType'
+            ? `and "${first}" is not the object of the report type`
+            : `and the template knows no "${first}"`;
+      return issue('NAME_NOT_READ', `${said}. It is not read.`);
     }
-    return {
-      severity: 'warning',
-      code: 'NAME_NOT_READ',
-      message: `${place}: ${where} "${unread.element}" holds "${unread.text}", which is not read as a name.`,
-      componentKey: key,
-      details,
-    };
+    return issue('NAME_NOT_READ', 'which is not read as a name.');
   };
 
   const components = entries.map((entry): AnalysedComponent => {
@@ -552,21 +604,27 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
             details: { path: file, line: unknown.line, column: unknown.column, element: cut(unknown.element, 60) },
           });
         }
-        for (const unread of reading.unread) found.push(notRead(key, file, unread, 'the element'));
+        for (const unread of reading.unread) found.push(notRead(key, entry.type, file, unread, 'the element'));
         const owner = { key, file, object };
         const resolved = resolveReferences(model, owner, reading.references, origin);
         // One at a time: a formula can hold more names than a call takes arguments.
         for (const issue of resolved.issues) found.push(issue);
         for (const reference of resolved.references) references.push(reference);
         for (const text of reading.texts ?? []) {
-          for (const unread of text.unread) found.push(notRead(key, file, unread, 'a merge field in'));
+          for (const unread of text.unread) found.push(notRead(key, entry.type, file, unread, 'a merge field in'));
           for (const open of text.notClosed) {
+            const inElement = text.element !== '';
             found.push({
               severity: 'warning',
               code: 'MERGE_FIELD_NOT_CLOSED',
-              message: `${file}, line ${String(open.line)}: a merge field in "${text.element}" is not closed. Nothing is read of it.`,
+              message: `${file}, line ${String(open.line)}: a merge field${inElement ? ` in "${text.element}"` : ''} is not closed. Nothing is read of it.`,
               componentKey: key,
-              details: { path: file, line: open.line, column: open.column, element: text.element },
+              details: {
+                path: file,
+                line: open.line,
+                column: open.column,
+                ...(inElement ? { element: text.element } : {}),
+              },
             });
           }
           const inText = resolveReferences(model, owner, text.references, origin);
@@ -586,7 +644,7 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
               details: { path: file, line: problem.line, column: problem.column, element },
             });
           }
-          for (const unread of formula.unread) found.push(notRead(key, file, unread, 'the formula in'));
+          for (const unread of formula.unread) found.push(notRead(key, entry.type, file, unread, 'the formula in'));
           const inFormula = resolveReferences(model, owner, formula.references, 'parser:formula');
           for (const issue of inFormula.issues) found.push(issue);
           for (const reference of inFormula.references) references.push(reference);

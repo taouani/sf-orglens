@@ -7,8 +7,8 @@ The decision behind the contract is [record 0027](adr/0027-json-envelope-and-exi
 OrgLens is in pre-release. The commands below manage a workspace and its configuration, check the login for an org,
 take snapshots of orgs, sandboxes and repository folders, and analyse them: a snapshot is analysed for its objects,
 fields, validation rules, record types and field sets, with the formulas in them, for its flows, element by
-element, for its workflow rules with their actions, and for the records of its custom metadata types. `orglens
-impact` answers what refers to a component from those types alone. Nothing else of a snapshot is analysed yet, and
+element, for its workflow rules with their actions, for the records of its custom metadata types, and for its
+email templates, report types and quick actions. `orglens impact` answers what refers to a component from those types alone. Nothing else of a snapshot is analysed yet, and
 an answer names the types it does not cover. Reading an org is tested against a mock org. The code that reads an
 org was also run against one real Developer Edition org, by a tool of the tests
 ([`real-org.md`](research/phase-0/real-org.md)). The command `orglens snapshot` itself has not been run against
@@ -157,14 +157,15 @@ they have below a package directory, such as `classes/Foo.cls`.
   The types of the logic tier are:
 
   `ApexClass`, `ApexTrigger`, `AuraDefinitionBundle`, `CustomField`, `CustomLabel`, `CustomLabels`,
-  `CustomMetadata`, `CustomObject`, `CustomPermission`, `FieldSet`, `Flow`, `GlobalValueSet`,
-  `LightningComponentBundle`, `NamedCredential`, `PermissionSet`, `PermissionSetGroup`, `Profile`, `RecordType`,
-  `ValidationRule`, `Workflow`, `WorkflowAlert`, `WorkflowFieldUpdate`, `WorkflowOutboundMessage`,
-  `WorkflowRule`, `WorkflowTask`.
+  `CustomMetadata`, `CustomObject`, `CustomPermission`, `EmailTemplate`, `FieldSet`, `Flow`, `GlobalValueSet`,
+  `LightningComponentBundle`, `NamedCredential`, `PermissionSet`, `PermissionSetGroup`, `Profile`,
+  `QuickAction`, `RecordType`, `ReportType`, `ValidationRule`, `Workflow`, `WorkflowAlert`,
+  `WorkflowFieldUpdate`, `WorkflowOutboundMessage`, `WorkflowRule`, `WorkflowTask`.
 
   Every type an analyser reads is in the list, among them the email alerts, field updates, outbound messages and
   tasks of a workflow rule, and a type joins it with the version that analyses it. The other actions of a
-  workflow rule, such as `WorkflowFlowAutomation`, are not analysed and are outside the tier.
+  workflow rule, such as `WorkflowFlowAutomation`, are not analysed and are outside the tier. A folder of email
+  templates, `EmailFolder`, is outside the tier too, although its templates are in it (decision record 0077).
 
   A type is of the tier by its own name. A part of an object that is not in the list, such as a list view, is
   outside it although the object is in it. Four cases need a rule. A retrieve that fails counts against the
@@ -358,13 +359,20 @@ is an object or a field where the field is a relationship to the definition of o
 where it is a relationship to that type. It is a field, at the tier `probable`, where a text field holds exactly
 `Object.Field`, or exactly the name of a field of an object that the same record names in a relationship, and a
 file of the snapshot defines that field. Of an object itself, it reads the name of the page or component that
-overrides one of its actions, such as the Lightning page of its records: the page itself is not read. Every other
-type is stored and not analysed yet.
+overrides one of its actions, such as the Lightning page of its records: the page itself is not read. It reads the
+merge fields of an email template, in its subject and in its body, which is a file of its own and no XML, in the
+forms of a classic, a Lightning and a Visualforce template. A merge field of a record is read where the template
+says which object the record is of, and a field of the recipient of a Lightning template is not followed. It
+reads report types: the object, the lookup field behind each child relationship a report type joins, and each
+field it lists. It reads quick actions: the object whose records an action creates, each field it sets and the
+lookup to the record it runs on, the names in the formula of a value it sets, the fields its layout shows, and the
+flow, component or page it opens. Every other type is stored and not analysed yet.
 Decision record [0043](adr/0043-a-snapshot-is-analysed-from-its-files.md) has the rules, records
 [0041](adr/0041-components-and-names-written-in-xml.md), [0042](adr/0042-the-names-in-a-formula.md),
 [0061](adr/0061-the-elements-of-a-flow.md), [0063](adr/0063-the-parts-of-a-file-of-workflow-rules.md),
-[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md) and
-[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) say what is read and what is not.
+[0065](adr/0065-record-types-field-sets-and-records-of-custom-metadata.md),
+[0070](adr/0070-an-object-refers-to-what-overrides-its-actions.md) and
+[0077](adr/0077-email-templates-report-types-and-quick-actions.md) say what is read and what is not.
 
 - A snapshot is analysed from the files it holds, not from the source. `orglens snapshot` does it after the
   snapshot is stored, also for a snapshot of an org that was interrupted and continued.
@@ -470,7 +478,9 @@ and [0069](adr/0069-an-answer-below-the-limit-can-be-cut-off.md) have the rules.
   starts, a name in a text, such as a record type a condition compares a text with, and a field of a custom setting
   or a custom permission that only its formulas name. A Visualforce page, a Lightning component or an s-control
   that overrides an action of an object is counted too: whether the API reports it was not measured. A Lightning
-  page that does is listed: a large org reported it.
+  page that does is listed: a large org reported it. So is everything of a report type and of a quick action:
+  what the API reports of them was not measured. Of an email template the test org reports the custom fields of
+  its merge fields, and they are listed.
 - The rows are never part of an answer. `impact` shows the references OrgLens found, and no row of Salesforce.
 
 Not verified: the maintainer took a snapshot of a large org once, with a version that took the query for every
@@ -599,7 +609,8 @@ record of a custom metadata type that is not to the type of the record), `record
 type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
 text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
 only its formulas name), `action-override` (a reference of an object to a Visualforce page, a Lightning component or
-an s-control that overrides one of its actions) and `other`. A pair to a standard field or a standard object has one
+an s-control that overrides one of its actions), `report-type` (a reference of a report type), `quick-action` (a
+reference of a quick action) and `other`. A pair to a standard field or a standard object has one
 of the first two, from any component. A later version can add one.
 
 The issue codes of the reading (`stage` is `read`):
@@ -676,23 +687,23 @@ a class or a field in two package directories is reported, an object whose file 
 
 The issue codes of the analysis (`stage` is `analysis`), for every kind of source:
 
-| Severity  | Code                                               | Situation                                                                                                                                                                                                                                               |
-| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                                                                                                                                                             |
-| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read.                                                                                                                                            |
-| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                                                                                                                                                          |
-| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                              |
-| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                   |
-| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                         |
-| `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.          |
-| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
-| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule or an override of an action of an object has a type that is not known here, or none. No reference is made for it.                                                  |
-| `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
-| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.      |
-| `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
-| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
-| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                          |
-| `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow is not closed. Nothing is read of it.                                                                                                                                                                                 |
+| Severity  | Code                                               | Situation                                                                                                                                                                                                                                                                                                                      |
+| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `error`   | `FILE_UNREADABLE`                                  | A file of the snapshot could not be read from the database.                                                                                                                                                                                                                                                                    |
+| `error`   | `XML_NOT_UTF8`, `XML_MALFORMED`, `XML_UNSUPPORTED` | A file is not text in UTF-8, is not well-formed XML, or holds something the reader of OrgLens does not read. The body of an email template is no XML, and only the first and the last can be said of it.                                                                                                                       |
+| `error`   | `METADATA_UNEXPECTED`                              | A file holds another type than its name says, or a part inside it has no name.                                                                                                                                                                                                                                                 |
+| `error`   | `KEY_INVALID`, `KEY_COLLISION`                     | The name of a component gives no key, or two components give the same key.                                                                                                                                                                                                                                                     |
+| `error`   | `ANALYSIS_FAILED`                                  | The analysis of one component failed. The component is kept, without attributes and references. This points at a bug.                                                                                                                                                                                                          |
+| `error`   | `RESOLVE_FAILED`                                   | A file of the snapshot could not be read as metadata by the Salesforce library.                                                                                                                                                                                                                                                |
+| `error`   | `REFERENCE_MISSED`                                 | Salesforce reports that a component refers to another, and the analysis found no such reference (`details.from`, `details.to`, and `details.origin`, which is `dependency-api`). Only a snapshot of an org that was cross-checked can have it.                                                                                 |
+| `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently.                                                                        |
+| `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, an action of a workflow rule or an override of an action of an object has a type that is not known here, or none, or a merge field of an email template or a name in a formula of a quick action starts with a name that is not known there. No reference is made for it. |
+| `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                                                                                        |
+| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.                                                                             |
+| `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                                                                                         |
+| `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                                                                                                      |
+| `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                                                                                                 |
+| `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow or of an email template is not closed. Nothing is read of it.                                                                                                                                                                                                                                |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one
 component. An issue about a file as a whole, such as one of the three codes of the reader, names the file in
@@ -819,7 +830,8 @@ the answer says whether it is complete, and if not, why. Below the results it na
 - the types of the snapshot that no analyser has read yet, with the number of components the source has of each. A
   component of such a type can refer to the component and is not in the answer. In this pre-release, that is every
   type except objects, fields, validation rules, flows, workflow rules with their field updates, email alerts,
-  outbound messages and tasks, record types, field sets and records of custom metadata types. A type that
+  outbound messages and tasks, record types, field sets, records of custom metadata types, email templates, report
+  types and quick actions. A type that
   `exclude_types` leaves out of a snapshot of an org is among them, with `left out` for its number. So is a type
   of which the snapshot holds only components that the source did not list, with `0` for both numbers, which
   count what the source listed;
@@ -852,10 +864,12 @@ of an object nothing says, and says what the path ends at (`details.endsAt`): `o
 element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
 a field whose name one of the names can be, on whatever object, a record type where one of the names is
 `RecordType`, or an object where the path ends at one. One that kept twenty names, which may be fewer than the
-path has, counts as any other. So does one without `details.endsAt`, which an analysis made by an earlier version
-wrote: it kept no warning for a field that an element sets behind a record of no known object, and
-`orglens analyse <source>` analyses the snapshot again. Every other warning counts for what refers to a
-component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
+path has, counts as any other. So does one without `details.endsAt`. An analysis made by an earlier version wrote
+such a warning: it kept no warning for a field that an element sets behind a record of no known object, and
+`orglens analyse <source>` analyses the snapshot again. A report type writes one for a child relationship that no
+file of the snapshot defines and that is not one of the few the engine knows of every org (`details.relationship`):
+the lookup field behind it can have any name (decision record 0077). Every other warning counts for what refers to
+a component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
 the warnings that bear on the answer directly: one whose names fit only a component that another missing
 reference would bring into the answer is not counted, and the answer is not complete all the same.
 
@@ -924,8 +938,8 @@ What is not done, and what a user should know:
 
 - The answer holds references, not consequences. It does not say what breaks when a field is deleted or its type
   changes. That is a later phase.
-- Only objects, fields, validation rules, flows, workflow rules with their actions, record types, field sets and
-  records of custom metadata types are analysed. Apex, layouts, permissions and the other types follow in later
+- Only objects, fields, validation rules, flows, workflow rules with their actions, record types, field sets,
+  records of custom metadata types, email templates, report types and quick actions are analysed. Apex, layouts, permissions and the other types follow in later
   phases. Until then an answer about what refers to a component of a real project says that it is not complete. An
   answer with `--outgoing` can be complete, because it needs only the component and its results to be analysed. It
   is complete only where no warning of the analysis bears on it: of the component, of something it contains, of a

@@ -50,7 +50,12 @@ afterEach(async () => {
 describe('a snapshot of an org that holds a public codebase', () => {
   for (const { name, paths } of manifest.corpus) {
     const [packageDir = ''] = paths;
-    it.skipIf(!existsSync(join(corpora, name)) || paths.length !== 1)(
+    // A codebase in the metadata format, such as V4S, keeps an object with its fields in one file and has a
+    // `package.xml`. The mock org is built with the Salesforce library, which gives no parts of such a file, so
+    // the mock would list none of its fields, and the snapshot stores files in the form of a project, with other
+    // names. Such a codebase is skipped here.
+    const metadataFormat = existsSync(join(corpora, name, packageDir, 'package.xml'));
+    it.skipIf(!existsSync(join(corpora, name)) || paths.length !== 1 || metadataFormat)(
       `holds every component and every file of ${name}`,
       async () => {
         const onDisk = await readLocalSource(corpora, {

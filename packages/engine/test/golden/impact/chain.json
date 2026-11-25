@@ -183,6 +183,46 @@
       "package": null
     },
     {
+      "key": "QuickAction:invoice__c.new_line",
+      "type": "QuickAction",
+      "name": "Invoice__c.New_Line",
+      "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "QuickAction:invoice__c.new_line",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "writes",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+        "line": 5,
+        "column": 16
+      },
+      "package": null
+    },
+    {
+      "key": "ReportType:invoices_with_lines",
+      "type": "ReportType",
+      "name": "Invoices_with_Lines",
+      "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ReportType:invoices_with_lines",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+        "line": 38,
+        "column": 20
+      },
+      "package": null
+    },
+    {
       "key": "ValidationRule:invoice_line__c.quantity_positive",
       "type": "ValidationRule",
       "name": "Invoice_Line__c.Quantity_Positive",
@@ -337,12 +377,6 @@
       },
       {
         "type": "ApexTrigger",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

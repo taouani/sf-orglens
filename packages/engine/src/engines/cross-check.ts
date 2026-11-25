@@ -48,6 +48,8 @@ export type NotReportedReason =
   | 'name-in-text'
   | 'global-variable'
   | 'action-override'
+  | 'report-type'
+  | 'quick-action'
   | 'other';
 
 /** What the comparison of the rows of the Dependency API with an analysis found. */
@@ -315,6 +317,12 @@ function notReported(
   if (type === 'CustomMetadata') return found.vias.has('record-of') ? null : 'custom-metadata';
   if (type === 'RecordType') return 'record-type';
   if (type === 'FieldSet') return null;
+  // Of an email template, the test org reports the custom fields its merge fields name, and the object they are
+  // of. What the API reports of a report type and of a quick action was not measured, so a pair of one without a
+  // row is counted and not listed (decision record 0077).
+  if (type === 'EmailTemplate') return null;
+  if (type === 'ReportType') return 'report-type';
+  if (type === 'QuickAction') return 'quick-action';
   // Of an object, a large org reported the Lightning page that overrides one of its actions. Whether the API
   // reports a Visualforce page, a Lightning component or an s-control that does was not measured (decision record
   // 0070).

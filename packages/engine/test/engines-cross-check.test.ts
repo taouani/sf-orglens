@@ -708,6 +708,37 @@ describe('the comparison of the rows of the Dependency API with an analysis', ()
     });
   });
 
+  it('compares the custom fields of an email template, and counts what a report type and a quick action name', () => {
+    const TEMPLATE = key('EmailTemplate', 'Billing/Overdue');
+    const REPORT_TYPE = key('ReportType', 'Invoices');
+    const ACTION = key('QuickAction', 'Invoice__c.Mark_Paid');
+    const mergeField = { origin: 'parser:xml', attrs: { via: 'merge-field' } } as const;
+    const components = [
+      // The template: its custom field is reported, a standard one is not.
+      component(TEMPLATE, {}, [
+        reference(TEMPLATE, AMOUNT, mergeField),
+        reference(TEMPLATE, ACCOUNT_NAME, { ...mergeField, resolution: 'external' }),
+      ]),
+      // What the API reports of a report type and of a quick action was not measured (decision record 0077).
+      component(REPORT_TYPE, {}, [
+        defined(REPORT_TYPE, INVOICE, 'object'),
+        defined(REPORT_TYPE, AMOUNT, 'listed-field'),
+      ]),
+      component(ACTION, {}, [
+        reference(ACTION, STATUS, { kind: 'writes', origin: 'parser:xml', attrs: { via: 'assignment' } }),
+      ]),
+    ];
+    const analysedTypes = [...TYPES, 'EmailTemplate', 'QuickAction', 'ReportType'];
+    const result = crossCheck({ ...input([], components), analysedTypes });
+    expect(result.onlyOrgLens).toEqual([{ from: TEMPLATE, to: AMOUNT }]);
+    expect(result.notReported).toEqual([
+      { reason: 'quick-action', pairs: 1 },
+      { reason: 'report-type', pairs: 2 },
+      { reason: 'standard-field', pairs: 1 },
+    ]);
+    expect(crossCheckIssues(result)).toEqual([]);
+  });
+
   it('leaves out of both lists what a component of a type that was not analysed refers to, and a name without a target', () => {
     const record = component(RECORD, {}, [reference(RECORD, RATE)]);
     const unresolved = validateReference({

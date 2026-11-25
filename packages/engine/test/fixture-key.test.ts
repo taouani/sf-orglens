@@ -98,6 +98,7 @@ const METADATA_VIA: ReadonlySet<string> = new Set([
   'listed-field',
   'value',
   'record-of',
+  'join',
 ]);
 
 /**
@@ -134,14 +135,17 @@ const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: re
   'display-field': { in: ['errorDisplayField', 'fieldSelection'] },
   'controlling-field': { in: ['controllingField', 'metadataRelationshipControllingField'] },
   'value-set': { in: ['valueSetName'] },
-  object: { in: ['object', 'stringValue'], within: ['Flow'] },
+  object: {
+    in: ['object', 'stringValue', 'baseObject', 'targetObject'],
+    within: ['Flow', 'ReportType', 'QuickAction'],
+  },
   record: { in: ['inputReference'] },
   sort: { in: ['sortField'] },
   output: {
     in: ['queriedFields', 'field', 'displayField', 'valueField'],
     within: ['recordLookups', 'outputAssignments', 'dynamicChoiceSets'],
   },
-  assignment: { in: ['field'], within: ['inputAssignments', 'fieldUpdates'] },
+  assignment: { in: ['field', 'targetParentField'], within: ['inputAssignments', 'fieldUpdates', 'QuickAction'] },
   path: {
     in: [
       'leftValueReference',
@@ -158,8 +162,18 @@ const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: re
   template: { in: ['template'] },
   'listed-field': {
     in: ['field', 'fields', 'picklist'],
-    within: ['availableFields', 'displayedFields', 'recipients', 'outboundMessages', 'picklistValues', 'values'],
+    within: [
+      'availableFields',
+      'displayedFields',
+      'recipients',
+      'outboundMessages',
+      'picklistValues',
+      'values',
+      'columns',
+      'quickActionLayoutItems',
+    ],
   },
+  join: { in: ['relationship'], within: ['join'] },
   value: { in: ['value'], within: ['values'] },
   text: { in: ['value', 'stringValue'], within: ['values', 'conditions'] },
   'record-of': { in: ['CustomMetadata'] },
@@ -178,7 +192,12 @@ const PARENT_OF: Readonly<Record<string, Readonly<Record<string, readonly string
   },
   action: { actionName: ['actionCalls'], flowName: ['subflows'], name: ['actions'] },
   // The object of a process stands in a value at the top of its file.
-  object: { stringValue: ['value'] },
+  object: { stringValue: ['value'], baseObject: ['ReportType'], targetObject: ['QuickAction'] },
+  // A quick action sets a field of its predefined values, and the lookup to the record it runs on.
+  assignment: {
+    field: ['inputAssignments', 'fieldUpdates', 'fieldOverrides'],
+    targetParentField: ['QuickAction'],
+  },
   text: { stringValue: ['rightValue'] },
 };
 
@@ -228,8 +247,11 @@ function kindsAt(reference: Placed, elements: readonly string[]): string {
     case 'summary':
       return innermost === 'summarizedField' ? 'reads' : 'references';
     case 'listed-field':
-      // A field set, an alert and an outbound message use the field. A record type and a record of a custom
-      // metadata type name it.
+      // A field set, an alert, an outbound message and the layout of a quick action use the field. A record type
+      // and a record of a custom metadata type name it, and so does a report type, which reads the lookup fields
+      // of a path.
+      if (elements.includes('columns'))
+        return line.charAt(reference.column - 1 + reference.match.length) === '.' ? 'reads' : 'references';
       return elements.includes('values') || elements.includes('picklistValues') ? 'references' : 'reads';
     case 'assignment':
       return 'writes';
@@ -550,7 +572,14 @@ describe('the manifest of public codebases', () => {
     expect(listed.stderr).toBe('');
     expect(listed.status).toBe(0);
     const rows = listed.stdout.trim().split('\n');
-    expect(rows.map((row) => row.split('  ')[0])).toEqual(['apex-recipes', 'nebula-logger', 'npsp', 'pmm']);
+    expect(rows.map((row) => row.split('  ')[0])).toEqual([
+      'apex-recipes',
+      'nebula-logger',
+      'npsp',
+      'pmm',
+      'volunteers-for-salesforce',
+      'outbound-funds',
+    ]);
     for (const row of rows)
       expect(row).toMatch(/^[a-z0-9-]+ {2}[0-9a-f]{40} {2}\S+ {2}https:\/\/github\.com\/\S+\.git$/);
   });
@@ -645,7 +674,9 @@ describe('the answer key', () => {
       // what it does to its records. Nothing else carries an operation.
       const isDml = reference.via === 'dml' && reference.kind === 'writes';
       const isRecordElement =
-        (reference.via === 'object' || reference.via === 'record') && reference.kind === 'references';
+        reference.file.includes('/flows/') &&
+        (reference.via === 'object' || reference.via === 'record') &&
+        reference.kind === 'references';
       if ((isDml || isRecordElement) !== (reference.op !== undefined)) wrong.push(`${reference.id}: operation`);
       if (isDml && (target.type !== 'CustomObject' || reference.match !== reference.op)) {
         wrong.push(`${reference.id}: a DML statement is keyed at its keyword and writes an object`);
@@ -841,9 +872,9 @@ describe('the answer key', () => {
       unknowns: key.unknowns.length,
     }).toEqual({
       version: 2,
-      components: 118,
+      components: 120,
       phase1: 112,
-      phase2: 195,
+      phase2: 212,
       phase3: 184,
       stretch: 9,
       negatives: 63,

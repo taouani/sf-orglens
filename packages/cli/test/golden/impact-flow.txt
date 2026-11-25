@@ -1,6 +1,6 @@
 What refers to Flow:invoice_recalculate (Invoice_Recalculate), in snapshot #1 of "fixture".
 It contains 14 components of the snapshot. The answer is about them too.
-The answer is not complete: 3 types are not analysed yet. The details are below the answer.
+The answer is not complete: 2 types are not analysed yet. The details are below the answer.
 
 2 components refer to it, all of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -10,7 +10,6 @@ DEPTH  COMPONENT                                    CONFIDENCE  KIND   REFERS TO
 1      Flow:invoice_after_save#element:recalculate  confirmed   calls  Flow:invoice_recalculate  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE           LISTED  RETRIEVED
-ApexClass      13      13
-ApexTrigger    1       1
-EmailTemplate  1       1
+TYPE         LISTED  RETRIEVED
+ApexClass    13      13
+ApexTrigger  1       1

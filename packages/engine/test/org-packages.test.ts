@@ -124,6 +124,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         'Flow:invoice_after_save#element:amount_changed',
         'Flow:invoice_after_save#element:check_result',
         'Flow:invoice_after_save#element:recalculate',
+        // It starts the email alert that sends the email template, which names the field.
+        'Flow:invoice_after_save#element:send_overdue_alert',
       ]);
       expect(answer.packagesLeftOut).toBe(ofPackage.length);
       expect(answer.results.map((result) => result.key)).not.toContain('Flow:invoice_after_save');

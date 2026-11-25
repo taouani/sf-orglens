@@ -3,8 +3,9 @@
  *
  * The rows are made from the answer key of the project, which is written by hand: every reference the key has
  * for a formula or for the filter of a roll-up summary, and every reference it has for Apex, where the target
- * is something the project defines. To these come two rows to an object that the probe of the test org saw
- * (`docs/research/phase-1/real-org.md`, section 4) and that the key has no entry for. The rows are written the
+ * is something the project defines. To these come three rows to an object that the probe of the test org saw
+ * (`docs/research/phase-1/real-org.md`, section 4, and `docs/research/phase-2/real-org.md`, section 3) and that the
+ * key has no entry for. The rows are written the
  * way Salesforce writes them (`mock-dependencies.ts`).
  *
  * Of the files of Phase 2, the mock reports what the test org reports (`docs/research/phase-2/real-org.md`,
@@ -12,9 +13,10 @@
  * not a record type a condition names in a text, and not a field of a custom setting or a custom permission that
  * only a formula of the flow names; of the workflow rules, the custom fields the formula of a field update reads,
  * and nothing else of a rule or an action; of a record of a custom metadata type, the type it is a record of, and
- * nothing else; of a field set, its custom fields; of a record type, nothing. It reports nothing yet for email
- * templates. Their rows come with their analyser. A row from a flow carries the id the org lists the flow with,
- * which is that of its latest version: the project has one version of each flow.
+ * nothing else; of a field set, its custom fields; of a record type, nothing; of an email template, the custom
+ * fields of its merge fields and the object they are of. What the API reports of a report type and of a quick
+ * action was not measured, and the mock reports nothing of them. A row from a flow carries the id the org lists
+ * the flow with, which is that of its latest version: the project has one version of each flow.
  *
  * The mock reports more than Salesforce does in two places that the engine treats as "not reported": the
  * formula of a rule that is not active, and the formula in a default value. A test that needs the difference
@@ -55,7 +57,8 @@ const reportedOfPhase2 = (reference: { readonly from: string; readonly to: strin
   (reference.from.startsWith('Flow:') && reportedOfFlow(reference)) ||
   (reference.from.startsWith('WorkflowFieldUpdate:') && reference.via === 'formula') ||
   (reference.from.startsWith('CustomMetadata:') && reference.via === 'record-of') ||
-  reference.from.startsWith('FieldSet:');
+  reference.from.startsWith('FieldSet:') ||
+  reference.from.startsWith('EmailTemplate:');
 
 /** The pairs of the answer key the mock org reports. A pair is reported once. */
 export function keyedPairs(): KeyedPair[] {
@@ -85,7 +88,7 @@ export function keyedPairs(): KeyedPair[] {
   return [...pairs.values()];
 }
 
-/** The two rows to an object that Salesforce reports and that the key has no entry for. */
+/** The three rows to an object that Salesforce reports and that the key has no entry for. */
 const TO_AN_OBJECT: readonly (readonly [MockEnd, MockEnd])[] = [
   // The object behind $ObjectType in VLOOKUP, and the custom metadata type behind $CustomMetadata.
   [
@@ -95,6 +98,12 @@ const TO_AN_OBJECT: readonly (readonly [MockEnd, MockEnd])[] = [
   [
     ['ValidationRule', 'Invoice__c.Large_Amount_Needs_Permission'],
     ['CustomObject', 'Billing_Rule__mdt'],
+  ],
+  // The object whose fields the merge fields of the email template name (`docs/research/phase-2/real-org.md`,
+  // section 3).
+  [
+    ['EmailTemplate', 'Billing/Invoice_Overdue'],
+    ['CustomObject', 'Invoice__c'],
   ],
 ];
 

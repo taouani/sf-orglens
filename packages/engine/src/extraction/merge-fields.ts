@@ -1,6 +1,7 @@
 /**
  * Finds the merge fields of a text: `{!Resource.Path}` in the text of a flow, of an email template or of an
- * email alert. What stands between two of them is left alone.
+ * email alert, and `{{{Recipient.Name}}}` in a Lightning email template. What stands between two of them is left
+ * alone.
  *
  * Nothing is said here about what stands between the braces. The caller knows the language of the text: a flow
  * writes a name there, and `formula-names.ts` says what that name stands for.
@@ -58,10 +59,45 @@ export function insideOfMergeField(text: string, open: number, close: number): {
 }
 
 /**
- * The merge fields of a text. A brace without `!` after it opens nothing, and a `}` that closes nothing is a
- * character like any other. It never throws for what the text holds.
+ * How a text writes its merge fields: `{!Name}`, as a flow and a classic email template do, or `{{{Name}}}`, as a
+ * Lightning email template does.
  */
-export function mergeFieldsOf(text: string): MergeFields {
+export type MergeForm = 'classic' | 'lightning';
+
+const LIGHTNING_OPENS = '{{{';
+const LIGHTNING_CLOSES = '}}}';
+
+/**
+ * The merge fields of a text in the form of a Lightning email template: `{{{` opens one, and it closes at the
+ * next `}}}`. It is not closed where a brace stands before that, or where the text ends: nothing is read of it
+ * then, and the next one is looked for after its `{{{`.
+ */
+function lightningMergeFieldsOf(text: string): MergeFields {
+  const fields: MergeField[] = [];
+  const notClosed: number[] = [];
+  let open = text.indexOf(LIGHTNING_OPENS);
+  while (open !== -1) {
+    const from = open + LIGHTNING_OPENS.length;
+    const close = text.indexOf(LIGHTNING_CLOSES, from);
+    const inside = close === -1 ? '' : text.slice(from, close);
+    if (close === -1 || inside.includes('{') || inside.includes('}')) {
+      notClosed.push(open);
+      open = text.indexOf(LIGHTNING_OPENS, from);
+      continue;
+    }
+    const before = SPACE_BEFORE.exec(inside)?.[0].length ?? 0;
+    fields.push({ text: inside.trim(), start: from + before, open, close: close + LIGHTNING_CLOSES.length });
+    open = text.indexOf(LIGHTNING_OPENS, close + LIGHTNING_CLOSES.length);
+  }
+  return { fields, notClosed };
+}
+
+/**
+ * The merge fields of a text. A brace without `!` after it opens nothing, and a `}` that closes nothing is a
+ * character like any other. It never throws for what the text holds. `form` says how the text writes them.
+ */
+export function mergeFieldsOf(text: string, form: MergeForm = 'classic'): MergeFields {
+  if (form === 'lightning') return lightningMergeFieldsOf(text);
   const fields: MergeField[] = [];
   const notClosed: number[] = [];
   const closeOf = closesIn(text);

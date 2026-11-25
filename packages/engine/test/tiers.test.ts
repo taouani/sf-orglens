@@ -10,7 +10,7 @@ import { analyseSource } from '../src/extraction/analyse.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 
 describe('the logic tier', () => {
-  it('is the list of record 0004 with the three types of record 0038 and the four of record 0068', () => {
+  it('is the list of record 0004 with the types records 0038, 0068 and 0077 add', () => {
     expect(logicTierTypes()).toEqual([
       'ApexClass',
       'ApexTrigger',
@@ -21,6 +21,7 @@ describe('the logic tier', () => {
       'CustomMetadata',
       'CustomObject',
       'CustomPermission',
+      'EmailTemplate',
       'FieldSet',
       'Flow',
       'GlobalValueSet',
@@ -29,7 +30,9 @@ describe('the logic tier', () => {
       'PermissionSet',
       'PermissionSetGroup',
       'Profile',
+      'QuickAction',
       'RecordType',
+      'ReportType',
       'ValidationRule',
       'Workflow',
       'WorkflowAlert',
@@ -72,6 +75,9 @@ describe('the logic tier', () => {
     expect(tierOf('ListView')).toBe('other');
     expect(tierOf('Report')).toBe('other');
     expect(tierOf('customobject')).toBe('other');
+    // The maintainer chose that a missing folder of email templates stays a warning (decision record 0077).
+    expect(tierOf('EmailTemplate')).toBe('logic');
+    expect(tierOf('EmailFolder')).toBe('other');
   });
 
   it('counts what can be of a type of the tier, and what nothing tells the type of, against the tier', () => {

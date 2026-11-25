@@ -85,6 +85,26 @@
       "package": null
     },
     {
+      "key": "EmailTemplate:billing/invoice_overdue",
+      "type": "EmailTemplate",
+      "name": "Billing/Invoice_Overdue",
+      "file": "force-app/main/default/email/Billing/Invoice_Overdue.email-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "EmailTemplate:billing/invoice_overdue",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/email/Billing/Invoice_Overdue.email",
+        "line": 3,
+        "column": 46
+      },
+      "package": null
+    },
+    {
       "key": "Flow:invoice_after_save",
       "type": "Flow",
       "name": "Invoice_After_Save",
@@ -725,6 +745,46 @@
       "package": null
     },
     {
+      "key": "QuickAction:invoice__c.new_line",
+      "type": "QuickAction",
+      "name": "Invoice__c.New_Line",
+      "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "QuickAction:invoice__c.new_line",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:formula",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml",
+        "line": 14,
+        "column": 29
+      },
+      "package": null
+    },
+    {
+      "key": "ReportType:invoices_with_lines",
+      "type": "ReportType",
+      "name": "Invoices_with_Lines",
+      "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ReportType:invoices_with_lines",
+        "to": "CustomField:invoice__c.account__c",
+        "kind": "reads",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
+        "line": 25,
+        "column": 20
+      },
+      "package": null
+    },
+    {
       "key": "WorkflowAlert:invoice__c.invoice_overdue_alert",
       "type": "WorkflowAlert",
       "name": "Invoice__c.Invoice_Overdue_Alert",
@@ -1059,12 +1119,6 @@
       },
       {
         "type": "ApexTrigger",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

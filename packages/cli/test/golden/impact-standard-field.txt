@@ -1,5 +1,5 @@
 What refers to CustomField:user.department, in snapshot #1 of "fixture".
-The answer is not complete: 3 types are not analysed yet. The details are below the answer.
+The answer is not complete: 2 types are not analysed yet. The details are below the answer.
 
 10 components refer to it, 5 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -17,7 +17,6 @@ DEPTH  COMPONENT                                           CONFIDENCE  KIND     
 3      WorkflowRule:invoice__c.remind_when_sent            confirmed   references  WorkflowAlert:invoice__c.invoice_overdue_alert  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:73
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE           LISTED  RETRIEVED
-ApexClass      13      13
-ApexTrigger    1       1
-EmailTemplate  1       1
+TYPE         LISTED  RETRIEVED
+ApexClass    13      13
+ApexTrigger  1       1

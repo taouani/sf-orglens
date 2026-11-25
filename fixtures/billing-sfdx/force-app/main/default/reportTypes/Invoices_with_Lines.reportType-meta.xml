@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ReportType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <baseObject>Invoice__c</baseObject>
+    <category>other</category>
+    <deployed>true</deployed>
+    <description>Invoices, with their lines where they have any.</description>
+    <join>
+        <outerJoin>true</outerJoin>
+        <relationship>Lines__r</relationship>
+    </join>
+    <label>Invoices with Lines</label>
+    <sections>
+        <columns>
+            <checkedByDefault>true</checkedByDefault>
+            <field>Name</field>
+            <table>Invoice__c</table>
+        </columns>
+        <columns>
+            <checkedByDefault>true</checkedByDefault>
+            <field>Amount__c</field>
+            <table>Invoice__c</table>
+        </columns>
+        <columns>
+            <checkedByDefault>false</checkedByDefault>
+            <field>Account__c.Tier__c</field>
+            <table>Invoice__c</table>
+        </columns>
+        <columns>
+            <checkedByDefault>false</checkedByDefault>
+            <field>Owner</field>
+            <table>Invoice__c</table>
+        </columns>
+        <masterLabel>Invoices</masterLabel>
+    </sections>
+    <sections>
+        <columns>
+            <checkedByDefault>true</checkedByDefault>
+            <field>Quantity__c</field>
+            <table>Invoice__c.Lines__r</table>
+        </columns>
+        <columns>
+            <checkedByDefault>true</checkedByDefault>
+            <field>Line_Amount__c</field>
+            <table>Invoice__c.Lines__r</table>
+        </columns>
+        <masterLabel>Lines</masterLabel>
+    </sections>
+</ReportType>

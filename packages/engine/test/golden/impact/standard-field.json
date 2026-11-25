@@ -240,12 +240,6 @@
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"
-      },
-      {
-        "type": "EmailTemplate",
-        "listed": 1,
-        "retrieved": 1,
-        "listing": "ok"
       }
     ],
     "partial": [],

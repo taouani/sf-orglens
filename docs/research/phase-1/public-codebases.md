@@ -215,6 +215,35 @@ where the codebases are not downloaded, so CI does not run it.
 | nebula-logger | `4365fb5061f0f6582ec6e162a0d4d76f2c45d4475b61463289e645f4439ee373` |
 | npsp | `2112d75d80f796b71722c9a82555c7b2b7a95521915eafe6a8c5c917607bc6a2` |
 | pmm | `ac9d3f04b93df69ca952ef7b86799722d704482e809a9286a7e99ebf8d42eadc` |
+| volunteers-for-salesforce | `e33e0a266a189d48474076faa5609ded0779467e947d4677beace605c201dd2b` |
+| outbound-funds | `16342d15d639b476343b6cffa7811f2ee278538a2dc5f5e5c776503652063be4` |
+
+### Two more codebases, 25 November 2026
+
+Work package 8 of the [Phase 2 plan](../../plans/phase-2.md) pinned two more codebases of Salesforce.org for their
+email templates, report types and quick actions (decision record
+[0077](../../adr/0077-email-templates-report-types-and-quick-actions.md)): Volunteers for Salesforce (V4S) and
+Outbound Funds. Both are BSD-3-Clause, as their repositories state it. Their entries were read the same way as
+those above, by the same author, with the code of that work package.
+
+| Entries | V4S | Outbound Funds |
+| --- | --- | --- |
+| Formula fields | 11 | 1 |
+| Validation rules | 7 | 0 |
+| Default values | 13 | 1 |
+| Lookup filters | 1 | 0 |
+| Roll-up summaries | 13 | 3 |
+| All | 45 | 5 |
+| References of the entries | 64 | 12 |
+
+- **None of the 76 references is wrong**, all are `confirmed`, and none is missed. The 14 default values are
+  literals without a reference.
+- V4S is in the metadata format: a file such as `objects/Contact.object` holds every field and rule of its
+  object. The listing cuts such a file into its fields and rules and shows each as an entry of its component,
+  so that a reference is shown under its own field. The four codebases above are in the source format, and their
+  listings, with their digests, did not change.
+- The quick actions of the six codebases hold formulas too. They are no entry of this listing, and the analysis of
+  the codebases counts them (`extraction-corpora.test.ts`).
 
 ## The times
 

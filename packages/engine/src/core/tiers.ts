@@ -46,6 +46,10 @@ const LOGIC_TIER: ReadonlySet<string> = new Set([
   'CustomLabel',
   'CustomPermission',
   'GlobalValueSet',
+  // Added by record 0077, with the version that analyses them. The folders of email templates are not.
+  'EmailTemplate',
+  'ReportType',
+  'QuickAction',
 ]);
 
 /** Where a metadata type stands: in the logic tier, or in any other. */

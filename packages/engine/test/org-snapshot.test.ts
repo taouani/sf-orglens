@@ -448,13 +448,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'CustomObject', listed: 7, retrieved: 7, analysed: 7, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomPermission', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'EmailFolder', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
-        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'EmailTemplate', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         { type: 'FieldSet', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         // A flow is counted with its 55 elements.
         { type: 'Flow', listed: 6, retrieved: 6, analysed: 61, listing: 'ok', note: null, packaged: 0 },
         { type: 'FlowDefinition', listed: 6, retrieved: 6, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'GlobalValueSet', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'QuickAction', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         { type: 'RecordType', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ReportType', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         { type: 'ValidationRule', listed: 11, retrieved: 11, analysed: 11, listing: 'ok', note: null, packaged: 0 },
         { type: 'Workflow', listed: 2, retrieved: 2, analysed: 2, listing: 'ok', note: null, packaged: 0 },
         { type: 'WorkflowAlert', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
@@ -492,7 +494,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       const fromPlan = events.slice(events.findIndex((event) => event.step === 'planned'));
       expect(fromPlan.slice(0, 3)).toEqual([
-        { step: 'planned', snapshot: 1, components: 126, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 128, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
         // Before the first request to the Dependency API.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
@@ -522,7 +524,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 126, listed: 126, retrieved: 126, ids: 126, dates: 126 });
+        ).toEqual({ items: 128, listed: 128, retrieved: 128, ids: 128, dates: 128 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -578,9 +580,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(175);
+      expect(org.components).toHaveLength(177);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(299);
+      expect(org.references).toHaveLength(324);
       // The flows among them: 6 flows with 55 elements, and the 126 references of the answer key.
       const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
       expect(org.components.filter(ofFlow)).toHaveLength(61);
@@ -612,32 +614,33 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
       // The 12 components of the two files of workflow rules are read as XML too, with 21 references, and so are
-      // the 2 record types, the field set and the 4 records of custom metadata, with 28.
-      const xml = { failedFiles: 0, references: 79, unresolved: 0, pathsNotFollowed: 0 };
-      // The formulas of 35 fields and rules, of 7 elements of flows and of 2 workflow rules and 2 field updates:
-      // 82 names, 19 and 12. Of the 126 references of flows, the other 107 are of the reader of flows. One path
-      // of a flow is not followed.
-      const formula = { components: 46, failedFiles: 0, references: 113, unresolved: 0, pathsNotFollowed: 0 };
+      // the 2 record types, the field set and the 4 records of custom metadata, with 28, and the email template,
+      // the report type and the quick action, with 24.
+      const xml = { failedFiles: 0, references: 103, unresolved: 0, pathsNotFollowed: 0 };
+      // The formulas of 35 fields and rules, of 7 elements of flows, of 2 workflow rules and 2 field updates and of
+      // the quick action: 82 names, 19, 12 and 1. Of the 126 references of flows, the other 107 are of the reader
+      // of flows. One path of a flow is not followed.
+      const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 61, failedFiles: 0, references: 107, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 181,
-        references: 299,
+        components: 183,
+        references: 324,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 94, ...xml },
+          { origin: 'parser:xml', components: 97, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 175,
-        references: 299,
+        components: 177,
+        references: 324,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 92, ...xml },
+          { origin: 'parser:xml', components: 95, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
@@ -647,8 +650,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // A flow is counted with its elements. The other types of Phase 2:
       const ofPhase2 = {
         CustomMetadata: 4,
+        EmailTemplate: 1,
         FieldSet: 1,
+        QuickAction: 1,
         RecordType: 2,
+        ReportType: 1,
         Workflow: 2,
         WorkflowAlert: 1,
         WorkflowFieldUpdate: 3,

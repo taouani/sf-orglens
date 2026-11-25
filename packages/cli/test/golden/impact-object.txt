@@ -1,15 +1,16 @@
 What refers to CustomObject:invoice__c (Invoice__c), in snapshot #1 of "fixture".
 The name also fits Workflow:invoice__c. The answer is about the object. To ask about the other, name it by its key.
 It contains 44 components of the snapshot. The answer is about them too.
-The answer is not complete: 3 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
+The answer is not complete: 2 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
 
-51 components refer to it, 45 of them directly.
+54 components refer to it, 48 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                      CONFIDENCE  KIND         REFERS TO                                       WHERE
 1      CustomField:invoice_line__c.account_owner_email__c             confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/objects/Invoice_Line__c/fields/Account_Owner_Email__c.field-meta.xml:4
 1      CustomField:invoice_line__c.invoice__c                         confirmed   references   CustomObject:invoice__c                         force-app/main/default/objects/Invoice_Line__c/fields/Invoice__c.field-meta.xml:5
 1      CustomMetadata:billing_rule.invoice_amount                     confirmed   references   CustomField:invoice__c.amount__c                force-app/main/default/customMetadata/Billing_Rule.Invoice_Amount.md-meta.xml:11
+1      EmailTemplate:billing/invoice_overdue                          confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/email/Billing/Invoice_Overdue.email:3
 1      Flow:invoice_after_save                                        confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:amount_changed                 confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:check_result                   confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:107
@@ -42,6 +43,8 @@ DEPTH  COMPONENT                                                      CONFIDENCE
 1      Flow:invoice_sent_process                                      confirmed   triggers-on  CustomObject:invoice__c                         force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:49
 1      Flow:invoice_sent_process#element:formula_myrule_1             confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
 1      Flow:invoice_sent_process#element:myrule_1_a1                  confirmed   writes       CustomField:invoice__c.sub_status__c            force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:144
+1      QuickAction:invoice__c.new_line                                confirmed   reads        CustomField:invoice__c.amount__c                force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml:14
+1      ReportType:invoices_with_lines                                 confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:25
 1      WorkflowAlert:invoice__c.invoice_overdue_alert                 confirmed   reads        CustomField:invoice__c.approver__c              force-app/main/default/workflows/Invoice__c.workflow-meta.xml:8
 1      WorkflowFieldUpdate:invoice__c.set_sub_status_reminder         confirmed   writes       CustomField:invoice__c.sub_status__c            force-app/main/default/workflows/Invoice__c.workflow-meta.xml:24
 1      WorkflowFieldUpdate:invoice__c.stamp_legacy_code               confirmed   reads        CustomField:invoice__c.account__c               force-app/main/default/workflows/Invoice__c.workflow-meta.xml:34
@@ -60,9 +63,8 @@ DEPTH  COMPONENT                                                      CONFIDENCE
 2      Flow:invoice_review_screen#element:remove_unbillable           confirmed   reads        CustomField:invoice_line__c.invoice__c          force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:158
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE           LISTED  RETRIEVED
-ApexClass      13      13
-ApexTrigger    1       1
-EmailTemplate  1       1
+TYPE         LISTED  RETRIEVED
+ApexClass    13      13
+ApexTrigger  1       1
 
 1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

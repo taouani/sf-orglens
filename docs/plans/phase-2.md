@@ -27,7 +27,13 @@ is of a managed package where the org lists it with the prefix and a state of an
 from this plan in one point: the prefix in a name is not taken. An answer about what refers to a component leaves
 such a component out, counts it and walks on through it, `--packages` keeps it, and `coverage` counts them per
 type. A component of a package that the org lists and Salesforce does not hand out is a warning, as the maintainer
-answered on 25 November 2026.
+answered on 25 November 2026. Work package 8 is built (record 0077): email templates, report types and quick
+actions are read and join the logic tier, and the folders of email templates stay outside it, as the maintainer
+answered on 25 November 2026. It reads more than this plan says in two points: the fields the layout of a quick
+action shows, and the flow, component or page it opens. V4S and Outbound Funds are pinned, and at the pinned
+commits the six codebases hold 31 email templates, 8 report types and 54 quick actions, all read without an error.
+What the Dependency API reports of report types and quick actions is measured when "Live org" deploys the project
+again.
 Date: 2026-11-17, with the answers and the approval written in on 2026-11-22
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 1 plan](phase-1.md), [Phase 1 report](../reports/phase-1.md)
@@ -426,6 +432,12 @@ Accepted when:
   without an error. The counts are of the pinned codebases, of Volunteers for Salesforce and of Outbound
   Funds. The last two are not pinned yet: this work package pins them by commit in `fixtures/corpora.toml`
   after a look at their licences, and the counts are taken again at those commits.
+
+Built on 25 November 2026 (record 0077). Both codebases are under BSD-3-Clause. At the pinned commits the package
+folders hold 31 email templates, 8 report types and 54 quick actions, and the analysis reads them without an error.
+One formula of a quick action of PMM holds a token of the build tool of that project and is not read, with
+warnings. The key has 17 entries more, for a report type and a quick action of the fixture project, and the
+analysis finds them and no other.
 
 ### WP9 Proof on public codebases, and measurements
 

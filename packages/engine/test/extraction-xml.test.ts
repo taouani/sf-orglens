@@ -15,6 +15,7 @@ import {
   childOf,
   childrenOf,
   isNil,
+  readText,
   readXml,
   sourceOf,
 } from '../src/extraction/xml.ts';
@@ -259,6 +260,32 @@ describe('line ends, the byte order mark and characters of more than one byte', 
       encoding: null,
       standalone: false,
     });
+  });
+});
+
+describe('a file that is no XML, such as the body of an email template', () => {
+  it('is read as text, without a byte order mark of UTF-8, with the place of each index in lines and bytes', () => {
+    const file = 'Dear é,\r\n\r\nthe sum\ris {!Amount}.\n';
+    const reading = readText(Uint8Array.of(0xef, 0xbb, 0xbf, ...bytesOf(file)));
+    if (reading.document === null) throw new Error('Not read.');
+    expect(reading.document.text).toBe(file);
+    expect(reading.document.place(0)).toEqual({ line: 1, column: 1, offset: 3 });
+    // The é is two bytes, and a CR alone ends a line as well.
+    expect(reading.document.place(file.indexOf(','))).toEqual({ line: 1, column: 7, offset: 10 });
+    expect(reading.document.place(file.indexOf('the'))).toEqual({ line: 3, column: 1, offset: 15 });
+    expect(reading.document.place(file.indexOf('{!'))).toEqual({ line: 4, column: 4, offset: 26 });
+    expect(reading.document.place(file.length)).toEqual({ line: 5, column: 1, offset: bytesOf(file).length + 3 });
+    // Text that looks like XML is text all the same.
+    expect(readText(bytesOf('<a><b></a>')).document?.text).toBe('<a><b></a>');
+    expect(readText(new Uint8Array()).document?.text).toBe('');
+  });
+
+  it('is refused where its bytes are no UTF-8, or start with the byte order mark of UTF-16', () => {
+    expect(readText(Uint8Array.of(0x7b, 0x21, 0xe9, 0x7d))).toEqual({
+      document: null,
+      issue: { code: 'XML_NOT_UTF8', message: 'The bytes of the file are not text in UTF-8.', place: null },
+    });
+    expect(readText(Uint8Array.of(0xff, 0xfe, 0x61, 0x00)).issue?.code).toBe('XML_UNSUPPORTED');
   });
 });
 

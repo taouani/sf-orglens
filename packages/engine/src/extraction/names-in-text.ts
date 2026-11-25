@@ -6,16 +6,18 @@
  * `formula-names.ts` says what a name stands for. This file gives each part of a name its place in the file,
  * through the function its caller hands it, and says what was not read.
  *
- * Four ways of writing are read. The formula of a field, of a rule and of a workflow rule has plain names, each
- * a path from the object the formula belongs to. The formula of a flow has merge fields where that one has names.
- * A text with merge fields, such as a message of a flow or the subject of an email, is no formula: only what
- * stands between the braces of a merge field is read, and it is read as one name. And a flow writes such a name
- * without braces where an element holds nothing else, as in `elementReference`.
+ * Five ways of writing are read. The formula of a field, of a rule and of a workflow rule has plain names, each
+ * a path from the object the formula belongs to. The formula of a predefined value of a quick action has plain
+ * names that start with the object of the action, as a merge field starts with something the text around it
+ * knows. The formula of a flow has merge fields where that one has names. A text with merge fields, such as a
+ * message of a flow or the subject of an email, is no formula: only what stands between the braces of a merge
+ * field is read, and it is read as one name. And a flow writes such a name without braces where an element holds
+ * nothing else, as in `elementReference`.
  */
 import { cut } from './analysed.ts';
 import { namesOfTokens, namesOfTree, parseFormula, type FormulaName } from './formula.ts';
 import { usesOfMergeField, usesOfName, type MergeStart, type NamePart, type NameUse } from './formula-names.ts';
-import { mergeFieldsOf } from './merge-fields.ts';
+import { mergeFieldsOf, type MergeForm } from './merge-fields.ts';
 import type { PathHint } from './model.ts';
 import { LONGEST_TEXT_SHOWN, type RawReference, type Unread, type Via } from './raw-references.ts';
 import type { NameAt, PlaceOf } from './values.ts';
@@ -150,6 +152,17 @@ export function readFormula(text: string, own: string, element: string, at: Plac
 }
 
 /**
+ * Reads a formula with plain names whose first name is something the caller knows, as the formula of a predefined
+ * value of a quick action names a field of the record the action runs on: `Opportunity.Name`. `startOf` says what
+ * the first name is. A name whose first name it does not know is not read, and the reading says so. A first name
+ * that starts with `$` and that it does not know is a global variable, as in a formula of a field.
+ */
+export function readFormulaOfStarts(text: string, startOf: StartOf, element: string, at: PlaceOf): FormulaReading {
+  const usesOf = (name: FormulaName): readonly NameUse[] | null => usesOfMergeField(name.text, startOf);
+  return reading(text, false, usesOf, element, at, (name) => whyNot(name.text, startOf));
+}
+
+/**
  * Reads a formula as a flow writes it, with merge fields where the formula of a field has names. `startOf` says
  * what the first name of a merge field is. A name outside braces is no name of such a formula: it is not read,
  * and the reading says so. `tier` is given where every name of the formula is less certain, as in an element of
@@ -172,7 +185,7 @@ export function readFormulaOfMergeFields(
 /**
  * Reads the merge fields of a text that is no formula. What stands between two merge fields is left alone, and
  * what stands in one is read as one name. A merge field that holds anything else, a call or an operator, is not
- * read, and the reading says so.
+ * read, and the reading says so. `form` says how the text writes its merge fields.
  */
 export function readMergeFields(
   text: string,
@@ -180,8 +193,9 @@ export function readMergeFields(
   element: string,
   at: PlaceOf,
   tier?: 'probable',
+  form: MergeForm = 'classic',
 ): MergeFieldsReading {
-  const { fields, notClosed } = mergeFieldsOf(text);
+  const { fields, notClosed } = mergeFieldsOf(text, form);
   const references: RawReference[] = [];
   const unread: Unread[] = [];
   const said: Said = { via: 'merge-field', ...(tier === undefined ? {} : { tier }) };
