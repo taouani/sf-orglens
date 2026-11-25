@@ -158,11 +158,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of it where its components can name no type of the answer, as the table of `engines/can-name.ts` says (decision
   record 0073). Each line of the table is held against the types of the Metadata API that `@jsforce/jsforce-node`
   declares, and a type without a line stays. `complete` is false while anything is known that the answer could
-  miss: a type that is not analysed, a warning of the analysis, and for `--outgoing` a component the snapshot
-  does not hold. `mayMiss`, which the exit code `5` follows, is true only when something of an analysed type
-  was not read or its analysis had an error. Which types an analysis read is kept with the analysis
-  (`snapshot_analysis.types`), not derived from the version that answers. A statement of the graph that takes
-  many ids starts from that list and walks no table: a test reads every query plan.
+  miss: a type that is not analysed, a warning of the analysis that can bear on it, and for `--outgoing` a
+  component the snapshot does not hold. A warning bears where the walk went from its component for `--outgoing`,
+  and for what refers to a component where its component is not of the start and, for a path that was not
+  followed, where its names can be in the answer (`engines/warnings.ts`, decision record 0074). `mayMiss`, which
+  the exit code `5` follows, is true only when something of an analysed type was not read or its analysis had an
+  error. Which types an analysis read is kept with the analysis (`snapshot_analysis.types`), not derived from the
+  version that answers. A statement of the graph that takes many ids starts from that list and walks no table: a
+  test reads every query plan.
 - A flow runs its elements, so an impact answer takes the two together (decision record 0066). An element that is
   found brings its flow, a result of the same depth with the reference of that element, unless the flow was found
   nearer, and the walk goes on from the flow. An element that is asked about brings its flow into the start of what

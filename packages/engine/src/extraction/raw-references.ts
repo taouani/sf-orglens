@@ -11,7 +11,9 @@
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
+import { namesTakenFor } from './formula-names.ts';
 import { walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
+import { geolocationField } from './names.ts';
 import type { NameAt } from './values.ts';
 
 /**
@@ -114,7 +116,8 @@ export type RawReference = Raw &
      * the field behind it, and `kind` is what the path says about the field at its end. `and` is a second thing
      * it says about that field: an assignment that adds to a field reads it and writes it. `value` is the value
      * of a picklist that a formula compares that field with. The first `silent` names are walked and give no
-     * reference: another reference of the same element holds them.
+     * reference: another reference of the same element holds them. Where the walk stops within them, a warning
+     * says so all the same, with the names after the stop.
      */
     | {
         readonly form: 'path';
@@ -200,7 +203,30 @@ const relationshipTo = (facts: FieldFacts | undefined): string | null => {
 };
 /** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
 const LONGEST_PATH_SHOWN = 200;
-const MOST_NAMES_SHOWN = 20;
+export const MOST_NAMES_SHOWN = 20;
+/**
+ * What a path that was not followed ends at, as `details.endsAt` of its warning says: a field, or the object of the
+ * record an element of a flow writes or deletes as a whole (decision record 0074).
+ */
+export type EndsAt = 'field' | 'object';
+
+/**
+ * The folded names of the fields that a name of a path that was not followed can turn out to be, on whatever
+ * object, as the model resolves a name (`model.ts`): the field at the end of a path, or the field behind a
+ * relationship. `Invoice__r` is the field `Invoice__c` and `Account` is `AccountId`. `Level__pr` is the field
+ * `Level__pc`, which of an account is `Level__c` of the contact. `Place__Latitude__s` is a part of `Place__c`, and
+ * `QueueName` after `Owner:Queue` is the name of a group. A name too many does no harm: it only makes a warning
+ * count for more answers (decision record 0074).
+ */
+export function fieldsANameCanBe(name: string): string[] {
+  const folded = foldName(name);
+  const names = [folded, `${folded}id`, ...namesTakenFor(name).map(foldName)];
+  const whole = geolocationField(name);
+  if (whole !== null) names.push(foldName(whole));
+  if (/__p?r$/.test(folded)) names.push(`${folded.slice(0, -1)}c`);
+  if (/__p[rc]$/.test(folded)) names.push(`${folded.slice(0, -2)}c`);
+  return [...new Set(names)];
+}
 
 /**
  * The relationship of a lookup field, by the name of the field, in any case: `Invoice__c` is `Invoice__r`, and
@@ -267,11 +293,15 @@ export function resolveReferences(
     );
   };
 
-  /** Says that the names after `last` were not followed, because nothing says which object `last` leads to. */
+  /**
+   * Says that the names after `last` were not followed, because nothing says which object `last` leads to.
+   * `endsAt` is what the path ends at: a field, or the object of a record an element writes or deletes as a whole.
+   */
   const notFollowed = (
     last: NameAt,
     rest: readonly NameAt[],
     leads: 'leads to' | 'holds',
+    endsAt: EndsAt,
     /** The names are a field of the object at the end, which the file names apart from the relationship. */
     apart = false,
   ): void => {
@@ -295,13 +325,14 @@ export function resolveReferences(
         column: last.column,
         [leads === 'holds' ? 'resource' : 'relationship']: last.name,
         notFollowed: names,
+        endsAt,
         origin,
       },
     });
   };
 
   /** Says that nothing says which object the names are a field of, so that they were not followed. */
-  const nothingSays = (names: readonly NameAt[]): void => {
+  const nothingSays = (names: readonly NameAt[], endsAt: EndsAt): void => {
     const [first] = names;
     if (first === undefined) return;
     issues.push({
@@ -314,6 +345,7 @@ export function resolveReferences(
         line: first.line,
         column: first.column,
         notFollowed: names.slice(0, MOST_NAMES_SHOWN).map((at) => at.name),
+        endsAt,
         origin,
       },
     });
@@ -337,7 +369,7 @@ export function resolveReferences(
         // The name of the field alone. The object is the value of the field the file of the relationship names.
         const controlling = facts.controllingField ?? '';
         const object = one.record.get(foldName(controlling.slice(controlling.lastIndexOf('.') + 1)));
-        if (object === undefined || !ONE_NAME.test(object)) nothingSays([first]);
+        if (object === undefined || !ONE_NAME.test(object)) nothingSays([first], 'field');
         else add(first, model.field(object, first.name), 'references', one, { object });
       } else if (target.endsWith('__mdt')) {
         // A record of another type, named without its type. A record named with its type and the suffix is of the
@@ -384,7 +416,7 @@ export function resolveReferences(
       const { field, leadsTo } = model.relationship(current, at.name);
       if (step !== null) add(at, field, 'reads', step, { object: current });
       if (leadsTo === null) {
-        if (step !== null) notFollowed(at, names.slice(index + 1), 'leads to');
+        if (step !== null) notFollowed(at, names.slice(index + 1), 'leads to', 'object');
         return null;
       }
       current = leadsTo;
@@ -409,7 +441,7 @@ export function resolveReferences(
       // The parent is never the object itself: the model takes `Parent` for it, which is wrong for the parent of
       // a comment or an email of a case, and a hierarchy field leads there too. Then where it leads is not known.
       if (leadsTo === null || foldName(leadsTo) === foldName(one.start)) {
-        notFollowed(one.through, [one.at], 'leads to', true);
+        notFollowed(one.through, [one.at], 'leads to', 'field', true);
       } else add(one.at, model.field(leadsTo, one.at.name), 'writes', one, { object: leadsTo });
     } else if (one.form === 'record') {
       // A relationship on the way is written as in any path of a flow.
@@ -423,8 +455,10 @@ export function resolveReferences(
       // A text is a name only where it names something: the snapshot holds the record type, or it is no reference.
       if (target?.resolution === 'resolved') add(one.at, target, 'references', one);
     } else if (one.form === 'unfollowed') {
-      if (one.after !== null) notFollowed(one.after, one.names, 'holds');
-      else nothingSays(one.names);
+      // The record an element writes or deletes as a whole ends at its object, any other name at a field.
+      const endsAt = one.via === 'record' ? 'object' : 'field';
+      if (one.after !== null) notFollowed(one.after, one.names, 'holds', endsAt);
+      else nothingSays(one.names, endsAt);
     } else if (one.form === 'record-value') {
       recordValue(one);
     } else {
@@ -446,9 +480,12 @@ export function resolveReferences(
         if (last && one.and !== undefined) add(at, target, one.and, one, { object: on });
       });
       const last = one.names[walk.steps.length - 1];
-      // Within the silent names, the reference that holds them says what was not followed.
-      if (!walk.complete && last !== undefined && walk.steps.length > silent) {
-        notFollowed(last, one.names.slice(walk.steps.length), 'leads to');
+      // A path that stops within its silent names says so too: the reference that holds those names says that
+      // the record is of no known object, and not which of its fields the element names (decision record 0074).
+      // Where it stops at the last of them, the names after it are those the element names apart from the record.
+      if (!walk.complete && last !== undefined) {
+        const apart = silent > 0 && walk.steps.length === silent;
+        notFollowed(last, one.names.slice(walk.steps.length), 'leads to', 'field', apart);
       }
     }
   }

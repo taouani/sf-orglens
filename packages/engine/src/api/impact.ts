@@ -8,6 +8,7 @@ import { EngineError } from '../core/errors.ts';
 import { parentKey, type ComponentKey } from '../core/keys.ts';
 import { isConfidenceTier, type ConfidenceTier } from '../core/references.ts';
 import { namingTypes } from '../engines/can-name.ts';
+import { warningsThatBear } from '../engines/warnings.ts';
 import {
   coversEverything,
   findComponent,
@@ -24,7 +25,14 @@ import { readAnalysis } from '../store/analysis.ts';
 import { sqlGraph } from '../store/graph.ts';
 import { countInventory } from '../store/journal.ts';
 import type { Store } from '../store/open.ts';
-import { countIssues, readCoverage, readIssuesOf, readSnapshot, type SnapshotRecord } from '../store/snapshots.ts';
+import {
+  countIssues,
+  readAnalysisWarnings,
+  readCoverage,
+  readIssuesOf,
+  readSnapshot,
+  type SnapshotRecord,
+} from '../store/snapshots.ts';
 import { noSnapshot } from './snapshot.ts';
 
 export interface ImpactQuery {
@@ -216,7 +224,12 @@ export function impactOf(store: Store, source: string, component: string, query:
   const unlisted = new Set(
     [...countInventory(store, snapshot.id)].filter(([, count]) => count.unlisted > 0).map(([type]) => type),
   );
-  const gaps = impactGaps(types, countIssues(store, snapshot.id, covered), analysis.types, unlisted);
+  // A warning of the analysis counts where the reference it says may be missing could be one of the answer
+  // (decision record 0074). A warning of the reading about a version of a flow counts as before.
+  const { read, analysis: analysisErrors, readWarnings } = countIssues(store, snapshot.id, covered);
+  const bearing = warningsThatBear(readAnalysisWarnings(store, snapshot.id), walk, direction).length;
+  const issues = { read, analysis: analysisErrors, analysisWarnings: readWarnings + bearing };
+  const gaps = impactGaps(types, issues, analysis.types, unlisted);
   // What a component refers to is known once the component is analysed, whatever else the snapshot holds. For
   // that question, a type counts only if the component, something it contains or a result is of it. And what
   // a component refers to that the snapshot does not hold is not known at all. For what refers to a component,

@@ -14,7 +14,7 @@ import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
 import { getBlob } from '../src/store/blobs.ts';
 import { openStore, type Store } from '../src/store/open.ts';
-import { countIssues, readCoverage, readIssues } from '../src/store/snapshots.ts';
+import { countIssues, readAnalysisWarnings, readCoverage, readIssues } from '../src/store/snapshots.ts';
 import { FIXTURES_DIR } from './helpers/answer-key.ts';
 import { forgetCliLogins, seedCliLogin } from './helpers/cli-logins.ts';
 import { besidesKnownGap } from './helpers/known-gap.ts';
@@ -426,11 +426,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fromFlow.length).toBeGreaterThan(0);
 
       // An impact answer covers flows: it counts the warning with those of the analysis, and is not complete. The
-      // warning says nothing that is missed for certain, so it does not make the answer one that may miss.
-      const ofAnalysis = reading(dir, (store) => countIssues(store, 1, []).analysisWarnings);
-      expect(reading(dir, (store) => countIssues(store, 1, ['Flow']).analysisWarnings)).toBe(ofAnalysis + 1);
+      // warning says nothing that is missed for certain, so it does not make the answer one that may miss. The one
+      // warning of the analysis is about an element of another flow, which the answer does not walk from, so it
+      // does not count (decision record 0074).
+      expect(reading(dir, (store) => countIssues(store, 1, []).readWarnings)).toBe(0);
+      expect(reading(dir, (store) => countIssues(store, 1, ['Flow']).readWarnings)).toBe(1);
+      expect(reading(dir, (store) => readAnalysisWarnings(store, 1).map((one) => one.componentKey))).toEqual([
+        'Flow:invoice_after_save#element:check_result',
+      ]);
       const answer = await (await openWorkspace({ root: dir, env })).impact('prod', KEY, { outgoing: true });
-      expect(answer.notCovered.analysisWarnings).toBe(ofAnalysis + 1);
+      expect(answer.results.some((one) => one.key.startsWith('Flow:invoice_after_save'))).toBe(false);
+      expect(answer.notCovered.analysisWarnings).toBe(1);
       expect(answer.complete).toBe(false);
       expect(answer.mayMiss).toBe(false);
     });

@@ -669,7 +669,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `FILES_NOT_PLACED`                                 | Files of the snapshot belong to no component (`details.count`, `details.paths`): another file of their component is missing, such as the `-meta.xml` file of a class that went away while the source was read, or this version places them differently. |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, or an action of a workflow rule or an override of an action of an object has a type that is not known here, or none. No reference is made for it.                                                  |
 | `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                 |
-| `warning` | `PATH_NOT_FOLLOWED`                                | It is not known where a relationship leads (`details.relationship`), which object a resource of a flow holds (`details.resource`), or, with neither key, which object a name is a field of. The names have no reference (`details.origin` says whose).  |
+| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.      |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                  |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                               |
 | `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                          |
@@ -689,7 +689,7 @@ components.
 ```
 $ orglens impact Invoice__c.Amount__c
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "repo".
-The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
 
 28 components refer to it, 26 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -707,7 +707,7 @@ ApexClass      13      13
 ApexTrigger    1       1
 EmailTemplate  1       1
 
-The analysis had 1 warning: …
+1 warning of the analysis bears on the answer: …
 ```
 
 The example is shortened: the command prints every line and every path in full, with the columns as wide as
@@ -795,15 +795,31 @@ the answer says whether it is complete, and if not, why. Below the results it na
   them. A warning of an org snapshot about something outside the logic tier is counted with them when it can be
   about a type the answer covers: a type the analysis read, or one of which it analysed a component. Every type
   this version analyses is of the tier, and no snapshot is known to hold such a warning;
-- how many warnings the analysis had. A warning says that a name was not read, a path of names was not followed
-  to its end, or a part of a file was not found. A reference may be missing for each. For an answer that covers
-  flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading count with them: such a flow was analysed as a
-  version that may not be the one that runs;
+- how many warnings of the analysis can bear on the answer, as said below. A warning says that a name was not
+  read, a path of names was not followed to its end, or a part of a file was not found. A reference may be missing
+  for each. For an answer that covers flows, the warnings `FLOW_VERSION_UNKNOWN` of the reading count with them:
+  such a flow was analysed as a version that may not be the one that runs;
 - for `--outgoing`, how many components of the answer the snapshot does not hold, such as a standard field or a
   component of a package. What such a component refers to is not known.
 
-An answer is complete only if none of these applies. The warnings are those of the whole snapshot, not only
-those of the components in the answer.
+An answer is complete only if none of these applies.
+
+A warning of the analysis is about a component whose names were not all turned into references, and a reference
+that is missing for it starts at that component (decision record 0074). For `--outgoing`, a warning counts where
+its component is the component, something it contains, a result, or an element of a flow of the answer, which
+the walk goes on from. For what refers to a component, a warning of the component, of something it contains or of
+the flow of an element that is asked about does not count: what they name never refers to them. A
+`PATH_NOT_FOLLOWED` keeps the names it did not follow (`details.notFollowed`), which are fields or relationships
+of an object nothing says, and says what the path ends at (`details.endsAt`): `object` for the record that an
+element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
+a field whose name one of the names can be, on whatever object, a record type where one of the names is
+`RecordType`, or an object where the path ends at one. One that kept twenty names, which may be fewer than the
+path has, counts as any other. So does one without `details.endsAt`, which an analysis made by an earlier version
+wrote: it kept no warning for a field that an element sets behind a record of no known object, and
+`orglens analyse <source>` analyses the snapshot again. Every other warning counts for what refers to a
+component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
+the warnings that bear on the answer directly: one whose names fit only a component that another missing
+reference would bring into the answer is not counted, and the answer is not complete all the same.
 
 For what refers to a component, a type that is not analysed is left out where its components can name no type
 of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type
@@ -873,8 +889,8 @@ What is not done, and what a user should know:
   records of custom metadata types are analysed. Apex, layouts, permissions and the other types follow in later
   phases. Until then an answer about what refers to a component of a real project says that it is not complete. An
   answer with `--outgoing` can be complete, because it needs only the component and its results to be analysed. It
-  is complete only when the analysis of the snapshot had no warning at all: a warning about any component counts
-  for every answer, also for one it cannot touch.
+  is complete only where no warning of the analysis bears on it: of the component, of something it contains, of a
+  result, or of an element of a flow of the answer.
 - The text output is one table, sorted by depth and then by key. It is not grouped by type or by depth.
 - An answer can be large: a field that much of an org rests on can have tens of thousands of results.
   `--depth` and `--min-confidence` make it smaller. There is no option yet that limits the number of results.

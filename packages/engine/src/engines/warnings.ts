@@ -1,0 +1,72 @@
+/**
+ * Which warnings of the analysis of a snapshot can bear on an impact answer (decision record 0074). A warning says
+ * that names of a component were not turned into references, or that a component was not read. A reference that is
+ * missing that way can be missing from an answer only where the walk could have gone along it.
+ *
+ * For what a component refers to, that is a reference from a component the walk went from: the component, what it
+ * contains, a result, or an element of a flow it found. For what refers to a component, it is a reference to a
+ * component of the answer from a component the walk does not start from: what the start names is never what refers
+ * to it. Of most warnings it is not known what the names could be. A `PATH_NOT_FOLLOWED` keeps them: each is a
+ * field, or the relationship of a field, of an object nothing says. `endsAt` says whether the path ends at a field
+ * or at the object of a record that an element of a flow writes or deletes, and each field of such an element has
+ * a warning of its own. A flow can compare `RecordType.DeveloperName` at the end of a path with the name of a
+ * record type. So such a warning bears on an answer that holds a field whose name the names can be, a record type
+ * where the names hold `RecordType`, or an object where the path ends at one, and on no other. One that kept twenty
+ * names, which may be fewer than the path has, bears on every answer, and so does one that says nothing of its
+ * end: an analysis made before record 0074 kept no warning for a field of an element behind such a record.
+ */
+import type { ComponentKey } from '../core/keys.ts';
+import { fieldsANameCanBe, MOST_NAMES_SHOWN } from '../extraction/raw-references.ts';
+import type { AnalysisWarning } from '../store/snapshots.ts';
+
+/** What of a walk says which warnings can bear on its answer. */
+export interface WalkedFrom {
+  readonly start: readonly ComponentKey[];
+  readonly through: readonly ComponentKey[];
+  readonly results: readonly { readonly key: ComponentKey }[];
+}
+
+const typeOf = (key: string): string => key.slice(0, key.indexOf(':'));
+/** The name of a field without its object, as the key folds it: `CustomField:invoice__c.amount__c` gives `amount__c`. */
+const fieldNameOf = (key: string): string => key.slice(key.lastIndexOf('.') + 1);
+
+/** The warnings that can bear on an answer of a walk in the direction that is given, in their order. */
+export function warningsThatBear<T extends AnalysisWarning>(
+  warnings: readonly T[],
+  walk: WalkedFrom,
+  direction: 'incoming' | 'outgoing',
+): T[] {
+  if (warnings.length === 0) return [];
+  const heldKeys = (): string[] => [...walk.start, ...walk.through, ...walk.results.map((result) => result.key)];
+  if (direction === 'outgoing') {
+    const held = new Set<string>(heldKeys());
+    return warnings.filter((warning) => warning.componentKey === null || held.has(warning.componentKey));
+  }
+  const start = new Set<string>(walk.start);
+  // What the answer holds is looked at only for a warning whose names say what it can be about.
+  let holds: { readonly anObject: boolean; readonly aRecordType: boolean; readonly fields: Set<string> } | undefined;
+  const answer = (): NonNullable<typeof holds> => {
+    if (holds !== undefined) return holds;
+    const keys = heldKeys();
+    holds = {
+      anObject: keys.some((key) => typeOf(key) === 'CustomObject'),
+      aRecordType: keys.some((key) => typeOf(key) === 'RecordType'),
+      fields: new Set(keys.filter((key) => typeOf(key) === 'CustomField').map(fieldNameOf)),
+    };
+    return holds;
+  };
+  return warnings.filter((warning) => {
+    if (warning.componentKey !== null && start.has(warning.componentKey)) return false;
+    const { notFollowed: names, endsAt } = warning;
+    if (warning.code !== 'PATH_NOT_FOLLOWED' || names === null || endsAt === null) return true;
+    if (names.length >= MOST_NAMES_SHOWN) return true;
+    const { anObject, aRecordType, fields } = answer();
+    return (
+      (endsAt === 'object' && anObject) ||
+      names.some((name) => {
+        const can = fieldsANameCanBe(name);
+        return (aRecordType && can.includes('recordtype')) || can.some((field) => fields.has(field));
+      })
+    );
+  });
+}

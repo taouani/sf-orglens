@@ -1,7 +1,7 @@
 What refers to CustomObject:invoice__c (Invoice__c), in snapshot #1 of "fixture".
 The name also fits Workflow:invoice__c. The answer is about the object. To ask about the other, name it by its key.
 It contains 44 components of the snapshot. The answer is about them too.
-The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
 
 51 components refer to it, 45 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -65,4 +65,4 @@ ApexClass      13      13
 ApexTrigger    1       1
 EmailTemplate  1       1
 
-The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1
+1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

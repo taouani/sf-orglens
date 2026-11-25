@@ -847,12 +847,17 @@ function gapReasons(gaps: ImpactGaps): string[] {
       `${count(gaps.readErrors, 'error of the reading names', 'errors of the reading name')} no type, so what is missing may be of an analysed type`,
     );
   }
-  // One reason for both, so that the sentence does not say "the analysis had" twice.
-  const had = [
-    ...(gaps.analysisErrors > 0 ? [count(gaps.analysisErrors, 'error', 'errors')] : []),
-    ...(gaps.analysisWarnings > 0 ? [count(gaps.analysisWarnings, 'warning', 'warnings')] : []),
-  ];
-  if (had.length > 0) reasons.push(`the analysis had ${had.join(' and ')}`);
+  // The errors are those of the whole analysis, the warnings only those that bear on the answer (decision record
+  // 0074).
+  if (gaps.analysisErrors > 0) reasons.push(`the analysis had ${count(gaps.analysisErrors, 'error', 'errors')}`);
+  if (gaps.analysisWarnings > 0) {
+    const bear = gaps.analysisWarnings === 1 ? 'bears' : 'bear';
+    reasons.push(
+      gaps.analysisErrors > 0
+        ? `${String(gaps.analysisWarnings)} of its warnings ${bear} on the answer`
+        : `${count(gaps.analysisWarnings, 'warning', 'warnings')} of the analysis ${bear} on the answer`,
+    );
+  }
   if (gaps.notHeld > 0) {
     reasons.push(
       `the snapshot does not hold ${count(gaps.notHeld, 'component', 'components')} of the answer, so what ${gaps.notHeld === 1 ? 'it refers' : 'they refer'} to is not known`,
@@ -894,7 +899,7 @@ function impactLines(report: ImpactReport): string[] {
   if (reasons.length === 0) {
     lines.push(
       incoming
-        ? 'The answer is complete: every type of the snapshot was analysed, without an error or a warning.'
+        ? 'The answer is complete: every type that can refer to it was analysed, and the analysis had no error and no warning that bears on it.'
         : 'The answer is complete: the snapshot holds every component in it, and each was analysed, without an error or a warning.',
     );
   } else {
@@ -1010,7 +1015,7 @@ function impactLines(report: ImpactReport): string[] {
   if (notCovered.analysisWarnings > 0) {
     lines.push(
       '',
-      `The analysis had ${count(notCovered.analysisWarnings, 'warning', 'warnings')}: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: ${about}`,
+      `${count(notCovered.analysisWarnings, 'warning', 'warnings')} of the analysis ${notCovered.analysisWarnings === 1 ? 'bears' : 'bear'} on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: ${about}`,
     );
   }
   if (notCovered.notHeld > 0) {

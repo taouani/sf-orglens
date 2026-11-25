@@ -12,6 +12,7 @@ import {
   type Target,
 } from '../src/extraction/model.ts';
 import { geolocationField, isCustomName, namespaceOf, plainNamespaceOf } from '../src/extraction/names.ts';
+import { fieldsANameCanBe } from '../src/extraction/raw-references.ts';
 
 const key = (type: string, fullName: string): ComponentKey => buildKey({ type, fullName });
 const field = (fullName: string): ComponentKey => key('CustomField', fullName);
@@ -388,5 +389,71 @@ describe('the global variables that stand for a record', () => {
       ['$userrole', 'UserRole'],
       ['$organization', 'Organization'],
     ]);
+  });
+});
+
+describe('the fields a name of a path that was not followed can be', () => {
+  /** The name of the field without its object, as the key folds it. */
+  const nameOf = (target: Target): string | null =>
+    target.to === null ? null : target.to.slice(target.to.lastIndexOf('.') + 1);
+  const NAMES = [
+    'Account__c',
+    'Account__r',
+    'Amount__c',
+    'Place__Latitude__s',
+    'Place__Longitude__s',
+    'Related__r',
+    'Tier__c',
+    'Sponsor',
+    'SponsorId',
+    'Backup__r',
+    'Stage__c',
+    'Level__pc',
+    'Level__pr',
+    'Mentor__pr',
+    'Mentor__c',
+    'Owner',
+    'Name',
+    'npsp__Batch__r',
+    'ACCOUNT__R',
+  ];
+  const OBJECTS = ['Invoice__c', 'Account', 'Contact', 'User', 'Task', 'Event', 'Sponsor__c'];
+
+  it('holds every field the model takes the name for, as the field at the end of a path or behind a relationship', () => {
+    let found = 0;
+    for (const object of OBJECTS) {
+      for (const name of NAMES) {
+        const can = fieldsANameCanBe(name);
+        for (const target of [model().field(object, name), model().relationship(object, name).field]) {
+          const field = nameOf(target);
+          if (field === null) continue;
+          found += 1;
+          expect({ object, name, field, in: can.includes(field) }).toEqual({ object, name, field, in: true });
+        }
+      }
+    }
+    // The pairs that have a key, so that the test cannot pass by finding none.
+    expect(found).toBeGreaterThan(90);
+  });
+
+  it('holds the name of a group that a formula calls the name of a queue', () => {
+    const { steps } = walkPath(
+      model(),
+      'Invoice__c',
+      ['Owner', 'QueueName'],
+      [{ leadsTo: 'Group' }, { resolveAs: 'Name' }],
+    );
+    const last = steps.at(-1);
+    expect(last === undefined ? null : nameOf(last)).toBe('name');
+    expect(fieldsANameCanBe('QueueName')).toContain('name');
+  });
+
+  it('gives the name itself, folded, and the field of the relationship it can be', () => {
+    expect(fieldsANameCanBe('Amount__c')).toEqual(['amount__c', 'amount__cid']);
+    expect(fieldsANameCanBe('Invoice__r')).toEqual(['invoice__r', 'invoice__rid', 'invoice__c']);
+    expect(fieldsANameCanBe('Account')).toEqual(['account', 'accountid']);
+    expect(fieldsANameCanBe('Level__pr')).toEqual(['level__pr', 'level__prid', 'level__pc', 'level__c']);
+    expect(fieldsANameCanBe('Level__pc')).toEqual(['level__pc', 'level__pcid', 'level__c']);
+    expect(fieldsANameCanBe('Place__Latitude__s')).toEqual(['place__latitude__s', 'place__latitude__sid', 'place__c']);
   });
 });

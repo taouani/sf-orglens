@@ -109,22 +109,60 @@ describe('orglens impact', () => {
     expect((await orglensJson(dir, ['impact', 'CustomObject:Invoice__c'])).data).toMatchObject({ sameName: [] });
   });
 
+  it('says that an answer is complete where every type was analysed and no warning bears on it', async () => {
+    // A project of one object with two fields, one of which reads the other and follows a path that nothing
+    // says where it leads. The path ends in a field named Width__c, which is not what is asked about.
+    const dir = dirs.next();
+    const fields = join(dir, OBJECTS, 'Parcel__c', 'fields');
+    mkdirSync(fields, { recursive: true });
+    writeFileSync(join(dir, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\nrepo = "project"\n');
+    writeFileSync(join(dir, 'project', 'sfdx-project.json'), '{ "packageDirectories": [{ "path": "force-app" }] }\n');
+    const xml = (type: string, body: string): string =>
+      `<?xml version="1.0" encoding="UTF-8"?>\n<${type} xmlns="http://soap.sforce.com/2006/04/metadata">\n${body}</${type}>\n`;
+    writeFileSync(
+      join(dir, OBJECTS, 'Parcel__c', 'Parcel__c.object-meta.xml'),
+      xml('CustomObject', '    <label>Parcel</label>\n'),
+    );
+    writeFileSync(
+      join(fields, 'Weight__c.field-meta.xml'),
+      xml('CustomField', '    <fullName>Weight__c</fullName>\n    <type>Number</type>\n'),
+    );
+    writeFileSync(
+      join(fields, 'Heavy__c.field-meta.xml'),
+      xml(
+        'CustomField',
+        '    <fullName>Heavy__c</fullName>\n    <formula>Weight__c &gt; Mystery__r.Width__c</formula>\n    <type>Checkbox</type>\n',
+      ),
+    );
+    expect((await orglens(dir, ['snapshot', 'work'])).stderr).toBe('');
+    const lines = (await orglens(dir, ['impact', 'Parcel__c.Weight__c'])).stdout.split('\n');
+    expect(lines.slice(0, 3)).toEqual([
+      'What refers to CustomField:parcel__c.weight__c (Parcel__c.Weight__c), in snapshot #1 of "work".',
+      'The answer is complete: every type that can refer to it was analysed, and the analysis had no error and no warning that bears on it.',
+      '',
+    ]);
+    // What Heavy__c refers to may lack the field of the path.
+    expect((await orglens(dir, ['impact', 'Parcel__c.Heavy__c', '--outgoing'])).stdout.split('\n')[1]).toBe(
+      'The answer is not complete: 1 warning of the analysis bears on the answer. The details are below the answer.',
+    );
+  });
+
   it('says in its first lines that the answer is not complete, before the answer', async () => {
     const dir = await fixtureWorkspace();
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
       '',
       '9 components refer to it, 5 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
-    expect(lines.slice(-(NOT_ANALYSED.length + 4))).toEqual([
+    // The one warning of the analysis is about a path that ends in a field named Amount__c, and the answer holds
+    // no such field and no object (decision record 0074).
+    expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
       'Not analysed yet. A component of these types may refer to it, and is not in the answer:',
       ...NOT_ANALYSED,
-      '',
-      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
   });
@@ -208,7 +246,7 @@ describe('orglens impact', () => {
     const lines = shown.stdout.split('\n');
     expect(lines.slice(0, 2)).toEqual([
       'What CustomField:invoice__c.guess__c (Invoice__c.Guess__c) refers to, in snapshot #1 of "fixture".',
-      'The answer is not complete: the analysis had 1 warning, and the snapshot does not hold 1 component of the answer, so what it refers to is not known. The details are below the answer.',
+      'The answer is not complete: 1 warning of the analysis bears on the answer, and the snapshot does not hold 1 component of the answer, so what it refers to is not known. The details are below the answer.',
     ]);
     const guess = 'force-app/main/default/objects/Invoice__c/fields/Guess__c.field-meta.xml:4';
     expect(lines.slice(3)).toEqual([
@@ -223,7 +261,7 @@ describe('orglens impact', () => {
       `1      CustomField:invoice__c.guess__c  reads  CustomField  Gone__c     ${guess}`,
       `1      CustomField:invoice__c.guess__c  reads  CustomField  Mystery__r  ${guess}`,
       '',
-      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
+      '1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
       'The snapshot does not hold 1 component of the answer, such as a standard field or a component of a package. What it refers to is not known.',
       '',
@@ -244,9 +282,14 @@ describe('orglens impact', () => {
         notCovered: { notAnalysed: [], partial: [], analysisWarnings: 1, notHeld: 1 },
       },
     });
-    // The warning is about the whole snapshot, so the other direction is not complete either.
+    // The path that was not followed ends in a field named Size__c, so what refers to Amount__c lacks nothing for
+    // it. Nor does what refers to the object Invoice_Line__c, which has no field of that name: the path of a
+    // formula ends at a field, never at an object (decision record 0074).
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
+    );
+    expect((await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n')).toContain(
+      'The answer is not complete: 3 types are not analysed yet. The details are below the answer.',
     );
   });
 
@@ -261,7 +304,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 error and 1 warning. The details are below the answer.',
+      'The answer is not complete: 3 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
     // The 28 of the project without the field that could not be read, and without the one that reads it.
     expect(lines).toContain('26 components refer to it, 25 of them directly.');
@@ -269,7 +312,7 @@ describe('orglens impact', () => {
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
       '',
-      'The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
+      '1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
     expect(await orglensJson(dir, ['impact', 'Invoice__c.Amount__c'])).toMatchObject({

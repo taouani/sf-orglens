@@ -115,6 +115,16 @@ export interface ImpactWalk {
    * that refers to something is held.
    */
   readonly notHeld: number;
+  /**
+   * The keys of what the walk starts from, sorted: the component, what it contains, and for an incoming walk from
+   * an element of a flow, the flow.
+   */
+  readonly start: readonly ComponentKey[];
+  /**
+   * For an outgoing walk: the keys of the elements of the flows it found, which it went on from and which are no
+   * results, sorted. Always empty for an incoming walk.
+   */
+  readonly through: readonly ComponentKey[];
   /** Sorted by depth, then by key. */
   readonly results: readonly ImpactResult[];
   /** Sorted by depth, then by the key they start from, then by place. Always empty for an incoming walk. */
@@ -360,8 +370,12 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
   });
 
   const results: ImpactResult[] = [];
+  const begins: ComponentKey[] = [];
+  const through: ComponentKey[] = [];
   let notHeld = !incoming && start.version === null ? 1 : 0;
   for (const [id, how] of reached) {
+    if (how === origin) begins.push(keyOf(id));
+    else if (how.link === null) through.push(keyOf(id));
     if (how.link === null) continue;
     if (!incoming && componentOf(id).version === null) notHeld += 1;
     results.push({
@@ -399,7 +413,16 @@ export function walkImpact(graph: SnapshotGraph, start: GraphComponent, options:
         compareText(a.kind, b.kind),
     );
 
-  return { parts, startTypes: [...startTypes].sort(compareText), notHeld, results, unresolved, beyondDepth };
+  return {
+    parts,
+    startTypes: [...startTypes].sort(compareText),
+    notHeld,
+    start: begins.sort(compareText),
+    through: through.sort(compareText),
+    results,
+    unresolved,
+    beyondDepth,
+  };
 }
 
 /** The component a person named, and the other components its name alone fits. */

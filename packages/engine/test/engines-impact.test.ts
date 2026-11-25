@@ -180,6 +180,8 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     expect(walk(graph, D)).toEqual({
       parts: 0,
       startTypes: ['CustomField'],
+      start: [D],
+      through: [],
       notHeld: 0,
       results: [],
       unresolved: [],
@@ -355,6 +357,8 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     ]);
     const found = walk(graph, THING);
     expect(found.parts).toBe(2);
+    // The start, which a warning of the analysis is held against (decision record 0074).
+    expect([found.start, found.through]).toEqual([[A, B, THING].sort(), []]);
     expect(outline(found)).toEqual([
       [lookup, 1, 'confirmed', `${lookup} > ${THING}`],
       [check, 1, 'confirmed', `${check} > ${B}`],
@@ -481,6 +485,7 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     it('takes the flow of an element that is asked about into the start, and gives what calls the flow', () => {
       const found = walk(graphOf(flows()), SET);
       expect(found.parts).toBe(0);
+      expect([found.start, found.through]).toEqual([[SUB, SET].sort(), []]);
       expect(outline(found)).toEqual([
         [MAIN, 1, 'confirmed', `${CALL} > ${SUB}`],
         [CALL, 1, 'confirmed', `${CALL} > ${SUB}`],
@@ -506,6 +511,8 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     it('goes on from the elements of a flow that a component refers to, which are no results', () => {
       const found = walk(graphOf(flows()), OUTER, { direction: 'outgoing' });
       expect(found.parts).toBe(1);
+      // The elements of the flows it found are what it went on from. Those of the start are of the start.
+      expect([found.start, found.through]).toEqual([[CALL_MAIN, OUTER].sort(), [CALL, CHECK, SET].sort()]);
       expect(outline(found, true)).toEqual([
         [MAIN, 1, 'confirmed', `${CALL_MAIN} > ${MAIN}`],
         [SUB, 2, 'confirmed', `${CALL_MAIN} > ${MAIN} | ${CALL} > ${SUB}`],

@@ -6,6 +6,7 @@
  * shared with every other snapshot that holds the same content.
  */
 import { EngineError, type JsonValue } from '../core/errors.ts';
+import type { EndsAt } from '../extraction/raw-references.ts';
 import type { ProjectLayout } from '../sources/project.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { getBlob, putBlob } from './blobs.ts';
@@ -341,22 +342,21 @@ export function readIssuesOf(store: Store, snapshotId: number, code: string): St
  * types `covered`: the types an answer claims to cover. Every type this version analyses is of the tier (decision
  * record 0068), and no snapshot is known to hold such a warning: the rule is there for later. `analysis`: the
  * errors of the analysis.
- * `analysisWarnings`: its warnings, each of which says that a name was not turned into a reference or that a
- * part of a file was not found. A warning of the reading that says a component was read in a form that may not
- * be the one that runs counts with them when its `details.types` names a type `covered`: a flow analysed as a
- * version of which it is not known whether it is the active one (`FLOW_VERSION_UNKNOWN`, decision record 0062).
+ * `readWarnings`: the warnings of the reading that count with those of the analysis, which `readAnalysisWarnings`
+ * gives. Such a warning says that a component was read in a form that may not be the one that runs, and counts
+ * when its `details.types` names a type `covered`: a flow analysed as a version of which it is not known whether
+ * it is the active one (`FLOW_VERSION_UNKNOWN`, decision record 0062).
  */
 export function countIssues(
   store: Store,
   snapshotId: number,
   covered: readonly string[],
-): { readonly read: number; readonly analysis: number; readonly analysisWarnings: number } {
+): { readonly read: number; readonly analysis: number; readonly readWarnings: number } {
   const row = store.get(
     `SELECT COALESCE(SUM(severity = 'error' AND stage = 'analysis'), 0) AS analysis,
             COALESCE(SUM(severity = 'error' AND stage <> 'analysis' AND NOT (
               code IN ('NOT_RETRIEVED', 'LISTING_FAILED')
-              AND json_type(COALESCE(details, '{}'), '$.type') IS 'text')), 0) AS read,
-            COALESCE(SUM(severity = 'warning' AND stage = 'analysis'), 0) AS warnings
+              AND json_type(COALESCE(details, '{}'), '$.type') IS 'text')), 0) AS read
        FROM snapshot_issue WHERE snapshot_id = ?`,
     snapshotId,
   );
@@ -386,8 +386,55 @@ export function countIssues(
   return {
     read: Number(row?.['read'] ?? 0) + Number(outside?.['n'] ?? 0),
     analysis: Number(row?.['analysis'] ?? 0),
-    analysisWarnings: Number(row?.['warnings'] ?? 0) + Number(unsure?.['n'] ?? 0),
+    readWarnings: Number(unsure?.['n'] ?? 0),
   };
+}
+
+/** A warning of the analysis of a snapshot, with what says whether it can bear on an impact answer. */
+export interface AnalysisWarning {
+  readonly code: string;
+  /** The component whose names the warning is about, or `null` for one about a file as a whole. */
+  readonly componentKey: string | null;
+  /**
+   * The names a `PATH_NOT_FOLLOWED` did not follow, as the issue keeps them: at most the first twenty. `null` for
+   * any other warning, and for one whose details hold no list of texts.
+   */
+  readonly notFollowed: readonly string[] | null;
+  /**
+   * What the path of a `PATH_NOT_FOLLOWED` ends at: a field, or the object of the record an element writes or
+   * deletes as a whole. `null` for any other warning, and for one an analysis made before decision record 0074
+   * wrote, which may have left a path of an element without a warning.
+   */
+  readonly endsAt: EndsAt | null;
+}
+
+/** The warnings of the analysis of a snapshot, in the order they were recorded (decision record 0074). */
+export function readAnalysisWarnings(store: Store, snapshotId: number): AnalysisWarning[] {
+  return store
+    .all(
+      `SELECT code, component_key,
+              CASE WHEN code = 'PATH_NOT_FOLLOWED'
+                   AND json_type(COALESCE(details, '{}'), '$.notFollowed') IS 'array'
+                   THEN json_extract(details, '$.notFollowed') END AS names,
+              CASE WHEN code = 'PATH_NOT_FOLLOWED'
+                   AND json_type(COALESCE(details, '{}'), '$.endsAt') IS 'text'
+                   THEN json_extract(details, '$.endsAt') END AS ends
+         FROM snapshot_issue
+        WHERE snapshot_id = ? AND severity = 'warning' AND stage = 'analysis'
+        ORDER BY id`,
+      snapshotId,
+    )
+    .map((row) => {
+      const names: unknown = typeof row['names'] === 'string' ? JSON.parse(row['names']) : null;
+      const texts = Array.isArray(names) && names.every((name) => typeof name === 'string') ? names : null;
+      const ends = row['ends'];
+      return {
+        code: String(row['code']),
+        componentKey: text(row['component_key']),
+        notFollowed: texts,
+        endsAt: ends === 'field' || ends === 'object' ? ends : null,
+      };
+    });
 }
 
 /**

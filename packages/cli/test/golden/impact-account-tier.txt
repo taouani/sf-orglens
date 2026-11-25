@@ -1,5 +1,5 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
-The answer is not complete: 3 types are not analysed yet, and the analysis had 1 warning. The details are below the answer.
+The answer is not complete: 3 types are not analysed yet. The details are below the answer.
 
 9 components refer to it, 5 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -20,5 +20,3 @@ TYPE           LISTED  RETRIEVED
 ApexClass      13      13
 ApexTrigger    1       1
 EmailTemplate  1       1
-
-The analysis had 1 warning: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

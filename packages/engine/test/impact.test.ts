@@ -272,7 +272,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
-        // The path of a flow that is not followed, which the answer key calls unknown.
+        // The path of a flow that is not followed, which the answer key calls unknown. It ends in a field of the
+        // name that is asked about.
         analysisWarnings: 1,
         notHeld: 0,
       });
@@ -300,10 +301,24 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
     /**
      * A workspace whose source `work` holds one object with two fields, and nothing of a type that is not
-     * analysed. The field `Heavy__c` has the formula that is given.
+     * analysed. The field `Heavy__c` has the formula that is given. A flow `Ship` on the records of the object
+     * has the elements that are given, if any.
      */
-    async function parcels(formula = 'Weight__c &gt; 30'): Promise<{ database: string; workspace: Workspace }> {
+    async function parcels(
+      formula = 'Weight__c &gt; 30',
+      elements?: string,
+    ): Promise<{ database: string; workspace: Workspace }> {
       const root = temp.next();
+      if (elements !== undefined) {
+        const flows = join(root, 'force-app', 'main', 'default', 'flows');
+        mkdirSync(flows, { recursive: true });
+        const start =
+          '    <start>\n        <object>Parcel__c</object>\n        <triggerType>RecordAfterSave</triggerType>\n    </start>\n';
+        writeFileSync(
+          join(flows, 'Ship.flow-meta.xml'),
+          xml('Flow', `    <status>Active</status>\n${start}${elements}`),
+        );
+      }
       const object = join(root, OBJECTS, 'Parcel__c');
       mkdirSync(join(object, 'fields'), { recursive: true });
       writeFileSync(join(root, 'orglens.toml'), 'schema_version = 1\n[sources.work]\nkind = "git"\n');
@@ -420,6 +435,59 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: false,
         notCovered: { ...NOTHING, analysisWarnings: 1 },
       });
+      // The warning is about the formula of Heavy__c. What Heavy__c refers to may lack a field, and what refers to
+      // Heavy__c lacks nothing for it: a reference from what is asked about never refers to it. What Weight__c
+      // refers to is not walked from Heavy__c (decision record 0074).
+      expect(await workspace.impact('work', 'Parcel__c.Heavy__c', { outgoing: true })).toMatchObject({
+        complete: false,
+        notCovered: { ...NOTHING, analysisWarnings: 1 },
+      });
+      for (const [component, outgoing] of [
+        ['Parcel__c.Heavy__c', false],
+        ['Parcel__c.Weight__c', true],
+        ['Parcel__c', false],
+      ] as const) {
+        expect(await workspace.impact('work', component, { outgoing })).toMatchObject({
+          complete: true,
+          notCovered: NOTHING,
+        });
+      }
+    });
+
+    it('does not count a path that was not followed for an answer that holds nothing its names can be', async () => {
+      const { workspace } = await parcels('Mystery__r.Width__c &gt; 30');
+      // Width__c can be a field of any object, but not Weight__c: the answer about Weight__c is complete.
+      expect(await workspace.impact('work', 'Parcel__c.Weight__c')).toMatchObject({
+        complete: true,
+        notCovered: NOTHING,
+      });
+    });
+
+    it('counts a field of a flow element behind a record of no known object for an answer about a field of its name', async () => {
+      // The element updates the record behind a lookup the snapshot does not hold, and sets its field Weight__c.
+      // Before decision record 0074, only the record had a warning, and that warning did not name the field.
+      const { workspace } = await parcels(
+        undefined,
+        [
+          '    <recordUpdates>',
+          '        <name>Save_Box</name>',
+          '        <inputReference>$Record.ns__Box__r</inputReference>',
+          '        <inputAssignments>',
+          '            <field>Weight__c</field>',
+          '            <value><numberValue>1</numberValue></value>',
+          '        </inputAssignments>',
+          '    </recordUpdates>',
+          '',
+        ].join('\n'),
+      );
+      const counted = async (component: string, outgoing = false): Promise<number> =>
+        (await workspace.impact('work', component, { outgoing })).notCovered.analysisWarnings;
+      // The field: the warning of the field. The object: that of the record, whose object it can be, and that of
+      // the field, which it holds. What refers to Heavy__c: neither. What the element refers to: both.
+      expect(await counted('Parcel__c.Weight__c')).toBe(1);
+      expect(await counted('Parcel__c')).toBe(2);
+      expect(await counted('Parcel__c.Heavy__c')).toBe(0);
+      expect(await counted('Ship.Save_Box', true)).toBe(2);
     });
 
     it('may miss something when the snapshot holds nothing of a type that the analysis reads', async () => {
@@ -560,14 +628,29 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ['CustomField:invoice__c.tax_rate__c', 1, 'confirmed'],
       ]);
       expect(total.results[0]?.reference).toMatchObject({ from: 'CustomField:invoice__c.total__c', to: AMOUNT });
-      // Both ends were analysed: what a field refers to does not depend on Apex. The answer is not complete
-      // all the same: the analysis has one warning, about a path of a flow, and a warning counts for every
-      // answer about its snapshot, also where it cannot be about what was asked.
+      // Both ends were analysed: what a field refers to does not depend on Apex. The one warning of the analysis
+      // is about an element of a flow, which the walk does not go from, so the answer is complete (decision
+      // record 0074).
       expect(total).toMatchObject({
-        complete: false,
+        complete: true,
         mayMiss: false,
-        notCovered: { notAnalysed: [], analysisWarnings: 1, notHeld: 0 },
+        notCovered: { notAnalysed: [], analysisWarnings: 0, notHeld: 0 },
       });
+      // What a flow refers to is walked from its elements, so the warning of one of them counts. What refers to
+      // the element does not lack a reference the element names.
+      const element = 'Invoice_After_Save.Check_Result';
+      expect((await workspace.impact('fixture', 'Invoice_After_Save', { outgoing: true })).notCovered).toMatchObject({
+        analysisWarnings: 1,
+      });
+      expect((await workspace.impact('fixture', element, { outgoing: true })).notCovered).toMatchObject({
+        analysisWarnings: 1,
+      });
+      expect((await workspace.impact('fixture', element)).notCovered).toMatchObject({ analysisWarnings: 0 });
+      // The names the path kept are `invoice` and `Amount__c`: what refers to a field of another name, in an
+      // answer that holds no object, does not lack the reference either.
+      const tax = await workspace.impact('fixture', 'Invoice__c.Tax_Rate__c');
+      expect(tax.results.some((one) => one.key.startsWith('CustomObject:'))).toBe(false);
+      expect(tax.notCovered).toMatchObject({ analysisWarnings: 0 });
 
       // What an object contains counts too: the type of custom metadata contains its fields and its records. Two
       // of its fields point at the objects of Salesforce that describe objects and fields, which no repository
