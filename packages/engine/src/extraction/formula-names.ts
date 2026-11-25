@@ -53,6 +53,10 @@ const TAKEN_AS: ReadonlyMap<string, { object: string; fields: ReadonlyMap<string
   ['queue', { object: 'Group', fields: new Map([['queuename', 'Name']]) }],
 ]);
 
+/** The names a field at the end of a path is looked for under when the kind of record before it says so. */
+export const namesTakenFor = (name: string): string[] =>
+  [...TAKEN_AS.values()].flatMap(({ fields }) => fields.get(name.toLowerCase()) ?? []);
+
 /** One name between two dots, and where it starts in the whole name. */
 interface Segment {
   readonly text: string;

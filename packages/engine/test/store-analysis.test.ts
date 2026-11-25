@@ -42,6 +42,7 @@ import {
   countIssues,
   ensureSource,
   insertSnapshot,
+  readAnalysisWarnings,
   readIssues,
   readSnapshot,
 } from '../src/store/snapshots.ts';
@@ -1185,11 +1186,11 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
-  it('counts the issues that bear on an answer: errors but for those the coverage tells, and warnings of the analysis', () => {
+  it('counts the issues that bear on an answer: errors but for those the coverage tells, and warnings about versions of flows', () => {
     const store = open();
     const id = snapshot(store);
     const other = snapshot(store, 'other');
-    expect(countIssues(store, id, [])).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, [])).toEqual({ read: 0, analysis: 0, readWarnings: 0 });
     const read = (severity: 'error' | 'warning', code: string, details: Record<string, JsonValue> | null): void => {
       addIssue(store, id, { severity, code, message: `${code} happened.`, componentKey: null, details });
     };
@@ -1211,8 +1212,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
       read('warning', 'NOT_RETRIEVED', { type: 'ListView', types: ['ListView'], tier: 'other' });
       read('warning', 'ODD', { types: ['ListView'] });
       read('warning', 'ODD', { types: 'ListView', tier: 'other' });
-      // A flow analysed as a version of which it is not known whether it runs counts with the warnings of the
-      // analysis where an answer covers flows. Without the type it counts nowhere, and so does an error.
+      // A flow analysed as a version of which it is not known whether it runs counts where an answer covers
+      // flows. Without the type it counts nowhere, and so does an error.
       read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'F', state: 'Draft', reason: 'no-definition', types: ['Flow'] });
       read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'G', state: 'Draft', reason: 'no-definition' });
       read('warning', 'FLOW_VERSION_UNKNOWN', { flow: 'H', types: 'Flow' });
@@ -1224,13 +1225,13 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         details: null,
       });
     });
-    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
-    expect(countIssues(store, id, ['CustomObject'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 0 });
+    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 0, readWarnings: 0 });
+    expect(countIssues(store, id, ['CustomObject'])).toEqual({ read: 4, analysis: 0, readWarnings: 0 });
     expect(countIssues(store, id, ['CustomObject', 'ListView'])).toMatchObject({ read: 5 });
     expect(countIssues(store, id, ['ListView', 'WebLink'])).toMatchObject({ read: 6 });
     expect(countIssues(store, id, ['CustomTab', 'ListView', 'Report', 'WebLink'])).toMatchObject({ read: 7 });
-    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 1 });
-    expect(countIssues(store, id, ['ApexClass', 'Flow'])).toEqual({ read: 4, analysis: 0, analysisWarnings: 1 });
+    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 0, readWarnings: 1 });
+    expect(countIssues(store, id, ['ApexClass', 'Flow'])).toEqual({ read: 4, analysis: 0, readWarnings: 1 });
     writeAnalysis(
       store,
       id,
@@ -1242,10 +1243,60 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
         ],
       }),
     );
-    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 2, analysisWarnings: 1 });
-    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 2, analysisWarnings: 2 });
-    expect(countIssues(store, other, [])).toEqual({ read: 1, analysis: 0, analysisWarnings: 0 });
-    expect(countIssues(store, 123_456, ['ListView'])).toEqual({ read: 0, analysis: 0, analysisWarnings: 0 });
+    // The warnings of the analysis are read one by one, since which of them count depends on the answer.
+    expect(countIssues(store, id, [])).toEqual({ read: 4, analysis: 2, readWarnings: 0 });
+    expect(countIssues(store, id, ['Flow'])).toEqual({ read: 4, analysis: 2, readWarnings: 1 });
+    expect(countIssues(store, other, [])).toEqual({ read: 1, analysis: 0, readWarnings: 0 });
+    expect(countIssues(store, 123_456, ['ListView'])).toEqual({ read: 0, analysis: 0, readWarnings: 0 });
+    store.close();
+  });
+
+  it('reads the warnings of the analysis with the names a path that was not followed kept, in their order', () => {
+    const store = open();
+    const id = snapshot(store);
+    const other = snapshot(store, 'other');
+    expect(readAnalysisWarnings(store, id)).toEqual([]);
+    const warning = (code: string, componentKey: ComponentKey | null, details: Record<string, JsonValue> | null) => ({
+      severity: 'warning' as const,
+      code,
+      message: 'm',
+      componentKey,
+      details,
+    });
+    writeAnalysis(
+      store,
+      id,
+      analysisOf(project(), {
+        issues: [
+          warning('PATH_NOT_FOLLOWED', TOTAL, { relationship: 'Invoice__r', notFollowed: ['Amount__c', 'Owner'] }),
+          { severity: 'error', code: 'COMPONENT_FAILED', message: 'm', componentKey: AMOUNT, details: null },
+          warning('ELEMENT_NOT_READ', AMOUNT, { notFollowed: ['Amount__c'] }),
+          warning('PATH_NOT_FOLLOWED', null, { notFollowed: [] }),
+          // Names that are not a list of texts are no names, and the warning is read without them.
+          warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c', 7] }),
+          warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: 'Amount__c' }),
+          warning('PATH_NOT_FOLLOWED', TOTAL, null),
+        ],
+      }),
+    );
+    // A warning of the reading is not one of the analysis, and a warning of another snapshot is not one of this.
+    store.write(() => {
+      addIssue(store, id, warning('PATH_NOT_FOLLOWED', null, { notFollowed: ['Amount__c'] }));
+    });
+    writeAnalysis(
+      store,
+      other,
+      analysisOf(project(), { issues: [warning('PATH_NOT_FOLLOWED', TOTAL, { notFollowed: ['Amount__c'] })] }),
+    );
+    expect(readAnalysisWarnings(store, id)).toEqual([
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: ['Amount__c', 'Owner'] },
+      { code: 'ELEMENT_NOT_READ', componentKey: AMOUNT, notFollowed: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: null, notFollowed: [] },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
+      { code: 'PATH_NOT_FOLLOWED', componentKey: TOTAL, notFollowed: null },
+    ]);
+    expect(readAnalysisWarnings(store, 123_456)).toEqual([]);
     store.close();
   });
 

@@ -11,7 +11,9 @@
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
+import { namesTakenFor } from './formula-names.ts';
 import { walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
+import { geolocationField } from './names.ts';
 import type { NameAt } from './values.ts';
 
 /**
@@ -200,7 +202,25 @@ const relationshipTo = (facts: FieldFacts | undefined): string | null => {
 };
 /** At most this many characters of a path that was not followed are shown, and this many of its names are kept. */
 const LONGEST_PATH_SHOWN = 200;
-const MOST_NAMES_SHOWN = 20;
+export const MOST_NAMES_SHOWN = 20;
+
+/**
+ * The folded names of the fields that a name of a path that was not followed can turn out to be, on whatever
+ * object, as the model resolves a name (`model.ts`): the field at the end of a path, or the field behind a
+ * relationship. `Invoice__r` is the field `Invoice__c` and `Account` is `AccountId`. `Level__pr` is the field
+ * `Level__pc`, which of an account is `Level__c` of the contact. `Place__Latitude__s` is a part of `Place__c`, and
+ * `QueueName` after `Owner:Queue` is the name of a group. A name too many does no harm: it only makes a warning
+ * count for more answers (decision record 0074).
+ */
+export function fieldsANameCanBe(name: string): string[] {
+  const folded = foldName(name);
+  const names = [folded, `${folded}id`, ...namesTakenFor(name).map(foldName)];
+  const whole = geolocationField(name);
+  if (whole !== null) names.push(foldName(whole));
+  if (/__p?r$/.test(folded)) names.push(`${folded.slice(0, -1)}c`);
+  if (/__p[rc]$/.test(folded)) names.push(`${folded.slice(0, -2)}c`);
+  return [...new Set(names)];
+}
 
 /**
  * The relationship of a lookup field, by the name of the field, in any case: `Invoice__c` is `Invoice__r`, and

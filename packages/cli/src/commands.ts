@@ -894,7 +894,7 @@ function impactLines(report: ImpactReport): string[] {
   if (reasons.length === 0) {
     lines.push(
       incoming
-        ? 'The answer is complete: every type of the snapshot was analysed, without an error or a warning.'
+        ? 'The answer is complete: every type that can refer to it was analysed, and the analysis had no error and no warning that bears on it.'
         : 'The answer is complete: the snapshot holds every component in it, and each was analysed, without an error or a warning.',
     );
   } else {

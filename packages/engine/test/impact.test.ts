@@ -272,7 +272,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         partial: [],
         readErrors: 0,
         analysisErrors: 0,
-        // The path of a flow that is not followed, which the answer key calls unknown.
+        // The path of a flow that is not followed, which the answer key calls unknown. It ends in a field of the
+        // name that is asked about.
         analysisWarnings: 1,
         notHeld: 0,
       });
@@ -420,6 +421,32 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: false,
         notCovered: { ...NOTHING, analysisWarnings: 1 },
       });
+      // The warning is about the formula of Heavy__c. What Heavy__c refers to may lack a field, and what refers to
+      // Heavy__c lacks nothing for it: a reference from what is asked about never refers to it. What Weight__c
+      // refers to is not walked from Heavy__c (decision record 0074).
+      expect(await workspace.impact('work', 'Parcel__c.Heavy__c', { outgoing: true })).toMatchObject({
+        complete: false,
+        notCovered: { ...NOTHING, analysisWarnings: 1 },
+      });
+      for (const [component, outgoing] of [
+        ['Parcel__c.Heavy__c', false],
+        ['Parcel__c.Weight__c', true],
+        ['Parcel__c', false],
+      ] as const) {
+        expect(await workspace.impact('work', component, { outgoing })).toMatchObject({
+          complete: true,
+          notCovered: NOTHING,
+        });
+      }
+    });
+
+    it('does not count a path that was not followed for an answer that holds nothing its names can be', async () => {
+      const { workspace } = await parcels('Mystery__r.Width__c &gt; 30');
+      // Width__c can be a field of any object, but not Weight__c: the answer about Weight__c is complete.
+      expect(await workspace.impact('work', 'Parcel__c.Weight__c')).toMatchObject({
+        complete: true,
+        notCovered: NOTHING,
+      });
     });
 
     it('may miss something when the snapshot holds nothing of a type that the analysis reads', async () => {
@@ -560,14 +587,29 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ['CustomField:invoice__c.tax_rate__c', 1, 'confirmed'],
       ]);
       expect(total.results[0]?.reference).toMatchObject({ from: 'CustomField:invoice__c.total__c', to: AMOUNT });
-      // Both ends were analysed: what a field refers to does not depend on Apex. The answer is not complete
-      // all the same: the analysis has one warning, about a path of a flow, and a warning counts for every
-      // answer about its snapshot, also where it cannot be about what was asked.
+      // Both ends were analysed: what a field refers to does not depend on Apex. The one warning of the analysis
+      // is about an element of a flow, which the walk does not go from, so the answer is complete (decision
+      // record 0074).
       expect(total).toMatchObject({
-        complete: false,
+        complete: true,
         mayMiss: false,
-        notCovered: { notAnalysed: [], analysisWarnings: 1, notHeld: 0 },
+        notCovered: { notAnalysed: [], analysisWarnings: 0, notHeld: 0 },
       });
+      // What a flow refers to is walked from its elements, so the warning of one of them counts. What refers to
+      // the element does not lack a reference the element names.
+      const element = 'Invoice_After_Save.Check_Result';
+      expect((await workspace.impact('fixture', 'Invoice_After_Save', { outgoing: true })).notCovered).toMatchObject({
+        analysisWarnings: 1,
+      });
+      expect((await workspace.impact('fixture', element, { outgoing: true })).notCovered).toMatchObject({
+        analysisWarnings: 1,
+      });
+      expect((await workspace.impact('fixture', element)).notCovered).toMatchObject({ analysisWarnings: 0 });
+      // The names the path kept are `invoice` and `Amount__c`: what refers to a field of another name, in an
+      // answer that holds no object, does not lack the reference either.
+      const tax = await workspace.impact('fixture', 'Invoice__c.Tax_Rate__c');
+      expect(tax.results.some((one) => one.key.startsWith('CustomObject:'))).toBe(false);
+      expect(tax.notCovered).toMatchObject({ analysisWarnings: 0 });
 
       // What an object contains counts too: the type of custom metadata contains its fields and its records. Two
       // of its fields point at the objects of Salesforce that describe objects and fields, which no repository
