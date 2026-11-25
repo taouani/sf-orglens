@@ -52,7 +52,7 @@ import type { CrossCheckReport } from '../../src/api/analysis.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
 import type { CoverageReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
-import { buildKey } from '../../src/core/keys.ts';
+import { buildKey, parseKey } from '../../src/core/keys.ts';
 import { listedMatcher, type CrossCheckPair } from '../../src/engines/cross-check.ts';
 import {
   dependencyLimits,
@@ -1141,9 +1141,7 @@ export function crossCheckLines(
       // The types of the two ends are shown, not the names, so that a pair of the org can be told apart by kind.
       const kinds = new Map<string, number>();
       for (const { from, to } of pairs.filter((pair) => !ours.includes(pair))) {
-        const kind = [from, to]
-          .map((key) => log.name(key.slice(0, key.indexOf(':'))) ?? '(a type that is not shown)')
-          .join(' to ');
+        const kind = [from, to].map((key) => log.name(parseKey(key).type) ?? '(a type that is not shown)').join(' to ');
         kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
       }
       const unnamed = pairs.length - ours.length;

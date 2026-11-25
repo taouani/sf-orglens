@@ -318,9 +318,10 @@ function notReported(
   if (type === 'RecordType') return 'record-type';
   if (type === 'FieldSet') return null;
   // Of an email template, the test org reports the custom fields its merge fields name, and the object they are
-  // of. Of a quick action it reports the object it creates records of and the field `targetParentField`, and of a
-  // report type nothing. A pair of either without a row is counted and not listed (decision record 0077): the
-  // field `targetParentField` names and a field a predefined value writes are both `assignment`.
+  // of. Of a report type it reports nothing. Of a quick action it reports the object it creates records of and the
+  // field `targetParentField`, which is `assignment` as a field a predefined value sets is, and the object was
+  // measured for one action of one kind: a pair of a quick action without a row is counted and not listed too
+  // (decision record 0077).
   if (type === 'EmailTemplate') return null;
   if (type === 'ReportType') return 'report-type';
   if (type === 'QuickAction') return 'quick-action';
