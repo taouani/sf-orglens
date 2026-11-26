@@ -120,8 +120,10 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * `PermissionSet`, `ContentDocument` and `TriggerObjectOrEvent`, and in NPSP a relationship of the packages it builds
  * on, which the resolver guessed: of the warnings at a relationship, Apex Recipes has 1, Nebula Logger 44, NPSP 286
  * (232 at a guessed one), PMM 7, V4S 2 and EDA 14, and `RELATIONSHIP_GUESSED` of NPSP is 282. And a subquery through a
- * child relationship nothing defines, which is not followed (Apex Recipes 1, NPSP 13, Outbound Funds 3). No query in
- * brackets of the public codebases has a `TYPEOF`: the one of Nebula Logger stands in a text, which is not read yet.
+ * child relationship nothing defines, which is not followed (Apex Recipes 1, NPSP 13, Outbound Funds 3). Since the
+ * review of the pull request, `FIELDS(STANDARD)` gives a warning too, since it reads fields it does not name: Apex
+ * Recipes has 3, of `Organization`. No query in brackets of the public codebases has a `TYPEOF`: the one of Nebula
+ * Logger stands in a text, which is not read yet.
  */
 interface Expected {
   readonly components: number;
@@ -151,7 +153,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       type: 1011,
       value: 12,
     },
-    issues: { PATH_NOT_FOLLOWED: 17 },
+    issues: { PATH_NOT_FOLLOWED: 20 },
   },
   'nebula-logger': {
     components: 3979,

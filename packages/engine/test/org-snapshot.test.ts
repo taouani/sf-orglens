@@ -625,9 +625,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // But for a tier: the mock org describes the fields `Name` of the account and of the invoice and the fields
       // `OwnerId` and `CreatedDate` of the invoice, which no file of the project defines, and the description of the
       // account names the field `AccountId` of the contact behind its child relationship `Contacts`. The code of Apex
-      // names them 20 times, 9 of them in queries and a search. The org checks them, so they keep the tier of their syntax there, and in the folder they are
-      // `probable` (decision record 0087). The contact is not described: where Apex names its field `AccountId`
-      // itself, it is `probable` in both.
+      // names them 20 times, 9 of them in queries and a search. The org checks them, so they keep the tier of their
+      // syntax there, and in the folder they are `probable` (decision record 0087). The contact is not described:
+      // where Apex names its field `AccountId` itself, it is `probable` in both.
       const DESCRIBED = new Set([
         'CustomField:account.name',
         'CustomField:invoice__c.createddate',
@@ -706,8 +706,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // of flows. One path of a flow is not followed.
       const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
-      // Of Apex, 137 references of declarations and types and 185 of fields, tokens and DML. One write by DML is
-      // not followed: its records are a list of `SObject`.
+      // Of Apex, 137 references of declarations and types and 289 of fields, tokens, DML, queries and searches. One
+      // write by DML is not followed: its records are a list of `SObject`.
       const apex = { components: 168, failedFiles: 0, references: 426, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({

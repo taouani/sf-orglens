@@ -229,6 +229,9 @@ describe('the reader of Apex', () => {
       'aggregates',
       ['Account__c', 'Account__c'],
     ]);
+    // `FIELDS()` names no field: it is kept apart, with its parameter in upper case.
+    const every = reader.parseQuery('SELECT Name, FIELDS(custom) FROM Invoice__c LIMIT 200');
+    expect([every?.fields.length, every?.everyField]).toEqual([1, [{ text: 'CUSTOM', at: { line: 1, column: 14 } }]]);
     // A subquery of the filter gives what its own select list says.
     const nested = reader.parseQuery('SELECT COUNT() FROM Account WHERE Id IN (SELECT AccountId FROM Contact)');
     expect([nested?.gives, nested?.nested[0]?.gives]).toEqual(['count', 'records']);

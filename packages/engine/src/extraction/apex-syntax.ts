@@ -230,6 +230,11 @@ export interface Query {
   /** The Apex expressions after a colon. */
   readonly binds: readonly Expr[];
   /**
+   * Each `FIELDS(ALL)`, `FIELDS(CUSTOM)` and `FIELDS(STANDARD)` of the select list, which reads fields it does not
+   * name: its parameter in upper case, at the place of `FIELDS`.
+   */
+  readonly everyField: readonly Name[];
+  /**
    * What the query gives: records of its object, rows of `AggregateResult` where its select list has an aggregate
    * function or it groups its rows, or a number for `COUNT()`.
    */

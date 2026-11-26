@@ -101,6 +101,7 @@ import {
   SelectListContext,
   SetCreatorRestContext,
   SetterContext,
+  SoqlFieldsParameterContext,
   SoqlFunctionContext,
   SoqlIdContext,
   SoqlLiteralContext,
@@ -403,7 +404,17 @@ interface QueryParts {
   nested: Query[];
   typeOfs: TypeOf[];
   binds: Expr[];
+  everyField: Name[];
 }
+
+const emptyParts = (): QueryParts => ({
+  fields: [],
+  children: [],
+  nested: [],
+  typeOfs: [],
+  binds: [],
+  everyField: [],
+});
 
 /** Collects what a clause of a query names. A sub-query, a `TYPEOF` and a bound expression are not walked into. */
 function collect(node: Tree, into: QueryParts): void {
@@ -423,6 +434,11 @@ function collect(node: Tree, into: QueryParts): void {
       });
     } else if (kid instanceof BoundExpressionContext) {
       into.binds.push(expression(one(kid, ExpressionContext)));
+    } else if (kid instanceof SoqlFunctionContext && one(kid, SoqlFieldsParameterContext) !== undefined) {
+      into.everyField.push({
+        text: words(one(kid, SoqlFieldsParameterContext))[0]?.toUpperCase() ?? '',
+        at: startOf(kid),
+      });
     } else if (kid instanceof FieldNameContext) {
       into.fields.push(path(kid));
     } else if (kid instanceof SoqlIdContext || kid instanceof SoslIdContext) {
@@ -451,7 +467,7 @@ function givesOf(ctx: QueryContext | SubQueryContext): Query['gives'] {
 }
 
 function query(ctx: QueryContext | SubQueryContext | undefined): Query {
-  const parts: QueryParts = { fields: [], children: [], nested: [], typeOfs: [], binds: [] };
+  const parts = emptyParts();
   if (ctx === undefined) return { from: [], alias: undefined, ...parts, gives: 'records' };
   const fromList = one(ctx, FromNameListContext);
   const alias = one(fromList, SoqlIdContext);
@@ -474,7 +490,7 @@ function search(primary: SoslPrimaryContext): Search {
         binds.push(expression(one(kid, ExpressionContext)));
       } else if (kid instanceof FieldSpecContext) {
         const object = path(one(kid, SoslIdContext))[0];
-        const parts: QueryParts = { fields: [], children: [], nested: [], typeOfs: [], binds: [] };
+        const parts = emptyParts();
         const listed = (list: FieldListContext): void => {
           for (const entry of kids(list)) {
             if (entry instanceof SoslIdContext) parts.fields.push(path(entry));

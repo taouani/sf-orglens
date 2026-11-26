@@ -26,29 +26,39 @@ of `apex-syntax.ts`, with its object, its fields of every clause, its subqueries
    The alias of the object and the name of the object in front of a field are no relationship (`a.Name` of
    `FROM Account a`, `Account.Industry` of `FROM Account`). The alias of a field is no field. `Id` gives nothing. Each
    name is checked against the files and the descriptions, and keeps its tier or is `probable`, as record 0087 says.
+   `FIELDS(ALL)`, `FIELDS(CUSTOM)` and `FIELDS(STANDARD)` read fields that the query does not name. Which they are is
+   not read here, so each leaves `PATH_NOT_FOLLOWED` at `FIELDS` (`details.object`, an empty `notFollowed` and no
+   `endsAt`), which bears on every answer. Both readers keep it apart (`Query.everyField`).
 2. **Subqueries.** A subquery of the select list goes through a child relationship of the object of the query. Where
    a file, a description or the short lists of the model define it, it `references` the lookup field behind it and
    `reads` the object of that field, both at the name of the relationship, and its fields are read from a record of
    that object, also in a subquery of its own. Where nothing defines it, the lookup field can have any name and the
    object can be any object: the warning `PATH_NOT_FOLLOWED` (`details.relationship`, the names of the subquery in
    `notFollowed`, without `Id`, and no `endsAt`) says that the subquery was not followed, and bears on every answer,
-   as the warning of record 0087 about a child relationship used as a list. A subquery of the filter (`WHERE Id IN
-(SELECT AccountId FROM Contact)`) is a query of its own object.
+   as the warning of record 0087 about a child relationship used as a list. Of such a subquery, what it binds and its
+   subqueries of the filter are read all the same. A subquery of the filter, as in `WHERE Id IN (SELECT ...)`, is a
+   query of its own object.
 3. **`TYPEOF`.** The relationship is read as a path from the object of the query. Each object after `WHEN` is read,
-   at its name, with its fields. The fields after `ELSE` are of the other objects the relationship leads to. Where it
-   leads to one object, they are read as its fields. Otherwise nothing says which objects they are of, and the
-   warning `PATH_NOT_FOLLOWED` at the relationship keeps them in `notFollowed`, with `endsAt: 'field'`, as for a path
-   of record 0087. An `ELSE` of `Id` alone gives no warning. The objects a description lists for a polymorphic lookup
-   are not taken away from those after `WHEN`: that is not built.
+   at its name, with its fields. The fields after `ELSE` are of the other objects the relationship leads to. Where the
+   analysis knows it to lead to one object and no `WHEN` names that object, they are read as its fields:
+   `TYPEOF Owner WHEN Group THEN Type ELSE Name END` reads the name of a user. Otherwise nothing says which objects
+   they are of, and the warning `PATH_NOT_FOLLOWED` at the relationship keeps them in `notFollowed`, with
+   `endsAt: 'field'`, as for a path of record 0087. That is also so where a `WHEN` names the one object the analysis
+   knows, as in `TYPEOF Owner WHEN User THEN Username ELSE Name END`: the code says that the relationship leads to
+   other objects too, such as a queue, which the analysis does not know of. `TYPEOF` is written only for a
+   relationship that leads to several objects. An `ELSE` of `Id` alone gives no warning. The objects a description
+   lists for a polymorphic lookup are not taken away from those after `WHEN`: that is not built.
 4. **Binds.** What a query or a search binds after a colon is read as code, in the scope of the member, so
    `:inv.Status__c` reads the field and `:ids` the variable of the class. Names read there are named as the query
    names them (`via` `soql`), since the query is what uses them. A token in a bind keeps the `via` `token`, as
    record 0087 says.
-5. **What a query gives.** Records of its object, which record 0087 already said. Where its select list has an
-   aggregate function (`AVG`, `COUNT`, `COUNT_DISTINCT`, `MAX`, `MIN`, `SUM`) or it has `GROUP BY`, it gives rows of
-   `AggregateResult`, which hold no record of the object, so DML on them is DML on records of no known object. `COUNT()`
-   gives a number. Both readers of the tests say which (`Query.gives`), and the test of the readers holds them against
-   each other.
+5. **What a query gives.** Records of its object, which record 0087 already said. Given to one record, as in
+   `SObject one = [SELECT ...]`, it gives one record of its object, and a loop over it with a list, as in
+   `for (List<SObject> batch : [SELECT ...])`, a list of records of its object for each batch. Where its select list
+   has an aggregate function (`AVG`, `COUNT`, `COUNT_DISTINCT`, `MAX`, `MIN`, `SUM`) or it has `GROUP BY`, it gives rows
+   of `AggregateResult`, which hold no record of the object: a list of `SObject` that holds them holds records of no
+   known object. Apex does not compile DML on a list of `AggregateResult`. `COUNT()` gives a number. Both readers of
+   the tests say which (`Query.gives`), and the test of the readers holds them against each other.
 6. **Searches.** A search `reads` each object of its `RETURNING` and the fields named there, the name of the object
    in front of a field dropped. It gives lists of lists of records of no known object, as `List<List<SObject>>`.
 7. **`via`.** The references of a query have the `via` `soql`, those of a search `sosl`, as the answer key says. The
@@ -59,15 +69,17 @@ of `apex-syntax.ts`, with its object, its fields of every clause, its subqueries
    `ApexTrigger` stay off the list of analysed types (record [0084](0084-the-members-of-a-class-are-components.md)).
    The old syntax `FROM Contact c, c.Account a` is not read: both readers keep only the first object and its alias,
    so `a.Name` is taken for a relationship `a` of the contact, at `probable`, and its warning `PATH_NOT_FOLLOWED`
-   says that `Name` was not followed. None of the eight public codebases writes a query so.
+   says that `Name` was not followed. None of the eight public codebases writes a query so. A bind after `IN` that the
+   code uses as a list, such as `:acc.Things__r`, is not taken for a use as a list: a `__r` name nothing defines is
+   guessed as a lookup there, with `RELATIONSHIP_GUESSED`. The fields that `FIELDS()` reads are not read.
 
 ## Consequences
 
 - The fixture project gives every entry of the answer key of `soql` and `sosl`, 104, at its line and column with its
   kind and tier, and no other reference of them, gives no new warning and hits no negative of the key
-  (`extraction-apex-resolver.test.ts`). Its classes and triggers give 426 references. The snapshot of the mock org,
-  whose descriptions now define one more field that a query names, gives the same references with the tiers the
-  descriptions check (`org-snapshot.test.ts`).
+  (`extraction-apex-resolver.test.ts`). Its classes and triggers give 426 references. The snapshot of the mock org
+  gives the same references with the tiers the descriptions check, one more of them than before, since a query names
+  the field `CreatedDate` of the invoice, which the mock describes (`org-snapshot.test.ts`).
 - An answer about a field or an object now holds the members that query it. On the fixture, what refers to
   `Invoice__c.Amount__c` holds 57 components, 8 more than before: members that query the field or a formula field
   that names it.
@@ -79,5 +91,6 @@ of `apex-syntax.ts`, with its object, its fields of every clause, its subqueries
   `CronJobDetail`, `UserLicense` and `PermissionSet`, and NPSP queries many relationships of the packages it builds
   on, which are guessed: their warnings go from 104 to 286 on NPSP, and `RELATIONSHIP_GUESSED` from 133 to 282. In a
   snapshot of an org a description says where most of them lead. 17 subqueries of the public codebases go through a
-  child relationship nothing defines (NPSP 13, Outbound Funds 3, Apex Recipes 1). An answer of NPSP about what refers
-  to a component is not complete more often than before.
+  child relationship nothing defines (NPSP 13, Outbound Funds 3, Apex Recipes 1), and Apex Recipes has 3
+  `FIELDS(STANDARD)` of `Organization`. An answer of NPSP about what refers to a component is not complete more often
+  than before.

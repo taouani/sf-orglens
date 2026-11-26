@@ -263,9 +263,17 @@ interface QueryParts {
   nested: Query[];
   typeOfs: TypeOf[];
   binds: Expr[];
+  everyField: Name[];
 }
 
-const emptyParts = (): QueryParts => ({ fields: [], children: [], nested: [], typeOfs: [], binds: [] });
+const emptyParts = (): QueryParts => ({
+  fields: [],
+  children: [],
+  nested: [],
+  typeOfs: [],
+  binds: [],
+  everyField: [],
+});
 
 /** Collects what a clause of a query names. A sub-query, a `TYPEOF` and a bound expression are not walked into. */
 function collect(node: Node, into: QueryParts, inSelect: boolean): void {
@@ -288,6 +296,9 @@ function collect(node: Node, into: QueryParts, inSelect: boolean): void {
         break;
       case 'bound_apex_expression':
         into.binds.push(expression(kids(kid)[0]));
+        break;
+      case 'fields_expression':
+        into.everyField.push({ text: (one(kid, 'fields_type')?.text ?? '').toUpperCase(), at: posOf(kid) });
         break;
       case 'field_identifier':
         into.fields.push(path(kid));

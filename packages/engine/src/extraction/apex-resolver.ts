@@ -14,7 +14,8 @@
  * (`apex-schema.ts`). One that nothing checks is `probable`. What cannot be resolved has a warning, and nothing is
  * dropped without one where the code shows that it refers to something: a relationship whose end is not known, a
  * name of a relationship that is guessed, a name the org did not describe, DML on records of no known object, a
- * subquery through a child relationship of no known object, and the fields after `ELSE` of a `TYPEOF`.
+ * subquery through a child relationship of no known object, the fields after `ELSE` of a `TYPEOF`, and `FIELDS()`
+ * of a query, which reads fields it does not name.
  *
  * A query in brackets reads the object after `FROM` and every field it names, in any clause, from a record of that
  * object, also in a subquery through a child relationship, which refers to the lookup field behind the relationship.
@@ -519,6 +520,12 @@ class Resolver implements ApexResolver {
   /** The more exact of the declared type of a variable and the type of the value it is given. */
   private refine(declared: Type, actual: Type): Type {
     if (declared.k === 'record' && actual.k === 'record') return declared.object === undefined ? actual : declared;
+    // Only a query gives a list where one record is declared (`SObject one = [SELECT ...]`), and only the loop over
+    // a query gives one record where a list is declared, a list for each batch (`for (List<SObject> batch : ...)`).
+    if (declared.k === 'record' && actual.k === 'list' && actual.of.k === 'record') {
+      return this.refine(declared, actual.of);
+    }
+    if (declared.k === 'list' && actual.k === 'record') return { k: 'list', of: this.refine(declared.of, actual) };
     if (declared.k === 'list' && actual.k === 'list') return { k: 'list', of: this.refine(declared.of, actual.of) };
     if (declared.k === 'map' && actual.k === 'map') {
       return { k: 'map', key: declared.key, value: this.refine(declared.value, actual.value) };
@@ -1375,6 +1382,7 @@ class Resolver implements ApexResolver {
     }
     const prefixes = [query.alias, foldName(object)];
     for (const path of query.fields) this.fieldPath(object, Resolver.unprefixed(path, prefixes));
+    for (const every of query.everyField) this.everyField(object, every);
     for (const child of query.children) this.childQuery(object, child, prefixes);
     for (const typeOf of query.typeOfs) this.typeOf(object, typeOf, prefixes);
   }
@@ -1425,9 +1433,23 @@ class Resolver implements ApexResolver {
   }
 
   /**
+   * `FIELDS(ALL)`, `FIELDS(CUSTOM)` and `FIELDS(STANDARD)` read fields of `object` that the query does not name. Which
+   * they are is not read, so a warning that bears on every answer stands for them.
+   */
+  private everyField(object: string, every: Name): void {
+    this.warn(
+      every,
+      'PATH_NOT_FOLLOWED',
+      `"FIELDS(${cut(every.text, 20)})" reads fields of "${cut(object, 80)}" that the query does not name, so they were not followed.`,
+      { object, notFollowed: [], origin: 'parser:apex' },
+    );
+  }
+
+  /**
    * `TYPEOF` of a relationship of `object` that leads to several objects: the relationship refers to its lookup
    * field, and each object after `WHEN` is read with its fields. The fields after `ELSE` are of the other objects
-   * the relationship leads to, which are not known, unless it leads to one object.
+   * the relationship leads to, which are not known, unless it leads to one object that no `WHEN` names. Where a
+   * `WHEN` names the one object the analysis knows, the code says that the relationship leads to others too.
    */
   private typeOf(object: string, typeOf: TypeOf, prefixes: readonly (string | undefined)[]): void {
     const path = Resolver.unprefixed(typeOf.relationship, prefixes);
@@ -1438,8 +1460,9 @@ class Resolver implements ApexResolver {
       for (const field of when.fields) this.fieldPath(when.object.text, field);
     }
     const { type } = value;
-    if (type.k === 'record' && type.object !== undefined) {
-      for (const field of typeOf.otherwise) this.fieldPath(type.object, field);
+    const one = type.k === 'record' ? type.object : undefined;
+    if (one !== undefined && !typeOf.whens.some((when) => foldName(when.object.text) === foldName(one))) {
+      for (const field of typeOf.otherwise) this.fieldPath(one, field);
       return;
     }
     const relationship = path.at(-1);
