@@ -333,8 +333,9 @@ async function tryInstall(version, from) {
     const line = installLine(version);
     const where = local === undefined ? '' : ` --registry ${local.site}`;
     console.log(`npm ${(await run('npm --version')).trim()}\n${line}${where}`);
-    // The registry of npm took minutes to show the first version to an install: between four and five and a
-    // half minutes after its publish. Eight tries wait eleven minutes in all.
+    // The registry of npm took minutes to show a new version to an install: five and a half minutes after the
+    // publish of the first two versions, and up to eleven and a half for the third. Eight tries wait eleven
+    // minutes in all.
     for (let attempt = 1; ; attempt += 1) {
       try {
         await run(`${line}${where} --no-fund`);

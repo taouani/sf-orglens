@@ -1,8 +1,8 @@
 # Phase 2 report: Flows and configuration
 
-Written on 25 November 2026 by the AI assistant that built the phase, for the maintainer. The plan of the phase is
-[`docs/plans/phase-2.md`](../plans/phase-2.md), which holds a status for every work package. The checks you can run
-yourself are in the [test plan](../test-plans/phase-2.md).
+Written on 25 November 2026, and updated on 26 November 2026 after the publish, by the AI assistant that built the
+phase, for the maintainer. The plan of the phase is [`docs/plans/phase-2.md`](../plans/phase-2.md), which holds a
+status for every work package. The checks you can run yourself are in the [test plan](../test-plans/phase-2.md).
 
 ## In short
 

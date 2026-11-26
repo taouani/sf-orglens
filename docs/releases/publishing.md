@@ -27,8 +27,8 @@ reads differently today, the page is right.
 stay as they are: I prepare the version in a pull request and rehearse it, you give your word for that version, I start
 the run, and you approve its job "Publish on npm". Those are steps 1, 2 and 5 to 8 of
 [the first pre-release](#the-first-pre-release) below. That nothing has to be set up rests on the page of npm, which
-says that the first publish through a publisher validates it, and the third publish needed nothing set up. Nobody has
-looked yet whether the two publishers left "Pending validation".
+says that the first publish through a publisher validates it, and for the third publish I asked for nothing to be set
+up. Nobody has looked yet whether the two publishers left "Pending validation".
 
 ## Once, before the first pre-release
 
@@ -300,20 +300,23 @@ date and the times are in UTC.
 [Run 9 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/45723426510) published `0.1.0-next.2` on 26
 November 2026, from `main` at `221a4df`: the commit of the version, `497531d`, which
 [run 8](https://github.com/taouani/sf-orglens/actions/runs/45719125885) had rehearsed, with an update of two development
-tools that are not in the packages. You gave your word on 25 November 2026 at 23:42 and approved the job "Publish on
-npm" at 03:44, so the run waited about four hours, which did no harm. I read its log. I did not look at npm. The times
-are in UTC.
+tools that are not in the packages. You gave your word on 25 November 2026 at 23:42, the run started the same minute,
+and you approved the job "Publish on npm" at 03:44, so the run waited about four hours, which did no harm. I read its
+log. I did not look at npm. The times are in UTC.
 
 - **npm took both packages without a token, as at the second publish,** `@sf-orglens/engine` at 03:44:56 and
   `sf-orglens` at 03:45:01, each with its provenance, and the tag `latest` moved from `0.1.0-next.1` to `0.1.0-next.2`
-  for both. Nothing was set up on npm before the run, as the page of npm says is not needed.
-- **An install found the version on the sixth try.** In the two logs I read, of Linux and of Windows, the fifth try
-  failed with `404` and the sixth passed: on Linux 5 minutes 20 seconds and 7 minutes 25 seconds after the publish of
-  the command line, on Windows, where a try takes longer, 8 and 11 minutes after it. The other four jobs ended within
-  the same minutes. At the first two publishes the fifth try passed.
-  The jobs have eight tries, so two were left.
-- **The pre-release on GitHub was created at 03:56,** eleven minutes after the packages were on npm, once the six
-  installs had passed. It has the two packages and the file of their checksums.
+  for both. I asked for nothing to be set up on npm before the run, which the page of npm says is not needed.
+- **All six installs from npm passed, later than at the first two publishes.** In the two logs I read, of Linux and of
+  Windows, the sixth try passed. On Linux the first four tries failed with `ETARGET`, npm's answer for a version it
+  does not list yet, and the fifth with `E404` for the file of the package, which npm then listed and did not serve
+  yet. The fifth failed 5 minutes and 21 seconds after the publish of the command line and the sixth passed 7 minutes
+  and 24 seconds after it. On Windows, where a try takes longer, the fifth failed 8 minutes after it and the sixth
+  passed after 11 minutes and 19 seconds. The two jobs of macOS ended with those of Linux, and the other job of Windows
+  a minute before the one I read. At the first two publishes the fifth try passed. The jobs have eight tries, so two
+  were left.
+- **The pre-release on GitHub was created at 03:56,** eleven and a half minutes after the packages were on npm, once
+  the six installs had passed. It has the two packages and the file of their checksums.
 - **npm still printed its warning about tokens that bypass the second factor,** which says nothing about this job.
 - **Not seen in this run either:** a publish that npm refuses, a tag that cannot be moved, and a version that npm says
   exists and does not show.
@@ -325,7 +328,9 @@ are in UTC.
 - What the version `0.0.0-stage` holds, whether npm makes one for every new package or only for one that is
   published with such a token, and whether it can be removed. The job moves `latest` whether a first version
   has it or not.
-- How long npm takes to show a new version to an install on another day. It was seen twice, on one evening:
-  both times the fourth try of an install failed, up to four minutes after the publish, and the fifth passed,
-  five and a half minutes after it.
+- How long npm takes to show a new version to an install. It was seen three times. On the evening of 17 November
+  2026 the fourth try of an install failed twice, up to four minutes after the publish, and the fifth passed, five and
+  a half minutes after it. On 26 November 2026 the sixth try passed, seven and a half minutes after the publish on
+  Linux and up to eleven and a half on Windows. Whether eight tries, which wait eleven minutes in all, are always
+  enough is not known.
 - Staged publishing, the other way for a first publish. Nobody tried it.

@@ -1,7 +1,9 @@
 ---
 'sf-orglens': patch
+'@sf-orglens/engine': patch
 ---
 
-`orglens --help` names the types an impact answer covers since Phase 2: objects, fields, validation rules, flows,
-workflow rules, record types, custom metadata, email templates, report types and quick actions. Until now it named
-only the first four.
+`orglens --help` and the READMEs of the two packages name every type an impact answer covers since Phase 2: objects,
+fields, validation rules, formulas, flows, workflow rules, record types, field sets, records of custom metadata types,
+email templates, report types and quick actions. Until now the help named only the first four, and the READMEs left
+out the last three.

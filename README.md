@@ -46,7 +46,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, accepted |
 | 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Built, accepted |
-| 2 Flows and config   | Flows, workflow rules, record types, custom metadata, email templates, report types, quick actions, managed packages                    | Built, in test  |
+| 2 Flows and config   | Flows, workflow rules, record types, field sets, custom metadata, email templates, report types, quick actions, managed packages        | Built, in test  |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started     |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started     |
 | Correctness gate     | Proof on public codebases and a real 10,000+ component org                                                                              | Not started     |
