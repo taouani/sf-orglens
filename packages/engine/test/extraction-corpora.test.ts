@@ -78,7 +78,8 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * which stand in its package folders, and EDA for its eight record types, which give its `listed-field`. Three
  * formulas of Coral Cloud are written with the tag broken before its bracket (`<formula` and `>` on the next line), as
  * a formatter writes them. Its `object`, `output`, `path`, `record` and `assignment` are of its flows, and so are 10
- * of its 11 `filter`: the other is the condition of a roll-up summary.
+ * of its 11 `filter`: the other is the condition of a roll-up summary. Its `override` is the flow of a package that
+ * one of its flows overrides, read since 26 November 2026 (decision record 0082).
  */
 interface Expected {
   readonly components: number;
@@ -221,6 +222,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       lookup: 6,
       object: 12,
       output: 12,
+      override: 1,
       path: 4,
       record: 1,
       summary: 6,
@@ -285,7 +287,13 @@ const SCAN_DIFFERS: Readonly<Record<string, readonly string[]>> = {
  * The two flows of PMM are processes, and hold `%%%NAMESPACE%%%` before every name of the package: a token that
  * the build tool of that project replaces before it deploys. Such a value is no name, so the reader says that it
  * is not read, and a path from the record of the process is not followed. Nothing of the two is found, and
- * every name of them has a warning. Reading the token as an empty prefix is not built.
+ * every name of them has a warning, but the 10 that are `Id`. Reading the token as an empty prefix is not built.
+ *
+ * Since 26 November 2026 (decision record 0082), six actions of Nebula Logger refer to the object they give their
+ * generic Apex class (`dataTypeMappings`): three to `Account`, of which the codebase holds a file, two to `User` and
+ * one to `Organization`, which are `external`. A flow of Coral Cloud refers to the flow of a package that it
+ * overrides (`overriddenFlow`), which is `external`. The field `Id` at the end of a path that is not followed gives
+ * no warning any more: 10 of PMM.
  */
 interface ExpectedFlows {
   readonly flows: number;
@@ -296,12 +304,12 @@ interface ExpectedFlows {
 }
 const EXPECTED_FLOWS: Readonly<Record<string, ExpectedFlows>> = {
   'apex-recipes': { flows: 1, processes: 0, elements: 3, references: { resolved: 1 }, issues: {} },
-  'coral-cloud': { flows: 10, processes: 0, elements: 85, references: { external: 19, resolved: 30 }, issues: {} },
+  'coral-cloud': { flows: 10, processes: 0, elements: 85, references: { external: 20, resolved: 30 }, issues: {} },
   'nebula-logger': {
     flows: 10,
     processes: 1,
     elements: 42,
-    references: { external: 16, resolved: 16 },
+    references: { external: 19, resolved: 19 },
     issues: {},
   },
   pmm: {
@@ -309,7 +317,7 @@ const EXPECTED_FLOWS: Readonly<Record<string, ExpectedFlows>> = {
     processes: 2,
     elements: 21,
     references: {},
-    issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 24 },
+    issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 14 },
   },
 };
 

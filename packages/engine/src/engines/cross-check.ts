@@ -303,7 +303,8 @@ function notReported(
   // Of a flow, the test org reports every custom field and custom object, whatever names it, and what an action
   // starts. It does not report a flow that the flow starts, a record type whose name a condition compares a text
   // with, and a field of a custom setting or a custom permission that only formulas of the flow name, through
-  // `$Setup` and `$Permission` (decision record 0067).
+  // `$Setup` and `$Permission` (decision record 0067). Whether it reports the flow of a package that a flow
+  // overrides was not measured: the test org has no package (decision record 0082).
   if (type === 'Flow') {
     if (typeOf(to) === 'Flow') return 'subflow';
     if (only(found.vias, 'text')) return 'name-in-text';

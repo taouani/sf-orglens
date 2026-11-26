@@ -133,7 +133,10 @@ const CHECKED: Readonly<Record<string, Checked>> = {
  * What was checked on 25 November 2026 of Phase 2, in the listing of flows and configuration: every flow with each of
  * its elements, every rule and action of a file of workflow rules, every record type and every field set, in the
  * folders of `FLOW_FOLDERS` or, where a codebase has none there, in its package folders
- * (`docs/research/phase-2/public-codebases.md`).
+ * (`docs/research/phase-2/public-codebases.md`). On 26 November 2026 the listings of Nebula Logger, PMM and Coral
+ * Cloud were printed before and after the change of decision record 0082 and compared: they differ in the seven
+ * references the check had found missed, which are there now, and in the ten warnings of PMM about `Id`, which are
+ * gone, and in nothing else.
  *
  * - `entries`: the entries by what they are.
  * - `references`: the references of all entries. Each of the flows, the workflow rules and the record types was
@@ -154,11 +157,12 @@ const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
     issues: {},
     digest: 'a5d313650a283a363fa8c7ca1a31b7167592cf49f01dfeb983d1dd2c1d9fbe09',
   },
+  // Since 26 November 2026 six actions give the object of their generic Apex class (`dataTypeMappings`).
   'nebula-logger': {
     entries: { element: 42, 'field-set': 1, flow: 10 },
-    references: 38,
+    references: 44,
     issues: {},
-    digest: '6fb52984351368cd339c49199d605ac794583a7b7a7699c7c4b63bead5e2604c',
+    digest: '80cb67cc3862fb54f00c9d26f948cdd104033e8120b6420a089b19974a03a373',
   },
   npsp: {
     entries: { 'field-set': 18, workflow: 6 },
@@ -166,12 +170,13 @@ const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
     issues: {},
     digest: '7877361b97d030329785d1076a5c6d10632a53943a3fbba262c603ecaf3b199b',
   },
-  // Both flows of PMM hold a token of its build tool before every name of the package: every name has a warning.
+  // Both flows of PMM hold a token of its build tool before every name of the package: every name has a warning,
+  // but `Id`, which has none since 26 November 2026. It gives no reference, so nothing was missed there.
   pmm: {
     entries: { element: 21, 'field-set': 7, flow: 2 },
     references: 384,
-    issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 24 },
-    digest: '537010400fc30467e18acc946a946801e358c8f5d9f5006a37a81427fe80c247',
+    issues: { NAME_NOT_READ: 78, PATH_NOT_FOLLOWED: 14 },
+    digest: 'e67d3eb294ea6856dddbab2fba7e49beb7c774f5730592fc259e3f3ec71749bc',
   },
   'volunteers-for-salesforce': {
     entries: { 'field-set': 15, 'record-type': 1, workflow: 17 },
@@ -185,11 +190,12 @@ const CHECKED_MORE: Readonly<Record<string, CheckedMore>> = {
     issues: {},
     digest: 'a386af5c01d065a6a878d1194a6ef6c05202cc46f0c5660fb2df5c8f1b14e217',
   },
+  // Since 26 November 2026 one flow gives the flow of a package that it overrides (`overriddenFlow`).
   'coral-cloud': {
     entries: { element: 85, flow: 10 },
-    references: 49,
+    references: 50,
     issues: {},
-    digest: 'c7f1a46a8f98572b0cc70adc14e3c83d6710065be15b700528a7e5332b34fb18',
+    digest: '2aafece8e4ba896c0e895a0aa4f7ef5238f0a515ac21f2c17220d0d888ad8011',
   },
   eda: {
     entries: { 'record-type': 8 },

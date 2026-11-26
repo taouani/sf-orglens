@@ -155,7 +155,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   row reports is counted with a reason, and not listed. `EmailFolder` is outside the logic tier.
 - A name alone that fits an object and more, such as `Invoice__c`, which the file of its workflow rules has too,
   means the object in an impact question, and the answer names the others (`sameName`, decision record 0064). A
-  name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.
+  name that fits a flow and the definition an org lists under its name, and nothing else, means the flow (decision
+  record 0082). Any other name that fits several components and no object is the error `COMPONENT_AMBIGUOUS`.
 - A snapshot is analysed from the files it holds (`api/analysis.ts`, decision record 0043): `snapshot` stores
   first and analyses what it stored, and `analyse` does the same for a snapshot that is already there. Whether
   a snapshot is `complete` or `partial` says what was read. Whether its analysis is complete is said by the

@@ -694,6 +694,39 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
     });
   });
 
+  it('takes a name alone that fits a flow and its definition for the flow, and names the definition', () => {
+    const definition = buildKey({ type: 'FlowDefinition', fullName: 'Invoice_After_Save' });
+    const graph = graphOf([holds(flow('Invoice_After_Save')), holds(definition)]);
+    const types = ['Flow', 'FlowDefinition'];
+    expect(findComponent(graph, 'invoice_after_save', types)).toMatchObject({
+      component: { key: flow('Invoice_After_Save') },
+      sameName: [definition],
+    });
+    // Named with its type or by its key, the definition is the one asked for.
+    expect(findComponent(graph, 'FlowDefinition:Invoice_After_Save', [])).toMatchObject({
+      component: { key: definition },
+      sameName: [],
+    });
+    // A third component of the name makes it an error again, unless it is an object.
+    const tab = buildKey({ type: 'CustomTab', fullName: 'Invoice_After_Save' });
+    const three = graphOf([holds(flow('Invoice_After_Save')), holds(definition), holds(tab)]);
+    expect(codeOf(() => findComponent(three, 'Invoice_After_Save', [...types, 'CustomTab']))).toBe(
+      'COMPONENT_AMBIGUOUS',
+    );
+    const withObject = graphOf([
+      holds(flow('Thing__c')),
+      holds(buildKey({ type: 'FlowDefinition', fullName: 'Thing__c' })),
+      holds(THING),
+    ]);
+    expect(findComponent(withObject, 'Thing__c', types)).toMatchObject({ component: { key: THING } });
+    // A definition and an element of a flow of that name are no flow and its definition.
+    const update = element('Invoice_After_Save', 'Update_Account');
+    const dotted = buildKey({ type: 'FlowDefinition', fullName: 'Invoice_After_Save.Update_Account' });
+    expect(
+      codeOf(() => findComponent(graphOf([holds(update), holds(dotted)]), 'Invoice_After_Save.Update_Account', types)),
+    ).toBe('COMPONENT_AMBIGUOUS');
+  });
+
   it('finds an element of a flow by the name of the flow and its own, alone or after the type', () => {
     const update = element('Invoice_After_Save', 'Update_Account');
     const graph = graphOf([holds(flow('Invoice_After_Save')), holds(update)]);
