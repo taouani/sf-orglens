@@ -16,7 +16,7 @@ DEPTH  COMPONENT                                           CONFIDENCE  KIND     
 3      Flow:invoice_after_save#element:send_overdue_alert  confirmed   references  WorkflowAlert:invoice__c.invoice_overdue_alert  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:8
 3      WorkflowRule:invoice__c.remind_when_sent            confirmed   references  WorkflowAlert:invoice__c.invoice_overdue_alert  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:73
 
-Not analysed yet. A component of these types may refer to it, and is not in the answer:
+Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED
 ApexClass                 28      28
 ApexPage                  2       2

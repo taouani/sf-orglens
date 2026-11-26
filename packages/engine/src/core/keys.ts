@@ -325,8 +325,9 @@ function arraysAsLists(type: string): string {
  * `apexSignature(['Account', 'String[]'])` is `(account,list<string>)`.
  *
  * A type is taken as it is spelled in the declaration: `Schema.Account` and
- * `Account` give different signatures. Which spelling the Apex resolver
- * hands in is decided with the Apex analysis.
+ * `Account` give different signatures. The analysis of Apex hands in the
+ * type as written, without the namespace `System`, and an inner type of the
+ * class after the name of the class (decision record 0084).
  */
 export function apexSignature(parameterTypes: readonly string[]): string {
   const canonical = parameterTypes.map((parameterType) => {

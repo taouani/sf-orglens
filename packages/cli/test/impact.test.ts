@@ -78,8 +78,10 @@ describe('orglens impact', () => {
     const json = await orglensJson(dir, ['impact', component]);
     expect(json).toMatchObject({ code: 0, command: 'impact', ok: true, error: null });
     const data = json.data as { results: { key: string; depth: number }[] };
+    // A key of a method holds brackets, which a pattern must not read as a group.
+    const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     for (const result of data.results) {
-      expect(shown.stdout).toMatch(new RegExp(`^${String(result.depth)} +${result.key.replaceAll('.', '\\.')} `, 'm'));
+      expect(shown.stdout).toMatch(new RegExp(`^${String(result.depth)} +${literal(result.key)} `, 'm'));
     }
   });
 
@@ -191,7 +193,7 @@ describe('orglens impact', () => {
     // The one warning of the analysis is about a path that ends in a field named Amount__c, and the answer holds
     // no such field and no object (decision record 0074).
     expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
-      'Not analysed yet. A component of these types may refer to it, and is not in the answer:',
+      'Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:',
       ...NOT_ANALYSED,
       '',
     ]);
@@ -243,16 +245,22 @@ describe('orglens impact', () => {
     expect(called.filter((line) => /^\d+ +Flow:invoice_recalculate#element:/.test(line))).toEqual([]);
     expect(outgoing.stdout).not.toContain('REFERRED TO BY can name');
 
-    // A class is not analysed yet. The empty answer says so, and is no finding.
+    // A class is read in part: the answer holds the objects its members use as a type, and says that more may be
+    // missing.
     const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
     expect(apex.stdout.split('\n')).toEqual([
       'What ApexClass:invoiceservice (InvoiceService) refers to, in snapshot #1 of "fixture".',
+      'It contains 7 components of the snapshot. The answer is about them too.',
       'The answer is not complete: 1 type is not analysed yet. The details are below the answer.',
-      'ApexClass is not analysed yet: what the component itself refers to is not known.',
+      'ApexClass is not analysed yet, or only in part: what the component itself refers to may be missing from the answer.',
       '',
-      'It refers to no component, as far as it was analysed.',
+      'It refers to 2 components, directly.',
       '',
-      'Not analysed yet. What the components of these types in the answer refer to is not known:',
+      'DEPTH  COMPONENT                CONFIDENCE  KIND       REFERRED TO BY                                                WHERE',
+      '1      CustomObject:account     confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  force-app/main/default/classes/InvoiceService.cls:30',
+      '1      CustomObject:invoice__c  confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  force-app/main/default/classes/InvoiceService.cls:30',
+      '',
+      'Not analysed yet, or only in part. What the components of these types in the answer refer to may be missing:',
       'TYPE       LISTED  RETRIEVED',
       'ApexClass  28      28',
       '',

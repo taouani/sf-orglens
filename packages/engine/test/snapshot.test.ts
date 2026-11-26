@@ -120,16 +120,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
         files: 4,
         bytes: FILES.reduce((sum, path) => sum + readFileSync(join(repo.dir, ...path.split('/'))).byteLength, 0),
       },
-      // The object and its field are analysed. The class has its row and no analyser yet.
+      // The object and its field are analysed, and so are the class and its one method, which uses no type.
       types: [
-        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ApexClass', listed: 1, retrieved: 1, analysed: 2, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomField', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomObject', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 },
       ],
       analysis: {
         engineVersion: report.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 3,
+        components: 4,
         references: 0,
         complete: true,
         origins: [
@@ -143,6 +143,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
             pathsNotFollowed: 0,
           },
           { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          { origin: 'parser:apex', components: 2, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
       // The Dependency API is of an org. A repository has none.

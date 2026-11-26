@@ -570,7 +570,7 @@ function crossCheckLines(report: CoverageReport): string[] {
   }
   if (comparison.rowsNotAnalysed > 0) {
     lines.push(
-      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type that is not analysed, and ${comparison.rowsNotAnalysed === 1 ? 'is' : 'are'} not compared: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
+      `${count(comparison.rowsNotAnalysed, 'row is', 'rows are')} from a component of a type whose rows this version does not compare: ${tally(comparison.notAnalysed.map(({ type, rows }) => [type, rows]))}.`,
     );
   }
   if (comparison.rowsNotMatched > 0) {
@@ -930,7 +930,9 @@ function impactLines(report: ImpactReport): string[] {
   if (!incoming && component.name === null) {
     lines.push('The snapshot does not hold the component itself: what it refers to is not known.');
   } else if (!incoming && notCovered.notAnalysed.some((gap) => gap.type === component.type)) {
-    lines.push(`${component.type} is not analysed yet: what the component itself refers to is not known.`);
+    lines.push(
+      `${component.type} is not analysed yet, or only in part: what the component itself refers to may be missing from the answer.`,
+    );
   }
 
   const direct = results.filter((result) => result.depth === 1).length;
@@ -1035,8 +1037,8 @@ function impactLines(report: ImpactReport): string[] {
     lines.push(
       '',
       incoming
-        ? 'Not analysed yet. A component of these types may refer to it, and is not in the answer:'
-        : 'Not analysed yet. What the components of these types in the answer refer to is not known:',
+        ? 'Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:'
+        : 'Not analysed yet, or only in part. What the components of these types in the answer refer to may be missing:',
       ...gapTable(notCovered.notAnalysed),
     );
   }

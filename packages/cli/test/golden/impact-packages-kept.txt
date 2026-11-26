@@ -19,7 +19,7 @@ DEPTH  COMPONENT                                             PACKAGE  CONFIDENCE
 2      ValidationRule:account.key_account_needs_contact      none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
 2      WorkflowRule:invoice__c.stamp_code_when_paid          none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
 
-Not analysed yet. A component of these types may refer to it, and is not in the answer:
+Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED
 ApexClass                 28      28
 ApexPage                  2       2

@@ -13,6 +13,7 @@
  */
 import type { TriggerUnitContext } from '@apexdevtools/apex-parser';
 import {
+  AnnotationContext,
   AnyIdContext,
   ApexErrorListener,
   ApexLexer,
@@ -114,6 +115,7 @@ import {
   ThisPrimaryContext,
   ThrowStatementContext,
   TriggerBlockMemberContext,
+  TriggerCaseContext,
   TriggerMemberDeclarationContext,
   TryStatementContext,
   TypeArgumentsContext,
@@ -139,6 +141,7 @@ import {
 } from '@apexdevtools/apex-parser';
 import type {
   ApexReader,
+  Declared,
   Declarator,
   DmlOp,
   Expr,
@@ -150,6 +153,7 @@ import type {
   Problem,
   Query,
   Search,
+  Span,
   Stmt,
   TriggerDecl,
   TypeDecl,
@@ -229,6 +233,16 @@ function startOf(node: Tree | undefined): Pos {
     ? START
     : { line: start.line, column: unitColumn(start.line, start.column) + 1 };
 }
+/** The place just after the last token of a node. */
+function endOf(node: Tree | undefined): Pos {
+  if (node === undefined) return START;
+  const stop = isTerminal(node)
+    ? node.symbol
+    : (node as { stop?: { line: number; column: number; text?: string } | null }).stop;
+  if (stop === undefined || stop === null) return startOf(node);
+  return { line: stop.line, column: unitColumn(stop.line, stop.column) + (stop.text ?? '').length + 1 };
+}
+const spanOf = (node: Tree | undefined): Span => ({ start: startOf(node), end: endOf(node) });
 /** The one word a node such as `Id` or `AnyId` stands for. */
 function nameOf(node: Tree | undefined): Name {
   const token = terminals(node)[0];
@@ -624,21 +638,37 @@ function parameters(ctx: FormalParametersContext | undefined): Param[] {
   }));
 }
 
-/** The modifiers of a declaration, in lower case. An annotation is not one. */
-function modifiers(owner: Tree | undefined): Set<string> {
-  return new Set(all(owner, ModifierContext).flatMap(words));
+/**
+ * The annotations and the modifiers of a declaration, in lower case, and its span. `owner` is the node that holds
+ * them and the declaration. A modifier of two words, such as `with sharing`, is one with a space between them.
+ */
+function declared(owner: Tree | undefined): Declared {
+  const marks = all(owner, ModifierContext);
+  return {
+    annotations: marks.flatMap((mark) => {
+      const annotation = one(mark, AnnotationContext);
+      return annotation === undefined ? [] : [nameOf(one(annotation, IdContext)).text.toLowerCase()];
+    }),
+    modifiers: marks.flatMap((mark) => {
+      const said = words(mark);
+      return said.length === 0 ? [] : [said.join(' ')];
+    }),
+    span: spanOf(owner),
+  };
 }
 
 function member(
   declaration: MemberDeclarationContext | TriggerMemberDeclarationContext | undefined,
-  marks: ReadonlySet<string>,
+  owner: Tree,
 ): Member | undefined {
   const ctx = kids(declaration).find((kid) => !isTerminal(kid));
-  const isStatic = marks.has('static');
+  const marks = declared(owner);
+  const isStatic = marks.modifiers.includes('static');
   if (ctx instanceof MethodDeclarationContext) {
     const returns = one(ctx, TypeRefContext);
     const body = one(ctx, BlockContext);
     return {
+      ...marks,
       kind: 'method',
       name: nameOf(one(ctx, IdContext)),
       ctor: false,
@@ -651,6 +681,7 @@ function member(
   if (ctx instanceof ConstructorDeclarationContext) {
     const name = path(one(ctx, QualifiedNameContext)).at(-1);
     return {
+      ...marks,
       kind: 'method',
       name: name ?? { text: '', at: startOf(ctx) },
       ctor: true,
@@ -662,10 +693,11 @@ function member(
   }
   if (ctx instanceof FieldDeclarationContext) {
     return {
+      ...marks,
       kind: 'field',
       type: typeRef(one(ctx, TypeRefContext)),
       static: isStatic,
-      final: marks.has('final'),
+      final: marks.modifiers.includes('final'),
       vars: declarators(one(ctx, VariableDeclaratorsContext)),
     };
   }
@@ -675,6 +707,7 @@ function member(
       return body === undefined ? [] : [block(body)];
     });
     return {
+      ...marks,
       kind: 'property',
       type: typeRef(one(ctx, TypeRefContext)),
       static: isStatic,
@@ -682,24 +715,31 @@ function member(
       accessors,
     };
   }
-  const decl = typeDeclaration(ctx);
+  const decl = typeDeclaration(ctx, owner);
   return decl === undefined ? undefined : { kind: 'type', decl };
 }
 
-function typeDeclaration(ctx: Tree | undefined): TypeDecl | undefined {
+/** A class, an interface or an enum. `owner` holds its modifiers and the declaration. */
+function typeDeclaration(ctx: Tree | undefined, owner: Tree): TypeDecl | undefined {
   if (ctx instanceof ClassDeclarationContext) {
     const base = one(ctx, TypeRefContext);
     const members: Member[] = [];
     for (const declaration of all(one(ctx, ClassBodyContext), ClassBodyDeclarationContext)) {
       const body = one(declaration, BlockContext);
       if (body !== undefined) {
-        members.push({ kind: 'initializer', static: words(declaration).includes('static'), body: block(body) });
+        members.push({
+          kind: 'initializer',
+          static: words(declaration).includes('static'),
+          body: block(body),
+          span: spanOf(declaration),
+        });
         continue;
       }
-      const found = member(one(declaration, MemberDeclarationContext), modifiers(declaration));
+      const found = member(one(declaration, MemberDeclarationContext), declaration);
       if (found !== undefined) members.push(found);
     }
     return {
+      ...declared(owner),
       kind: 'class',
       name: nameOf(one(ctx, IdContext)),
       extends: base === undefined ? [] : [typeRef(base)],
@@ -712,6 +752,7 @@ function typeDeclaration(ctx: Tree | undefined): TypeDecl | undefined {
     const members = all(one(ctx, InterfaceBodyContext), InterfaceMethodDeclarationContext).map((method): Member => {
       const returns = one(method, TypeRefContext);
       return {
+        ...declared(method),
         kind: 'method',
         name: nameOf(one(method, IdContext)),
         ctor: false,
@@ -722,6 +763,7 @@ function typeDeclaration(ctx: Tree | undefined): TypeDecl | undefined {
       };
     });
     return {
+      ...declared(owner),
       kind: 'interface',
       name: nameOf(one(ctx, IdContext)),
       extends: all(one(ctx, TypeListContext), TypeRefContext).map(typeRef),
@@ -732,7 +774,15 @@ function typeDeclaration(ctx: Tree | undefined): TypeDecl | undefined {
   }
   if (ctx instanceof EnumDeclarationContext) {
     const values = all(one(ctx, EnumConstantsContext), IdContext).map(nameOf);
-    return { kind: 'enum', name: nameOf(one(ctx, IdContext)), extends: [], implements: [], members: [], values };
+    return {
+      ...declared(owner),
+      kind: 'enum',
+      name: nameOf(one(ctx, IdContext)),
+      extends: [],
+      implements: [],
+      members: [],
+      values,
+    };
   }
   return undefined;
 }
@@ -757,11 +807,12 @@ function trigger(ctx: TriggerUnitContext): TriggerDecl {
         });
         continue;
       }
-      const found = member(declaration, modifiers(entry));
+      const found = member(declaration, entry);
       if (found !== undefined) members.push(found);
     }
   }
-  return { name: nameOf(name), object: nameOf(object), body, members };
+  const events = all(ctx, TriggerCaseContext).map((event) => words(event).join(' '));
+  return { name: nameOf(name), object: nameOf(object), events, body, members };
 }
 
 /**
@@ -795,6 +846,7 @@ export function createApexParserAdapter(): ApexReader {
         const types = all(unit, TypeDeclarationContext).flatMap((declaration) => {
           const decl = typeDeclaration(
             kids(declaration).find((kid) => !isTerminal(kid) && !(kid instanceof ModifierContext)),
+            declaration,
           );
           return decl === undefined ? [] : [decl];
         });

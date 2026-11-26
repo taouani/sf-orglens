@@ -63,6 +63,13 @@ export interface ObjectModel {
   childRelationship(object: string, name: string): { readonly field: Target; readonly object: string } | null;
   /** What the file of the field `name` of the object `object` says. `undefined` where no file defines the field. */
   facts(object: string, name: string): FieldFacts | undefined;
+  /**
+   * Whether a name is that of an object: one the snapshot has a component for, one a file uses as the name of an
+   * object, a custom one by its suffix (`Invoice__c`, `Billing_Rule__mdt`), or a standard object the short lists of
+   * this file name (`STANDARD_OBJECTS`). Apex needs it to tell an object from a type of Salesforce, such as
+   * `Database.SaveResult`, without a description of the org (decision record 0084).
+   */
+  isObject(name: string): boolean;
 }
 
 export interface ModelInput {
@@ -168,6 +175,23 @@ export function standardLookupField(name: string): string | undefined {
  */
 export const GLOBAL_OBJECTS: ReadonlyMap<string, string> = new Map(
   Object.entries({ $user: 'User', $profile: 'Profile', $userrole: 'UserRole', $organization: 'Organization' }),
+);
+
+/**
+ * The standard objects that the short lists above name, by folded name: those their relationships lead to, those
+ * their child relationships are of and lead to, the task and the event, which show the custom fields of activities,
+ * and those behind global variables. No other object of Salesforce is known here (decision record 0080).
+ */
+const STANDARD_OBJECTS: ReadonlySet<string> = new Set(
+  [
+    ...STANDARD_RELATIONSHIPS.values(),
+    ...[...STANDARD_CHILD_RELATIONSHIPS].flatMap(([id, { object }]) => [id.slice(0, id.indexOf('\n')), object]),
+    'Task',
+    'Event',
+    ...GLOBAL_OBJECTS.values(),
+  ]
+    .filter((name) => name !== SELF)
+    .map(foldName),
 );
 
 /** The key of a component, or `null` for a name that cannot be one, such as a name with a control character. */
@@ -300,7 +324,12 @@ export function buildModel(input: ModelInput): ObjectModel {
     return known === undefined ? null : { field: field(known.object, known.field), object: known.object };
   };
 
-  return { object, field, component, relationship, childRelationship, facts: factsOf };
+  const isObject = (name: string): boolean => {
+    const folded = foldName(name);
+    return named.has(folded) || isCustomName(name) || STANDARD_OBJECTS.has(folded);
+  };
+
+  return { object, field, component, relationship, childRelationship, facts: factsOf, isObject };
 }
 
 /** What the source says about one name of a path beyond the name. */

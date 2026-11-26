@@ -19,6 +19,7 @@ import { redactText } from '../core/redact.ts';
 import { cut } from './analysed.ts';
 import type {
   ApexReader,
+  Declared,
   Declarator,
   DmlOp,
   Expr,
@@ -30,6 +31,7 @@ import type {
   Problem,
   Query,
   Search,
+  Span,
   Stmt,
   TriggerDecl,
   TypeDecl,
@@ -51,6 +53,11 @@ let linesBefore = 0;
 const posOf = (node: Node): Pos => ({
   line: node.startPosition.row + 1 - linesBefore,
   column: node.startPosition.column + 1,
+});
+/** From the start of a node to just after its end. */
+const spanOf = (node: Node): Span => ({
+  start: posOf(node),
+  end: { line: node.endPosition.row + 1 - linesBefore, column: node.endPosition.column + 1 },
 });
 const nameOf = (node: Node | null | undefined, fallback?: Node): Name =>
   node === null || node === undefined
@@ -464,9 +471,25 @@ function statement(node: Node): Stmt {
 
 // ---------------------------------------------------------------- declarations
 
-/** The modifiers of a declaration. An annotation is not one. */
-function modifiers(node: Node): Set<string> {
-  return new Set(all(one(node, 'modifiers'), 'modifier').flatMap((modifier) => kids(modifier).map((kid) => kid.type)));
+/**
+ * The modifiers of a declaration, folded, with one space between the words of one. An annotation is not one. The
+ * grammar names the node of a modifier after its words, joined by `_`: `without_sharing`, `testMethod`.
+ */
+function modifiers(node: Node): string[] {
+  return all(one(node, 'modifiers'), 'modifier').flatMap((modifier) =>
+    kids(modifier).map((kid) => kid.type.toLowerCase().replaceAll('_', ' ')),
+  );
+}
+
+/** The annotations, the modifiers and the span of a declaration. */
+function declared(node: Node): Declared {
+  return {
+    annotations: all(one(node, 'modifiers'), 'annotation').map((annotation) =>
+      (field(annotation, 'name')?.text ?? '').replace(/\s+/g, '').toLowerCase(),
+    ),
+    modifiers: modifiers(node),
+    span: spanOf(node),
+  };
 }
 
 function parameters(node: Node | undefined): Param[] {
@@ -479,11 +502,13 @@ function parameters(node: Node | undefined): Param[] {
 function method(node: Node, ctor: boolean): Member {
   const returns = field(node, 'type');
   const body = field(node, 'body');
+  const marks = declared(node);
   return {
+    ...marks,
     kind: 'method',
     name: nameOf(field(node, 'name'), node),
     ctor,
-    static: !ctor && modifiers(node).has('static'),
+    static: !ctor && marks.modifiers.includes('static'),
     params: parameters(field(node, 'parameters')),
     returns: ctor || returns === undefined || returns.type === 'void_type' ? undefined : typeRef(returns),
     body: body === undefined ? (ctor ? block(undefined) : undefined) : block(body),
@@ -497,7 +522,8 @@ function member(node: Node): Member | undefined {
     case 'constructor_declaration':
       return method(node, true);
     case 'field_declaration': {
-      const marks = modifiers(node);
+      const marks = declared(node);
+      const isStatic = marks.modifiers.includes('static');
       const accessorList = one(node, 'accessor_list');
       if (accessorList !== undefined) {
         const accessors = all(accessorList, 'accessor_declaration').flatMap((accessor) => {
@@ -505,25 +531,27 @@ function member(node: Node): Member | undefined {
           return body === undefined ? [] : [block(body)];
         });
         return {
+          ...marks,
           kind: 'property',
           type: typeRef(field(node, 'type')),
-          static: marks.has('static'),
+          static: isStatic,
           name: nameOf(field(field(node, 'declarator'), 'name'), node),
           accessors,
         };
       }
       return {
+        ...marks,
         kind: 'field',
         type: typeRef(field(node, 'type')),
-        static: marks.has('static'),
-        final: marks.has('final'),
+        static: isStatic,
+        final: marks.modifiers.includes('final'),
         vars: declarators(node),
       };
     }
     case 'static_initializer':
-      return { kind: 'initializer', static: true, body: block(one(node, 'block')) };
+      return { kind: 'initializer', static: true, body: block(one(node, 'block')), span: spanOf(node) };
     case 'block':
-      return { kind: 'initializer', static: false, body: block(node) };
+      return { kind: 'initializer', static: false, body: block(node), span: spanOf(node) };
     default: {
       const decl = typeDeclaration(node);
       return decl === undefined ? undefined : { kind: 'type', decl };
@@ -545,6 +573,7 @@ function typeDeclaration(node: Node): TypeDecl | undefined {
   if (node.type === 'class_declaration') {
     const base = kids(field(node, 'superclass'))[0];
     return {
+      ...declared(node),
       kind: 'class',
       name: nameOf(field(node, 'name'), node),
       extends: base === undefined ? [] : [typeRef(base)],
@@ -555,6 +584,7 @@ function typeDeclaration(node: Node): TypeDecl | undefined {
   }
   if (node.type === 'interface_declaration') {
     return {
+      ...declared(node),
       kind: 'interface',
       name: nameOf(field(node, 'name'), node),
       extends: typeList(one(node, 'extends_interfaces')),
@@ -567,7 +597,15 @@ function typeDeclaration(node: Node): TypeDecl | undefined {
     const values = all(field(node, 'body'), 'enum_constant').map((constant) =>
       nameOf(field(constant, 'name'), constant),
     );
-    return { kind: 'enum', name: nameOf(field(node, 'name'), node), extends: [], implements: [], members: [], values };
+    return {
+      ...declared(node),
+      kind: 'enum',
+      name: nameOf(field(node, 'name'), node),
+      extends: [],
+      implements: [],
+      members: [],
+      values,
+    };
   }
   return undefined;
 }
@@ -591,7 +629,17 @@ function trigger(node: Node): TriggerDecl {
       body.push(statement(kid));
     }
   }
-  return { name: nameOf(field(node, 'name'), node), object: nameOf(field(node, 'object'), node), body, members: found };
+  // The grammar names the node of an event after its words, joined by `_`: `before_insert`.
+  const events = fields(node, 'events').flatMap((event) =>
+    kids(event).map((kid) => kid.type.toLowerCase().replaceAll('_', ' ')),
+  );
+  return {
+    name: nameOf(field(node, 'name'), node),
+    object: nameOf(field(node, 'object'), node),
+    events,
+    body,
+    members: found,
+  };
 }
 
 /**

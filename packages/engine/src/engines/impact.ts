@@ -595,9 +595,10 @@ export interface ImpactGaps {
  *
  * Whether a type was analysed is read from the snapshot, not from this version of the engine: a snapshot
  * that an older version analysed covers what that version read. `analysedTypes` are the types the analysis
- * of the snapshot read. A type among them counts as analysed also when the snapshot holds nothing of it: if
- * the source has components of it, they are missing from an answer that claims to cover the type. `null`
- * for an analysis that did not keep the list: the number of analysed components then decides alone.
+ * of the snapshot read, and only they count as analysed: a class has analysed components, and is not among them
+ * while the analysis reads only a part of it. A type among them counts as analysed also when the snapshot holds
+ * nothing of it: if the source has components of it, they are missing from an answer that claims to cover the
+ * type. `null` for an analysis that did not keep the list: the number of analysed components then decides alone.
  *
  * `unlisted` are the types of which the snapshot holds components that the source did not list. Such a type
  * counts as any other, also where the source listed nothing of it (decision record 0073): its counts are then 0.
@@ -617,7 +618,7 @@ export function impactGaps(
   const gap = ({ type, listed, retrieved, listing }: TypeCount): ImpactGap => ({ type, listed, retrieved, listing });
   const sorted = [...types].sort((a, b) => compareText(a.type, b.type));
   const read = new Set(analysedTypes);
-  const analysed = (type: TypeCount): boolean => type.analysed > 0 || read.has(type.type);
+  const analysed = (type: TypeCount): boolean => (analysedTypes === null ? type.analysed > 0 : read.has(type.type));
   const held = (type: TypeCount): boolean => type.listed > 0 || type.retrieved > 0 || unlisted.has(type.type);
   return {
     notAnalysed: sorted.filter((type) => !analysed(type) && (held(type) || type.listing !== 'ok')).map(gap),

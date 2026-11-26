@@ -839,7 +839,7 @@ describe('what an answer does not cover', () => {
         type('RecordType', { listed: 0, retrieved: 0, analysed: 2, listing: 'unlistable' }),
       ],
       none,
-      READ,
+      [...READ, 'RecordType'],
     );
     expect(gaps).toEqual({
       notAnalysed: [],
@@ -850,6 +850,23 @@ describe('what an answer does not cover', () => {
       ...clean,
     });
     expect([coversEverything(gaps), mayMissSomething(gaps)]).toEqual([false, true]);
+  });
+
+  it('counts a type as analysed only where the analysis lists it, and by its analysed components without a list', () => {
+    // Classes are read in part: they have analysed components, and the analysis does not list them (decision record
+    // 0084). A class that is missing is then no gap that makes the answer miss something.
+    const types = [
+      type('ApexClass', { listed: 10, retrieved: 9, analysed: 40 }),
+      type('CustomField', { listed: 3, retrieved: 3, analysed: 3 }),
+    ];
+    const gaps = impactGaps(types, none, READ);
+    expect(gaps.notAnalysed).toEqual([{ type: 'ApexClass', listed: 10, retrieved: 9, listing: 'ok' }]);
+    expect(gaps.partial).toEqual([]);
+    expect(mayMissSomething(gaps)).toBe(false);
+    // An analysis that kept no list is judged by what it analysed.
+    const old = impactGaps(types, none, null);
+    expect(old.notAnalysed).toEqual([]);
+    expect(old.partial).toEqual([{ type: 'ApexClass', listed: 10, retrieved: 9, listing: 'ok' }]);
   });
 
   it('does not take a type for partial for the components of packages that the answer does not count', () => {

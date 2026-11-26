@@ -63,7 +63,7 @@ describe('orglens impact, for a flow with a newer version', () => {
       '',
       'Flow:invoice_recalculate has a version newer than its active version 3, which is Draft. The answer is about the active version, and the newer one is not analysed.',
       '',
-      'Not analysed yet. A component of these types may refer to it, and is not in the answer:',
+      'Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:',
     ]);
     expect(lines[first - 2]).toMatch(/^1 +Flow:invoice_after_save#element:recalculate +confirmed +calls /);
     // Without the two lines, the text is the one of the golden file.

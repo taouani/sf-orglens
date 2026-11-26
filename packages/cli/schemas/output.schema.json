@@ -739,7 +739,7 @@
           "additionalProperties": false,
           "properties": {
             "notAnalysed": {
-              "description": "The types of the snapshot that no analyser read, sorted by type. A component of such a type may refer to the component that was asked about, and is not in the answer. For `incoming`: not a type whose components can name no type of the answer, of the component, of what it contains, of the results or of a type that stays (decision record 0073). For `outgoing`: only the types of the component, of what it contains and of the results, because what a component refers to does not depend on other types.",
+              "description": "The types of the snapshot that no analyser read, or that the analysis reads only in part, sorted by type: `ApexClass` and `ApexTrigger`, of which only the types their members use are read (decision record 0084). A component of such a type may refer to the component that was asked about, and not be in the answer. For `incoming`: not a type whose components can name no type of the answer, of the component, of what it contains, of the results or of a type that stays (decision record 0073). For `outgoing`: only the types of the component, of what it contains and of the results, because what a component refers to does not depend on other types.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/impactGap"
@@ -1017,7 +1017,7 @@
       "properties": {
         "rows": { "description": "The rows of the API the snapshot holds.", "type": "integer", "minimum": 0 },
         "rowsNotAnalysed": {
-          "description": "The rows from a component of a type this analysis did not read. They are not compared.",
+          "description": "The rows from a component of a type this analysis did not read, or read only in part, as `ApexClass` and `ApexTrigger`. They are not compared.",
           "type": "integer",
           "minimum": 0
         },

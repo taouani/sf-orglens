@@ -7,7 +7,8 @@
  *
  * The model is the one of the Apex trial of Phase 0 (`trial/apex/src/syntax.ts`), with what its list "What the
  * resolver does not do" found missing: the interfaces a class implements, the interfaces an interface extends,
- * and the values of a `when`.
+ * and the values of a `when`. The analysis of members added the annotations and modifiers of a declaration, the
+ * place it spans and the events of a trigger (decision record 0084).
  *
  * Lines and columns start at 1. A column counts UTF-16 units, as the answer key and JavaScript do.
  */
@@ -15,6 +16,21 @@
 export interface Pos {
   readonly line: number;
   readonly column: number;
+}
+
+/** Where a declaration stands: from its first annotation or modifier to just after its last character. */
+export interface Span {
+  readonly start: Pos;
+  readonly end: Pos;
+}
+
+/** What stands in front of a declaration, and where the declaration stands. */
+export interface Declared {
+  /** The names of its annotations, folded, without `@` and without their arguments: `istest`, `auraenabled`. */
+  readonly annotations: readonly string[];
+  /** Its modifiers, folded, with one space between the words of one: `public`, `testmethod`, `with sharing`. */
+  readonly modifiers: readonly string[];
+  readonly span: Span;
 }
 
 /** A word of the source with the place it starts at. */
@@ -51,12 +67,14 @@ export interface Unit {
 export interface TriggerDecl {
   readonly name: Name;
   readonly object: Name;
+  /** The events it runs on, folded, with one space between the words: `before insert`, `after undelete`. */
+  readonly events: readonly string[];
   readonly body: readonly Stmt[];
   /** The classes, interfaces and enums that the body of the trigger declares, and its methods. */
   readonly members: readonly Member[];
 }
 
-export interface TypeDecl {
+export interface TypeDecl extends Declared {
   readonly kind: 'class' | 'interface' | 'enum';
   readonly name: Name;
   /** The class a class extends, or the interfaces an interface extends. Empty for an enum. */
@@ -70,7 +88,7 @@ export interface TypeDecl {
 
 export type Member =
   | { readonly kind: 'type'; readonly decl: TypeDecl }
-  | {
+  | (Declared & {
       readonly kind: 'method';
       readonly name: Name;
       /** A constructor. Its name is the name of the class. */
@@ -79,22 +97,22 @@ export type Member =
       readonly params: readonly Param[];
       readonly returns: TypeRef | undefined;
       readonly body: Stmt | undefined;
-    }
-  | {
+    })
+  | (Declared & {
       readonly kind: 'field';
       readonly type: TypeRef;
       readonly static: boolean;
       readonly final: boolean;
       readonly vars: readonly Declarator[];
-    }
-  | {
+    })
+  | (Declared & {
       readonly kind: 'property';
       readonly type: TypeRef;
       readonly static: boolean;
       readonly name: Name;
       readonly accessors: readonly Stmt[];
-    }
-  | { readonly kind: 'initializer'; readonly static: boolean; readonly body: Stmt };
+    })
+  | { readonly kind: 'initializer'; readonly static: boolean; readonly body: Stmt; readonly span: Span };
 
 export interface Param {
   readonly type: TypeRef;

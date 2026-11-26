@@ -249,12 +249,11 @@ export function impactOf(store: Store, source: string, component: string, query:
   const found = walk.results.map((result) => ({ ...result, package: packages.of(result.key) }));
   const leaveOut = direction === 'incoming' && query.packages !== true;
   const results = leaveOut ? found.filter((result) => result.package === null) : found;
-  // What an answer claims to cover: the types the analysis read, and every type of which it analysed a
-  // component. A warning of the reading about one of them counts. Every type this version analyses is of the
-  // logic tier (decision record 0068), and no snapshot is known to hold such a warning: the rule is there for later.
-  const covered = [
-    ...new Set([...(analysis.types ?? []), ...types.filter((one) => one.analysed > 0).map((one) => one.type)]),
-  ];
+  // What an answer claims to cover: the types the analysis read, or for an analysis that did not keep them, every
+  // type of which it analysed a component (`impactGaps`). A warning of the reading about one of them counts. Every
+  // type this version analyses is of the logic tier (decision record 0068), and no snapshot is known to hold such a
+  // warning: the rule is there for later.
+  const covered = analysis.types ?? types.filter((one) => one.analysed > 0).map((one) => one.type);
   // A type of which the snapshot holds components that the source did not list counts, also where the source
   // listed none of it (decision record 0073).
   const unlisted = new Set(

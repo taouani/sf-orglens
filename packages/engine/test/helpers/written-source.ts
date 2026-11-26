@@ -85,6 +85,32 @@ export class Source {
   }
 }
 
+const META = (type: string): string =>
+  `${HEAD}\n<${type} xmlns="${XMLNS}">\n    <apiVersion>65.0</apiVersion>\n    <status>Active</status>\n</${type}>\n`;
+
+/** A source with classes and triggers, each a file of code and its file of metadata. */
+export class ApexSource extends Source {
+  apexClass(name: string, code: string | Uint8Array): string {
+    const path = this.file(`classes/${name}.cls`, code);
+    this.listed.push({
+      type: 'ApexClass',
+      fullName: name,
+      files: [path, this.file(`${path}-meta.xml`, META('ApexClass'))],
+    });
+    return path;
+  }
+
+  apexTrigger(name: string, code: string): string {
+    const path = this.file(`triggers/${name}.trigger`, code);
+    this.listed.push({
+      type: 'ApexTrigger',
+      fullName: name,
+      files: [path, this.file(`${path}-meta.xml`, META('ApexTrigger'))],
+    });
+    return path;
+  }
+}
+
 /** The value of a picklist that a reference says a formula compares its target with, or `null`. */
 export const valueOf = (reference: Reference): string | null => {
   const value = reference.attrs?.['value'];

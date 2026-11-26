@@ -9,7 +9,7 @@ DEPTH  COMPONENT                                    CONFIDENCE  KIND   REFERS TO
 1      Flow:invoice_after_save                      confirmed   calls  Flow:invoice_recalculate  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 1      Flow:invoice_after_save#element:recalculate  confirmed   calls  Flow:invoice_recalculate  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 
-Not analysed yet. A component of these types may refer to it, and is not in the answer:
+Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED
 ApexClass                 28      28
 ApexPage                  2       2
