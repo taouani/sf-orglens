@@ -211,9 +211,10 @@ referred to is referred to now (`Late_Fee__c`). The new files are these cases:
 - a record of the custom metadata type whose text is the name of a field that a query of `InvoiceQueries` reads
   (`Invoice_Late_Fee`).
 
-**The 28 components have not been sent to Salesforce yet.** The tool of the tests deploys the whole folder, so the
-next run of the workflow "Live org" sends them. Until then nothing proves that the Apex compiles or that Salesforce
-accepts the components, the named credential above all.
+**Salesforce accepted the 28 components at the first deploy**, on 26 November 2026, with the 120 that were there:
+the Apex compiles, and the named credential, the external credential and the number field `Account.Invoices__c`
+are taken as they are. `docs/research/phase-3/real-org.md` has the run and which pairs of the key the Dependency
+API reports.
 
 ## The answer key
 
