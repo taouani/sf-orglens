@@ -11,7 +11,14 @@ import { join, relative, sep } from 'node:path';
 import { MetadataResolver, type SourceComponent } from '@salesforce/source-deploy-retrieve';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { buildKey, isComponentKey, parentKey, parseKey, type ComponentKey } from '../src/core/keys.ts';
+import {
+  buildKey,
+  isComponentKey,
+  parentKey,
+  parseKey,
+  type ComponentKey,
+  type SubComponent,
+} from '../src/core/keys.ts';
 import { readXml } from '../src/extraction/xml.ts';
 import { columnOf, FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { outlineApex, type ApexOutline } from './helpers/apex-outline.ts';
@@ -24,8 +31,10 @@ const projectDir = join(FIXTURES_DIR, key.project);
  *
  * A file of labels holds a component for the file and one for each label in it. The file is owned by the first.
  * `inFile` has all of them: a file of workflow rules holds a component for each rule and each action, and a
- * reference starts from one of those.
+ * reference starts from one of those. A Lightning web component and an Aura component are a folder of files, and the
+ * component owns every one of them.
  */
+const BUNDLES: ReadonlySet<string> = new Set(['LightningComponentBundle', 'AuraDefinitionBundle']);
 function resolveProject(): {
   owners: Map<string, ComponentKey>;
   inFile: Map<string, Set<ComponentKey>>;
@@ -37,7 +46,8 @@ function resolveProject(): {
   const visit = (component: SourceComponent): void => {
     const owner = buildKey({ type: component.type.name, fullName: component.fullName });
     resolved.add(owner);
-    for (const file of [component.xml, component.content]) {
+    const bundle = BUNDLES.has(component.type.name) ? component.walkContent() : [];
+    for (const file of [component.xml, component.content, ...bundle]) {
       // The content of an object is its folder. Only files are owned.
       if (file !== undefined && statSync(file).isFile()) {
         const path = relative(projectDir, file).split(sep).join('/');
@@ -76,8 +86,56 @@ function outline(file: string): ApexOutline {
   return found;
 }
 
-/** The ways a metadata file names a target. Every other way belongs to Apex. `text` belongs to both. */
+/**
+ * The files of markup and JavaScript that version 3 reads: of a Lightning web component, of an Aura component and
+ * of a page. They are no XML of the Metadata API, and they are no Apex.
+ */
+const isMarkup = (file: string): boolean => /\/(?:lwc|aura)\/[^/]+\/[^/]+\.(?:js|html|cmp)$|\.page$/.test(file);
+/** What kind of file of markup or JavaScript it is: `lwc-js`, `lwc-html`, `aura-cmp`, `aura-js` or `page`. */
+function markupKind(file: string): string {
+  if (file.endsWith('.page')) return 'page';
+  const bundle = file.includes('/lwc/') ? 'lwc' : 'aura';
+  return `${bundle}-${file.endsWith('.cmp') ? 'cmp' : file.endsWith('.html') ? 'html' : 'js'}`;
+}
+
+/**
+ * Every type and every member that the Apex of the project declares, by its key, with what it is. The outer type of
+ * a file has the key of its component.
+ */
+const apexDeclared = new Map<ComponentKey, 'type' | 'interface' | SubComponent['kind']>();
+for (const [file, owner] of owners) {
+  if (!isApex(file)) continue;
+  const { type, name } = parseKey(owner);
+  const { members, types } = outline(file);
+  for (const { subs } of members) {
+    const last = subs.at(-1);
+    if (last !== undefined && last.kind !== 'inner')
+      apexDeclared.set(buildKey({ type, fullName: name, subs }), last.kind);
+  }
+  for (const declared of types) {
+    apexDeclared.set(
+      buildKey({ type, fullName: name, subs: declared.subs }),
+      declared.isInterface ? 'interface' : 'type',
+    );
+  }
+}
+/** Whether a target is a type of the project, a class or an interface, outer or inner. */
+const isApexType = (target: ComponentKey): boolean =>
+  apexDeclared.get(target) === 'type' || apexDeclared.get(target) === 'interface';
+/** Whether a type of the project declares a constructor. */
+const declaresConstructor = (target: ComponentKey): boolean =>
+  [...apexDeclared].some(([member, what]) => what === 'ctor' && parentKey(member) === target);
+/** The name a member of Apex is called by: a method without its parameters, a constructor by its type. */
+function memberName(target: ComponentKey): string {
+  const last = parseKey(target).subs.at(-1);
+  if (last === undefined) return parseKey(target).name;
+  if (last.kind === 'ctor') return memberName(parentKey(target) ?? target);
+  return last.name.replace(/\(.*$/, '');
+}
+
+/** The ways a metadata file names a target, besides `text` and `credential`, which Apex uses too. */
 const METADATA_VIA: ReadonlySet<string> = new Set([
+  'parameter',
   'formula',
   'filter',
   'summary',
@@ -100,6 +158,37 @@ const METADATA_VIA: ReadonlySet<string> = new Set([
   'record-of',
   'join',
 ]);
+
+/** The ways Apex names a target. */
+const APEX_VIA: ReadonlySet<string> = new Set([
+  'field',
+  'soql',
+  'sosl',
+  'dml',
+  'token',
+  'text',
+  'declaration',
+  'call',
+  'new',
+  'type',
+  'credential',
+]);
+
+/** The ways each kind of file of markup and JavaScript names a target (see `markupKind`). */
+const MARKUP_VIA: Readonly<Record<string, ReadonlySet<string>>> = {
+  'lwc-js': new Set(['import']),
+  'lwc-html': new Set(['attribute', 'tag']),
+  'aura-cmp': new Set(['attribute', 'tag', 'merge-field']),
+  'aura-js': new Set(['text']),
+  page: new Set(['attribute']),
+};
+
+/** The ways a file of the project can name a target. */
+function viasOf(file: string): ReadonlySet<string> {
+  if (isApex(file)) return APEX_VIA;
+  if (isMarkup(file)) return MARKUP_VIA[markupKind(file)] ?? new Set();
+  return new Set([...METADATA_VIA, 'text', 'credential']);
+}
 
 /**
  * The types a metadata file can name besides fields and objects. Such a target is referred to, never read. A
@@ -136,7 +225,7 @@ const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: re
   'controlling-field': { in: ['controllingField', 'metadataRelationshipControllingField'] },
   'value-set': { in: ['valueSetName'] },
   object: {
-    in: ['object', 'stringValue', 'baseObject', 'targetObject'],
+    in: ['object', 'stringValue', 'baseObject', 'targetObject', 'typeValue'],
     within: ['Flow', 'ReportType', 'QuickAction'],
   },
   record: { in: ['inputReference'] },
@@ -177,6 +266,9 @@ const PLACE_OF_VIA: Readonly<Record<string, { in: readonly string[]; within?: re
   value: { in: ['value'], within: ['values'] },
   text: { in: ['value', 'stringValue'], within: ['values', 'conditions'] },
   'record-of': { in: ['CustomMetadata'] },
+  // Version 3: the external credential a named credential signs in with, and a parameter of an Apex action.
+  credential: { in: ['externalCredential'], within: ['namedCredentialParameters'] },
+  parameter: { in: ['name'], within: ['inputParameters'] },
 };
 
 /**
@@ -192,13 +284,20 @@ const PARENT_OF: Readonly<Record<string, Readonly<Record<string, readonly string
   },
   action: { actionName: ['actionCalls'], flowName: ['subflows'], name: ['actions'] },
   // The object of a process stands in a value at the top of its file.
-  object: { stringValue: ['value'], baseObject: ['ReportType'], targetObject: ['QuickAction'] },
+  // The object of a generic type of an Apex action stands in its mapping of types.
+  object: {
+    stringValue: ['value'],
+    baseObject: ['ReportType'],
+    targetObject: ['QuickAction'],
+    typeValue: ['dataTypeMappings'],
+  },
   // A quick action sets a field of its predefined values, and the lookup to the record it runs on.
   assignment: {
     field: ['inputAssignments', 'fieldUpdates', 'fieldOverrides'],
     targetParentField: ['QuickAction'],
   },
   text: { stringValue: ['rightValue'] },
+  parameter: { name: ['inputParameters'] },
 };
 
 /** What each record element of a flow does to the records of its object. A choice set and a schedule read them. */
@@ -259,7 +358,9 @@ function kindsAt(reference: Placed, elements: readonly string[]): string {
       }
       return elements.includes('values') || elements.includes('picklistValues') ? 'references' : 'reads';
     }
+    // A flow sets a parameter of an Apex action, which is an invocable variable of the class.
     case 'assignment':
+    case 'parameter':
       return 'writes';
     case 'path': {
       if (target !== 'CustomField') return 'references';
@@ -455,6 +556,71 @@ function placeProblems(reference: Placed, all: readonly Placed[]): string[] {
   return wrong;
 }
 
+/**
+ * The attributes of markup that name a target, by the kind of file, with the tier of the name. A base component
+ * takes the name of an object or a field in an attribute, and so does force:recordData in its list of fields:
+ * a convention, not a name the platform checks when the markup is saved.
+ */
+const ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, 'confirmed' | 'probable'>>>> = {
+  'lwc-html': { 'object-api-name': 'probable', 'field-name': 'probable' },
+  'aura-cmp': { controller: 'confirmed', type: 'confirmed', fields: 'probable' },
+  page: { controller: 'confirmed', extensions: 'confirmed', standardController: 'confirmed' },
+};
+
+/** What stands on the line of a place before its word. */
+const lineBefore = (place: { file: string; line: number; column: number }): string =>
+  (readProjectFile(place.file).split('\n')[place.line - 1] ?? '').slice(0, place.column - 1);
+
+/** The attribute of markup a place stands in, or an empty text. */
+const attributeAt = (place: { file: string; line: number; column: number }): string =>
+  /([\w:-]+)="[^"]*$/.exec(lineBefore(place))?.[1] ?? '';
+
+/** The tier of a name in an attribute of markup, or `undefined` where the attribute names nothing. */
+const attributeTier = (place: { file: string; line: number; column: number }): string | undefined =>
+  isMarkup(place.file) ? ATTRIBUTES[markupKind(place.file)]?.[attributeAt(place)] : undefined;
+
+/** The classes and interfaces each class of the project extends or implements, by the key's own entries. */
+const supertypes = new Map<ComponentKey, ComponentKey[]>();
+for (const reference of key.references) {
+  if (reference.kind !== 'extends' && reference.kind !== 'implements') continue;
+  const sub = componentOf(reference.from);
+  supertypes.set(sub, [...(supertypes.get(sub) ?? []), componentOf(reference.to)]);
+}
+
+/** Whether a class extends or implements another one, directly or through others. */
+function isSubtypeOf(sub: ComponentKey, of: ComponentKey): boolean {
+  const seen = new Set<ComponentKey>();
+  const todo = [sub];
+  for (let next = todo.pop(); next !== undefined; next = todo.pop()) {
+    for (const parent of supertypes.get(next) ?? []) {
+      if (parent === of) return true;
+      if (!seen.has(parent)) todo.push(parent);
+      seen.add(parent);
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a call names a method that another one overrides: the call is confirmed to the method it names and
+ * probable to the method of the same signature in a class that extends or implements the class of that method,
+ * which runs when the object is of that class.
+ */
+function overridesAt(reference: (typeof key.references)[number]): boolean {
+  const signature = parseKey(reference.to).subs.at(-1)?.name;
+  return key.references.some(
+    (other) =>
+      other.file === reference.file &&
+      other.line === reference.line &&
+      other.column === reference.column &&
+      other.via === 'call' &&
+      other.tier === 'confirmed' &&
+      other.to !== reference.to &&
+      parseKey(other.to).subs.at(-1)?.name === signature &&
+      isSubtypeOf(componentOf(reference.to), componentOf(other.to)),
+  );
+}
+
 /** Every `static final` field of the project, by its name in lower case, with the text it is set to. */
 const constants = new Map<string, string>();
 /** The name of each child relationship in lower case, as a query writes it, with the lookup field that defines it. */
@@ -465,18 +631,73 @@ for (const [file, owner] of owners) {
   if (relationship !== undefined) childRelationships.set(`${relationship.toLowerCase()}__r`, owner);
 }
 
+/** The child relationships of standard objects that the project reads, with the lookup field that defines each. */
+const STANDARD_CHILD_RELATIONSHIPS: ReadonlyMap<string, ComponentKey> = new Map([
+  ['contacts', buildKey({ type: 'CustomField', fullName: 'Contact.AccountId' })],
+]);
+
+/** Whether a method of an Apex file, by its name in lower case, holds a whole word in its lines. */
+function methodHolds(file: string, method: string, word: string): boolean {
+  const lines = readProjectFile(file).split('\n');
+  return outline(file).members.some(({ subs, from, to }) => {
+    const last = subs.at(-1);
+    if (last?.kind !== 'method' || last.name.toLowerCase().replace(/\(.*$/, '') !== method) return false;
+    return (
+      columnOf(
+        lines
+          .slice(from - 1, to)
+          .join(' ')
+          .toLowerCase(),
+        word,
+        1,
+      ) !== undefined
+    );
+  });
+}
+
+/** Whether a record of a custom metadata type of the project gives a field, by its name, a value. */
+const recordGives = (field: string, value: string): boolean =>
+  [...owners.keys()].some(
+    (file) =>
+      file.endsWith('.md-meta.xml') &&
+      new RegExp(`<field>${field}</field>\\s*<value[^>]*>${value}</value>`, 'i').test(readProjectFile(file)),
+  );
+
+/**
+ * The fields of a field set of the project, by the name of the field set, in lower case: the last step of each path
+ * and every lookup on the way, as `account__c` for `Account__r.Tier__c`. `within` is `displayedFields` for the fields
+ * of the field set and `availableFields` for the fields it only makes available.
+ */
+function fieldSetFields(name: string, within: 'displayedFields' | 'availableFields'): string[] {
+  const file = [...owners.keys()].find((one) => one.toLowerCase().endsWith(`/fieldsets/${name}.fieldset-meta.xml`));
+  if (file === undefined) return [];
+  const blocks = readProjectFile(file).matchAll(new RegExp(`<${within}>\\s*<field>([^<]+)</field>`, 'g'));
+  return [...blocks].flatMap((block) =>
+    (block[1] ?? '')
+      .toLowerCase()
+      .split('.')
+      .map((step) => step.replace(/__r$/, '__c')),
+  );
+}
+
 /**
  * How the word of a reference stands for its target, or `undefined` if it does not:
- * - `name`: it is the name of the target, or the relationship name of a lookup field (`Account__r`, `Owner`);
+ * - `name`: it is the name of the target, or the relationship name of a lookup field (`Account__r`, `Owner`). The
+ *   name of a member of Apex is that of the method, the variable, the property or the inner type, and a constructor
+ *   is named by its type. A flow names the class of the method it calls, and a tag the component in kebab case;
  * - `keyword`: the keyword of a DML statement;
  * - `relationship`: a child relationship, defined by the lookup field that is the target or by a field of the
- *   object that is the target;
+ *   object that is the target, or a child relationship of a standard object (`Contacts`);
  * - `constant`: a constant of the project whose value holds the name of the target;
  * - `variable`: a variable, where the target is an object that is named in the member above the place;
  * - `resource`: a resource of a flow that holds records of the object that is the target: the record that started
  *   the flow, a variable that is declared with the object, or the record behind a relationship;
  * - `file`: the root element of a record of a custom metadata type, whose type is in the name of its file;
- * - `stretch`: an entry that is marked as hard to find. It is not checked.
+ * - `method`: a call of a method of the same class whose text holds the name, as the query `paidQuery()` gives back;
+ * - `record-field`: a field of a custom metadata type that a record of the project sets to the name;
+ * - `field-set`: a field set, named by a literal, that has the target among its fields;
+ * - `stretch`: an entry that is marked as hard to find. It is not checked, apart from a read of an object, which
+ *   is a `variable` as any other.
  */
 function namedBy(reference: (typeof key.references)[number]): string | undefined {
   const word = reference.match.toLowerCase();
@@ -500,14 +721,24 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
             );
     return of === target.name ? 'resource' : undefined;
   }
+  if (target.subs.length > 0) {
+    if (word === memberName(reference.to)) return 'name';
+    if (reference.via === 'action' && word === parseKey(componentOf(reference.to)).name) return 'name';
+    return reference.stretch ? 'stretch' : undefined;
+  }
   if (word === last || word.replace(/__r$/, '__c') === last || `${word}id` === last) return 'name';
+  if (reference.via === 'tag' && word.replaceAll('-', '') === last) return 'name';
   if (reference.via === 'dml' && reference.op === word) return 'keyword';
-  const lookup = childRelationships.get(word);
+  const lookup = childRelationships.get(word) ?? STANDARD_CHILD_RELATIONSHIPS.get(word);
   if (lookup !== undefined && (lookup === reference.to || parseKey(lookup).name.startsWith(`${target.name}.`))) {
     return 'relationship';
   }
   if (constants.get(word)?.includes(last) === true) return 'constant';
-  if (reference.stretch) return 'stretch';
+  if (reference.via === 'text' && isApex(reference.file)) {
+    if (methodHolds(reference.file, word, last)) return 'method';
+    if (recordGives(word, last)) return 'record-field';
+    if (fieldSetFields(word, 'displayedFields').includes(last)) return 'field-set';
+  }
   if (target.type === 'CustomObject' && isApex(reference.file)) {
     const { code } = outline(reference.file);
     const member = parseKey(reference.from).subs.at(-1)?.name.replace(/\(.*$/, '') ?? '';
@@ -521,16 +752,147 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
       .toLowerCase();
     if (columnOf(above, target.name, 1) !== undefined) return 'variable';
   }
+  if (reference.stretch) return 'stretch';
   return undefined;
 }
 
 /**
- * The roadmap phase whose analyser must find a reference: 3 for Apex, 1 for what the file of a field or of a
- * validation rule says, and 2 for everything else.
+ * The roadmap phase whose analyser must find a reference: 3 for Apex, for the markup and JavaScript of components
+ * and pages and for a named credential, 1 for what the file of a field or of a validation rule says, and 2 for
+ * everything else. A flow names an Apex class in Phase 2, and the method and the variables of it that only the
+ * analysis of Apex knows in Phase 3.
  */
 function phaseOf(reference: (typeof key.references)[number]): number {
-  if (isApex(reference.file)) return 3;
-  return /\.(?:field|validationRule)-meta\.xml$/.test(reference.file) ? 1 : 2;
+  if (isApex(reference.file) || isMarkup(reference.file) || reference.file.includes('/namedCredentials/')) return 3;
+  if (/\.(?:field|validationRule)-meta\.xml$/.test(reference.file)) return 1;
+  return reference.file.includes('/flows/') && parseKey(reference.to).subs.length > 0 ? 3 : 2;
+}
+
+/**
+ * What is wrong with the place of a reference in markup or JavaScript, or nothing. A web component imports what it
+ * uses from a module of `@salesforce` and names objects and fields in attributes of base components. An Aura
+ * component names its controller and the types of its attributes in attributes, a label in a merge field, and a
+ * method of its controller and a label in texts of its JavaScript. A page names its controllers in attributes. A
+ * component of the project stands in markup as a tag.
+ */
+function markupProblems(reference: (typeof key.references)[number]): string[] {
+  const line = readProjectFile(reference.file).split('\n')[reference.line - 1] ?? '';
+  const before = line.slice(0, reference.column - 1);
+  const after = line.slice(reference.column - 1 + reference.match.length);
+  const target = parseKey(reference.to).type;
+  const classOf = (name: string | undefined): ComponentKey | undefined =>
+    name === undefined ? undefined : buildKey({ type: 'ApexClass', fullName: name });
+  const is = (ok: boolean, what: string): string[] => (ok ? [] : [`${reference.id} (${reference.via}): ${what}`]);
+  switch (reference.via) {
+    case 'import': {
+      // The path of a module: `apex/Class.method`, `schema/Object.Field`, `label/c.Name`, `customPermission/Name`.
+      const module = /^import \w+ from '@salesforce\/(\w+)\/[\w.]*$/.exec(before)?.[1] ?? '';
+      const types: Readonly<Record<string, readonly string[]>> = {
+        apex: ['ApexClass'],
+        schema: ['CustomObject', 'CustomField'],
+        label: ['CustomLabel'],
+        customPermission: ['CustomPermission'],
+      };
+      const ofClass = module !== 'apex' || classOf(/apex\/(\w+)\.$/.exec(before)?.[1]) === componentOf(reference.to);
+      return is(types[module]?.includes(target) === true && ofClass && /^[\w.]*';$/.test(after), `in ${module}`);
+    }
+    case 'attribute':
+      // The word is the value of the attribute, or one name of a list of them.
+      return is(
+        attributeTier(reference) !== undefined && /="(?:\w+,)*$/.test(before) && /^(?:\[\])?(?:,\w+)*"/.test(after),
+        `in the attribute ${attributeAt(reference) || 'of nothing'}`,
+      );
+    case 'tag':
+      return is(before.endsWith('<c-') || before.endsWith('<c:'), 'not the tag of a component of the project');
+    case 'merge-field':
+      return is(before.endsWith('{!$Label.c.') && after.startsWith('}'), 'not a label in a merge field');
+    case 'text': {
+      // `c.name` is a method of the Apex controller of the component. `$Label.c.Name` is a label.
+      const folder = reference.file.slice(0, reference.file.lastIndexOf('/'));
+      const markup = readProjectFile(`${folder}/${folder.slice(folder.lastIndexOf('/') + 1)}.cmp`);
+      const controller = classOf(/controller="(\w+)"/.exec(markup)?.[1]);
+      const method = before.endsWith("'c.") && componentOf(reference.to) === controller;
+      return is((method || before.endsWith("'$Label.c.")) && after.startsWith("'"), 'not a method or a label');
+    }
+    default:
+      return [`${reference.id}: markup does not name a target ${reference.via}`];
+  }
+}
+
+/** What kind of file a file of the project is: `apex`, `metadata`, or a kind of markup (see `markupKind`). */
+const fileKind = (file: string): string => (isApex(file) ? 'apex' : isMarkup(file) ? markupKind(file) : 'metadata');
+
+/**
+ * The types besides fields and objects that version 3 refers to, with the kinds of file and the ways that name them.
+ * A class is named by a page and by an Aura component as its controller, and a component of the project by the
+ * tag of the markup that holds it.
+ */
+const REFERENCED_FROM: Readonly<Record<string, readonly string[]>> = {
+  NamedCredential: ['apex credential'],
+  ExternalCredential: ['metadata credential'],
+  ApexClass: ['page attribute', 'aura-cmp attribute'],
+  LightningComponentBundle: ['lwc-html tag', 'aura-cmp tag'],
+  CustomLabel: ['lwc-js import', 'aura-cmp merge-field', 'aura-js text'],
+  CustomPermission: ['lwc-js import'],
+  CustomMetadata: ['apex text'],
+  FieldSet: ['apex text'],
+};
+
+/** Whether the kind of a reference fits its target, the member it starts from and the way it names the target. */
+function kindFits(reference: (typeof key.references)[number]): boolean {
+  const target = parseKey(reference.to).type;
+  const declared = apexDeclared.get(reference.to);
+  const from = parseKey(reference.from).type;
+  const where = fileKind(reference.file);
+  const { via } = reference;
+  const isField = target === 'CustomField' || target === 'CustomObject';
+  switch (reference.kind) {
+    case 'extends':
+      return declared === 'type' && via === 'declaration';
+    case 'implements':
+      return declared === 'interface' && via === 'declaration';
+    case 'triggers-on':
+      return (
+        target === 'CustomObject' &&
+        ((from === 'ApexTrigger' && via === 'declaration') || (from === 'Flow' && via === 'object'))
+      );
+    case 'uses-type':
+      return (
+        where === 'apex' &&
+        (target === 'CustomObject' || isApexType(reference.to)) &&
+        ['type', 'new', 'text'].includes(via)
+      );
+    case 'calls':
+      // A flow starts a flow or an Apex action: the class, and the invocable method of it. Apex calls a method, or
+      // makes an object with a constructor or, where its class declares none, with the class. A web component
+      // imports a method of Apex, and an Aura component names one in its JavaScript.
+      if (from === 'Flow')
+        return via === 'action' && (target === 'Flow' || declared === 'type' || declared === 'method');
+      if (where === 'apex') {
+        if (via === 'call') return declared === 'method';
+        const made = declared === 'ctor' || (isApexType(reference.to) && !declaresConstructor(reference.to));
+        return via === 'new' && made;
+      }
+      return declared === 'method' && (`${where} ${via}` === 'lwc-js import' || `${where} ${via}` === 'aura-js text');
+    case 'reads':
+    case 'writes':
+      // A variable or a property of a class is read and written by Apex, and read by a query as a bind variable.
+      // A flow sets an invocable variable as a parameter of an action. The object in front of a field token and a
+      // child relationship are referred to, never read or written.
+      if (isField) {
+        if (target === 'CustomObject' && via === 'token') return false;
+        const word = reference.match.toLowerCase();
+        return (childRelationships.get(word) ?? STANDARD_CHILD_RELATIONSHIPS.get(word)) !== reference.to;
+      }
+      if (declared !== 'var' && declared !== 'prop') return false;
+      return where === 'apex'
+        ? via === 'field' || (via === 'soql' && reference.kind === 'reads')
+        : via === 'parameter' && reference.kind === 'writes';
+    case 'references':
+      if (isField || (NAMED_ONLY.has(target) && where === 'metadata')) return true;
+      if (target === 'ApexClass' && declared !== 'type') return false;
+      return REFERENCED_FROM[target]?.includes(`${where} ${via}`) === true;
+  }
 }
 
 describe('the fixture project', () => {
@@ -645,9 +1007,10 @@ describe('the answer key', () => {
     for (const part of [...resolved].filter((one) => /^Workflow[A-Z]/.test(one))) expect(members).toContain(part);
   });
 
-  it('points every reference at a component of the project or at a listed standard target', () => {
+  it('points every reference at a component of the project, a member of its Apex or a listed standard target', () => {
     const wrong = key.references
       .filter((reference) => !inProject.has(reference.to) && !standard.has(reference.to))
+      .filter((reference) => !apexDeclared.has(reference.to))
       .map((reference) => reference.id);
     expect(wrong).toEqual([]);
   });
@@ -671,20 +1034,31 @@ describe('the answer key', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
       const target = parseKey(reference.to);
-      // A name that stands in text is never as certain as a name the compiler checks.
-      if (reference.via === 'text' && reference.tier === 'confirmed') wrong.push(`${reference.id}: text is confirmed`);
-      if (reference.via !== 'text' && reference.tier !== 'confirmed') wrong.push(`${reference.id}: not confirmed`);
+      // A name that stands in text is never as certain as a name the compiler checks. Nor is the name of a named
+      // credential in the text of a callout, a name in an attribute of a base component, a field that
+      // force:recordData loads, or a method that overrides the one a call names.
+      const lessCertain =
+        reference.via === 'text' ||
+        (reference.via === 'credential' && isApex(reference.file)) ||
+        (reference.via === 'attribute' && attributeTier(reference) === 'probable') ||
+        (reference.via === 'call' && overridesAt(reference));
+      if (lessCertain === (reference.tier === 'confirmed')) wrong.push(`${reference.id}: ${reference.tier}`);
+      if (lessCertain && reference.via !== 'text' && reference.tier !== 'probable') {
+        wrong.push(`${reference.id}: ${reference.tier}, expected probable`);
+      }
       // "possible" means the object is known and the field is not.
       if (reference.tier === 'possible' && target.type !== 'CustomObject') {
         wrong.push(`${reference.id}: possible and not an object`);
       }
-      // A DML statement writes an object and says how. A record element of a flow refers to an object and says
-      // what it does to its records. Nothing else carries an operation.
+      // A DML statement writes an object and says how, and so does the publishing of a platform event. A record
+      // element of a flow refers to an object and says what it does to its records. Nothing else carries an
+      // operation: the object of a generic type of an Apex action has none.
       const isDml = reference.via === 'dml' && reference.kind === 'writes';
       const isRecordElement =
         reference.file.includes('/flows/') &&
         (reference.via === 'object' || reference.via === 'record') &&
-        reference.kind === 'references';
+        reference.kind === 'references' &&
+        metadataPlace(reference.file, reference.line, reference.column).elements.at(-1) !== 'typeValue';
       if ((isDml || isRecordElement) !== (reference.op !== undefined)) wrong.push(`${reference.id}: operation`);
       if (isDml && (target.type !== 'CustomObject' || reference.match !== reference.op)) {
         wrong.push(`${reference.id}: a DML statement is keyed at its keyword and writes an object`);
@@ -696,7 +1070,10 @@ describe('the answer key', () => {
       if (isDml && (reference.op === 'lookup' || reference.op === 'create')) {
         wrong.push(`${reference.id}: not an operation of a DML statement`);
       }
-      if (target.subs.length > 0) wrong.push(`${reference.id}: the target is a part of a component`);
+      // A part of a component is a target only where it is a member of Apex.
+      if (target.subs.length > 0 && !apexDeclared.has(reference.to)) {
+        wrong.push(`${reference.id}: the target is a part of a component`);
+      }
       if (reference.phase !== phaseOf(reference)) wrong.push(`${reference.id}: phase`);
     }
     expect(wrong).toEqual([]);
@@ -710,6 +1087,14 @@ describe('the answer key', () => {
       ),
     );
     expect(forbidden).toEqual([]);
+    // A negative holds for the analysers up to a phase only where its place is a reference that is not read yet,
+    // which its reason says, and then for a phase that reads its file.
+    const phaseOfFile = new Map(key.references.map((reference) => [reference.file, reference.phase]));
+    const scoped = key.negatives.filter((negative) => / not read\b/.test(negative.why));
+    expect(key.negatives.filter((negative) => negative.until !== undefined)).toEqual(scoped);
+    expect(scoped.filter((negative) => (negative.until ?? 0) < (phaseOfFile.get(negative.file) ?? Infinity))).toEqual(
+      [],
+    );
     const overlapping = key.unknowns.filter((unknown) =>
       key.references.some(
         (reference) =>
@@ -725,10 +1110,20 @@ describe('the answer key', () => {
     }
     // A negative forbids a wrong guess, so its target need not exist. But a negative whose target is misspelled
     // forbids nothing: the word on the line must be the name of the target, and the object must be a known one.
+    // A child relationship is a negative of the field it is not.
     const objects = new Set([...inProject, ...standard].map((one) => parseKey(one).name.split('.')[0]));
-    const bare = (name: string): string => name.toLowerCase().replace(/__c$/, '');
+    const bare = (name: string): string => name.toLowerCase().replace(/__[cr]$/, '');
     const misspelled = key.negatives.filter((negative) => {
-      const [object = '', field = object] = parseKey(negative.not).name.split('.');
+      const target = parseKey(negative.not);
+      // A member of Apex must exist. The word is its name, or the name of the property a getter gives in a page.
+      if (target.subs.length > 0) {
+        const name = memberName(negative.not);
+        const word = negative.match.toLowerCase();
+        return !apexDeclared.has(negative.not) || (name !== word && name !== `get${word}`);
+      }
+      const [object = '', field = object] = target.name.split('.');
+      // A field set that is read by its name is a negative of a field that it only makes available.
+      if (fieldSetFields(negative.match.toLowerCase(), 'availableFields').includes(field)) return false;
       return !objects.has(object) || bare(field) !== bare(negative.match);
     });
     expect(misspelled).toEqual([]);
@@ -738,19 +1133,18 @@ describe('the answer key', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
       const at = `${reference.id} (${reference.via})`;
-      if (!isApex(reference.file)) {
-        if (!METADATA_VIA.has(reference.via) && reference.via !== 'text') {
-          wrong.push(`${at}: not a way a metadata file names a target`);
-        }
-        continue;
-      }
-      if (METADATA_VIA.has(reference.via)) wrong.push(`${at}: not a way Apex names a target`);
+      if (!viasOf(reference.file).has(reference.via))
+        wrong.push(`${at}: not a way a ${fileKind(reference.file)} file names a target`);
+      if (!isApex(reference.file)) continue;
       const region = outline(reference.file).regionAt(reference.line, reference.column);
-      // A name in a query built as text stands in a literal. A constant or a variable that holds one is code.
+      // A name in a query built as text stands in a literal, and so do a named credential of a callout and a field
+      // set read by its name. A constant or a variable that holds a name is code, and so is a method that gives
+      // one back and a field of a custom metadata type that holds one.
+      const how = namedBy(reference);
       const expected =
         reference.via === 'soql' || reference.via === 'sosl'
           ? 'query'
-          : reference.via === 'text' && namedBy(reference) === 'name'
+          : reference.via === 'credential' || (reference.via === 'text' && (how === 'name' || how === 'field-set'))
             ? 'text'
             : 'code';
       if (region !== expected) wrong.push(`${at}: stands in ${region}, expected ${expected}`);
@@ -765,12 +1159,13 @@ describe('the answer key', () => {
   it('names every place of a metadata file in the element its entry says, with the kind that fits it, and none in a comment or a text', () => {
     const wrong: string[] = [];
     for (const reference of key.references) {
-      if (!isApex(reference.file)) wrong.push(...placeProblems(reference, key.references));
+      if (fileKind(reference.file) === 'metadata') wrong.push(...placeProblems(reference, key.references));
     }
     expect(wrong).toEqual([]);
-    // A negative of a text with merge fields stands outside every merge field.
+    // A negative of a text with merge fields stands outside every merge field. In markup, an expression is a
+    // negative by decision record 0079.
     for (const negative of key.negatives) {
-      if (isApex(negative.file) || negative.file.includes('/objects/')) continue;
+      if (fileKind(negative.file) !== 'metadata' || negative.file.includes('/objects/')) continue;
       const before = (readProjectFile(negative.file).split('\n')[negative.line - 1] ?? '').slice(
         0,
         negative.column - 1,
@@ -805,33 +1200,29 @@ describe('the answer key', () => {
     expect(wrong).toEqual([]);
   });
 
+  it('names every place of a component and of a page where its markup or its JavaScript names the target', () => {
+    const wrong = key.references.filter((reference) => isMarkup(reference.file)).flatMap(markupProblems);
+    expect(wrong).toEqual([]);
+    // Every kind of file of a component and of a page holds a reference.
+    const kinds = new Set(key.references.map((reference) => fileKind(reference.file)));
+    for (const kind of Object.keys(MARKUP_VIA)) expect(kinds).toContain(kind);
+  });
+
   it('gives every reference a kind that fits its target and its place', () => {
     const wrong: string[] = [];
     const placed = (reference: (typeof key.references)[number]): string =>
       `${reference.file}:${String(reference.line)}:${String(reference.column)}`;
     for (const reference of key.references) {
-      const target = parseKey(reference.to).type;
-      const from = parseKey(reference.from);
-      const fits =
-        reference.kind === 'extends'
-          ? target === 'ApexClass' && reference.via === 'declaration'
-          : reference.kind === 'triggers-on'
-            ? target === 'CustomObject' &&
-              ((from.type === 'ApexTrigger' && reference.via === 'declaration') ||
-                (from.type === 'Flow' && reference.via === 'object'))
-            : reference.kind === 'calls'
-              ? (target === 'Flow' || target === 'ApexClass') && from.type === 'Flow' && reference.via === 'action'
-              : target === 'CustomField' ||
-                target === 'CustomObject' ||
-                (NAMED_ONLY.has(target) && reference.kind === 'references' && !isApex(reference.file));
-      if (!fits) wrong.push(`${reference.id}: ${reference.kind} to a ${target}`);
+      const target = parseKey(reference.to);
+      if (!kindFits(reference))
+        wrong.push(`${reference.id}: ${reference.kind} to a ${target.type} via ${reference.via}`);
 
       if (!isApex(reference.file)) continue;
       const code = outline(reference.file).code[reference.line - 1] ?? '';
       const before = code.slice(0, reference.column - 1).trimEnd();
       const after = code.slice(reference.column - 1 + reference.match.length).trimStart();
       if (reference.via === 'field') {
-        // `x.F = v` writes, `x.F += v` reads and writes, anything else reads.
+        // `x.F = v` writes, `x.F += v` and `x.F++` read and write, anything else reads.
         const assigns = /^=(?!=)/.test(after);
         const both = /^(?:[-+*/]=|\+\+|--)/.test(after);
         const same = key.references.filter((other) => placed(other) === placed(reference) && other.to === reference.to);
@@ -844,14 +1235,66 @@ describe('the answer key', () => {
           wrong.push(`${reference.id}: the code ${expected}, the key says ${kinds}`);
         }
       }
-      // The name of an object in code is a reference only as a token or in a declaration: `Invoice__c.SObjectType`.
-      // In front of a variable it is a type, which is not keyed.
-      if (target === 'CustomObject' && namedBy(reference) === 'name' && reference.via === 'token') {
+      // The name of an object in code is a reference as a token: `Invoice__c.SObjectType`. In front of a variable it
+      // is a type, which version 3 keys as a use of the type.
+      if (target.type === 'CustomObject' && namedBy(reference) === 'name' && reference.via === 'token') {
         if (!before.endsWith('.') && !after.startsWith('.'))
           wrong.push(`${reference.id}: the object is used as a type`);
       }
+      // A call is followed by its arguments, `new` stands before a type that is made, and a type that is used
+      // stands without either. An inner type can be named with its outer type in front.
+      if (reference.via === 'call' && !after.startsWith('(')) wrong.push(`${reference.id}: no call`);
+      const made = /\bnew(?:\s+\w+\s*\.)?$/.test(before);
+      if (reference.via === 'new' && !made) wrong.push(`${reference.id}: new does not stand before it`);
+      if ((reference.via === 'type' || reference.via === 'call') && made)
+        wrong.push(`${reference.id}: new stands before it`);
+      if (reference.via === 'type') {
+        const qualified = before.endsWith('.') && target.subs.length > 0;
+        if (after.startsWith('(') || after.startsWith('.') || (before.endsWith('.') && !qualified)) {
+          wrong.push(`${reference.id}: not a type`);
+        }
+      }
+      if (reference.via === 'declaration' && reference.kind !== 'triggers-on') {
+        if (!/\b(?:implements|extends)\b[\w\s,.<>]*$/.test(before))
+          wrong.push(`${reference.id}: not after implements or extends`);
+      }
     }
     expect(wrong).toEqual([]);
+  });
+
+  it('keys every name of a type that Apex code holds', () => {
+    // A name of an object or of a class of the project in code is a use of the type, a call of a constructor, a
+    // token or a declaration, and each of them is keyed. A name with a dot in front of it is a member of what
+    // stands before the dot; a class with a dot after it is the class of a static member, which is keyed at the
+    // member. The name of a type where it is declared is no reference.
+    const objects = [...inProject, ...standard].filter((one) => parseKey(one).type === 'CustomObject');
+    const classes = [...inProject].filter((one) => parseKey(one).type === 'ApexClass');
+    const outer = new Set([...objects, ...classes].map((one) => parseKey(one).name));
+    const keyed = new Set(
+      [...key.references, ...key.negatives, ...key.unknowns].map(
+        (place) => `${place.file}:${String(place.line)}:${String(place.column)}`,
+      ),
+    );
+    const missing: string[] = [];
+    for (const file of [...owners.keys()].filter(isApex)) {
+      const { code, types } = outline(file);
+      const inner = new Set(types.filter((one) => one.subs.length > 0).map((one) => one.name.toLowerCase()));
+      code.forEach((text, index) => {
+        for (const word of text.matchAll(/\b[A-Z]\w*\b/g)) {
+          const name = word[0].toLowerCase();
+          if (!outer.has(name) && !inner.has(name)) continue;
+          const before = text.slice(0, word.index).trimEnd();
+          const after = text.slice(word.index + word[0].length).trimStart();
+          if (before.endsWith('.') || /\b(?:class|interface|enum|trigger)$/.test(before)) continue;
+          if (after.startsWith('.') && !objects.some((one) => parseKey(one).name === name)) continue;
+          // A constructor where it is declared.
+          if (after.startsWith('(') && /^\s*(?:(?:public|private|protected|global)\s*)?$/.test(before)) continue;
+          const at = `${file}:${String(index + 1)}:${String(word.index + 1)}`;
+          if (!keyed.has(at)) missing.push(`${at} ${word[0]}`);
+        }
+      });
+    }
+    expect(missing).toEqual([]);
   });
 
   it('is large enough to score an analyser, as the plan of Phase 0 asks', () => {
@@ -879,14 +1322,14 @@ describe('the answer key', () => {
       negatives: key.negatives.length,
       unknowns: key.unknowns.length,
     }).toEqual({
-      version: 2,
-      components: 120,
+      version: 3,
+      components: 148,
       phase1: 112,
-      phase2: 214,
-      phase3: 184,
-      stretch: 9,
-      negatives: 64,
-      unknowns: 6,
+      phase2: 222,
+      phase3: 554,
+      stretch: 14,
+      negatives: 98,
+      unknowns: 9,
     });
   });
 });
@@ -1023,11 +1466,12 @@ describe('the flows that cannot be deployed', () => {
 });
 
 describe('the older versions of the answer key', () => {
-  // The Apex trial of Phase 0 was scored with version 0 and Phase 1 with version 1, and their reports quote the
-  // numbers of those keys. An old version lists the project as it was then, so it is not checked against the
-  // components of the project of today.
+  // The Apex trial of Phase 0 was scored with version 0, Phase 1 with version 1 and Phase 2 with version 2, and
+  // their reports quote the numbers of those keys. An old version lists the project as it was then, so it is not
+  // checked against the components of the project of today.
   const old = loadAnswerKey(0);
   const first = loadAnswerKey(1);
+  const second = loadAnswerKey(2);
   const idOf = (place: { file: string; line: number; column: number }, target: string): string =>
     `${place.file}:${String(place.line)}:${String(place.column)}:${target}`;
   const numbers = (of: typeof key): Record<string, number> => {
@@ -1036,6 +1480,7 @@ describe('the older versions of the answer key', () => {
       version: of.version,
       components: of.components.length,
       phase1: byPhase(1),
+      phase2: byPhase(2),
       phase3: byPhase(3),
       stretch: of.references.filter((reference) => reference.stretch).length,
       negatives: of.negatives.length,
@@ -1048,6 +1493,7 @@ describe('the older versions of the answer key', () => {
       version: 0,
       components: 52,
       phase1: 44,
+      phase2: 0,
       phase3: 184,
       stretch: 4,
       negatives: 21,
@@ -1057,42 +1503,66 @@ describe('the older versions of the answer key', () => {
       version: 1,
       components: 87,
       phase1: 106,
+      phase2: 0,
       phase3: 184,
       stretch: 7,
       negatives: 31,
       unknowns: 5,
     });
-    expect(first.references.filter((reference) => reference.phase === 2)).toEqual([]);
+    expect(numbers(second)).toEqual({
+      version: 2,
+      components: 120,
+      phase1: 112,
+      phase2: 214,
+      phase3: 184,
+      stretch: 9,
+      negatives: 64,
+      unknowns: 6,
+    });
   });
 
-  it('have the Apex part of version 2, entry for entry', () => {
+  it('have the Apex part of version 2, entry for entry, up to version 2', () => {
     const apex = (from: typeof key): unknown[] => from.references.filter((reference) => reference.phase === 3);
     const apexOnly = <T extends { file: string }>(places: readonly T[]): T[] =>
       places.filter((place) => isApex(place.file));
     for (const older of [old, first]) {
-      expect(apex(key)).toEqual(apex(older));
-      expect(apexOnly(key.unknowns)).toEqual(older.unknowns);
-      expect(apexOnly(key.negatives)).toEqual(apexOnly(older.negatives));
+      expect(apex(second)).toEqual(apex(older));
+      expect(apexOnly(second.unknowns)).toEqual(older.unknowns);
+      expect(apexOnly(second.negatives)).toEqual(apexOnly(older.negatives));
     }
   });
 
-  it('have nothing that version 2 has not', () => {
+  it('have nothing that version 3 has not', () => {
     const whole = (reference: (typeof key.references)[number]): string =>
-      `${reference.id}:${reference.from}:${reference.via}:${reference.tier}:${String(reference.stretch)}`;
+      `${reference.id}:${reference.from}:${reference.via}:${reference.tier}:${String(reference.stretch)}:${String(reference.phase)}`;
     const now = new Set(key.references.map(whole));
     const forbidden = new Set(key.negatives.map((negative) => idOf(negative, negative.not)));
-    for (const older of [old, first]) {
+    const unknown = new Set(key.unknowns.map((one) => idOf(one, one.from)));
+    for (const older of [old, first, second]) {
       expect(older.references.filter((reference) => !now.has(whole(reference)))).toEqual([]);
       expect(older.negatives.filter((negative) => !forbidden.has(idOf(negative, negative.not)))).toEqual([]);
+      expect(older.unknowns.filter((one) => !unknown.has(idOf(one, one.from)))).toEqual([]);
       expect(older.components.filter((component) => !inProject.has(component.key))).toEqual([]);
       expect(older.standard.filter((target) => !standard.has(target))).toEqual([]);
     }
   });
 
-  it('has in version 2 everything version 1 says about a field or a rule, and nothing else about its files', () => {
+  it('say the same about a field or a rule in versions 1 to 3, and nothing else about its files', () => {
     const files = new Set(first.references.filter((reference) => reference.phase === 1).map((one) => one.file));
     const about = (of: typeof key): string[] =>
       of.references.filter((reference) => files.has(reference.file)).map((reference) => reference.id);
+    expect(about(second)).toEqual(about(first));
     expect(about(key)).toEqual(about(first));
+  });
+
+  it('say in version 3 what version 2 says about a file of Phase 2, and more only in its own entries', () => {
+    // Version 3 adds to a file of Phase 2 the entries of Phase 3, as the method an Apex action calls, and the new
+    // files of Phase 2. What Phase 2 must find in the files of version 2 is the same.
+    const files = new Set(second.references.filter((reference) => reference.phase === 2).map((one) => one.file));
+    const ofPhase2 = (of: typeof key): string[] =>
+      of.references
+        .filter((reference) => files.has(reference.file) && reference.phase === 2)
+        .map((reference) => reference.id);
+    expect(ofPhase2(key)).toEqual(ofPhase2(second));
   });
 });

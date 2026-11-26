@@ -371,12 +371,42 @@
     "notAnalysed": [
       {
         "type": "ApexClass",
-        "listed": 13,
-        "retrieved": 13,
+        "listed": 28,
+        "retrieved": 28,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexPage",
+        "listed": 2,
+        "retrieved": 2,
         "listing": "ok"
       },
       {
         "type": "ApexTrigger",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "AuraDefinitionBundle",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "ExternalCredential",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "LightningComponentBundle",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "NamedCredential",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

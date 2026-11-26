@@ -18,7 +18,7 @@ const ROOT = join(import.meta.dirname, '../../../..');
 /** The package directory of the fixture project. */
 export const FIXTURE_PROJECT = join(ROOT, 'fixtures/billing-sfdx');
 export const FIXTURE_DIR = join(FIXTURE_PROJECT, 'force-app');
-const ANSWER_KEY = join(ROOT, 'fixtures/expected/answer-key.v2.yaml');
+const ANSWER_KEY = join(ROOT, 'fixtures/expected/answer-key.v3.yaml');
 
 /** The name of the source the test org is declared as. It gives the variables of the login their names. */
 export const SOURCE_NAME = 'test-org';
@@ -99,6 +99,8 @@ interface KeyedReference {
   /** `confirmed` where the key says nothing. */
   readonly tier?: string;
   readonly stretch?: boolean;
+  /** The roadmap phase whose analyser must find the reference, where it is not the phase of its file. */
+  readonly phase?: number;
 }
 
 /** The answer key of the fixture project, as far as the tools read it (`fixtures/README.md` has the format). */

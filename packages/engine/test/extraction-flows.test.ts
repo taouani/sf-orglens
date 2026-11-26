@@ -43,7 +43,8 @@ const ofFlows = (analysis: SourceAnalysis): AnalysedComponent[] =>
 
 describe('the flows of the fixture project', () => {
   const answers = loadAnswerKey();
-  const keyed = answers.references.filter((one) => one.file.startsWith(FLOWS));
+  // A flow names the method and the variables of an Apex action that only the analysis of Apex knows: Phase 3.
+  const keyed = answers.references.filter((one) => one.file.startsWith(FLOWS) && one.phase === 2);
   const idOfKeyed = (one: (typeof keyed)[number]): string =>
     `${one.from} ${one.id} ${one.via}${one.op === undefined ? '' : ` ${one.op}`} ${one.tier}`;
   let analysis: SourceAnalysis;
@@ -58,8 +59,8 @@ describe('the flows of the fixture project', () => {
   });
 
   it('give every reference of the key, from the element and with the tier the key says, and no other', () => {
-    expect(keyed).toHaveLength(126);
-    expect(keyed.every((one) => one.phase === 2)).toBe(true);
+    expect(keyed).toHaveLength(129);
+    expect(answers.references.filter((one) => one.file.startsWith(FLOWS) && one.phase !== 2)).toHaveLength(3);
     const found = references.map(idOf).sort();
     // A stretch entry may be missed. Nothing may be found that the key does not hold.
     const must = keyed.filter((one) => !one.stretch).map(idOfKeyed);
@@ -144,6 +145,7 @@ describe('the flows of the fixture project', () => {
     expect(own.map((one) => `${one.name} ${String(one.references.length)}`)).toEqual([
       'Invoice_After_Save 0',
       'Invoice_Before_Save 0',
+      'Invoice_Object_Name 0',
       'Invoice_Purge_Void 0',
       'Invoice_Recalculate 0',
       'Invoice_Review_Screen 0',
@@ -158,7 +160,7 @@ describe('the flows of the fixture project', () => {
       components: flows.length,
       failedFiles: 0,
     });
-    expect(flows).toHaveLength(61);
+    expect(flows).toHaveLength(64);
   });
 });
 

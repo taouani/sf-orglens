@@ -1,9 +1,14 @@
 What refers to CustomField:invoice__c.unused_field__c (Invoice__c.Unused_Field__c), in snapshot #1 of "fixture".
-The answer is not complete: 2 types are not analysed yet. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet. The details are below the answer.
 
 Nothing that was analysed refers to it.
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE         LISTED  RETRIEVED
-ApexClass    13      13
-ApexTrigger  1       1
+TYPE                      LISTED  RETRIEVED
+ApexClass                 28      28
+ApexPage                  2       2
+ApexTrigger               2       2
+AuraDefinitionBundle      1       1
+ExternalCredential        1       1
+LightningComponentBundle  2       2
+NamedCredential           1       1

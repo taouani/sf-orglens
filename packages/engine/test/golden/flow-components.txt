@@ -18,6 +18,9 @@ Flow:invoice_before_save#element:default_tax_rate  Invoice_Before_Save.Default_T
 Flow:invoice_before_save#element:flow-start  Invoice_Before_Save.flow-start  {"kind":"start","active":true}
 Flow:invoice_before_save#element:is_above_limit  Invoice_Before_Save.Is_Above_Limit  {"kind":"decision","active":true}
 Flow:invoice_before_save#element:set_defaults  Invoice_Before_Save.Set_Defaults  {"kind":"assignment","active":true}
+Flow:invoice_object_name  Invoice_Object_Name  {"status":"Active","active":true,"processType":"AutoLaunchedFlow","triggerType":"RecordAfterSave","recordTriggerType":"Create"}
+Flow:invoice_object_name#element:flow-start  Invoice_Object_Name.flow-start  {"kind":"start","active":true}
+Flow:invoice_object_name#element:name_the_object  Invoice_Object_Name.Name_The_Object  {"kind":"action","actionType":"apex","active":true}
 Flow:invoice_purge_void  Invoice_Purge_Void  {"status":"Draft","active":false,"processType":"AutoLaunchedFlow","triggerType":"Scheduled"}
 Flow:invoice_purge_void#element:delete_invoice  Invoice_Purge_Void.Delete_Invoice  {"kind":"delete","active":false}
 Flow:invoice_purge_void#element:flow-start  Invoice_Purge_Void.flow-start  {"kind":"start","active":false}

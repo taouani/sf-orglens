@@ -6,7 +6,8 @@ import orglens from './tools/eslint-plugin-orglens.js';
 const nodeGlobals = { console: 'readonly', process: 'readonly', URL: 'readonly' };
 
 export default defineConfig(
-  globalIgnores(['**/dist/**', '**/coverage/**', '**/test/golden/**', '.corpora/**']),
+  // The JavaScript of the fixture project is test data written for Salesforce: the answer key records its lines.
+  globalIgnores(['**/dist/**', '**/coverage/**', '**/test/golden/**', '.corpora/**', 'fixtures/billing-sfdx/**']),
   js.configs.recommended,
   {
     files: ['**/*.ts'],

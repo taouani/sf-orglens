@@ -214,7 +214,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(draftPlaces(held)).toEqual({ ofDraft: 0, ofActive: 3, all: 3 });
       expect(
         reading(dir, (store) => store.all("SELECT path FROM snapshot_file WHERE path LIKE 'flows/%'")),
-      ).toHaveLength(6);
+      ).toHaveLength(7);
       expect(codesOf(report)).toEqual(['info FLOW_NEWER_VERSION']);
       expect(aboutFlows(report)).toEqual([
         {
@@ -227,9 +227,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       expect(flowRow(report)).toEqual({
         type: 'Flow',
-        listed: 6,
-        retrieved: 6,
-        analysed: 61,
+        listed: 7,
+        retrieved: 7,
+        analysed: 64,
         listing: 'ok',
         note: null,
         packaged: 0,
@@ -324,12 +324,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         details: { type: 'Flow', count: 1, components: [FLOW_WITH_DRAFT], tier: 'logic' },
       });
       expect(flowFile(dir, 1)).toBeNull();
-      // Five flows are analysed, with 41 of the 55 elements: the flow that is left out has 14.
+      // Six flows are analysed, with 43 of the 57 elements: the flow that is left out has 14.
       expect(flowRow(report)).toEqual({
         type: 'Flow',
-        listed: 6,
-        retrieved: 5,
-        analysed: 46,
+        listed: 7,
+        retrieved: 6,
+        analysed: 49,
         listing: 'ok',
         note: null,
         packaged: 0,
@@ -624,8 +624,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fileAt(dir, 1, SECOND_PATH)).toBeNull();
       expect(draftPlaces(flowFile(dir, 1) ?? '')).toEqual({ ofDraft: 3, ofActive: 0, all: 3 });
       expect(reading(dir, (store) => readCoverage(store, 1).find((type) => type.type === 'Flow'))).toMatchObject({
-        listed: 6,
-        retrieved: 5,
+        listed: 7,
+        retrieved: 6,
       });
 
       mock.intercept = null;

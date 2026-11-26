@@ -1,6 +1,6 @@
 What refers to Flow:invoice_recalculate#element:set_amount (Invoice_Recalculate.Set_Amount), in snapshot #1 of "fixture".
 It is an element of Flow:invoice_recalculate. What refers to the flow refers to it too.
-The answer is not complete: 2 types are not analysed yet. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet. The details are below the answer.
 
 2 components refer to it, all of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -10,6 +10,11 @@ DEPTH  COMPONENT                                    CONFIDENCE  KIND   REFERS TO
 1      Flow:invoice_after_save#element:recalculate  confirmed   calls  Flow:invoice_recalculate  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 
 Not analysed yet. A component of these types may refer to it, and is not in the answer:
-TYPE         LISTED  RETRIEVED
-ApexClass    13      13
-ApexTrigger  1       1
+TYPE                      LISTED  RETRIEVED
+ApexClass                 28      28
+ApexPage                  2       2
+ApexTrigger               2       2
+AuraDefinitionBundle      1       1
+ExternalCredential        1       1
+LightningComponentBundle  2       2
+NamedCredential           1       1

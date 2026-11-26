@@ -623,6 +623,26 @@
       "package": null
     },
     {
+      "key": "CustomMetadata:billing_rule.invoice_late_fee",
+      "type": "CustomMetadata",
+      "name": "Billing_Rule.Invoice_Late_Fee",
+      "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Late_Fee.md-meta.xml",
+      "depth": 2,
+      "confidence": "probable",
+      "reference": {
+        "from": "CustomMetadata:billing_rule.invoice_late_fee",
+        "to": "CustomField:invoice__c.late_fee__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Late_Fee.md-meta.xml",
+        "line": 7,
+        "column": 38
+      },
+      "package": null
+    },
+    {
       "key": "Flow:invoice_after_save#element:recalculate",
       "type": "Flow",
       "name": "Invoice_After_Save.Recalculate",
@@ -691,12 +711,42 @@
     "notAnalysed": [
       {
         "type": "ApexClass",
-        "listed": 13,
-        "retrieved": 13,
+        "listed": 28,
+        "retrieved": 28,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexPage",
+        "listed": 2,
+        "retrieved": 2,
         "listing": "ok"
       },
       {
         "type": "ApexTrigger",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "AuraDefinitionBundle",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "ExternalCredential",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "LightningComponentBundle",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "NamedCredential",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"
