@@ -186,7 +186,7 @@ describe('orglens impact', () => {
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
       '',
-      '16 components refer to it, 11 of them directly.',
+      '22 components refer to it, 16 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
@@ -207,7 +207,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('22 components refer to it, 17 of them directly.');
+    expect(lines).toContain('23 components refer to it, 18 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -219,7 +219,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('41 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('47 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -246,34 +246,45 @@ describe('orglens impact', () => {
     expect(outgoing.stdout).not.toContain('REFERRED TO BY can name');
 
     // A class is read in part: the answer holds the objects its members use as a type and the fields and constants
-    // their code reads and writes, and says that more may be missing.
+    // their code reads, writes and queries, and says that more may be missing. The name of an invoice is a standard
+    // field, which the snapshot does not hold.
     const where = 'force-app/main/default/classes/InvoiceService.cls';
     const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
     expect(apex.stdout.split('\n')).toEqual([
       'What ApexClass:invoiceservice (InvoiceService) refers to, in snapshot #1 of "fixture".',
       'It contains 7 components of the snapshot. The answer is about them too.',
-      'The answer is not complete: 1 type is not analysed yet. The details are below the answer.',
+      'The answer is not complete: 1 type is not analysed yet, and the snapshot does not hold 1 component of the answer, so what it refers to is not known. The details are below the answer.',
       'ApexClass is not analysed yet, or only in part: what the component itself refers to may be missing from the answer.',
       '',
-      'It refers to 12 components, directly.',
+      'It refers to 20 components, directly.',
       '',
-      'DEPTH  COMPONENT                                    CONFIDENCE  KIND       REFERRED TO BY                                                WHERE',
-      `1      ApexClass:invoiceconstants#var:status_draft  confirmed   reads      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
-      `1      ApexClass:invoiceconstants#var:status_paid   confirmed   reads      ApexClass:invoiceservice#method:markpaid(id)                  ${where}:22`,
-      `1      CustomField:account.credit_limit__c          confirmed   reads      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:36`,
-      `1      CustomField:account.risk_score__c            confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:38`,
-      `1      CustomField:invoice__c.account__c            confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:32`,
-      `1      CustomField:invoice__c.amount__c             confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:33`,
-      `1      CustomField:invoice__c.paid_date__c          confirmed   writes     ApexClass:invoiceservice#method:markpaid(id)                  ${where}:26`,
-      `1      CustomField:invoice__c.status__c             confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
-      `1      CustomField:invoice__c.tax_rate__c           confirmed   reads      ApexClass:invoiceservice#method:raisetax(set<id>,decimal)     ${where}:55`,
-      `1      CustomField:invoice__c.total__c              confirmed   reads      ApexClass:invoiceservice#method:totaldue(list<invoice__c>)    ${where}:47`,
-      `1      CustomObject:account                         confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:30`,
-      `1      CustomObject:invoice__c                      confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:30`,
+      'DEPTH  COMPONENT                                    CONFIDENCE  KIND        REFERRED TO BY                                                WHERE',
+      `1      ApexClass:invoiceconstants#var:status_draft  confirmed   reads       ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
+      `1      ApexClass:invoiceconstants#var:status_paid   confirmed   reads       ApexClass:invoiceservice#method:markpaid(id)                  ${where}:22`,
+      `1      CustomField:account.credit_limit__c          confirmed   reads       ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:36`,
+      `1      CustomField:account.risk_score__c            confirmed   writes      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:38`,
+      `1      CustomField:account.tier__c                  confirmed   reads       ApexClass:invoiceservice#method:countbytier(string)           ${where}:61`,
+      `1      CustomField:invoice__c.account__c            confirmed   reads       ApexClass:invoiceservice#method:countbytier(string)           ${where}:61`,
+      `1      CustomField:invoice__c.amount__c             confirmed   writes      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:33`,
+      `1      CustomField:invoice__c.due_date__c           confirmed   reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:9`,
+      `1      CustomField:invoice__c.name                  probable    reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:9`,
+      `1      CustomField:invoice__c.paid_date__c          confirmed   reads       ApexClass:invoiceservice#method:markpaid(id)                  ${where}:21`,
+      `1      CustomField:invoice__c.status__c             confirmed   writes      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
+      `1      CustomField:invoice__c.tax_rate__c           confirmed   reads       ApexClass:invoiceservice#method:raisetax(set<id>,decimal)     ${where}:53`,
+      `1      CustomField:invoice__c.total__c              confirmed   reads       ApexClass:invoiceservice#method:totaldue(list<invoice__c>)    ${where}:47`,
+      `1      CustomField:invoice_line__c.invoice__c       confirmed   references  ApexClass:invoiceservice#method:openinvoices(id)              ${where}:11`,
+      `1      CustomField:invoice_line__c.is_billable__c   confirmed   reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:11`,
+      `1      CustomField:invoice_line__c.quantity__c      confirmed   reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:11`,
+      `1      CustomField:invoice_line__c.unit_price__c    confirmed   reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:11`,
+      `1      CustomObject:account                         confirmed   uses-type   ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:30`,
+      `1      CustomObject:invoice__c                      confirmed   reads       ApexClass:invoiceservice#method:countbytier(string)           ${where}:61`,
+      `1      CustomObject:invoice_line__c                 confirmed   reads       ApexClass:invoiceservice#method:openinvoices(id)              ${where}:11`,
       '',
       'Not analysed yet, or only in part. What the components of these types in the answer refer to may be missing:',
       'TYPE       LISTED  RETRIEVED',
       'ApexClass  28      28',
+      '',
+      'The snapshot does not hold 1 component of the answer, such as a standard field or a component of a package. What it refers to is not known.',
       '',
     ]);
   });
@@ -356,9 +367,9 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
-    // The 49 of the project without the field that could not be read, without the one that reads it, and without
-    // the 3 methods that read either.
-    expect(lines).toContain('44 components refer to it, 40 of them directly.');
+    // The 57 of the project without the field that could not be read, without the one that reads it, and without
+    // the 4 methods that read only those.
+    expect(lines).toContain('51 components refer to it, 46 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',

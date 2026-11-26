@@ -1,7 +1,7 @@
 What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet. The details are below the answer.
 
-26 components refer to it, 17 of them directly.
+28 components refer to it, 18 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                    CONFIDENCE  KIND        REFERS TO                                   WHERE
@@ -9,6 +9,7 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:invoicelineservice#method:billableamount(invoice__c)               confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/classes/InvoiceLineService.cls:26
 1      ApexClass:invoicepricing#method:price(invoice_line__c)                       confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/classes/InvoicePricing.cls:8
 1      ApexClass:invoicepricingtest#method:invoicewithlines()                       confirmed   writes      CustomField:invoice_line__c.quantity__c     force-app/main/default/classes/InvoicePricingTest.cls:8
+1      ApexClass:invoiceservice#method:openinvoices(id)                             confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/classes/InvoiceService.cls:11
 1      ApexClass:parsertorture#method:describe(sobject)                             confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/classes/ParserTorture.cls:30
 1      ApexTrigger:invoicelinetrigger#inner:linetotals/method:add(invoice_line__c)  confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/triggers/InvoiceLineTrigger.trigger:6
 1      CustomField:invoice_line__c.line_amount__c                                   confirmed   reads       CustomField:invoice_line__c.quantity__c     force-app/main/default/objects/Invoice_Line__c/fields/Line_Amount__c.field-meta.xml:4
@@ -30,6 +31,7 @@ DEPTH  COMPONENT                                                                
 3      CustomField:invoice__c.grand_total__c                                        confirmed   reads       CustomField:invoice__c.lines_total__c       force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
 3      Flow:invoice_recalculate#element:compare_totals                              confirmed   reads       CustomField:invoice__c.lines_total__c       force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:98
 4      ApexClass:invoicebatch#inner:result/method:add(invoice__c)                   confirmed   reads       CustomField:invoice__c.grand_total__c       force-app/main/default/classes/InvoiceBatch.cls:11
+4      ApexClass:invoicebatch#method:start(database.batchablecontext)               confirmed   reads       CustomField:invoice__c.grand_total__c       force-app/main/default/classes/InvoiceBatch.cls:19
 4      ApexClass:invoicecalloutservice#method:send(invoice__c)                      confirmed   reads       CustomField:invoice__c.grand_total__c       force-app/main/default/classes/InvoiceCalloutService.cls:12
 
 Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:

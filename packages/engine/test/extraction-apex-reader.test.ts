@@ -215,4 +215,25 @@ describe('the reader of Apex', () => {
     // A file read after a query has the places of its own text.
     expect(onlyType(reader.parseUnit('public class After { }', 'class')).name.at).toEqual({ line: 1, column: 14 });
   });
+
+  it('says whether a query gives records, rows of aggregates or a number, and that an alias is no field', () => {
+    const read = (text: string): unknown => {
+      const query = reader.parseQuery(text);
+      return [query?.gives, query?.fields.map((path) => path.map((part) => part.text).join('.'))];
+    };
+    expect(read('SELECT Id, toLabel(Status__c) FROM Invoice__c')).toEqual(['records', ['Id', 'Status__c']]);
+    expect(read('SELECT COUNT() FROM Invoice__c WHERE Amount__c > 0')).toEqual(['count', ['Amount__c']]);
+    expect(read('SELECT COUNT(Id) n FROM Invoice__c')).toEqual(['aggregates', ['Id']]);
+    expect(read('SELECT FORMAT(SUM(Amount__c)) total FROM Invoice__c')).toEqual(['aggregates', ['Amount__c']]);
+    expect(read('SELECT Account__c a FROM Invoice__c GROUP BY Account__c')).toEqual([
+      'aggregates',
+      ['Account__c', 'Account__c'],
+    ]);
+    // `FIELDS()` names no field: it is kept apart, with its parameter in upper case.
+    const every = reader.parseQuery('SELECT Name, FIELDS(custom) FROM Invoice__c LIMIT 200');
+    expect([every?.fields.length, every?.everyField]).toEqual([1, [{ text: 'CUSTOM', at: { line: 1, column: 14 } }]]);
+    // A subquery of the filter gives what its own select list says.
+    const nested = reader.parseQuery('SELECT COUNT() FROM Account WHERE Id IN (SELECT AccountId FROM Contact)');
+    expect([nested?.gives, nested?.nested[0]?.gives]).toEqual(['count', 'records']);
+  });
 });

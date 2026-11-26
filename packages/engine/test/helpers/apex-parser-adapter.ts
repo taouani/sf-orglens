@@ -62,6 +62,7 @@ import {
   FormalParameterListContext,
   FromNameListContext,
   GetterContext,
+  GroupByClauseContext,
   IdContext,
   IdCreatedNamePairContext,
   IdPrimaryContext,
@@ -97,8 +98,11 @@ import {
   ReturnStatementContext,
   RunAsStatementContext,
   SelectEntryContext,
+  SelectListContext,
   SetCreatorRestContext,
   SetterContext,
+  SoqlFieldsParameterContext,
+  SoqlFunctionContext,
   SoqlIdContext,
   SoqlLiteralContext,
   SoqlPrimaryContext,
@@ -400,7 +404,17 @@ interface QueryParts {
   nested: Query[];
   typeOfs: TypeOf[];
   binds: Expr[];
+  everyField: Name[];
 }
+
+const emptyParts = (): QueryParts => ({
+  fields: [],
+  children: [],
+  nested: [],
+  typeOfs: [],
+  binds: [],
+  everyField: [],
+});
 
 /** Collects what a clause of a query names. A sub-query, a `TYPEOF` and a bound expression are not walked into. */
 function collect(node: Tree, into: QueryParts): void {
@@ -420,6 +434,11 @@ function collect(node: Tree, into: QueryParts): void {
       });
     } else if (kid instanceof BoundExpressionContext) {
       into.binds.push(expression(one(kid, ExpressionContext)));
+    } else if (kid instanceof SoqlFunctionContext && one(kid, SoqlFieldsParameterContext) !== undefined) {
+      into.everyField.push({
+        text: words(one(kid, SoqlFieldsParameterContext))[0]?.toUpperCase() ?? '',
+        at: startOf(kid),
+      });
     } else if (kid instanceof FieldNameContext) {
       into.fields.push(path(kid));
     } else if (kid instanceof SoqlIdContext || kid instanceof SoslIdContext) {
@@ -430,9 +449,26 @@ function collect(node: Tree, into: QueryParts): void {
   }
 }
 
+/** The functions that make a query give rows of `AggregateResult`. */
+const AGGREGATES: ReadonlySet<string> = new Set(['avg', 'count', 'count_distinct', 'max', 'min', 'sum']);
+
+/** Whether a function is an aggregate function, also inside another function. */
+const aggregates = (fn: SoqlFunctionContext | undefined): boolean =>
+  fn !== undefined && (AGGREGATES.has(words(fn)[0] ?? '') || aggregates(one(fn, SoqlFunctionContext)));
+
+function givesOf(ctx: QueryContext | SubQueryContext): Query['gives'] {
+  const functions = all(one(ctx, SelectListContext), SelectEntryContext).flatMap((entry) => {
+    const fn = one(entry, SoqlFunctionContext);
+    return fn === undefined ? [] : [fn];
+  });
+  // `COUNT()` is the one function without an argument that gives a number.
+  if (functions.some((fn) => words(fn)[0] === 'count' && kids(fn).length === 3)) return 'count';
+  return functions.some(aggregates) || one(ctx, GroupByClauseContext) !== undefined ? 'aggregates' : 'records';
+}
+
 function query(ctx: QueryContext | SubQueryContext | undefined): Query {
-  const parts: QueryParts = { fields: [], children: [], nested: [], typeOfs: [], binds: [] };
-  if (ctx === undefined) return { from: [], alias: undefined, ...parts };
+  const parts = emptyParts();
+  if (ctx === undefined) return { from: [], alias: undefined, ...parts, gives: 'records' };
   const fromList = one(ctx, FromNameListContext);
   const alias = one(fromList, SoqlIdContext);
   collect(ctx, parts);
@@ -440,6 +476,7 @@ function query(ctx: QueryContext | SubQueryContext | undefined): Query {
     from: path(one(fromList, FieldNameContext)),
     alias: alias === undefined ? undefined : nameOf(one(alias, IdContext)).text.toLowerCase(),
     ...parts,
+    gives: givesOf(ctx),
   };
 }
 
@@ -453,7 +490,7 @@ function search(primary: SoslPrimaryContext): Search {
         binds.push(expression(one(kid, ExpressionContext)));
       } else if (kid instanceof FieldSpecContext) {
         const object = path(one(kid, SoslIdContext))[0];
-        const parts: QueryParts = { fields: [], children: [], nested: [], typeOfs: [], binds: [] };
+        const parts = emptyParts();
         const listed = (list: FieldListContext): void => {
           for (const entry of kids(list)) {
             if (entry instanceof SoslIdContext) parts.fields.push(path(entry));

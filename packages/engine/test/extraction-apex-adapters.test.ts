@@ -73,6 +73,11 @@ describe('the two readers of Apex', () => {
       source: 'class C { void m(Integer a) { Boolean b = a > = 0; Integer s = a > > 1; } }',
     },
     {
+      name: 'a search that binds in the objects it returns',
+      source:
+        'class C { String t; void m() { List<List<SObject>> r = [FIND :t RETURNING Account(Name WHERE Name != :t LIMIT 5), Contact]; } }',
+    },
+    {
       name: 'a file that starts with a byte order mark',
       source: '﻿class C { void m(Invoice__c inv) { inv.Amount__c = 1; } }',
     },
@@ -143,5 +148,17 @@ describe('the two readers of Apex', () => {
     // A text that closes the class it is read in is not one query.
     const escape = 'SELECT Id FROM Account];} class Z{Object z=[SELECT Name FROM Contact';
     expect([engine.parseQuery(escape), second.parseQuery(escape)]).toEqual([undefined, undefined]);
+  });
+
+  it.each([
+    ['records', 'SELECT Id, toLabel(Status__c) FROM Invoice__c'],
+    ['count', 'SELECT COUNT() FROM Invoice__c WHERE Amount__c > 0'],
+    ['aggregates', 'SELECT COUNT(Id) n FROM Invoice__c'],
+    ['aggregates', 'SELECT FORMAT(SUM(Amount__c)) total FROM Invoice__c'],
+    ['aggregates', 'SELECT Account__c a FROM Invoice__c GROUP BY Account__c'],
+    ['records', 'SELECT FIELDS(ALL), Name, (SELECT fields(Custom) FROM Lines__r) FROM Invoice__c LIMIT 200'],
+  ])('say alike that a query gives %s: %s', (gives, text) => {
+    expect([engine.parseQuery(text)?.gives, second.parseQuery(text)?.gives]).toEqual([gives, gives]);
+    expect(engine.parseQuery(text)).toEqual(second.parseQuery(text));
   });
 });

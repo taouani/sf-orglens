@@ -152,12 +152,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // What the analysers must find so far, which are the references of Phases 1 and 2: of fields and rules, of
       // flows, of workflow rules, of record types, of field sets, of records of custom metadata, of the email
       // template, of the report type and of the quick action. An entry of Phase 3 in a file of flows is not. Of
-      // classes and triggers, the declarations and the types their members use (decision record 0084), and the
-      // fields, variables, tokens and DML of their code (decision record 0087), with the tier a repository gives.
+      // classes and triggers, the declarations and the types their members use (decision record 0084), the fields,
+      // variables, tokens and DML of their code (decision record 0087), and their queries and searches (decision
+      // record 0088), with the tier a repository gives.
       const ofApexSoFar = (reference: { file: string; kind: string; via: string }): boolean =>
         /\.(?:cls|trigger)$/.test(reference.file) &&
         (['extends', 'implements', 'uses-type', 'triggers-on'].includes(reference.kind) ||
-          ['field', 'token', 'dml'].includes(reference.via));
+          ['field', 'token', 'dml', 'soql', 'sosl'].includes(reference.via));
       const tierOf = tierInRepository(answers);
       const keyed = answers.references
         .filter((reference) => reference.phase === 1 || reference.phase === 2 || ofApexSoFar(reference))
@@ -258,13 +259,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture. The classes and
-      // triggers, the members the key names and the inner classes they are in added 109 and 101, and what their
-      // code reads, writes and names 29 and 198.
-      expect(asked.size).toBe(319);
-      expect(results).toBe(970);
+      // triggers, the members the key names and the inner classes they are in added 109 and 101, what their code
+      // reads, writes and names 29 and 198, and what their queries and searches read 6 and 90.
+      expect(asked.size).toBe(325);
+      expect(results).toBe(1060);
 
-      // The fields the key lists as referred to by nothing have an empty answer. What the queries of Apex read is
-      // not analysed yet, so other fields have one too.
+      // The fields the key lists as referred to by nothing have an empty answer. What the names in the texts of Apex
+      // refer to is not read yet, so other fields have one too.
       for (const component of answers.unreferenced) {
         expect((await workspace.impact('fixture', component)).results).toEqual([]);
       }
@@ -554,9 +555,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // 8 fields and validation rules, 10 elements of flows and the 4 flows they are of, an element that calls one
       // of those flows, 2 workflow rules and an outbound message, a field set, 2 records of custom metadata, the
       // email template with the alert that sends it and the element of a flow that starts the alert, the report type
-      // and the quick action. And 15 members of classes: 12 that read, write or name the field, among them a
-      // constant that holds its token, one that reads the formula field `Total__c` and 2 that read `Grand_Total__c`.
-      expect(report.results).toHaveLength(49);
+      // and the quick action. And 23 members of classes: 18 that read, write or name the field, among them a
+      // constant that holds its token and 7 that query it, one that reads the formula field `Total__c`, one that
+      // queries the formula field `Summary__c` and 3 that read or query `Grand_Total__c`.
+      expect(report.results).toHaveLength(57);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -571,9 +573,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect([taken.snapshot.status, taken.analysis?.complete]).toEqual(['complete', false]);
       const report = await workspace.impact('fixture', AMOUNT);
       // The field that could not be read, and the one that is reached through it, are not in the answer, and neither
-      // are the 3 methods that read those fields.
+      // are the 4 methods that read only those fields.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(44);
+      expect(report.results).toHaveLength(51);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -756,8 +758,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(rule).toMatchObject({ complete: false, mayMiss: false });
 
       // A class is read in part: the answer holds the objects its members use as a type, and the fields, the
-      // constants and the records its code reads and writes (decision records 0084 and 0087). It says that the type
-      // of the class is not analysed, since what its queries and calls refer to is not read yet.
+      // constants and the records its code reads, writes and queries (decision records 0084, 0087 and 0088). It says
+      // that the type of the class is not analysed, since what its calls and the names in its texts refer to is not
+      // read yet.
       const apex = await workspace.impact('fixture', 'InvoiceService', { outgoing: true });
       expect(apex).toMatchObject({ complete: false, mayMiss: false, component: { key: 'ApexClass:invoiceservice' } });
       expect(apex.results.map((result) => `${result.key} ${result.reference.from}`)).toEqual([
@@ -765,14 +768,22 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         'ApexClass:invoiceconstants#var:status_paid ApexClass:invoiceservice#method:markpaid(id)',
         'CustomField:account.credit_limit__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
         'CustomField:account.risk_score__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
-        'CustomField:invoice__c.account__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
+        'CustomField:account.tier__c ApexClass:invoiceservice#method:countbytier(string)',
+        'CustomField:invoice__c.account__c ApexClass:invoiceservice#method:countbytier(string)',
         'CustomField:invoice__c.amount__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
+        'CustomField:invoice__c.due_date__c ApexClass:invoiceservice#method:openinvoices(id)',
+        'CustomField:invoice__c.name ApexClass:invoiceservice#method:openinvoices(id)',
         'CustomField:invoice__c.paid_date__c ApexClass:invoiceservice#method:markpaid(id)',
         'CustomField:invoice__c.status__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
         'CustomField:invoice__c.tax_rate__c ApexClass:invoiceservice#method:raisetax(set<id>,decimal)',
         'CustomField:invoice__c.total__c ApexClass:invoiceservice#method:totaldue(list<invoice__c>)',
+        'CustomField:invoice_line__c.invoice__c ApexClass:invoiceservice#method:openinvoices(id)',
+        'CustomField:invoice_line__c.is_billable__c ApexClass:invoiceservice#method:openinvoices(id)',
+        'CustomField:invoice_line__c.quantity__c ApexClass:invoiceservice#method:openinvoices(id)',
+        'CustomField:invoice_line__c.unit_price__c ApexClass:invoiceservice#method:openinvoices(id)',
         'CustomObject:account ApexClass:invoiceservice#method:createdraft(account,decimal)',
-        'CustomObject:invoice__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
+        'CustomObject:invoice__c ApexClass:invoiceservice#method:countbytier(string)',
+        'CustomObject:invoice_line__c ApexClass:invoiceservice#method:openinvoices(id)',
       ]);
       expect(apex.notCovered.notAnalysed.map((gap) => gap.type)).toEqual(['ApexClass']);
     });
@@ -839,17 +850,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(Math.max(...near.results.map((result) => result.depth))).toBe(2);
       const all = await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c', { depth: 4 });
       expect(all).toMatchObject({ depth: 4, beyondDepth: false });
-      // A formula field and an element of a flow are reached at the third step, and two methods that read the
-      // formula field at the fourth.
+      // A formula field and an element of a flow are reached at the third step, and three methods that read or query
+      // the formula field at the fourth.
       expect(all.results.filter((result) => result.depth === 3).map((result) => result.key)).toEqual([
         'CustomField:invoice__c.grand_total__c',
         'Flow:invoice_recalculate#element:compare_totals',
       ]);
       expect(all.results.filter((result) => result.depth === 4).map((result) => result.key)).toEqual([
         'ApexClass:invoicebatch#inner:result/method:add(invoice__c)',
+        'ApexClass:invoicebatch#method:start(database.batchablecontext)',
         'ApexClass:invoicecalloutservice#method:send(invoice__c)',
       ]);
-      expect(all.results).toHaveLength(near.results.length + 4);
+      expect(all.results).toHaveLength(near.results.length + 5);
       expect(await workspace.impact('fixture', 'Invoice_Line__c.Quantity__c', { depth: 3 })).toMatchObject({
         beyondDepth: true,
       });
@@ -889,8 +901,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 47]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 49]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 55]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 57]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -1021,7 +1033,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(49);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(57);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

@@ -1,22 +1,28 @@
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
 
-49 components refer to it, 41 of them directly.
+57 components refer to it, 47 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                          CONFIDENCE  KIND        REFERS TO                                       WHERE
 1      ApexClass:accountinvoices#method:goldtotal(account)                                confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/AccountInvoices.cls:23
+1      ApexClass:accountinvoices#method:relatedcounts(set<id>)                            confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/AccountInvoices.cls:10
 1      ApexClass:dynamicaccess#method:amountbytoken(invoice__c)                           confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/DynamicAccess.cls:31
 1      ApexClass:dynamicaccess#method:canreadamount()                                     confirmed   references  CustomField:invoice__c.amount__c                force-app/main/default/classes/DynamicAccess.cls:35
 1      ApexClass:dynamicaccess#method:setamountbytoken(invoice__c,decimal)                confirmed   writes      CustomField:invoice__c.amount__c                force-app/main/default/classes/DynamicAccess.cls:53
 1      ApexClass:invoiceconstants#var:amount                                              confirmed   references  CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceConstants.cls:11
 1      ApexClass:invoicecontroller#method:saveamount(id,decimal)                          confirmed   writes      CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceController.cls:28
 1      ApexClass:invoiceevents#method:latefee(invoice__c)                                 confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceEvents.cls:28
+1      ApexClass:invoicepagecontroller#ctor:()                                            confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoicePageController.cls:8
 1      ApexClass:invoicepricingtest#method:invoicewithlines()                             confirmed   writes      CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoicePricingTest.cls:6
 1      ApexClass:invoiceservice#method:createdraft(account,decimal)                       confirmed   writes      CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceService.cls:33
+1      ApexClass:invoiceservice#method:openinvoices(id)                                   confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceService.cls:9
 1      ApexClass:invoiceservicetest#method:setup()                                        confirmed   writes      CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceServiceTest.cls:7
 1      ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)  confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceTriggerHandler.cls:31
-1      ApexClass:parsertorture#prop:lastamount                                            confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/ParserTorture.cls:17
+1      ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)                        confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/InvoiceTriggerHandler.cls:44
+1      ApexClass:parsertorture#method:averagepaid()                                       confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/ParserTorture.cls:68
+1      ApexClass:parsertorture#method:typeof()                                            confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/ParserTorture.cls:61
+1      ApexClass:parsertorture#prop:lastamount                                            confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/classes/ParserTorture.cls:16
 1      CustomField:invoice__c.late_fee__c                                                 confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/objects/Invoice__c/fields/Late_Fee__c.field-meta.xml:6
 1      CustomField:invoice__c.summary__c                                                  confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/objects/Invoice__c/fields/Summary__c.field-meta.xml:5
 1      CustomField:invoice__c.total__c                                                    confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/objects/Invoice__c/fields/Total__c.field-meta.xml:4
@@ -46,12 +52,14 @@ DEPTH  COMPONENT                                                                
 1      WorkflowOutboundMessage:invoice__c.notify_ledger                                   confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/workflows/Invoice__c.workflow-meta.xml:45
 1      WorkflowRule:invoice__c.remind_when_sent                                           confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/workflows/Invoice__c.workflow-meta.xml:87
 1      WorkflowRule:invoice_line__c.stamp_when_billed                                     confirmed   reads       CustomField:invoice__c.amount__c                force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml:21
+2      ApexClass:invoicecontroller#method:recentinvoices(id)                              confirmed   reads       CustomField:invoice__c.summary__c               force-app/main/default/classes/InvoiceController.cls:8
 2      ApexClass:invoiceservice#method:totaldue(list<invoice__c>)                         confirmed   reads       CustomField:invoice__c.total__c                 force-app/main/default/classes/InvoiceService.cls:47
 2      CustomField:invoice__c.grand_total__c                                              confirmed   reads       CustomField:invoice__c.total__c                 force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
 2      CustomMetadata:billing_rule.invoice_late_fee                                       probable    references  CustomField:invoice__c.late_fee__c              force-app/main/default/customMetadata/Billing_Rule.Invoice_Late_Fee.md-meta.xml:7
 2      Flow:invoice_after_save#element:recalculate                                        confirmed   calls       Flow:invoice_recalculate                        force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
 2      WorkflowAlert:invoice__c.invoice_overdue_alert                                     confirmed   references  EmailTemplate:billing/invoice_overdue           force-app/main/default/workflows/Invoice__c.workflow-meta.xml:19
 3      ApexClass:invoicebatch#inner:result/method:add(invoice__c)                         confirmed   reads       CustomField:invoice__c.grand_total__c           force-app/main/default/classes/InvoiceBatch.cls:11
+3      ApexClass:invoicebatch#method:start(database.batchablecontext)                     confirmed   reads       CustomField:invoice__c.grand_total__c           force-app/main/default/classes/InvoiceBatch.cls:19
 3      ApexClass:invoicecalloutservice#method:send(invoice__c)                            confirmed   reads       CustomField:invoice__c.grand_total__c           force-app/main/default/classes/InvoiceCalloutService.cls:12
 3      Flow:invoice_after_save#element:send_overdue_alert                                 confirmed   references  WorkflowAlert:invoice__c.invoice_overdue_alert  force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:8
 

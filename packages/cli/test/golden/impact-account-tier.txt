@@ -1,26 +1,32 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet. The details are below the answer.
 
-16 components refer to it, 11 of them directly.
+22 components refer to it, 16 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
-DEPTH  COMPONENT                                               CONFIDENCE  KIND        REFERS TO                              WHERE
-1      ApexClass:accountinvoices#method:goldtotal(account)     confirmed   reads       CustomField:account.tier__c            force-app/main/default/classes/AccountInvoices.cls:22
-1      ApexClass:invoicepricing#method:discount(account)       confirmed   reads       CustomField:account.tier__c            force-app/main/default/classes/InvoicePricing.cls:12
-1      ApexClass:invoicepricingtest#method:invoicewithlines()  confirmed   writes      CustomField:account.tier__c            force-app/main/default/classes/InvoicePricingTest.cls:4
-1      ApexClass:invoiceservicetest#method:setup()             confirmed   writes      CustomField:account.tier__c            force-app/main/default/classes/InvoiceServiceTest.cls:5
-1      ApexClass:parsertorture#method:tierof(invoice__c)       confirmed   reads       CustomField:account.tier__c            force-app/main/default/classes/ParserTorture.cls:42
-1      CustomField:account.is_key_account__c                   confirmed   reads       CustomField:account.tier__c            force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:5
-1      CustomField:invoice__c.account_tier__c                  confirmed   reads       CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml:4
-1      FieldSet:invoice__c.invoice_summary                     confirmed   reads       CustomField:account.tier__c            force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml:21
-1      Flow:invoice_after_save                                 confirmed   reads       CustomField:account.tier__c            force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
-1      Flow:invoice_after_save#element:amount_changed          confirmed   reads       CustomField:account.tier__c            force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
-1      ReportType:invoices_with_lines                          confirmed   references  CustomField:account.tier__c            force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:25
-2      ApexClass:standardpricing#method:discount(account)      confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/classes/StandardPricing.cls:15
-2      Flow:invoice_sent_process                               confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
-2      Flow:invoice_sent_process#element:formula_myrule_1      confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
-2      ValidationRule:account.key_account_needs_contact        confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
-2      WorkflowRule:invoice__c.stamp_code_when_paid            confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
+DEPTH  COMPONENT                                               CONFIDENCE  KIND        REFERS TO                               WHERE
+1      ApexClass:accountinvoices#method:goldtotal(account)     confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/AccountInvoices.cls:22
+1      ApexClass:invoicelineservice#method:billlines(id)       confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/InvoiceLineService.cls:9
+1      ApexClass:invoicepricing#method:discount(account)       confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/InvoicePricing.cls:12
+1      ApexClass:invoicepricingtest#method:invoicewithlines()  confirmed   writes      CustomField:account.tier__c             force-app/main/default/classes/InvoicePricingTest.cls:4
+1      ApexClass:invoiceservice#method:countbytier(string)     confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/InvoiceService.cls:61
+1      ApexClass:invoiceservice#method:openinvoices(id)        confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/InvoiceService.cls:10
+1      ApexClass:invoiceservicetest#method:setup()             confirmed   writes      CustomField:account.tier__c             force-app/main/default/classes/InvoiceServiceTest.cls:5
+1      ApexClass:parsertorture#method:search(string)           confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/ParserTorture.cls:53
+1      ApexClass:parsertorture#method:tierof(invoice__c)       confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/ParserTorture.cls:42
+1      ApexClass:parsertorture#method:typeof()                 confirmed   reads       CustomField:account.tier__c             force-app/main/default/classes/ParserTorture.cls:60
+1      CustomField:account.is_key_account__c                   confirmed   reads       CustomField:account.tier__c             force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:5
+1      CustomField:invoice__c.account_tier__c                  confirmed   reads       CustomField:account.tier__c             force-app/main/default/objects/Invoice__c/fields/Account_Tier__c.field-meta.xml:4
+1      FieldSet:invoice__c.invoice_summary                     confirmed   reads       CustomField:account.tier__c             force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml:21
+1      Flow:invoice_after_save                                 confirmed   reads       CustomField:account.tier__c             force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
+1      Flow:invoice_after_save#element:amount_changed          confirmed   reads       CustomField:account.tier__c             force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
+1      ReportType:invoices_with_lines                          confirmed   references  CustomField:account.tier__c             force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:25
+2      ApexClass:invoicecontroller#method:recentinvoices(id)   confirmed   reads       CustomField:invoice__c.account_tier__c  force-app/main/default/classes/InvoiceController.cls:8
+2      ApexClass:standardpricing#method:discount(account)      confirmed   reads       CustomField:account.is_key_account__c   force-app/main/default/classes/StandardPricing.cls:15
+2      Flow:invoice_sent_process                               confirmed   reads       CustomField:account.is_key_account__c   force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
+2      Flow:invoice_sent_process#element:formula_myrule_1      confirmed   reads       CustomField:account.is_key_account__c   force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
+2      ValidationRule:account.key_account_needs_contact        confirmed   reads       CustomField:account.is_key_account__c   force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
+2      WorkflowRule:invoice__c.stamp_code_when_paid            confirmed   reads       CustomField:account.is_key_account__c   force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
 
 Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED

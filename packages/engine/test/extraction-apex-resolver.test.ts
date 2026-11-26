@@ -19,7 +19,7 @@ import { FIXTURES_DIR, loadAnswerKey, tierInRepository as repositoryTier } from 
 import { ApexSource, viaOf } from './helpers/written-source.ts';
 
 /** The ways of naming a target that this part of the resolver reads. */
-const VIAS: ReadonlySet<string> = new Set(['field', 'token', 'dml']);
+const VIAS: ReadonlySet<string> = new Set(['field', 'token', 'dml', 'soql', 'sosl']);
 const isApexFile = (file: string): boolean => /\.(?:cls|trigger)$/.test(file);
 const isApex = (key: string): boolean => key.startsWith('ApexClass:') || key.startsWith('ApexTrigger:');
 
@@ -54,7 +54,7 @@ describe('the code of the Apex of the fixture project', () => {
   });
 
   it('gives every reference of the key of a field, a variable, a token and DML, at its place, and no other', () => {
-    expect(keyed).toHaveLength(185);
+    expect(keyed).toHaveLength(289);
     expect(keyed.filter((one) => one.stretch)).toEqual([]);
     const found = references.map(idOf).sort();
     expect(keyed.map(idOfKeyed).filter((id) => !found.includes(id))).toEqual([]);
@@ -338,6 +338,7 @@ describe('the resolver of Apex', () => {
       '5:32 references CustomField:invoice__c.external_id__c [External_Id__c] dml confirmed resolved',
       // A type of Salesforce that DML writes is an object, which nothing checks.
       '6:9 writes CustomObject:permissionsetassignment [PermissionSetAssignment] dml probable external delete',
+      '6:32 reads CustomObject:permissionsetassignment [PermissionSetAssignment] soql probable external',
       '7:9 writes CustomObject:permissionset [PermissionSet] dml probable external insert',
       '7:34 writes CustomField:permissionset.name [Name] field probable external',
       '7:46 writes CustomField:permissionset.label [Label] field probable external',
@@ -752,6 +753,280 @@ describe('the resolver of Apex', () => {
       'FIELD_NOT_DESCRIBED 4:25 {"object":"Contact","name":"AccountId"}',
       'FIELD_NOT_DESCRIBED 6:24 {"object":"Invoice__c","name":"Partner__c"}',
       'PATH_NOT_FOLLOWED 6:24 {"relationship":"Partner__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+    ]);
+  });
+
+  /** The line `Line__c`, whose lookup `Invoice__c` gives the invoice the child relationship `Lines__r`. */
+  const withLines = (source: ApexSource): void => {
+    source.object('Line__c', '<label>Line</label>');
+    source.field('Line__c', 'Invoice__c', ...lookup('Invoice__c', 'Lines'));
+    source.field('Line__c', 'Quantity__c', '<type>Number</type>');
+  };
+
+  it('reads the object and every field of a query, with a prefix, in subqueries, and what it binds', () => {
+    const analysis = analysed((source) => {
+      withLines(source);
+      source.apexClass(
+        'Queries',
+        code(
+          'public class Queries {',
+          '    Set<Id> ids;',
+          '    static final Integer MOST = 10;',
+          '    void m(Invoice__c inv, String term) {',
+          '        List<Account> a = [SELECT a.Name, Account.Industry FROM Account a WHERE Id IN :ids];',
+          '        List<Account> b = [SELECT Id, (SELECT Amount__c, (SELECT Quantity__c FROM Lines__r) FROM Invoices__r) FROM Account];',
+          '        List<Invoice__c> c = [SELECT Id FROM Invoice__c WHERE Account__c IN (SELECT Id FROM Account WHERE Industry = :term)];',
+          '        List<Invoice__c> d = [SELECT Id FROM Invoice__c WHERE Status__c = :inv.Status__c ORDER BY Account__r.Name LIMIT :MOST];',
+          '        update [SELECT Id FROM Invoice__c WHERE Amount__c > 0];',
+          '        String n = [SELECT Name FROM Account LIMIT 1].Name;',
+          '        List<Invoice__c> o = [SELECT TYPEOF Owner WHEN Group THEN Type ELSE Name END FROM Invoice__c];',
+          '        String s = [SELECT Status FROM AsyncApexJob LIMIT 1].Status;',
+          '        List<Account> g = [SELECT (SELECT Amount__c FROM a.Invoices__r), (SELECT Status__c FROM Account.Invoices__r) FROM Account a];',
+          '        List<Event> w = [SELECT TYPEOF e.What WHEN Account THEN Industry END, e.CreatedBy.Name FROM Event e];',
+          '        SObject one = [SELECT Id FROM Invoice__c LIMIT 1];',
+          '        update one;',
+          '        for (List<SObject> batch : [SELECT Id FROM Invoice__c]) {',
+          '            delete batch;',
+          '        }',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis)).toEqual([
+      // The alias and the name of the object in front of a field are no relationship.
+      '5:37 reads CustomField:account.name [Name] soql probable external',
+      '5:51 reads CustomField:account.industry [Industry] soql probable external',
+      '5:65 reads CustomObject:account [Account] soql confirmed external',
+      // A variable that a query binds is named in the query.
+      '5:88 reads ApexClass:queries#var:ids [ids] soql confirmed resolved',
+      // A subquery through a child relationship reads the object of the relationship, also inside another one.
+      '6:47 reads CustomField:invoice__c.amount__c [Amount__c] soql confirmed resolved',
+      '6:66 reads CustomField:line__c.quantity__c [Quantity__c] soql confirmed resolved',
+      '6:83 reads CustomObject:line__c [Lines__r] soql confirmed resolved',
+      '6:83 references CustomField:line__c.invoice__c [Lines__r] soql confirmed resolved',
+      '6:98 reads CustomObject:invoice__c [Invoices__r] soql confirmed resolved',
+      '6:98 references CustomField:invoice__c.account__c [Invoices__r] soql confirmed resolved',
+      '6:116 reads CustomObject:account [Account] soql confirmed external',
+      '7:46 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '7:63 reads CustomField:invoice__c.account__c [Account__c] soql confirmed resolved',
+      // A subquery of the filter reads its own object.
+      '7:93 reads CustomObject:account [Account] soql confirmed external',
+      '7:107 reads CustomField:account.industry [Industry] soql probable external',
+      '8:46 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '8:63 reads CustomField:invoice__c.status__c [Status__c] soql confirmed resolved',
+      // A bound expression is code, whose names stand in the query.
+      '8:80 reads CustomField:invoice__c.status__c [Status__c] soql confirmed resolved',
+      '8:99 reads CustomField:invoice__c.account__c [Account__r] soql confirmed resolved',
+      '8:110 reads CustomField:account.name [Name] soql probable external',
+      '8:122 reads ApexClass:queries#var:most [MOST] soql confirmed resolved',
+      // The records a query gives are of its object.
+      '9:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved update',
+      '9:32 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '9:49 reads CustomField:invoice__c.amount__c [Amount__c] soql confirmed resolved',
+      '10:28 reads CustomField:account.name [Name] soql probable external',
+      '10:38 reads CustomObject:account [Account] soql confirmed external',
+      '10:55 reads CustomField:account.name [Name] field probable external',
+      // The fields after ELSE are of the one object the relationship leads to, which no WHEN names.
+      '11:45 reads CustomField:invoice__c.ownerid [Owner] soql probable external',
+      '11:56 reads CustomObject:group [Group] soql probable external',
+      '11:67 reads CustomField:group.type [Type] soql probable external',
+      '11:77 reads CustomField:user.name [Name] soql probable external',
+      '11:91 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      // The records of an object the analysis does not know are kept by its name, as a declared type of it is: a
+      // field of them is read in the query, and not after it.
+      '12:28 reads CustomField:asyncapexjob.status [Status] soql probable external',
+      '12:40 reads CustomObject:asyncapexjob [AsyncApexJob] soql probable external',
+      // The alias and the name of the object in front of the relationship of a subquery are no relationship.
+      '13:43 reads CustomField:invoice__c.amount__c [Amount__c] soql confirmed resolved',
+      '13:60 reads CustomObject:invoice__c [Invoices__r] soql confirmed resolved',
+      '13:60 references CustomField:invoice__c.account__c [Invoices__r] soql confirmed resolved',
+      '13:82 reads CustomField:invoice__c.status__c [Status__c] soql confirmed resolved',
+      '13:105 reads CustomObject:invoice__c [Invoices__r] soql confirmed resolved',
+      '13:105 references CustomField:invoice__c.account__c [Invoices__r] soql confirmed resolved',
+      '13:123 reads CustomObject:account [Account] soql confirmed external',
+      // Nor in front of the relationship of a TYPEOF. A relationship that every org has is followed in a query too.
+      '14:42 reads CustomField:event.whatid [What] soql probable external',
+      '14:52 reads CustomObject:account [Account] soql confirmed external',
+      '14:65 reads CustomField:account.industry [Industry] soql probable external',
+      '14:81 reads CustomField:event.createdbyid [CreatedBy] soql probable external',
+      '14:91 reads CustomField:user.name [Name] soql probable external',
+      '14:101 reads CustomObject:event [Event] soql confirmed external',
+      // A query given to one record gives a record of its object, and a loop over it a list of them for each batch.
+      '15:39 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '16:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved update',
+      '17:52 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '18:13 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved delete',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('warns where a query names what nothing says, and gives rows of no object where it groups them', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Unknowns',
+        code(
+          'public class Unknowns {',
+          '    void m() {',
+          '        List<Account> a = [SELECT Id, (SELECT Name, Owner.Name FROM Things__r) FROM Account];',
+          '        List<Event> e = [SELECT TYPEOF What WHEN Account THEN Industry ELSE Name, Id END FROM Event];',
+          '        List<Event> f = [SELECT TYPEOF What WHEN Account THEN Industry ELSE Id END FROM Event];',
+          '        List<Task> t = [SELECT What.Name FROM Task];',
+          '        List<SObject> rows = [SELECT Account__c, SUM(Amount__c) total FROM Invoice__c GROUP BY Account__c];',
+          '        update rows;',
+          '        List<SObject> records = [SELECT Id FROM Invoice__c];',
+          '        update records;',
+          '        Integer n = [SELECT COUNT() FROM Invoice__c];',
+          '        List<Invoice__c> o = [SELECT TYPEOF Owner WHEN User THEN Username ELSE Name END FROM Invoice__c];',
+          '        List<Invoice__c> all = [SELECT FIELDS(ALL) FROM Invoice__c LIMIT 200];',
+          '        List<Account> s = [SELECT (SELECT Id FROM Ghosts__r WHERE Amount__c > :all[0].Amount__c AND Id IN (SELECT Account__c FROM Invoice__c)) FROM Account];',
+          '        List<Contact> c = [SELECT Sponsor.Email FROM Contact];',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis)).toEqual([
+      '3:85 reads CustomObject:account [Account] soql confirmed external',
+      '4:40 reads CustomField:event.whatid [What] soql probable external',
+      '4:50 reads CustomObject:account [Account] soql confirmed external',
+      '4:63 reads CustomField:account.industry [Industry] soql probable external',
+      '4:95 reads CustomObject:event [Event] soql confirmed external',
+      '5:40 reads CustomField:event.whatid [What] soql probable external',
+      '5:50 reads CustomObject:account [Account] soql confirmed external',
+      '5:63 reads CustomField:account.industry [Industry] soql probable external',
+      '5:89 reads CustomObject:event [Event] soql confirmed external',
+      '6:32 reads CustomField:task.whatid [What] soql probable external',
+      '6:47 reads CustomObject:task [Task] soql confirmed external',
+      // The alias of an aggregate is no field.
+      '7:38 reads CustomField:invoice__c.account__c [Account__c] soql confirmed resolved',
+      '7:54 reads CustomField:invoice__c.amount__c [Amount__c] soql confirmed resolved',
+      '7:76 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '7:96 reads CustomField:invoice__c.account__c [Account__c] soql confirmed resolved',
+      '9:49 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '10:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved update',
+      '11:42 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '12:45 reads CustomField:invoice__c.ownerid [Owner] soql probable external',
+      '12:56 reads CustomObject:user [User] soql confirmed external',
+      '12:66 reads CustomField:user.username [Username] soql probable external',
+      '12:94 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '13:57 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      // Of a subquery through a child relationship that nothing defines, what it binds and its subqueries of the
+      // filter are read.
+      '14:87 reads CustomField:invoice__c.amount__c [Amount__c] soql confirmed resolved',
+      '14:115 reads CustomField:invoice__c.account__c [Account__c] soql confirmed resolved',
+      '14:131 reads CustomObject:invoice__c [Invoice__c] soql confirmed resolved',
+      '14:149 reads CustomObject:account [Account] soql confirmed external',
+      // A name before a dot is a relationship, also one that nothing names as one.
+      '15:35 reads CustomField:contact.sponsorid [Sponsor] soql probable external',
+      '15:54 reads CustomObject:contact [Contact] soql confirmed external',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      // The lookup field behind a child relationship that nothing defines can have any name.
+      'PATH_NOT_FOLLOWED 3:69 {"relationship":"Things__r","notFollowed":["Name","Owner"],"origin":"parser:apex"}',
+      // The fields after ELSE are of objects nothing names. `Id` gives no reference where the object is known.
+      'PATH_NOT_FOLLOWED 4:40 {"relationship":"What","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 6:32 {"relationship":"What","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      // A row of a query that groups its rows is an `AggregateResult`, of no object.
+      'PATH_NOT_FOLLOWED 8:9 {"op":"update","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      // The relationship leads to one object the analysis knows, and the WHEN names it: ELSE is of others.
+      'PATH_NOT_FOLLOWED 12:45 {"relationship":"Owner","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      // FIELDS(ALL) reads fields the query does not name, and the warning bears on every answer.
+      'PATH_NOT_FOLLOWED 13:40 {"object":"Invoice__c","notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 14:51 {"relationship":"Ghosts__r","notFollowed":["Amount__c"],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 15:35 {"relationship":"Sponsor","notFollowed":["Email"],"endsAt":"field","origin":"parser:apex"}',
+    ]);
+    const messages = analysis.issues.map((one) => one.message);
+    expect([...messages.slice(0, 2), messages[5]]).toEqual([
+      'classes/Unknowns.cls, line 3: it is not known which object the child relationship "Things__r" of "Account" leads to, so the subquery through it was not followed.',
+      'classes/Unknowns.cls, line 4: the fields after ELSE are of the objects that "What" of "Event" leads to beside those after WHEN, which are not known, so "Name" was not followed.',
+      'classes/Unknowns.cls, line 13: "FIELDS(ALL)" reads fields of "Invoice__c" that the query does not name, so they were not followed.',
+    ]);
+  });
+
+  it('reads the objects of a search, with their fields and what the search binds', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Searches',
+        code(
+          'public class Searches {',
+          '    String term;',
+          '    void m() {',
+          "        List<List<SObject>> r = [FIND :term IN ALL FIELDS RETURNING Invoice__c(Amount__c WHERE Status__c = 'Sent' ORDER BY Account__r.Name), Account, Contact(Contact.LastName)];",
+          "        List<List<SObject>> s = [FIND 'x' RETURNING Account(Name WHERE Name != :term)];",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis)).toEqual([
+      '4:40 reads ApexClass:searches#var:term [term] sosl confirmed resolved',
+      '4:69 reads CustomObject:invoice__c [Invoice__c] sosl confirmed resolved',
+      '4:80 reads CustomField:invoice__c.amount__c [Amount__c] sosl confirmed resolved',
+      '4:96 reads CustomField:invoice__c.status__c [Status__c] sosl confirmed resolved',
+      '4:124 reads CustomField:invoice__c.account__c [Account__r] sosl confirmed resolved',
+      '4:135 reads CustomField:account.name [Name] sosl probable external',
+      '4:142 reads CustomObject:account [Account] sosl confirmed external',
+      '4:151 reads CustomObject:contact [Contact] sosl confirmed external',
+      '4:167 reads CustomField:contact.lastname [LastName] sosl probable external',
+      // What the filter of a returned object binds is read too.
+      '5:53 reads CustomObject:account [Account] sosl confirmed external',
+      '5:61 reads CustomField:account.name [Name] sosl probable external',
+      '5:72 reads CustomField:account.name [Name] sosl probable external',
+      '5:81 reads ApexClass:searches#var:term [term] sosl confirmed resolved',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('checks the names of a query against the descriptions of an org', () => {
+    const descriptions: ObjectDescription[] = [
+      {
+        name: 'Account',
+        fields: [
+          { name: 'Id', type: 'id', referenceTo: [], relationshipName: null },
+          { name: 'Name', type: 'string', referenceTo: [], relationshipName: null },
+        ],
+        childRelationships: [
+          { relationshipName: 'Cases', childSObject: 'Case', field: 'AccountId' },
+          { relationshipName: 'Opportunities', childSObject: 'Opportunity', field: 'AccountId' },
+        ],
+      },
+      // The description of the child object lacks the field behind the relationship.
+      {
+        name: 'Opportunity',
+        fields: [{ name: 'Id', type: 'id', referenceTo: [], relationshipName: null }],
+        childRelationships: [],
+      },
+    ];
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'DescribedQueries',
+        code(
+          'public class DescribedQueries {',
+          '    void m() {',
+          '        List<Account> a = [SELECT Name, Rating, (SELECT Id FROM Cases), (SELECT Id FROM Ghosts__r) FROM Account];',
+          '        List<Account> b = [SELECT (SELECT Id FROM Opportunities) FROM Account];',
+          '    }',
+          '}',
+        ),
+      );
+    }, descriptions);
+    expect(said(analysis)).toEqual([
+      '3:35 reads CustomField:account.name [Name] soql confirmed external',
+      '3:41 reads null [Rating] soql probable unresolved of Account',
+      // The description of the parent names the field behind the child relationship.
+      '3:65 reads CustomObject:case [Cases] soql confirmed external',
+      '3:65 references CustomField:case.accountid [Cases] soql confirmed external',
+      '3:105 reads CustomObject:account [Account] soql confirmed external',
+      // The description of the child object lacks the field behind the child relationship.
+      '4:51 reads CustomObject:opportunity [Opportunities] soql confirmed external',
+      '4:51 references null [Opportunities] soql probable unresolved of Opportunity',
+      '4:71 reads CustomObject:account [Account] soql confirmed external',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      'FIELD_NOT_DESCRIBED 3:41 {"object":"Account","name":"Rating"}',
+      'PATH_NOT_FOLLOWED 3:89 {"relationship":"Ghosts__r","notFollowed":[],"origin":"parser:apex"}',
+      'FIELD_NOT_DESCRIBED 4:51 {"object":"Opportunity","name":"AccountId"}',
     ]);
   });
 });

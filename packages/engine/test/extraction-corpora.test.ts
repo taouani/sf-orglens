@@ -108,6 +108,22 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * formulas, as before. `RELATIONSHIP_GUESSED` is a name nothing defines that the code uses as a relationship, which
  * the resolver takes for the lookup field the rule names (`Account__r` is `Account__c`): all 133 are of NPSP, which
  * names relationships of the packages it builds on.
+ *
+ * Since 26 November 2026 the resolver reads queries and searches too (decision record 0088): `soql` is the object a
+ * query reads and each field of its select list, its filter, its order and its groups, also through a relationship
+ * and in a subquery, where the lookup field behind the child relationship is a reference too, and `sosl` the same of
+ * a search. What a query binds is read as code, with the via of the query, and one bind of NPSP holds a token. The
+ * other references are as before: a script compared them one by one in NPSP. These counts were not checked by hand
+ * beyond 30 references of NPSP drawn at random and the subqueries of NPSP and EDA: the fixture project and its key
+ * hold each case. The queries add warnings of two kinds. A relationship whose object the model does not know, with
+ * the names after it: `ApexClass` (of a job), `CronJobDetail`, `UserLicense`, `LoginHistory`, `SetupOwner`,
+ * `PermissionSet`, `ContentDocument` and `TriggerObjectOrEvent`, and in NPSP a relationship of the packages it builds
+ * on, which the resolver guessed: of the warnings at a relationship, Apex Recipes has 1, Nebula Logger 44, NPSP 286
+ * (232 at a guessed one), PMM 7, V4S 2 and EDA 14, and `RELATIONSHIP_GUESSED` of NPSP is 282. And a subquery through a
+ * child relationship nothing defines, which is not followed (Apex Recipes 1, NPSP 13, Outbound Funds 3). Since the
+ * review of the pull request, `FIELDS(STANDARD)` gives a warning too, since it reads fields it does not name: Apex
+ * Recipes has 3, of `Organization`. No query in brackets of the public codebases has a `TYPEOF`: the one of Nebula
+ * Logger stands in a text, which is not read yet.
  */
 interface Expected {
   readonly components: number;
@@ -131,11 +147,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 161,
       object: 1,
       'record-of': 11,
+      soql: 414,
+      sosl: 16,
       token: 20,
       type: 1011,
       value: 12,
     },
-    issues: { PATH_NOT_FOLLOWED: 15 },
+    issues: { PATH_NOT_FOLLOWED: 20 },
   },
   'nebula-logger': {
     components: 3979,
@@ -155,6 +173,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       lookup: 17,
       new: 627,
       'record-of': 55,
+      soql: 1417,
       summary: 16,
       text: 32,
       token: 1006,
@@ -162,7 +181,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 6,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 19 },
+    issues: { PATH_NOT_FOLLOWED: 48 },
   },
   npsp: {
     components: 29_761,
@@ -185,15 +204,17 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 3401,
       object: 16,
       'record-of': 193,
+      soql: 10_188,
+      sosl: 2,
       summary: 4,
       template: 2,
       text: 18,
-      token: 3810,
+      token: 3811,
       type: 26_036,
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 255, RELATIONSHIP_GUESSED: 133 },
+    issues: { PATH_NOT_FOLLOWED: 450, RELATIONSHIP_GUESSED: 282 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -216,11 +237,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 187,
       object: 14,
       'record-of': 27,
+      soql: 752,
+      sosl: 4,
       token: 873,
       type: 1816,
       value: 25,
     },
-    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 5 },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 12 },
   },
   // Added on 25 November 2026, with the codebases.
   'volunteers-for-salesforce': {
@@ -243,12 +266,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'merge-field': 404,
       new: 241,
       object: 4,
+      soql: 1217,
       summary: 24,
       template: 13,
       token: 163,
       type: 973,
     },
-    issues: { PATH_NOT_FOLLOWED: 9 },
+    issues: { PATH_NOT_FOLLOWED: 11 },
   },
   'outbound-funds': {
     components: 841,
@@ -268,11 +292,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       lookup: 15,
       new: 25,
       object: 6,
+      soql: 62,
       summary: 6,
       token: 104,
       type: 239,
     },
-    issues: { PATH_NOT_FOLLOWED: 7 },
+    issues: { PATH_NOT_FOLLOWED: 10 },
   },
   // Added on 25 November 2026, for the check by hand of Phase 2.
   'coral-cloud': {
@@ -294,6 +319,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       override: 1,
       path: 4,
       record: 1,
+      soql: 109,
       summary: 6,
       token: 11,
       type: 161,
@@ -315,11 +341,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       lookup: 69,
       new: 1720,
       'record-of': 2,
+      soql: 5678,
       text: 3,
       token: 508,
       type: 12_910,
     },
-    issues: { PATH_NOT_FOLLOWED: 21 },
+    issues: { PATH_NOT_FOLLOWED: 35 },
   },
 };
 

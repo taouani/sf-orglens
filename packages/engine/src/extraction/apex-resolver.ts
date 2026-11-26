@@ -1,7 +1,7 @@
 /**
- * What the code of Apex refers to (decision record 0087): the fields of records it reads and writes, also through
- * relationships, the variables and properties of classes, the tokens of objects and fields, and the objects that DML
- * writes.
+ * What the code of Apex refers to (decision records 0087 and 0088): the fields of records it reads and writes, also
+ * through relationships, the variables and properties of classes, the tokens of objects and fields, the objects that
+ * DML writes, and the objects and fields that queries and searches read.
  *
  * It runs once every class and trigger was read (`apex.ts`), on the declarations the reader kept: an index of the
  * classes of the snapshot with the declared types of their variables, properties and methods, the classes they
@@ -13,10 +13,15 @@
  * A name of an object or a field is checked against the files and the descriptions of the snapshot
  * (`apex-schema.ts`). One that nothing checks is `probable`. What cannot be resolved has a warning, and nothing is
  * dropped without one where the code shows that it refers to something: a relationship whose end is not known, a
- * name of a relationship that is guessed, a name the org did not describe, and DML on records of no known object.
+ * name of a relationship that is guessed, a name the org did not describe, DML on records of no known object, a
+ * subquery through a child relationship of no known object, the fields after `ELSE` of a `TYPEOF`, and `FIELDS()`
+ * of a query, which reads fields it does not name.
  *
- * Queries and searches, calls and names in texts are read by later parts of work package 4 and by work package 5.
- * The type of the records a query gives is known here.
+ * A query in brackets reads the object after `FROM` and every field it names, in any clause, from a record of that
+ * object, also in a subquery through a child relationship, which refers to the lookup field behind the relationship.
+ * What it binds is read as code. A search reads each object it returns and the fields named there. Each is named as
+ * the query or the search names it (`via`). Calls and names in texts, such as a query in a string, are read by a
+ * later part of work package 4 and by work package 5.
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
@@ -24,7 +29,7 @@ import { cut, type AnalysisIssue } from './analysed.ts';
 import { MOST_NAMES_SHOWN } from './raw-references.ts';
 import type { ApexPart, ApexTypes } from './apex.ts';
 import type { ApexSchema, Checked } from './apex-schema.ts';
-import type { Expr, Name, Param, Stmt, TypeRef } from './apex-syntax.ts';
+import type { Expr, FieldPath, Name, Param, Query, Search, Stmt, TypeOf, TypeRef } from './apex-syntax.ts';
 
 /** A class or a trigger of the snapshot, with the parts of it that are components. */
 export interface ApexUnitInput {
@@ -271,6 +276,11 @@ class Resolver implements ApexResolver {
   private found = new Map<string, Reference>();
   private issues: AnalysisIssue[] = [];
   private issueIds = new Set<string>();
+  /**
+   * How the code names the fields and the variables it reads and writes: `field` in code, `soql` in a query and
+   * `sosl` in a search, also in an expression that one binds.
+   */
+  private named: 'field' | 'soql' | 'sosl' = 'field';
 
   constructor(units: readonly ApexUnitInput[], schema: ApexSchema, types: ApexTypes) {
     this.schema = schema;
@@ -510,6 +520,12 @@ class Resolver implements ApexResolver {
   /** The more exact of the declared type of a variable and the type of the value it is given. */
   private refine(declared: Type, actual: Type): Type {
     if (declared.k === 'record' && actual.k === 'record') return declared.object === undefined ? actual : declared;
+    // Only a query gives a list where one record is declared (`SObject one = [SELECT ...]`), and only the loop over
+    // a query gives one record where a list is declared, a list for each batch (`for (List<SObject> batch : ...)`).
+    if (declared.k === 'record' && actual.k === 'list' && actual.of.k === 'record') {
+      return this.refine(declared, actual.of);
+    }
+    if (declared.k === 'list' && actual.k === 'record') return { k: 'list', of: this.refine(declared.of, actual) };
     if (declared.k === 'list' && actual.k === 'list') return { k: 'list', of: this.refine(declared.of, actual.of) };
     if (declared.k === 'map' && actual.k === 'map') {
       return { k: 'map', key: declared.key, value: this.refine(declared.value, actual.value) };
@@ -621,8 +637,8 @@ class Resolver implements ApexResolver {
       known: true,
       notDescribed: false,
     };
-    if (access !== 'write') this.add(at, 'reads', target, 'field');
-    if (access !== 'read') this.add(at, 'writes', target, 'field');
+    if (access !== 'write') this.add(at, 'reads', target, this.named);
+    if (access !== 'read') this.add(at, 'writes', target, this.named);
   }
 
   private retract(ids: readonly (string | undefined)[] | undefined): void {
@@ -904,18 +920,10 @@ class Resolver implements ApexResolver {
       case 'instanceof':
         this.ev(expr.expr);
         return VALUE;
-      case 'soql': {
-        // What the query names is read with the queries (part C). The records it gives are of its object, and what
-        // stands after `FROM` is always an object, also one nothing knows of.
-        const [from] = expr.query.from;
-        if (from === undefined) return { type: { k: 'list', of: { k: 'record', object: undefined } } };
-        const of: Type = this.schema.isObject(from.text)
-          ? { k: 'record', object: from.text }
-          : { k: 'named', name: from.text };
-        return { type: { k: 'list', of } };
-      }
+      case 'soql':
+        return { type: this.naming('soql', () => this.soql(expr.query)) };
       case 'sosl':
-        return { type: { k: 'list', of: { k: 'list', of: { k: 'record', object: undefined } } } };
+        return { type: this.naming('sosl', () => this.sosl(expr.search)) };
       case 'unknown':
         for (const part of expr.parts) this.ev(part);
         return VALUE;
@@ -1044,15 +1052,15 @@ class Resolver implements ApexResolver {
     if (folded === 'id') return VALUE;
     const child = this.schema.child(object, name.text);
     if (child !== null) {
-      this.add(name, 'references', child.field, 'field', { object: child.object });
+      this.add(name, 'references', child.field, this.named, { object: child.object });
       this.notDescribed(name, child.field, child.object);
       return { type: { k: 'list', of: { k: 'record', object: child.object } } };
     }
     const report = (checked: Checked, tier?: ConfidenceTier): string[] => {
       const made: string[] = [];
       const more = { object, ...(tier === undefined ? {} : { tier }) };
-      if (access !== 'write') made.push(this.add(name, 'reads', checked, 'field', more) ?? '');
-      if (access !== 'read') made.push(this.add(name, 'writes', checked, 'field', more) ?? '');
+      if (access !== 'write') made.push(this.add(name, 'reads', checked, this.named, more) ?? '');
+      if (access !== 'read') made.push(this.add(name, 'writes', checked, this.named, more) ?? '');
       this.notDescribed(name, checked, object);
       return made.filter((id) => id !== '');
     };
@@ -1327,6 +1335,169 @@ class Resolver implements ApexResolver {
     }
     return VALUE;
   }
+
+  // -------------------------------------------------------------- queries and searches
+
+  /** Runs `run` with the fields and variables it names named as `via`. */
+  private naming<T>(via: 'soql' | 'sosl', run: () => T): T {
+    const outer = this.named;
+    this.named = via;
+    try {
+      return run();
+    } finally {
+      this.named = outer;
+    }
+  }
+
+  /**
+   * A query reads the object after `FROM`, also one nothing knows of, since what stands there is always an object.
+   * Gives the type of what it gives: a list of records of its object, a list of `AggregateResult`, or a number.
+   */
+  private soql(query: Query): Type {
+    const [from, ...more] = query.from;
+    const object = more.length === 0 ? from : undefined;
+    if (object !== undefined) this.add(object, 'reads', this.schema.object(object.text), this.named);
+    this.queried(query, object?.text);
+    if (query.gives === 'count') return OTHER;
+    if (query.gives === 'aggregates') return { k: 'list', of: { k: 'named', name: 'AggregateResult' } };
+    if (object === undefined) return { k: 'list', of: { k: 'record', object: undefined } };
+    const records: Type = this.schema.isObject(object.text)
+      ? { k: 'record', object: object.text }
+      : { k: 'named', name: object.text };
+    return { k: 'list', of: records };
+  }
+
+  /**
+   * What a query names beside its object, which is `object`: the fields of every clause, the subqueries of the
+   * select list through child relationships, `TYPEOF`, the subqueries of the filter and the expressions it binds,
+   * which are read as code. Of a subquery whose object is not known, only what it binds and its subqueries of the
+   * filter are read: the warning about its child relationship stands for the rest.
+   */
+  private queried(query: Query, object: string | undefined): void {
+    for (const bind of query.binds) this.ev(bind);
+    for (const nested of query.nested) this.soql(nested);
+    if (object === undefined) {
+      for (const child of query.children) this.queried(child, undefined);
+      return;
+    }
+    const prefixes = [query.alias, foldName(object)];
+    for (const path of query.fields) this.fieldPath(object, Resolver.unprefixed(path, prefixes));
+    for (const every of query.everyField) this.everyField(object, every);
+    for (const child of query.children) this.childQuery(object, child, prefixes);
+    for (const typeOf of query.typeOfs) this.typeOf(object, typeOf, prefixes);
+  }
+
+  /**
+   * A path without the alias of its object or the name of its object in front: `a.Name` of `FROM Account a`, and
+   * `Contact.Account.Name` of `FROM Contact`.
+   */
+  private static unprefixed(path: FieldPath, prefixes: readonly (string | undefined)[]): FieldPath {
+    const [first] = path;
+    return path.length > 1 && first !== undefined && prefixes.includes(foldName(first.text)) ? path.slice(1) : path;
+  }
+
+  /** A path from a record of `object`, as `Account__r.Tier__c`: each name but the last is a relationship. */
+  private fieldPath(object: string, path: FieldPath): Value {
+    let value: Value = { type: { k: 'record', object } };
+    path.forEach((name, index) => {
+      value = this.dot(value, name, 'read', index < path.length - 1);
+    });
+    return value;
+  }
+
+  /**
+   * A subquery of the select list, through a child relationship of `parent`: the relationship refers to the lookup
+   * field of the child object that defines it, and the subquery reads that object. Of a relationship that nothing
+   * defines the lookup field can have any name, so a warning stands for the subquery.
+   */
+  private childQuery(parent: string, child: Query, prefixes: readonly (string | undefined)[]): void {
+    const from = Resolver.unprefixed(child.from, prefixes);
+    const name = from.at(-1);
+    const found = name === undefined || from.length > 1 ? null : this.schema.child(parent, name.text);
+    if (name !== undefined && found !== null) {
+      this.add(name, 'references', found.field, this.named, { object: found.object });
+      this.notDescribed(name, found.field, found.object);
+      this.add(name, 'reads', this.schema.object(found.object), this.named);
+      this.queried(child, found.object);
+      return;
+    }
+    if (name !== undefined) {
+      this.warn(
+        name,
+        'PATH_NOT_FOLLOWED',
+        `it is not known which object the child relationship "${cut(name.text, 80)}" of "${cut(parent, 80)}" leads to, so the subquery through it was not followed.`,
+        { relationship: name.text, notFollowed: namesOf(child.fields), origin: 'parser:apex' },
+      );
+    }
+    this.queried(child, undefined);
+  }
+
+  /**
+   * `FIELDS(ALL)`, `FIELDS(CUSTOM)` and `FIELDS(STANDARD)` read fields of `object` that the query does not name. Which
+   * they are is not read, so a warning that bears on every answer stands for them.
+   */
+  private everyField(object: string, every: Name): void {
+    this.warn(
+      every,
+      'PATH_NOT_FOLLOWED',
+      `"FIELDS(${cut(every.text, 20)})" reads fields of "${cut(object, 80)}" that the query does not name, so they were not followed.`,
+      { object, notFollowed: [], origin: 'parser:apex' },
+    );
+  }
+
+  /**
+   * `TYPEOF` of a relationship of `object` that leads to several objects: the relationship refers to its lookup
+   * field, and each object after `WHEN` is read with its fields. The fields after `ELSE` are of the other objects
+   * the relationship leads to, which are not known, unless it leads to one object that no `WHEN` names. Where a
+   * `WHEN` names the one object the analysis knows, the code says that the relationship leads to others too.
+   */
+  private typeOf(object: string, typeOf: TypeOf, prefixes: readonly (string | undefined)[]): void {
+    const path = Resolver.unprefixed(typeOf.relationship, prefixes);
+    let value: Value = { type: { k: 'record', object } };
+    for (const name of path) value = this.dot(value, name, 'read', true);
+    for (const when of typeOf.whens) {
+      this.add(when.object, 'reads', this.schema.object(when.object.text), this.named);
+      for (const field of when.fields) this.fieldPath(when.object.text, field);
+    }
+    const { type } = value;
+    const one = type.k === 'record' ? type.object : undefined;
+    if (one !== undefined && !typeOf.whens.some((when) => foldName(when.object.text) === foldName(one))) {
+      for (const field of typeOf.otherwise) this.fieldPath(one, field);
+      return;
+    }
+    const relationship = path.at(-1);
+    const names = namesOf(typeOf.otherwise);
+    if (relationship === undefined || names.length === 0) return;
+    this.warn(
+      relationship,
+      'PATH_NOT_FOLLOWED',
+      `the fields after ELSE are of the objects that "${cut(relationship.text, 80)}" of "${cut(object, 80)}" leads to beside those after WHEN, which are not known, so "${cut(names.join(', '), 200)}" was not followed.`,
+      { relationship: relationship.text, notFollowed: names, endsAt: 'field', origin: 'parser:apex' },
+    );
+  }
+
+  /** A search reads each object it returns, with its fields. Gives lists of records of objects not known here. */
+  private sosl(search: Search): Type {
+    for (const bind of search.binds) this.ev(bind);
+    for (const { object, fields } of search.returning) {
+      this.add(object, 'reads', this.schema.object(object.text), this.named);
+      for (const path of fields) this.fieldPath(object.text, Resolver.unprefixed(path, [foldName(object.text)]));
+    }
+    return { k: 'list', of: { k: 'list', of: { k: 'record', object: undefined } } };
+  }
+}
+
+/**
+ * The names of paths that were not followed, each once and at most `MOST_NAMES_SHOWN` of them, without `Id`, which
+ * gives no reference where its object is known (decision record 0082).
+ */
+function namesOf(paths: readonly FieldPath[]): string[] {
+  const names = new Map<string, string>();
+  for (const name of paths.flat()) {
+    const folded = foldName(name.text);
+    if (folded !== 'id' && !names.has(folded)) names.set(folded, name.text);
+  }
+  return [...names.values()].slice(0, MOST_NAMES_SHOWN);
 }
 
 /** The name of the last part of a key: `Result` of `ApexClass:invoicebatch#inner:result`, folded. */

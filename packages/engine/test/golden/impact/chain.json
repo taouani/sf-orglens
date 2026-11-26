@@ -103,6 +103,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoiceservice#method:openinvoices(id)",
+      "type": "ApexClass",
+      "name": "InvoiceService.openInvoices(Id)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:openinvoices(id)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 11,
+        "column": 25
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:parsertorture#method:describe(sobject)",
       "type": "ApexClass",
       "name": "ParserTorture.describe(SObject)",
@@ -519,6 +539,26 @@
         "file": "force-app/main/default/classes/InvoiceBatch.cls",
         "line": 11,
         "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicebatch#method:start(database.batchablecontext)",
+      "type": "ApexClass",
+      "name": "InvoiceBatch.start(Database.BatchableContext)",
+      "file": "force-app/main/default/classes/InvoiceBatch.cls",
+      "depth": 4,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicebatch#method:start(database.batchablecontext)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceBatch.cls",
+        "line": 19,
+        "column": 24
       },
       "package": null
     },
