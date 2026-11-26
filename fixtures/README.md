@@ -172,9 +172,10 @@ is about (`docs/research/phase-2/real-org.md`).
 
 ## The answer key
 
-The key was written by hand, by reading the files, before any analyser existed. It is the measure analysers are
-scored with, so it must not be produced by one. Change it by hand, in the same pull request as the file it
-describes, and never to make an analyser pass.
+The key was written by hand, by reading the files, before any analyser existed. Version 2 has one exception: the
+entries of the report type and the quick action were written in the pull request that added their analysers (work
+package 8 of Phase 2). It is the measure analysers are scored with, so it must not be produced by one. Change it by
+hand, in the same pull request as the file it describes, and never to make an analyser pass.
 
 It has six parts:
 

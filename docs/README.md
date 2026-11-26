@@ -16,8 +16,8 @@ Everything that explains why OrgLens is built the way it is lives here, in git, 
 
 ## Phase plans
 
-| Phase                     | Plan                                 | State                                                                                                                                                              |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0 Foundations             | [plans/phase-0.md](plans/phase-0.md) | Approved on 2026-11-11. Built. [Test plan](test-plans/phase-0.md), [report](reports/phase-0.md). Closed when the maintainer has run the test plan.                 |
-| 1 First slice             | [plans/phase-1.md](plans/phase-1.md) | Approved with one change on 2026-11-15. Built. [Test plan](test-plans/phase-1.md), [report](reports/phase-1.md). Closed when the maintainer has run the test plan. |
-| 2 Flows and configuration | [plans/phase-2.md](plans/phase-2.md) | Approved on 2026-11-22, with the six answers of the maintainer. Nothing of it is built.                                                                            |
+| Phase                     | Plan                                 | State                                                                                                                                                                                                                |
+| ------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Foundations             | [plans/phase-0.md](plans/phase-0.md) | Approved on 2026-11-11. Built. [Test plan](test-plans/phase-0.md), [report](reports/phase-0.md). Closed: the maintainer ran the test plan on 2026-11-23.                                                             |
+| 1 First slice             | [plans/phase-1.md](plans/phase-1.md) | Approved with one change on 2026-11-15. Built. [Test plan](test-plans/phase-1.md), [report](reports/phase-1.md). Closed: the maintainer ran the test plan on 2026-11-23, and Phase 2 made the corrections it showed. |
+| 2 Flows and configuration | [plans/phase-2.md](plans/phase-2.md) | Approved on 2026-11-22, with the six answers of the maintainer. Built. [Test plan](test-plans/phase-2.md), [report](reports/phase-2.md). Closed when the maintainer has run the test plan.                           |
