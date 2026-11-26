@@ -15,8 +15,7 @@ import type { AnalysedComponent } from '../src/extraction/analysed.ts';
 import { loadApexReader } from '../src/extraction/apex-reader.ts';
 import type { ApexReader } from '../src/extraction/apex-syntax.ts';
 import { readFolders } from '../src/sources/folder.ts';
-import { resolveComponents, type ResolvedComponent } from '../src/sources/resolve.ts';
-import type { SourceTree } from '../src/sources/tree.ts';
+import { resolveComponents } from '../src/sources/resolve.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
 import { ApexSource, codes, viaOf } from './helpers/written-source.ts';
 
@@ -191,7 +190,7 @@ describe('the analysis of Apex', () => {
         [
           'public class Parts {',
           '    Integer a = 1, b;',
-          '    static { a = 2; }',
+          '    static { Invoice__c zero; }',
           '    { b = 3; }',
           '    static { Invoice__c first; }',
           '    public String label { get; set; }',
@@ -220,18 +219,13 @@ describe('the analysis of Apex', () => {
       'ApexTrigger:oninvoice#inner:helper OnInvoice.Helper {"kind":"class"}',
       'ApexTrigger:oninvoice#inner:helper/method:run(invoice__c) OnInvoice.Helper.run(Invoice__c) {}',
     ]);
-    // The two static initialisers are one component: its definition is the text of both.
-    const twice = analysis.components.find((one) => one.key === 'ApexClass:parts#init:static');
-    const once = analyseSource(
-      ...((): [SourceTree, ResolvedComponent[]] => {
-        const source = new ApexSource();
-        source.apexClass('Parts', 'public class Parts {\n    static { a = 2; }\n}\n');
-        return [source.tree, source.listed];
-      })(),
-      { apex: reader },
-    ).components.find((one) => one.key === 'ApexClass:parts#init:static');
-    expect(twice?.definition?.contentHash).not.toEqual(once?.definition?.contentHash);
+    // The two static initialisers are one component: its definition is the text of both, and it uses what both use.
+    expect(analysis.components.find((one) => one.key === 'ApexClass:parts#init:static')?.definition).toEqual({
+      path: 'classes/Parts.cls',
+      contentHash: hash('sha256', 'static { Invoice__c zero; }\nstatic { Invoice__c first; }', 'buffer'),
+    });
     expect(usesOf(analysis)).toEqual([
+      'ApexClass:parts#init:static 3:14 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
       'ApexClass:parts#init:static 5:14 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
       'ApexTrigger:oninvoice 1:22 triggers-on CustomObject:invoice__c [Invoice__c] declaration confirmed resolved',
       'ApexTrigger:oninvoice#inner:helper/method:run(invoice__c) 2:29 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
@@ -296,9 +290,10 @@ describe('the analysis of Apex', () => {
     ]);
   });
 
-  it('refers to a class, an inner type and an object it uses as a type, and to nothing of Salesforce', () => {
+  it('refers to a class, an inner type and an object it uses as a type, and to nothing of Salesforce or itself', () => {
     const analysis = analysed((source) => {
       source.apexClass('Base', 'public virtual class Base {\n    public class Inner { }\n}\n');
+      source.apexClass('Pages', 'public class Pages implements Iterable<Pages> {\n    Pages next;\n}\n');
       source.apexClass('Able', 'public interface Able { }\n');
       source.apexClass(
         'Uses',
@@ -346,6 +341,10 @@ describe('the analysis of Apex', () => {
       'ApexClass:uses#var:account 6:34 uses-type CustomObject:account [Account] new confirmed external',
       'ApexClass:uses#var:inner 3:5 uses-type ApexClass:base#inner:inner [Base.Inner] type confirmed resolved',
       'ApexClass:uses#var:own 4:5 uses-type ApexClass:uses#inner:own [Own] type confirmed resolved',
+    ]);
+    // A class that names itself as a type has no reference to itself. A member of it that names it has one.
+    expect(usesOf(analysis).filter((one) => one.startsWith('ApexClass:pages'))).toEqual([
+      'ApexClass:pages#var:next 2:5 uses-type ApexClass:pages [Pages] type confirmed resolved',
     ]);
   });
 
