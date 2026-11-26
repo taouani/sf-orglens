@@ -4,6 +4,7 @@
 - Date: 2026-11-25
 - Decisions: none (it builds what record 0061 leaves to work package 6 of the Phase 2 plan, as a choice of the
   author, which the maintainer can strike)
+- Changed by: [0082](0082-what-phase-2-left-open-about-flows-comes-first.md), in one point, to be built in the first pull request of Phase 3: a path of which only the field `Id` is not followed has no warning, so point 3 holds for every other path
 
 ## Context
 

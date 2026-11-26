@@ -49,7 +49,7 @@ The weakness of mark 4 is the one of Phase 1. I wrote the analysers and made the
 pull request read the 23 flows, the workflow rules and the record types again and found the same result. It is a
 reader of the same kind as I am.
 
-The seven missed names, which are yours to decide on (see "Open with you"):
+The seven missed names, which were yours to decide on (see "Open with you"):
 
 - One flow of Coral Cloud names the flow of a package that it overrides (`overriddenFlow`). The reader of flows does
   not read that value, and record 0061 does not name it among what is not read: I did not think of it.
@@ -179,7 +179,8 @@ The snapshot of the test org stays partial, for the six components that Phase 1 
   and the hint names the key to use, `Flow:invoice_after_save`. A name with the element, such as
   `Invoice_After_Save.Update_Account`, works. Not corrected in this phase. The release notes say it.
 - The seven missed names, the token of PMM, and the warning for `Id` at the end of a path (10 of the 24 paths not
-  followed in PMM end at `Id`): yours to decide.
+  followed in PMM end at `Id`): you decided on 26 November 2026 (record 0082). The first pull request of Phase 3
+  reads the two kinds of names and drops the warning for `Id`, and the token stays unread.
 - [Issue 86](https://github.com/taouani/sf-orglens/issues/86): two older ways the analysis drops a name without a
   warning, found by a review of this phase. [Issue 79](https://github.com/taouani/sf-orglens/issues/79): the number of
   queries of the cross-check where many types are near the limit.
@@ -203,10 +204,13 @@ The snapshot of the test org stays partial, for the six components that Phase 1 
    and the version is on npm.
 3. **The seven missed names.** Whether the reader of flows reads `overriddenFlow` (the flow it overrides) and
    `dataTypeMappings` (the object handed to a generic Apex action). Each is a line in record 0061 and a small change.
-   My recommendation: read both, in the first pull request of Phase 3.
+   My recommendation: read both, in the first pull request of Phase 3. Answered: you chose that with the Phase 3 plan
+   on 26 November 2026 (record 0082). It is built in that pull request, not in this phase.
 4. **The warning for `Id` at the end of a path.** It says that a path was not followed where nothing is behind it to
-   miss. My recommendation: drop it for `Id`.
+   miss. My recommendation: drop it for `Id`. Answered: you chose that with the Phase 3 plan on 26 November 2026
+   (record 0082). It is built in the first pull request of Phase 3, not in this phase.
 5. **How you count the 100,000 components of your targets** (record 0037). Asked on 15 November 2026.
-6. **The draft of the Phase 3 plan** and its questions. Nothing of Phase 3 is built before you approve it.
+6. **The draft of the Phase 3 plan** and its questions. Done: you took the recommended answers and approved it on 26
+   November 2026.
 7. **Choices of mine that are yours to strike.** Records 0059 to 0078 each list the choices their author made. The
    ones with the most weight are named in the status of each work package in the plan.

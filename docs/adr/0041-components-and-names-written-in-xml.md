@@ -6,6 +6,7 @@
 - Changed by: [0065](0065-record-types-field-sets-and-records-of-custom-metadata.md), in one point: of the ten kinds of parts of an object, record types and field sets are read as well
 - Changed by: [0070](0070-an-object-refers-to-what-overrides-its-actions.md), in one point: an object refers to the page or component that each override of one of its actions names
 - Changed by: [0075](0075-two-more-objects-show-the-fields-of-a-person-account.md), in one point: a name that ends in `__pc` is read the same on the objects `PersonAccount` and `BusinessAccount`, and where the snapshot defines no such field of the contact and defines the field as the object shows it, the name is that field
+- Changed by: [0082](0082-what-phase-2-left-open-about-flows-comes-first.md), in one point, to be built in the first pull request of Phase 3: a path of which only the field `Id` is not followed gives no warning `PATH_NOT_FOLLOWED`
 
 ## Context
 

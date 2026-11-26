@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-23
 - Decisions: none (an answer of the maintainer to work package 4 of the Phase 2 plan)
+- Changed by: [0082](0082-what-phase-2-left-open-about-flows-comes-first.md), in one point, to be built in the first pull request of Phase 3: a name alone that fits a flow and its definition means the flow, and the answer names the definition
 
 ## Context
 

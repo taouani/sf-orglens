@@ -1,9 +1,10 @@
 # Phase 3 plan: Apex
 
-Status: **draft**, for your approval. Nothing of Phase 3 is built before you approve it. The six questions of
-section 4 are yours to answer. The plan is written for the recommended answers and says where another answer
-changes it.
-Date: 2026-11-25
+Status: **approved** on 26 November 2026. You took the recommended answer to each of the six questions of section 4
+and approved the plan. The answers are written in below section 4, and four of them have decision records (0079 to
+0082). The plan was written for the recommended answers, so its work packages stand as they were drafted. Nothing of
+it is built yet.
+Date: 2026-11-25, with the answers and the approval written in on 2026-11-26
 Parent document: [OrgLens re-architecture plan](re-architecture-plan.md)
 Before it: [Phase 2 plan](phase-2.md), [Phase 2 report](../reports/phase-2.md), and the Apex trial of Phase 0
 ([report](../research/phase-0/apex-trial.md), record [0018](../adr/0018-apex-analysis-foundation.md))
@@ -86,7 +87,7 @@ At the end of Phase 3, an impact answer holds the Apex of an org, method by meth
 - The data flow inside the JavaScript of a Lightning component beyond its imports and the Apex it calls by name,
   and anything of the markup of a component beyond the components it holds and the fields it names in its
   attributes.
-- The merge fields of a Visualforce page, unless Q1 says otherwise. Visualforce components, s-controls, static
+- The merge fields of a Visualforce page, by your answer to Q1. Visualforce components, s-controls, static
   resources, Lightning pages and the rest of the presentation tier stay in Phase 6.
 - Reading the records of custom settings, deferred by record 0012.
 - The body of the Apex of a managed package, which as far as I know Salesforce hides (finding 11). A call into a
@@ -109,6 +110,33 @@ another answer changes it. Your answers get decision records, as those of the Ph
 | Q4  | **Pass marks for this phase.**                                                                                                                                                                                                                                                                                                                                                                                                          | Proposed: (1) every entry of the new key that is not stretch is found at its line and column, nothing is reported that the key does not hold, no negative case is hit, and the marks of Phases 1 and 2 still hold. (2) Every class and trigger of the eight public codebases is read without an error of the analysis. A file that does not parse misses the mark, and the note names it with its cause. (3) On the test org, no pair that the Dependency API reports from an Apex class, a trigger, a Lightning component or a page is missing, for the kinds work package 1 shows that it reports. (4) A sample of 400 references of the public codebases, drawn with a fixed seed, with at least 25 of every kind and at least 25 of every tier, and the whole of a kind or a tier that has fewer, is checked by hand: no reference at the tier `confirmed` is wrong, and the share of wrong ones at the other tiers is reported. A search for missed names over two codebases explains every place it finds. (5) At least 98 percent of the edges of `apex-ls` to a method of apex-recipes are calls of the analysis, the share of the trial (751 of 766): the resolver of the engine does no worse. (6) A snapshot of the package folder of NPSP takes less than 60 seconds and 1.5 GB of memory with the default heap of Node.js, the mark of the trial of Phase 0.                                                                                                                                                                                                                                                                                                                                                                                                                                               | Accept as proposed. If a mark is missed, the phase reports the gap and we decide together, as in Phases 1 and 2.                                                                                                         |
 | Q5  | **Who is the second reader?** Your reading for Phase 2, ten entries of the key and five flows, is in its test plan and not done yet. For Apex the agent that reviews a pull request is again a reader of the same kind as the author.                                                                                                                                                                                                   | (a) You read ten entries of the new key and 20 references of the sample of work package 9, in the test plan. About 45 minutes. (b) A colleague of yours does, with Apex in their daily work. (c) Nobody until the gate: the review agent stays the second reader, and the reports say so.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | (b) if you have someone, else (a). Apex is where an architect who did not write the code sees most.                                                                                                                      |
 | Q6  | **The five things Phase 2 left open** (finding 12: items 3 and 4 of "Open with you" of its report, and two things its list of what is not done names).                                                                                                                                                                                                                                                                                  | (a) As the report recommends, in the first pull request of the phase: the reader of flows reads `overriddenFlow` and `dataTypeMappings`, the warning for `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow, with the definition named beside it (`sameName`), as for an object since record 0064. The token of PMM (`%%%NAMESPACE%%%`) stays unread, with its warnings: it stands only in the source of PMM before its build, and no org holds it. About 1 day. (b) Only the two missed names. (c) None of them in this phase.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | (a). Each is small, and `dataTypeMappings` belongs with the Apex actions of flows.                                                                                                                                       |
+
+### Your answers, 26 November 2026
+
+You chose one option on a card, which took the recommended answer to each question: "Q1 a, Q2 a (plus c for a repo),
+Q3 a, Q4 as proposed, Q5 b or else a, Q6 a". The recommendations are those of the last column of the table above.
+
+| #   | Your answer                                    | What it means                                                                                                                                                                                                                                                                                                 | Where it is recorded                                                                |
+| --- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Q1  | (a)                                            | Lightning web components and Aura components refer to the Apex they call, the fields and objects they import or name in an attribute, the labels, and the components they hold. A Visualforce page refers to its controller, its extensions and its standard controller, and `ApexPage` joins the logic tier. | Record [0079](../adr/0079-lightning-components-and-visualforce-pages-in-phase-3.md) |
+| Q2  | (a), and the two kinds of (c) for a repository | A snapshot of an org asks the org to describe every object of which it holds a file, and keeps the descriptions with it. In a repository a name is checked against the files, and a child relationship taken for a field and a `__r` name guessed as a lookup are `probable` with a warning.                  | Record [0080](../adr/0080-an-org-describes-its-objects-to-a-snapshot.md)            |
+| Q3  | (a)                                            | A test class is kept in an answer, marked as a test, and the summary counts the test classes.                                                                                                                                                                                                                 | Record [0081](../adr/0081-a-test-class-stays-in-an-answer-and-is-marked.md)         |
+| Q4  | As proposed                                    | The six pass marks as proposed. If one is missed, the phase reports the gap and we decide together.                                                                                                                                                                                                           | Here                                                                                |
+| Q5  | (b), or else (a)                               | A colleague of yours with Apex in their daily work reads ten entries of the new key and 20 references of the sample of work package 9. If you have nobody, you read them, in the test plan.                                                                                                                   | Here                                                                                |
+| Q6  | (a)                                            | In the first pull request of the phase, the reader of flows reads `overriddenFlow` and `dataTypeMappings`, the warning for `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow. The token of PMM stays unread.                                                | Record [0082](../adr/0082-what-phase-2-left-open-about-flows-comes-first.md)        |
+
+Three things I read into the answers, for you to strike:
+
+- **Q5: who reads.** I do not know whether you have a colleague who can read the Apex. I ask you once, when the test
+  plan of the phase is written, and write the reading so that either of you can follow it. Until a person has read
+  the entries, the reports say that none has.
+- **Q6 comes before the key of work package 1.** The first pull request reads two more names in flows before the key
+  of this phase exists. The two kinds are proven on the public codebases, where the seven missed names stand, and
+  the key gets entries for them in work package 1 where the test org can hold them. Record 0082 says why that is a
+  departure from writing the key first, and why I take it for two small additions to a reader that has its key.
+- **Phase 2 is not accepted yet.** Its test plan is not run as far as I know. Work packages 1 to 3 do not rest on it.
+  The first pull request changes the reader of flows of Phase 2. A defect that its test plan shows is corrected
+  before the next package that builds on the reader, as the last risk of section 8 says.
 
 ## 5. Work packages
 
@@ -210,7 +238,7 @@ Build:
 - `extends`, `implements` and `uses-type` from the member where they stand: the type of a variable, a parameter, a
   return value, a cast and an `instanceof`. A `new` is a call of a constructor (work package 4). A type of Salesforce,
   such as `Account` or `Database.SaveResult`, is a target only where it is an object.
-- A test class and a test method carry that they are tests (Q3), and the store keeps it.
+- A test class and a test method carry that they are tests (Q3, record 0081), and the store keeps it.
 - A class without a body, as a class of a managed package can come back, is a component that is not analysed, with
   a warning.
 
@@ -224,10 +252,10 @@ Accepted when:
 
 Build:
 
-- **The descriptions of objects, for answer (a) of Q2.** The request in `sources/`, after the last chunk of a
-  snapshot of an org and before its analysis, for every object of which the snapshot holds a file, with a test
-  that holds every request. The descriptions are stored with the snapshot (a store migration and a record), the
-  mock org answers them, the data rules of `CLAUDE.md` get a line, and a run of "Live org" shows them on the test
+- **The descriptions of objects, for answer (a) of Q2, which you gave (record 0080).** The request in `sources/`, after
+  the last chunk of a snapshot of an org and before its analysis, for every object of which the snapshot holds a file,
+  with a test that holds every request. The descriptions are stored with the snapshot (a store migration and a record),
+  the mock org answers them, the data rules of `CLAUDE.md` get a line, and a run of "Live org" shows them on the test
   org, also whether they hold every field of the fixture. `analyse` reads them from the store.
 - Scopes and the declared types of variables, fields and properties, with inheritance: a member of a superclass, of
   an outer class, and a static member of another class.
@@ -295,7 +323,7 @@ Accepted when:
 
 ### WP6 Lightning components, Visualforce and callouts
 
-Build, for answer (a) of Q1:
+Build, for answer (a) of Q1, which you gave (record 0079):
 
 - A Lightning web component: `import ... from '@salesforce/apex/Class.method'` calls the method,
   `@salesforce/schema/Object.Field` refers to the field with the kind `references`, since an import serves to read
@@ -307,11 +335,12 @@ Build, for answer (a) of Q1:
   `@salesforce/messageChannel`, `@salesforce/user`, `@salesforce/i18n`, `@salesforce/client` and `lightning/*`
   name no component of the logic tier and give nothing, without a warning. The JavaScript is read for its imports
   and for nothing else, with the reader of the engine for the forms of an import that the public codebases show.
-  Fields named in an attribute of a base component, such as `lightning-record-form`, are `probable`.
+  Fields and objects named in an attribute of a base component, such as `lightning-record-form`, are `probable`.
 - An Aura component: `controller` refers to the class, `component.get('c.method')` in its JavaScript, the
   controller or the helper, calls that method at `probable`, an attribute of an object type refers to the object,
-  `force:recordData` refers to the fields it names (`references`, as an import), and a tag of another component of
-  the project refers to it.
+  `force:recordData` refers to the fields it names (`references`, as an import), a label in an expression,
+  `{!$Label.c.Name}` in the markup or `$A.get('$Label.c.Name')` in the JavaScript, refers to the label, and a tag of
+  another component of the project refers to it. Nothing else of an expression is read.
 - A Visualforce page: `controller`, `extensions` and `standardController` refer to the classes and the object, and
   `ApexPage` joins the logic tier with its analyser (record 0058).
 - A callout: a text that begins with `callout:` in a method that makes a request refers to the named credential at
@@ -340,7 +369,7 @@ Build:
   field is the error `COMPONENT_AMBIGUOUS`, with a hint. So is a name that fits a class and a Lightning web
   component, such as `InvoiceList` and `invoiceList`: the hint names both with their types (`ApexClass:InvoiceList`),
   as record 0064 has it for a name that fits several components and no object.
-- **Tests.** An answer marks the results that are tests and counts them (Q3).
+- **Tests.** An answer marks the results that are tests, and its summary counts the test classes in it (Q3).
 - **The cross-check of Apex.** The rows from an Apex class or a trigger, and from a Lightning component, an Aura
   component and a page, are compared at the level of the class or the component: a row is met by a reference from the
   component or any member of it to the target or any member of it. A pair the analysis lacks is `REFERENCE_MISSED`. A
@@ -371,9 +400,9 @@ Build:
   it. A flow then gives the Apex behind it to an answer, and an answer about the Apex names the flows.
 - The output of an Apex action has a known object where the invocable variable has one. The path from it is
   followed, which Phase 2 could not.
-- For answer (a) of Q6: `overriddenFlow` and `dataTypeMappings` are read, the warning for `Id` at the end of a path
-  goes, and a name alone that fits a flow and its definition means the flow. This comes first, in the first pull
-  request of the phase, and records 0061 and 0064 are completed.
+- For answer (a) of Q6, which you gave (record 0082): `overriddenFlow` and `dataTypeMappings` are read, the warning for
+  `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow. This comes first,
+  in the first pull request of the phase, and records 0041, 0061, 0064 and 0074 are completed.
 
 Accepted when:
 
@@ -436,9 +465,9 @@ About fifteen pull requests, each from its own branch, each with a code review b
 is green on the three systems and every finding is resolved. Phase 2 planned about ten and needed 34, with the
 corrections of your run. I expect more than fifteen.
 
-Besides the records of your answers to Q1 to Q6, the phase writes records for: the parser as a runtime dependency
+Besides the records of your answers (0079 to 0082), the phase writes records for: the parser as a runtime dependency
 (work package 2), the keys of members, the spelling of types and the mark of a test in the store (work package 3),
-the descriptions of objects if Q2 is (a), the tiers of names that cannot be checked and the calls into packages
+the descriptions of objects of Q2, the tiers of names that cannot be checked and the calls into packages
 (work package 4), the new origins (work package 6), and the walk over members and their class, as record 0066 for
 flows, and the cross-check at the level of the class, as record 0067 (work package 7).
 
@@ -459,7 +488,7 @@ flows, and the cross-check at the level of the class, as record 0067 (work packa
 
 ## 9. Effort
 
-The roadmap estimated Phase 3 at 8 to 12 weeks. This plan is about 10, for the recommended answers: 50.5 days,
+The roadmap estimated Phase 3 at 8 to 12 weeks. This plan is about 10, for the answers you gave: 50.5 days,
 of which 4 are for answer (a) of Q2 (1 for (c), about 6 for (b)) and 4 for answer (a) of Q1.
 
 | Work package                                    | Rough effort      |
@@ -481,10 +510,11 @@ calendar days. Elapsed time depends on how fast you can answer, review the key a
 
 ## 10. What you will be asked to do
 
-1. Answer Q1 to Q6 and approve this plan, or change it.
+1. Answer Q1 to Q6 and approve this plan. Done on 26 November 2026.
 2. Run the test plan of Phase 2, which holds your reading of ten entries of its key and five flows. This phase does
    not wait for it.
-3. Read ten entries of the new key and 20 references of the sample, in the test plan of this phase (Q5).
+3. Name a colleague with Apex in their daily work who reads ten entries of the new key and 20 references of the
+   sample, in the test plan of this phase, or read them yourself (Q5).
 4. Start "Live org" once the fixture of work package 1 is merged, again for the descriptions of Q2 (work package
    4), and for the cross-check of work package 7.
 5. Review the pull requests you want to look at. Merging is done by the assistant under the rule of Phase 0.

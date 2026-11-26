@@ -4,6 +4,7 @@
 - Date: 2026-11-23
 - Decisions: none (the analyser of flows of work package 3 of the Phase 2 plan)
 - Changed by: [0074](0074-a-warning-counts-where-it-can-bear-on-the-answer.md), in two points: the narrowing of the warnings an answer counts, which this record leaves to work package 6, is built there, and a field that an element sets behind a record whose path is not followed has a warning of its own
+- Changed by: [0082](0082-what-phase-2-left-open-about-flows-comes-first.md), in two points, to be built in the first pull request of Phase 3: `overriddenFlow` and `dataTypeMappings` are read, and the field `Id` at the end of a path that is not followed gives no warning
 
 ## Context
 
