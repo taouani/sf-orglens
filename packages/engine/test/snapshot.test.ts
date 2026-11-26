@@ -441,12 +441,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     const workspace = await openWorkspace({ root, env });
     const report = await workspace.snapshot('fixture');
     expect(report.snapshot.status).toBe('complete');
-    // One path of a flow is not followed, as the answer key says. Nothing else is said.
+    // One path of a flow is not followed, and the write of a list of `SObject`, as the answer key says. Nothing else
+    // is said.
     expect(
       report.issues
         .filter((issue) => issue.severity !== 'info')
         .map((issue) => `${issue.severity} ${issue.code} ${String(issue.component)}`),
-    ).toEqual(['warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result']);
+    ).toEqual([
+      'warning PATH_NOT_FOLLOWED ApexClass:invoiceevents#method:saveall(list<sobject>)',
+      'warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
+    ]);
 
     const apex = (dir: string): string[] =>
       readdirSync(join(FIXTURES_DIR, 'billing-sfdx', dir), { recursive: true })

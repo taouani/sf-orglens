@@ -512,8 +512,11 @@ of, and keeps the descriptions with it, so that an analysis can check such names
 Decision records [0080](adr/0080-an-org-describes-its-objects-to-a-snapshot.md),
 [0085](adr/0085-an-org-describes-its-objects-through-the-rest-api.md) and
 [0086](adr/0086-the-descriptions-of-objects-in-the-store.md) have the rules. This version keeps the descriptions
-and reports how they were read. The analysis of what the code of a class or a trigger names, which checks names
-against them, is not built yet.
+and reports how they were read, and the analysis of what the code of a class or a trigger names checks names against
+them (decision record [0087](adr/0087-the-resolver-of-apex-and-the-tier-of-a-name-nothing-checks.md)): a name that a
+description defines keeps the tier of its syntax, and a field that a described object lacks and no file defines is
+`unresolved`, with the warning `FIELD_NOT_DESCRIBED`. An object the org did not describe, such as one the snapshot
+holds no file of, is checked as in a repository, where a name that no file defines is `probable`.
 
 - `orglens snapshot` of an org or a sandbox asks after the cross-check and before the snapshot ends, also with
   `--no-cross-check`. A source of the kind `git` is not described.
@@ -599,9 +602,13 @@ was not read as a whole, whose names are recorded as `probable`, for `parser:flo
 includes the parts found inside files, and the objects that are only named.
 
 Of a class or a trigger, this version reads its members and the types they use: a class it extends, an interface
-it implements, the object of a trigger, and a class or an object that a member names as a type. What the code in
-them reads, writes and calls is read in later versions. So an answer still names `ApexClass` and `ApexTrigger`
-among the types that are not analysed, also where it holds components of them (decision record 0084).
+it implements, the object of a trigger, and a class or an object that a member names as a type (decision record
+0084). It reads what the code of a member reads and writes: the fields of records, also through relationships, the
+variables and properties of classes, the tokens of objects and fields, and the objects that DML writes (decision
+record 0087). A name that no file of the snapshot and no description of the org defines, and an object that not
+every org has, are `probable`. Queries, searches, calls and names in texts are read in later versions. So an answer
+still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components of
+them.
 
 The issues of the analysis follow, one line per code with their number and the first of them: an org can have
 hundreds. `--json` has every issue. A snapshot without an analysis says so, and names the command that analyses
@@ -792,11 +799,13 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `APEX_MALFORMED`                                   | The parser of Apex cannot read a class or a trigger, or the file holds more than the one it declares (`details.line` and `details.column` of the first place), or is not text in UTF-8 (both null). Nothing of its Apex is analysed.                                                                                           |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, an action of a workflow rule or an override of an action of an object has a type that is not known here, or none, or a merge field of an email template or a name in a formula of a quick action starts with a name that is not known there. No reference is made for it. |
 | `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                                                                                        |
-| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`) or, with neither, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.                                                                             |
+| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`), which object the records that DML of Apex writes are of (`details.op`) or, with none, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`.        |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                                                                                         |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                                                                                                      |
 | `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                                                                                                 |
 | `warning` | `APEX_NO_CODE`                                     | A class or a trigger has no code: its file holds `(hidden)`, as Salesforce hands out a class of a managed package, or there is no file of code beside its `-meta.xml` file (`details.path`). The component keeps its row and is not analysed, so what it refers to is not known.                                               |
+| `warning` | `RELATIONSHIP_GUESSED`                             | Apex names a relationship that no file of the snapshot and no description defines (`details.relationship` of `details.object`). It is taken for the lookup field the rule names (`details.field`), as `probable`, and it can be a child relationship.                                                                          |
+| `warning` | `FIELD_NOT_DESCRIBED`                              | Apex names a field that the org described its object without (`details.object`, `details.name`), and no file of the snapshot defines. The reference is `unresolved`: the org does not know the field, or the user who took the snapshot cannot see it.                                                                         |
 | `warning` | `MERGE_FIELD_NOT_CLOSED`                           | A merge field in a text of a flow or of an email template is not closed. Nothing is read of it.                                                                                                                                                                                                                                |
 
 An issue of the analysis names the component it is about in `component`, by its key, when it is about one
@@ -959,7 +968,8 @@ the walk goes on from. For what refers to a component, a warning of the componen
 the flow of an element that is asked about does not count: what they name never refers to them. A
 `PATH_NOT_FOLLOWED` keeps the names it did not follow (`details.notFollowed`), which are fields or relationships
 of an object nothing says, and says what the path ends at (`details.endsAt`): `object` for the record that an
-element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
+element of a flow writes or deletes as a whole and for the records that DML of Apex writes, `field` for any other
+path. It counts only where the answer holds
 a field whose name one of the names can be, on whatever object, a record type where one of the names is
 `RecordType`, or an object where the path ends at one. A path of which only the field `Id` was not followed gives no
 such warning, since `Id` gives no reference where its object is known (decision record 0082). One that kept twenty
@@ -967,7 +977,8 @@ names, which may be fewer than the path has, counts as any other. So does one wi
 by an earlier version wrote such a warning: it kept no warning for a field that an element sets behind a record of no
 known object, and `orglens analyse <source>` analyses the snapshot again. A report type writes one for a child
 relationship that no file of the snapshot defines and that is not one of the few the engine knows of every org
-(`details.relationship`): the lookup field behind it can have any name (decision record 0077). Every other warning
+(`details.relationship`): the lookup field behind it can have any name (decision record 0077). So does Apex, for a
+child relationship that nothing defines and that the code uses as a list (decision record 0087). Every other warning
 counts for what refers to a component. A warning about a file as a whole, which names no component, counts for every
 answer. The count is of the warnings that bear on the answer directly: one whose names fit only a component that another
 missing reference would bring into the answer is not counted, and the answer is not complete all the same.

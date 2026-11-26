@@ -23,6 +23,46 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceService.createDraft(Account, Decimal)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+        "to": "CustomField:account.risk_score__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 38,
+        "column": 21
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)",
+      "type": "ApexClass",
+      "name": "InvoiceTriggerHandler.refreshRisk(Set<Id>)",
+      "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)",
+        "to": "CustomField:account.risk_score__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+        "line": 53,
+        "column": 70
+      },
+      "package": null
+    },
+    {
       "key": "Flow:invoice_after_save",
       "type": "Flow",
       "name": "Invoice_After_Save",

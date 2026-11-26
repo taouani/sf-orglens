@@ -15,7 +15,20 @@
 import type { JsonValue } from '../core/errors.ts';
 import { apexSignature, buildKey, foldName, type ComponentKey, type SubComponent } from '../core/keys.ts';
 import { validateReference, type Reference } from '../core/references.ts';
-import type { Declared, Expr, Member, Pos, Query, Span, Stmt, TypeDecl, TypeRef, Unit } from './apex-syntax.ts';
+import type {
+  Declarator,
+  Declared,
+  Expr,
+  Member,
+  Pos,
+  Query,
+  Span,
+  Stmt,
+  TriggerDecl,
+  TypeDecl,
+  TypeRef,
+  Unit,
+} from './apex-syntax.ts';
 import type { ObjectModel, Target } from './model.ts';
 
 /** How a file names a type that it uses. It is kept on the reference, as `via`. */
@@ -38,8 +51,20 @@ export interface TypeUse {
   readonly tier?: 'probable';
 }
 
+/**
+ * The declaration a part is read from. The resolver of what the code refers to reads it again once every file was
+ * read (`apex-resolver.ts`, decision record 0087).
+ */
+type PartSyntax =
+  | { readonly kind: 'type'; readonly decl: TypeDecl }
+  | { readonly kind: 'trigger'; readonly trigger: TriggerDecl }
+  | { readonly kind: 'method'; readonly member: Extract<Member, { kind: 'method' }> }
+  | { readonly kind: 'property'; readonly member: Extract<Member, { kind: 'property' }> }
+  | { readonly kind: 'var'; readonly member: Extract<Member, { kind: 'field' }>; readonly declarator: Declarator }
+  | { readonly kind: 'init'; readonly bodies: readonly Stmt[] };
+
 /** A class or a trigger, or a member of one, as its file declares it. */
-interface ApexPart {
+export interface ApexPart {
   /** Its place below the class or the trigger. Empty for the class or the trigger itself. */
   readonly subs: readonly SubComponent[];
   /** Its name as Apex writes it: `InvoiceBatch.Result.add(Invoice__c)`. */
@@ -48,6 +73,7 @@ interface ApexPart {
   readonly spans: readonly Span[];
   readonly attrs: Readonly<Record<string, JsonValue>>;
   readonly uses: readonly TypeUse[];
+  readonly syntax: PartSyntax;
 }
 
 /** What a file of Apex declares. */
@@ -299,7 +325,7 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
 
   /** The members of a type or of a trigger, below `subs`. `shown` is the name of what holds them. */
   const membersOf = (members: readonly Member[], subs: readonly SubComponent[], shown: string, test: boolean): void => {
-    const initialisers = new Map<'static' | 'instance', { spans: Span[]; uses: Uses }>();
+    const initialisers = new Map<'static' | 'instance', { spans: Span[]; uses: Uses; bodies: Stmt[] }>();
     for (const member of members) {
       if (member.kind === 'type') {
         const { text } = member.decl.name;
@@ -309,8 +335,9 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
       if (member.kind === 'initializer') {
         // The initialisers of one kind run one after the other, and are one component.
         const kind = member.static ? 'static' : 'instance';
-        const one = initialisers.get(kind) ?? { spans: [], uses: new Uses() };
+        const one = initialisers.get(kind) ?? { spans: [], uses: new Uses(), bodies: [] };
         one.spans.push(member.span);
+        one.bodies.push(member.body);
         one.uses.stmt(member.body);
         initialisers.set(kind, one);
         continue;
@@ -331,6 +358,7 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
           spans: [member.span],
           attrs: marked,
           uses: uses.found,
+          syntax: { kind: 'method', member },
         });
       } else if (member.kind === 'property') {
         const uses = new Uses();
@@ -342,6 +370,7 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
           spans: [member.span],
           attrs: marked,
           uses: uses.found,
+          syntax: { kind: 'property', member },
         });
       } else {
         // Each variable of a declaration is a component, of the type the declaration names.
@@ -355,17 +384,19 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
             spans: [member.span],
             attrs: marked,
             uses: uses.found,
+            syntax: { kind: 'var', member, declarator: variable },
           });
         }
       }
     }
-    for (const [kind, { spans, uses }] of initialisers) {
+    for (const [kind, { spans, uses, bodies }] of initialisers) {
       parts.push({
         subs: [...subs, { kind: 'init', name: kind }],
         name: `${shown}.${kind === 'static' ? 'static ' : ''}{}`,
         spans,
         attrs: test ? { test: true } : {},
         uses: uses.found,
+        syntax: { kind: 'init', bodies },
       });
     }
   };
@@ -384,6 +415,7 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
       spans: subs.length === 0 ? [] : [decl.span],
       attrs: { kind: decl.kind, ...(test ? { test: true } : {}) },
       uses,
+      syntax: { kind: 'type', decl },
     });
     membersOf(decl.members, subs, shown, test);
   };
@@ -400,6 +432,7 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
       spans: [],
       attrs: { object: trigger.object.text, events: [...trigger.events] },
       uses: uses.found,
+      syntax: { kind: 'trigger', trigger },
     });
     membersOf(trigger.members, [], name, false);
   }
@@ -485,19 +518,29 @@ export function resolveApex(
   uses: readonly TypeUse[],
   events?: readonly string[],
 ): Reference[] {
-  /** What a name stands for. `undefined`: it gives no reference. */
-  const targetOf = (use: TypeUse): Target | undefined => {
-    if (use.kind === 'triggers-on') return model.object(use.name);
+  /** What a name stands for, and the object it names. `undefined`: it gives no reference. */
+  const targetOf = (use: TypeUse): { target: Target; object?: string } | undefined => {
+    if (use.kind === 'triggers-on') return { target: model.object(use.name), object: use.name };
     const type = types.find(use.name, owner.unit);
-    if (type !== undefined) return use.only === 'object' ? undefined : type;
+    if (type !== undefined) return use.only === 'object' ? undefined : { target: type };
     const object = use.only === 'class' ? undefined : objectOf(model, use.name);
-    return object === undefined ? undefined : model.object(object);
+    return object === undefined ? undefined : { target: model.object(object), object };
+  };
+  /**
+   * The tier of a use: that of its syntax, but `probable` for an object that no file defines and that is not one
+   * every org has, which nothing checks (decision record 0087).
+   */
+  const tierOf = (use: TypeUse, target: Target, object: string | undefined): Reference['confidence'] => {
+    const tier = use.tier ?? 'confirmed';
+    const unchecked = object !== undefined && target.resolution !== 'resolved' && !model.knowsObject(object);
+    return unchecked && tier === 'confirmed' ? 'probable' : tier;
   };
   const references: Reference[] = [];
   const seen = new Set<string>();
   for (const use of uses) {
-    const target = targetOf(use);
-    if (target === undefined || target.to === owner.key) continue;
+    const named = targetOf(use);
+    if (named === undefined || named.target.to === owner.key) continue;
+    const { target, object } = named;
     // A use is kept once for its kind, its target and its place, whatever hands it twice.
     const id = `${use.kind}\n${String(target.to)}\n${String(use.at.line)}:${String(use.at.column)}`;
     if (seen.has(id)) continue;
@@ -511,7 +554,7 @@ export function resolveApex(
         toNameRaw: use.name,
         kind: use.kind,
         origin: 'parser:apex',
-        confidence: use.tier ?? 'confirmed',
+        confidence: tierOf(use, target, object),
         resolution: target.resolution,
         location: { file: owner.file, line: use.at.line, column: use.at.column },
         attrs: { via: use.via, ...ofTrigger },

@@ -50,7 +50,7 @@ describe('the Apex of the fixture project', () => {
     const tree = readFolders(join(FIXTURES_DIR, answers.project), ['force-app']).tree;
     analysis = analyseSource(tree, (await resolveComponents(tree, ['force-app'])).components, { apex: reader });
     apex = analysis.components.filter((one) => isApex(one.key));
-    references = apex.flatMap((one) => one.references);
+    references = apex.flatMap((one) => one.references).filter((one) => KINDS.has(one.kind));
   });
 
   it('gives every reference of the key of a declaration and of a use of a type, at its place, and no other', () => {
@@ -123,7 +123,7 @@ describe('the Apex of the fixture project', () => {
     }
   });
 
-  it('are counted for the reader of Apex, without an issue, and are not yet among the types that are read', () => {
+  it('are counted for the reader of Apex, and are not yet among the types that are read', () => {
     // An answer counts classes and triggers as not analysed while their code is read only in part.
     expect(analysis.types.filter((type) => type.startsWith('Apex'))).toEqual([]);
     expect(analysis.work.find((row) => row.origin === 'parser:apex')).toEqual({
@@ -131,7 +131,13 @@ describe('the Apex of the fixture project', () => {
       components: apex.length,
       failedFiles: 0,
     });
-    expect(analysis.issues.filter((issue) => issue.componentKey !== null && isApex(issue.componentKey))).toEqual([]);
+    // The one issue of the code is that of the resolver (`extraction-apex-resolver.test.ts`): DML on a list of
+    // `SObject`, an unknown place of the key.
+    expect(
+      analysis.issues
+        .filter((issue) => issue.componentKey !== null && isApex(issue.componentKey))
+        .map((one) => one.code),
+    ).toEqual(['PATH_NOT_FOLLOWED']);
   });
 });
 
@@ -227,6 +233,8 @@ describe('the analysis of Apex', () => {
       contentHash: hash('sha256', 'static { Invoice__c zero; }\nstatic { Invoice__c first; }', 'buffer'),
     });
     expect(usesOf(analysis)).toEqual([
+      // The instance initialiser sets the variable `b`, which the resolver reads (`extraction-apex-resolver.test.ts`).
+      'ApexClass:parts#init:instance 4:7 writes ApexClass:parts#var:b [b] field confirmed resolved',
       'ApexClass:parts#init:static 3:14 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
       'ApexClass:parts#init:static 5:14 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
       'ApexTrigger:oninvoice 1:22 triggers-on CustomObject:invoice__c [Invoice__c] declaration confirmed resolved',
@@ -351,7 +359,9 @@ describe('the analysis of Apex', () => {
       'ApexClass:uses#method:m(object) 10:33 uses-type CustomObject:invoice__c [Invoice__c] type confirmed resolved',
       'ApexClass:uses#method:m(object) 11:14 uses-type CustomObject:contact [Contact] type confirmed external',
       'ApexClass:uses#method:m(object) 11:41 uses-type CustomObject:contact [Contact] type confirmed external',
-      'ApexClass:uses#method:m(object) 12:9 uses-type null [Quote__c] type confirmed unresolved',
+      // An object that no file defines, of no package and not one every org has: nothing checks it (decision record
+      // 0087).
+      'ApexClass:uses#method:m(object) 12:9 uses-type null [Quote__c] type probable unresolved',
       'ApexClass:uses#method:m(object) 14:32 uses-type ApexClass:base [Base] text probable resolved',
       'ApexClass:uses#method:m(object) 15:36 uses-type ApexClass:base#inner:inner [Base.Inner] text probable resolved',
       'ApexClass:uses#method:m(object) 16:45 uses-type ApexClass:able [Able] text probable resolved',

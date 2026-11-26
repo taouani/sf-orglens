@@ -93,11 +93,12 @@ describe('orglens impact, with components of a managed package', () => {
 
   it('says when only components of packages refer to it, and counts one as one', async () => {
     const dir = await workspace();
-    packaged.keys = ['Flow:invoice_after_save'];
+    // A flow and its element write the field, and so does a method of each of two classes.
+    packaged.keys = ['Flow:invoice_after_save', 'ApexClass:invoiceservice', 'ApexClass:invoicetriggerhandler'];
     const lines = (await orglens(dir, ['impact', 'Account.Risk_Score__c'])).stdout.split('\n');
     expect(lines.slice(lines.indexOf('') + 1, lines.indexOf('') + 3)).toEqual([
       'Nothing of the org itself that was analysed refers to it.',
-      '2 components of managed packages refer to it as well, and are left out. --packages keeps them.',
+      '4 components of managed packages refer to it as well, and are left out. --packages keeps them.',
     ]);
     expect(lines).not.toContain('REFERS TO can name a component of a managed package, which is left out.');
 

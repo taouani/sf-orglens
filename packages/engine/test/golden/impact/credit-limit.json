@@ -23,6 +23,46 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceService.createDraft(Account, Decimal)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+        "to": "CustomField:account.credit_limit__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 36,
+        "column": 39
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservicetest#method:setup()",
+      "type": "ApexClass",
+      "name": "InvoiceServiceTest.setup()",
+      "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservicetest#method:setup()",
+        "to": "CustomField:account.credit_limit__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+        "line": 5,
+        "column": 72
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:account.is_key_account__c",
       "type": "CustomField",
       "name": "Account.Is_Key_Account__c",
@@ -159,6 +199,26 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml",
         "line": 5,
         "column": 54
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:standardpricing#method:discount(account)",
+      "type": "ApexClass",
+      "name": "StandardPricing.discount(Account)",
+      "file": "force-app/main/default/classes/StandardPricing.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:standardpricing#method:discount(account)",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/StandardPricing.cls",
+        "line": 15,
+        "column": 24
       },
       "package": null
     },

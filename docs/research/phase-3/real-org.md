@@ -9,8 +9,8 @@ kept.
 
 The notes of the earlier phases, [of Phase 0](../phase-0/real-org.md), [of Phase 1](../phase-1/real-org.md) and
 [of Phase 2](../phase-2/real-org.md), describe the org, the steps and the earlier runs. This note says what is new.
-Claims are marked `[run 31]` with the run they come from, `[my reading]` where they rest on my reading of the code
-or the files, or `[unverified]`.
+Section 9 adds what run 32 showed of the descriptions of the objects. Claims are marked `[run 31]` or `[run 32]` with
+the run they come from, `[my reading]` where they rest on my reading of the code or the files, or `[unverified]`.
 
 In short:
 
@@ -47,8 +47,7 @@ In short:
   and `Contact`, and 3,472 files of standard fields of all objects, and not one of them names a relationship. The
   name `Contacts` stands in one file of metadata of the org, as the text of a `field` and of a `label` element. The
   files alone do not give these names. By the answer of the maintainer to Q2 of the plan, a snapshot is to ask the
-  org to describe every object (work package 4). That a description names the child relationships of the object is
-  not verified: no tool asks for one yet.
+  org to describe every object (work package 4). Run 32 showed that a description names them (section 9).
 
 ## Conditions
 
@@ -301,3 +300,47 @@ names a description gives was not measured: no tool asks for a description yet.
 - The symbol tables of the new classes: the step "probe" was not run.
 - The rows from the 4 classes of the org outside the project, and the two pairs of the Phase 3 types that the log
   does not name.
+
+## 9. The descriptions of the objects (run 32)
+
+Run 32 of "Live org" read the org once, with the step "read" only, on `main` at the commit of pull request 110, which
+made a snapshot of an org ask for the descriptions of its objects (records
+[0085](../../adr/0085-an-org-describes-its-objects-through-the-rest-api.md) and
+[0086](../../adr/0086-the-descriptions-of-objects-in-the-store.md)). The fixture project was not deployed again.
+
+- **The org was asked to describe 397 objects, with 397 requests, in 19.1 s.** It described 350 and did not know 47.
+  None failed for another reason `[run 32]`. So the snapshot has the warning `DESCRIPTIONS_PARTIAL`. The log does not
+  name the 47, which are not of the fixture project. The snapshot took 189.7 s in all.
+- The descriptions hold 8,060 fields, 1,659 lookups, of which 234 point at more than one object, and 4,238 child
+  relationships with a name `[run 32]`.
+- **All 8 objects of the fixture project are described, and of their 59 custom fields with a file only 8 are in
+  the descriptions** `[run 32]`. A description follows the permissions of the user who logs in. That user can see
+  none of the other 51, I think because a deploy through the Metadata API gives no profile access to a new custom
+  field, and the project assigns no permission set `[unverified]`. Three child relationships of the project are not
+  in the descriptions for the same reason: `Account.Invoices__r`, `User.Invoices_To_Approve__r` and
+  `User.Backup_Approver_For__r`, each behind a lookup field that is not there.
+- **A description names the child relationships of standard lookups**, which no file of a snapshot names (section
+  6): `Contacts` of `Account` is there, with the field `AccountId` of the contact `[run 32]`.
+- Of the 75 fields the mock org writes beside those of the project, 73 are in the descriptions. `User.IsDeleted` and
+  `User.OwnerId` are not: a user has neither `[run 32]`.
+- Four fields differ from what the mock org writes `[run 32]`. The two relationships of the custom metadata type
+  `Billing_Rule__mdt`, `Field__c` and `Object__c`, are texts in the org that point at nothing and name no
+  relationship. The field `OwnerId` of `Invoice__c` and of `Tax_Code__c` points at `User` and at an object whose name
+  the log does not show. That it is `Group`, the object of a queue, is my reading `[unverified]`.
+
+What follows, built by part B of work package 4 (record
+[0087](../../adr/0087-the-resolver-of-apex-and-the-tier-of-a-name-nothing-checks.md)):
+
+- The files come first. A field that a file defines is found from its file, whatever the description says, so the
+  51 fields the user cannot see change nothing of the analysis of the test org `[my reading]`. A field that no file
+  defines and that the description of its object lacks is `unresolved`, with the warning `FIELD_NOT_DESCRIBED`. How
+  many such names the Apex of a real org gives was not measured.
+- `DESCRIPTIONS_PARTIAL` will be on the snapshot of most orgs, as here. It bears on no impact answer, since it names
+  no type, and an object the org did not describe is checked as in a repository. It stays, as a note of the reading.
+- The mock org now writes the owner of a custom object as `Group` and `User`, a user without an owner and
+  `IsDeleted`, and the relationships of a custom metadata type as texts. The next run shows whether `Group` is right.
+  Where the description of an object says that its owner can be a group, a name after `Owner` is not followed in a
+  snapshot of the org, with the warning `PATH_NOT_FOLLOWED`. In a repository the short list of the engine takes the
+  owner for a user.
+- To see the fields of the project in the descriptions, the user of the run would need read access to them. Nothing
+  in OrgLens needs that, and the tools of the tests assign no permission, which would write a record of the org.

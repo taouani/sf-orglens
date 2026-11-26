@@ -70,6 +70,12 @@ export interface ObjectModel {
    * `Database.SaveResult`, without a description of the org (decision record 0084).
    */
   isObject(name: string): boolean;
+  /**
+   * Whether the snapshot or the short lists say that an object of this name exists: one the snapshot has a
+   * component for, one a file uses as the name of an object, or a standard object of the short lists. A custom name
+   * alone does not say it (decision record 0087).
+   */
+  knowsObject(name: string): boolean;
 }
 
 export interface ModelInput {
@@ -155,6 +161,21 @@ const STANDARD_CHILD_RELATIONSHIPS: ReadonlyMap<string, { readonly object: strin
     'case\ncasecomments': { object: 'CaseComment', field: 'ParentId' },
   }),
 );
+
+/**
+ * The fields of standard objects that the short list of child relationships names, by the folded names of the
+ * object and the field: `Contact.AccountId`, which the child relationship `Contacts` of an account stands for.
+ */
+const LISTED_FIELDS: ReadonlySet<string> = new Set(
+  [...STANDARD_CHILD_RELATIONSHIPS.values()].map(({ object, field }) => `${foldName(object)}\n${foldName(field)}`),
+);
+
+/**
+ * Whether the short lists of this file name the field `field` of the standard object `object`, which every org has.
+ * Only the lookup fields behind its child relationships are named there (decision record 0087).
+ */
+export const isListedField = (object: string, field: string): boolean =>
+  LISTED_FIELDS.has(`${foldName(object)}\n${foldName(field)}`);
 
 /** The relationships of a task and an event that lead to a record of one of several objects: `What`, `Who`. */
 const POLYMORPHIC_RELATIONSHIPS: ReadonlySet<string> = new Set(['what', 'who']);
@@ -328,8 +349,12 @@ export function buildModel(input: ModelInput): ObjectModel {
     const folded = foldName(name);
     return named.has(folded) || isCustomName(name) || STANDARD_OBJECTS.has(folded);
   };
+  const knowsObject = (name: string): boolean => {
+    const folded = foldName(name);
+    return named.has(folded) || STANDARD_OBJECTS.has(folded);
+  };
 
-  return { object, field, component, relationship, childRelationship, facts: factsOf, isObject };
+  return { object, field, component, relationship, childRelationship, facts: factsOf, isObject, knowsObject };
 }
 
 /** What the source says about one name of a path beyond the name. */

@@ -21,7 +21,7 @@ beforeAll(async () => {
 const BROKEN = ['public class Broken {', '    void m() {', '        Integer x = ;', '    }', '}', ''].join('\n');
 
 describe('the analysis of Apex', () => {
-  it('parses every class and trigger of the fixture project without an issue, and changes nothing else', async () => {
+  it('parses every class and trigger of the fixture project without an error, and changes nothing else', async () => {
     const { tree } = readFolders(join(FIXTURES_DIR, 'billing-sfdx'), ['force-app']);
     const listed = (await resolveComponents(tree, ['force-app'])).components;
     expect(listed.filter((one) => one.type === 'ApexClass' || one.type === 'ApexTrigger')).toHaveLength(30);
@@ -29,7 +29,11 @@ describe('the analysis of Apex', () => {
     const isApex = (key: string): boolean => /^Apex(?:Class|Trigger):/.test(key);
     const withApex = analyseSource(tree, listed, { apex });
     const without = analyseSource(tree, listed);
-    expect(withApex.issues).toEqual(without.issues);
+    // The code adds the issues of its own components, none an error, and nothing else.
+    expect(withApex.issues.filter((one) => one.severity === 'error')).toEqual([]);
+    expect(withApex.issues.filter((one) => one.componentKey === null || !isApex(one.componentKey))).toEqual(
+      without.issues,
+    );
     expect(withApex.components.filter((one) => !isApex(one.key))).toEqual(
       without.components.filter((one) => !isApex(one.key)),
     );

@@ -1334,8 +1334,8 @@ describe('reading the test org', () => {
     expect(output).toMatch(/^CustomField +59 +59 +ok$/m);
     expect(output).toMatch(/^CustomLabel +1 +1 +ok$/m);
     expect(output).toMatch(/^GlobalValueSet +1 +1 +ok$/m);
-    // The one path of a flow that the answer key calls unknown.
-    expect(output).toContain('Observations: 1.\n- warning PATH_NOT_FOLLOWED: 1 observation\n');
+    // The path of a flow and the write of a list of `SObject` that the answer key calls unknown.
+    expect(output).toContain('Observations: 2.\n- warning PATH_NOT_FOLLOWED: 2 observations\n');
     const components = fixtureComponents().length;
     expect(output).toContain(
       `Fixture project: ${String(components)} components. Listed by the org: ${String(components)}. Retrieved: ${String(components)}.`,
@@ -1402,10 +1402,12 @@ describe('reading the test org', () => {
       expect.stringMatching(
         /^Objects asked for: 8, with 8 requests, in \d+\.\d s\. Described: 8\. Not known to the org: 0\. No description for another reason: 0\.$/,
       ) as string,
-      'Fields in the descriptions: 134. Lookups: 29, of which to more than one object: 1. Child relationships with a name: 7.',
+      // A user has no owner and no `IsDeleted`, a relationship of a custom metadata type is a text, and the owner of a
+      // custom object can be a group (run 32 of "Live org").
+      'Fields in the descriptions: 132. Lookups: 26, of which to more than one object: 3. Child relationships with a name: 7.',
       'Objects of the fixture project: 8. Described: 8.',
       'Fields of the fixture project with a file, of the objects that are described: 59. In the descriptions: 59.',
-      'Fields the mock org of the tests writes for the purpose (those of every object of its kind, and standard fields of Account and User): 75. In the descriptions: 75.',
+      'Fields the mock org of the tests writes for the purpose (those of every object of its kind, and standard fields of Account and User): 73. In the descriptions: 73.',
       'Fields whose type, objects or relationship differ from what the mock org writes: 0.',
       'Child relationships the mock org writes: 7. In the descriptions as written: 7.',
       '',

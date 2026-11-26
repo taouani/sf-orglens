@@ -384,3 +384,19 @@ export function loadAnswerKey(wanted: KeyVersion = 3): AnswerKey {
   }
   return { version, project, components, standard, unreferenced, references, negatives, unknowns };
 }
+
+/**
+ * The tier an analysis of a repository gives a reference of the key (decision record 0087). The key keeps the tier
+ * of the syntax. In the code of Apex, a field of Salesforce that no file of the project defines is checked by
+ * nothing in a repository, so it is `probable` there. A formula is checked by Salesforce when it is saved, and keeps
+ * its tier.
+ */
+export function tierInRepository(
+  answers: AnswerKey,
+): (reference: Pick<KeyReference, 'file' | 'to' | 'tier'>) => ConfidenceTier {
+  const standard = new Set<string>(answers.standard);
+  return (reference) =>
+    /\.(?:cls|trigger)$/.test(reference.file) && reference.to.startsWith('CustomField:') && standard.has(reference.to)
+      ? 'probable'
+      : reference.tier;
+}
