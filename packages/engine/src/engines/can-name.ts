@@ -4,8 +4,8 @@
  * does not cover when the components of the type can name nothing the answer is about.
  *
  * Each line is read from the type of the Metadata API as `@jsforce/jsforce-node` 3.13.1 declares it, in
- * `lib/api/metadata/schema.d.ts`, which is made from the description of the Metadata API (its WSDL). Version 3.13.3,
- * which the engine uses now, has the same file, byte for byte. `fields` are the paths of every field of the type, of
+ * `lib/api/metadata/schema.d.ts`, which is made from the description of the Metadata API (its WSDL). Versions 3.13.3
+ * and 3.13.4, which the engine uses now, have the same file, byte for byte. `fields` are the paths of every field of the type, of
  * the types it is built on and of the types of its fields, as declared there. A test holds them against that file, so a
  * version of the library that changes one of these types fails it. `names` are the types of component that a value of
  * those fields can name. Where a field can name something that is no type of component, such as a user, `why` says so.

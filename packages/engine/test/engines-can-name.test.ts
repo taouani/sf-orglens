@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const SCHEMA = readFileSync(require.resolve('@jsforce/jsforce-node/lib/api/metadata/schema.d.ts'), 'utf8');
 /**
  * The version of the library. The table and decision record 0073 name 3.13.1, whose schema is the same file as that
- * of 3.13.3, byte for byte.
+ * of 3.13.3 and 3.13.4, byte for byte.
  */
 const LIBRARY = JSON.parse(readFileSync(require.resolve('@jsforce/jsforce-node/package.json'), 'utf8')) as {
   readonly version: string;
@@ -79,7 +79,7 @@ const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0
 
 describe('the table of what a type can name', () => {
   it('reads the schema of the library, as a control', () => {
-    expect(LIBRARY.version).toBe('3.13.3');
+    expect(LIBRARY.version).toBe('3.13.4');
     expect(DECLARED.size).toBe(SCHEMA.match(/^export type /gm)?.length);
     expect(pathsOf('SharingReason')).toEqual(['fullName', 'label']);
     expect(pathsOf('ReportFolder')).toContain('folderShares.sharedTo');
