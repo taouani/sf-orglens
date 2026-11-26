@@ -40,9 +40,10 @@ part of every class.
    `InvoiceBatch.Result.add(Invoice__c)`, `InvoiceNotifications.InvoiceNotifications(List<InvoiceNotifier>)` for a
    constructor, `Parts.static {}` and `Parts.{}` for the initialisers. A member is defined by the file of its class,
    with the SHA-256 of the text it spans, from its first annotation or modifier to its last character. A change to one
-   method changes the definition of that method and of its class, and of no other member. The initialisers of one
-   kind are one component, since Apex runs them one after the other: its text is the text of each of them, joined by
-   a line break.
+   method changes the definition of that method and of its class, and of no other member. The variables of one
+   declaration, such as `Integer a = 1, b;`, have its whole text, so a change to one changes all of them. The
+   initialisers of one kind are one component, since Apex runs them one after the other: its text is the text of each
+   of them, joined by a line break.
 4. **References.** Each starts at the member where it stands, has the origin `parser:apex` and keeps how the file
    names its target as `via`:
    - `extends` and `implements`, `via: declaration`, from a class or an interface to a class or an interface of the
@@ -51,7 +52,7 @@ part of every class.
    - `triggers-on`, `via: declaration`, from a trigger to its object, with the events in `attrs.events`.
    - `uses-type`, `via: type`, from a member to a class of the snapshot or an object that it names as a type: of a
      variable, a parameter, a return value, a property, a cast, an `instanceof`, a `catch`, a `for` over a list, the
-     binding of a `when`, and every type argument. `new X[3]` uses `X` as a type.
+     binding of a `when`, a class literal such as `X.class`, and every type argument. `new X[3]` uses `X` as a type.
    - `uses-type`, `via: new`, for a `new` of an object: it makes a record. A `new` of a class is a call of its
      constructor, which work package 4 reads, and gives nothing here.
    - `uses-type`, `via: text`, `probable`, for `Type.forName('Name')` and `Type.forName('', 'Name')` or with `null`,
@@ -73,7 +74,8 @@ part of every class.
    again. The JSON output of the mark comes with work package 7.
 6. **Code that is not there.** A class or a trigger whose file holds only `(hidden)`, as an org is said to hand out a
    class of a managed package, or that has no file of code beside its file `-meta.xml`, keeps its row, is not
-   analysed, and has the warning `APEX_NO_CODE` with the file in `details.path`. It changes point 6 of record 0083. A
+   analysed, and has the warning `APEX_NO_CODE` with the file in `details.path`. Its inner types are not known, so
+   `Hidden.Inner` in another class gives no reference, where `Hidden` gives one. It changes point 6 of record 0083. A
    warning makes no analysis incomplete. It bears on every answer about what refers to a component, as any warning
    about a component that is not of the start (record [0074](0074-a-warning-counts-where-it-can-bear-on-the-answer.md)).
 7. **Read in part.** The analysis has the row `parser:apex`: the classes and triggers and their members it read, and
@@ -107,8 +109,8 @@ part of every class.
   about a field holds nothing of Apex yet.
 - A share object such as `Log__Share`, which Salesforce makes for a custom object and no file defines, is
   `unresolved`, as any custom name that no file defines. A standard object that no file of a repository names and that
-  is not on the short lists, such as `Order`, gives no reference. A snapshot of an org has a component for each object
-  the org lists, so there it is known.
+  is not on the short lists, such as `EmailMessage`, gives no reference. A snapshot of an org has a component for each
+  object the org lists, so there it is known.
 - An overload is told apart by the spelling of its types. A class that changes `Account` to `Schema.Account` in a
   parameter gets a method with a new key, and the old one goes away.
 - Not verified: that an org hands out the code of a class of a managed package as `(hidden)` and in no other form.

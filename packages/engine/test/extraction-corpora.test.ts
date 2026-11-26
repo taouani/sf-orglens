@@ -88,7 +88,10 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * Outbound Funds 186, Coral Cloud 132 and EDA 5,787. `declaration` is a class that a class extends, an interface that
  * it implements and the object of a trigger, `type` a class or an object that a member uses as a type, `new` an object
  * of which a member makes a record, and `text` a class that `Type.forName` is given by its name. These counts were
- * not checked by hand: the fixture project and its key hold each case.
+ * not checked by hand: the fixture project and its key hold each case. Of `type`, 1,016 are class literals, read since
+ * the review of the pull request: 909 name the class or the object itself (`StubExample.class`), 106 a type argument
+ * (`List<Rollup__mdt>.class`) and one the type of an array. A script found each at a class literal of its line, and
+ * 30 of them were read by hand.
  */
 interface Expected {
   readonly components: number;
@@ -110,7 +113,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 161,
       object: 1,
       'record-of': 11,
-      type: 987,
+      type: 1011,
       value: 12,
     },
     issues: {},
@@ -133,7 +136,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 55,
       summary: 16,
       text: 32,
-      type: 3900,
+      type: 4022,
       value: 6,
       'value-set': 2,
     },
@@ -161,7 +164,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       summary: 4,
       template: 2,
       text: 18,
-      type: 25_366,
+      type: 26_036,
       value: 318,
       'value-set': 2,
     },
@@ -186,7 +189,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 187,
       object: 14,
       'record-of': 27,
-      type: 1658,
+      type: 1816,
       value: 25,
     },
     issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4 },
@@ -212,7 +215,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       object: 4,
       summary: 24,
       template: 13,
-      type: 958,
+      type: 973,
     },
     issues: {},
   },
@@ -233,7 +236,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 25,
       object: 6,
       summary: 6,
-      type: 229,
+      type: 239,
     },
     issues: {},
   },
@@ -256,7 +259,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       path: 4,
       record: 1,
       summary: 6,
-      type: 158,
+      type: 161,
     },
     issues: {},
   },
@@ -274,7 +277,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 1720,
       'record-of': 2,
       text: 3,
-      type: 12_896,
+      type: 12_910,
     },
     issues: {},
   },

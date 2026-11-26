@@ -8,12 +8,14 @@
 import { hash } from 'node:crypto';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { parentKey, parseKey } from '../src/core/keys.ts';
+import { buildKey, type ComponentKey, parentKey, parseKey } from '../src/core/keys.ts';
 import type { Reference } from '../src/core/references.ts';
 import { analyseSource, type SourceAnalysis } from '../src/extraction/analyse.ts';
 import type { AnalysedComponent } from '../src/extraction/analysed.ts';
 import { loadApexReader } from '../src/extraction/apex-reader.ts';
+import { buildApexTypes, resolveApex, type TypeUse } from '../src/extraction/apex.ts';
 import type { ApexReader } from '../src/extraction/apex-syntax.ts';
+import { buildModel } from '../src/extraction/model.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents } from '../src/sources/resolve.ts';
 import { FIXTURES_DIR, loadAnswerKey } from './helpers/answer-key.ts';
@@ -259,6 +261,7 @@ describe('the analysis of Apex', () => {
           '@IsTest(SeeAllData=false)',
           'private class Tested {',
           '    static Integer count;',
+          '    static { count = 0; }',
           '    class Helper { void help() { } }',
           '    static void make() { }',
           '}',
@@ -283,6 +286,7 @@ describe('the analysis of Apex', () => {
       'ApexClass:oldstyle#method:old() OldStyle.old() {"test":true}',
       'ApexClass:oldstyle#method:visible() OldStyle.visible() {}',
       'ApexClass:tested Tested {"kind":"class","test":true}',
+      'ApexClass:tested#init:static Tested.static {} {"test":true}',
       'ApexClass:tested#inner:helper Tested.Helper {"kind":"class","test":true}',
       'ApexClass:tested#inner:helper/method:help() Tested.Helper.help() {"test":true}',
       'ApexClass:tested#method:make() Tested.make() {"test":true}',
@@ -294,6 +298,20 @@ describe('the analysis of Apex', () => {
     const analysis = analysed((source) => {
       source.apexClass('Base', 'public virtual class Base {\n    public class Inner { }\n}\n');
       source.apexClass('Pages', 'public class Pages implements Iterable<Pages> {\n    Pages next;\n}\n');
+      source.apexClass('Failure', 'public class Failure extends Exception { }\n');
+      source.apexClass(
+        'Catches',
+        [
+          'public class Catches {',
+          '    void m() {',
+          '        try { } catch (Failure e) { } catch (Exception e) { }',
+          '        Object stub = Test.createStub(Pages.class, null);',
+          '    }',
+          '    Type t = Base.Inner.class;',
+          '}',
+          '',
+        ].join('\n'),
+      );
       source.apexClass('Able', 'public interface Able { }\n');
       source.apexClass(
         'Uses',
@@ -346,6 +364,32 @@ describe('the analysis of Apex', () => {
     expect(usesOf(analysis).filter((one) => one.startsWith('ApexClass:pages'))).toEqual([
       'ApexClass:pages#var:next 2:5 uses-type ApexClass:pages [Pages] type confirmed resolved',
     ]);
+    // A class that is caught, and a class literal. `Exception` is of Salesforce.
+    expect(usesOf(analysis).filter((one) => /^ApexClass:(?:catches|failure)/.test(one))).toEqual([
+      'ApexClass:catches#method:m() 3:24 uses-type ApexClass:failure [Failure] type confirmed resolved',
+      'ApexClass:catches#method:m() 4:39 uses-type ApexClass:pages [Pages] type confirmed resolved',
+      'ApexClass:catches#var:t 6:14 uses-type ApexClass:base#inner:inner [Base.Inner] type confirmed resolved',
+    ]);
+  });
+
+  it('keeps a use of a type once for its kind, its target and its place', () => {
+    const model = buildModel({
+      defined: new Set<ComponentKey>(),
+      objects: ['Invoice__c'],
+      namedObjects: [],
+      fields: new Map(),
+    });
+    const owner = buildKey({ type: 'ApexClass', fullName: 'Twice' });
+    const use: TypeUse = { name: 'Invoice__c', at: { line: 2, column: 5 }, kind: 'uses-type', via: 'type' };
+    const references = resolveApex(
+      model,
+      buildApexTypes({ units: [], inner: new Map() }),
+      { key: owner, unit: owner, file: 'classes/Twice.cls' },
+      [use, use, { ...use, via: 'new' }, { ...use, at: { line: 3, column: 5 } }],
+    );
+    expect(
+      references.map((one) => `${String(one.location?.line)}:${String(one.location?.column)} ${viaOf(one)}`),
+    ).toEqual(['2:5 type', '3:5 type']);
   });
 
   it('gives each member its key once, and leaves out a second one with what it holds', () => {

@@ -507,7 +507,8 @@ The first table has one line per metadata type that has components. For an org, 
 `not listed` for a type Salesforce never lists and `left out` for a type that `exclude_types` of the source
 leaves out, and adds `(listing failed)` to the number of a type the org refused to list in whole or in part. The
 column `ANALYSED` says of how many components of the type the analysis read something. It is `0` for a type that
-is not analysed yet. It can be larger than `RETRIEVED`: the analysis also counts the fields and rules it finds
+is not analysed yet. `ApexClass` and `ApexTrigger` have a number while they are read only in part, and still count
+as not analysed (below). It can be larger than `RETRIEVED`: the analysis also counts the fields and rules it finds
 inside the file of an object, the elements of a flow with their flow, and the members of a class or a trigger with
 it, and a type of which the source lists nothing can have a line for that reason. Where the org lists a component of
 a managed package installed in it, a column `OF PACKAGES` after `LISTED` says how many of the listed components of
@@ -850,11 +851,12 @@ OrgLens by name is not found by its name alone: name it with its type.
 **What the answer does not cover.** An answer can only hold what was read and analysed. Before the first result,
 the answer says whether it is complete, and if not, why. Below the results it names what it does not cover:
 
-- the types of the snapshot that no analyser has read yet, with the number of components the source has of each. A
-  component of such a type can refer to the component and is not in the answer. In this pre-release, that is every
-  type except objects, fields, validation rules, flows, workflow rules with their field updates, email alerts,
-  outbound messages and tasks, record types, field sets, records of custom metadata types, email templates, report
-  types and quick actions. A type that
+- the types of the snapshot that no analyser has read yet, or that one reads only in part, with the number of
+  components the source has of each. A component of such a type may refer to the component and not be in the
+  answer. In this pre-release, that is every type except objects, fields, validation rules, flows, workflow rules
+  with their field updates, email alerts, outbound messages and tasks, record types, field sets, records of custom
+  metadata types, email templates, report types and quick actions. Classes and triggers are read only in part: their
+  members and the types those use. A type that
   `exclude_types` leaves out of a snapshot of an org is among them, with `left out` for its number. So is a type
   of which the snapshot holds only components that the source did not list, with `0` for both numbers, which
   count what the source listed;

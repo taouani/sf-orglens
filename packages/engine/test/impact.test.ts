@@ -575,6 +575,25 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
     });
 
+    it('counts a class whose code is hidden as a warning that bears on an answer, except one about that class', async () => {
+      const { project, workspace } = await setUp(0);
+      const CLASS = 'ApexClass:invoiceservice';
+      await workspace.snapshot('fixture');
+      const [field, own] = [await workspace.impact('fixture', AMOUNT), await workspace.impact('fixture', CLASS)];
+      writeFileSync(join(project, 'force-app/main/default/classes/InvoiceService.cls'), '(hidden)');
+      const taken = await workspace.snapshot('fixture');
+      expect([taken.snapshot.status, taken.analysis?.complete]).toEqual(['complete', true]);
+      // A warning is counted, and does not make the answer miss something (decision record 0043).
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
+        mayMiss: false,
+        notCovered: { readErrors: 0, analysisWarnings: field.notCovered.analysisWarnings + 1 },
+      });
+      // The warning is about what the class refers to, which an answer about what refers to the class does not hold.
+      expect((await workspace.impact('fixture', CLASS)).notCovered.analysisWarnings).toBe(
+        own.notCovered.analysisWarnings,
+      );
+    });
+
     it('may miss something when a warning outside the logic tier is about a type the answer covers', async () => {
       const { database, workspace } = await setUp();
       const warn = (types: string[]): void => {

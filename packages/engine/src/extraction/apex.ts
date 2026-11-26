@@ -194,9 +194,13 @@ class Uses {
       case 'unknown':
         for (const part of expr.parts) this.expr(part);
         return;
+      case 'class':
+        // `InvoiceBatch.class` names the class as a type, as `Test.createStub` and `JSON.deserialize` take it.
+        this.type(expr.type);
+        return;
       default:
-        // A name, a literal, `this`, `super` and `X.class` name no type that is used: a class in front of a dot
-        // is read with what stands after it.
+        // A name, a literal, `this` and `super` name no type that is used: a class in front of a dot is read with
+        // what stands after it.
         return;
     }
   }
@@ -494,7 +498,7 @@ export function resolveApex(
   for (const use of uses) {
     const target = targetOf(use);
     if (target === undefined || target.to === owner.key) continue;
-    // A query can hand the same bind to the analysis twice.
+    // A use is kept once for its kind, its target and its place, whatever hands it twice.
     const id = `${use.kind}\n${String(target.to)}\n${String(use.at.line)}:${String(use.at.column)}`;
     if (seen.has(id)) continue;
     seen.add(id);

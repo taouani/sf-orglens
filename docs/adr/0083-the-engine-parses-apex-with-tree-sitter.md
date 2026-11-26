@@ -4,6 +4,7 @@
 - Date: 2026-11-26
 - Decisions: none (it builds record 0018 in work package 2 of the Phase 3 plan, with the choices of the author,
   which the maintainer can strike)
+- Changed by: [0084](0084-the-members-of-a-class-are-components.md), in points 6 and 7: a class whose code is `(hidden)` has the warning `APEX_NO_CODE`, and the analysis has the row `parser:apex` but does not list `ApexClass` and `ApexTrigger` as read while it reads them in part
 
 ## Context
 
