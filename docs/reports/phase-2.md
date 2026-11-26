@@ -203,10 +203,12 @@ The snapshot of the test org stays partial, for the six components that Phase 1 
    and the version is on npm.
 3. **The seven missed names.** Whether the reader of flows reads `overriddenFlow` (the flow it overrides) and
    `dataTypeMappings` (the object handed to a generic Apex action). Each is a line in record 0061 and a small change.
-   My recommendation: read both, in the first pull request of Phase 3.
+   My recommendation: read both, in the first pull request of Phase 3. Done: you chose that with the Phase 3 plan on
+   26 November 2026 (record 0082).
 4. **The warning for `Id` at the end of a path.** It says that a path was not followed where nothing is behind it to
-   miss. My recommendation: drop it for `Id`.
+   miss. My recommendation: drop it for `Id`. Done: you chose that with the Phase 3 plan on 26 November 2026.
 5. **How you count the 100,000 components of your targets** (record 0037). Asked on 15 November 2026.
-6. **The draft of the Phase 3 plan** and its questions. Nothing of Phase 3 is built before you approve it.
+6. **The draft of the Phase 3 plan** and its questions. Done: you took the recommended answers and approved it on 26
+   November 2026.
 7. **Choices of mine that are yours to strike.** Records 0059 to 0078 each list the choices their author made. The
    ones with the most weight are named in the status of each work package in the plan.

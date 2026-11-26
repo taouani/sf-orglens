@@ -369,6 +369,7 @@ whatever package has that name.
 1. Whether the phase is accepted, after this plan.
 2. Whether `0.1.0-next.2` is published. Done: you said so on 25 November 2026, and it is published.
 3. Whether the reader of flows reads the two kinds of names it misses (`overriddenFlow` and `dataTypeMappings`), and
-   whether the warning for `Id` at the end of a path goes. The report has my recommendations.
+   whether the warning for `Id` at the end of a path goes. Done: you chose both with the Phase 3 plan on 26
+   November 2026.
 4. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
-5. The draft of the Phase 3 plan and its questions.
+5. The draft of the Phase 3 plan and its questions. Done: you approved it on 26 November 2026.
