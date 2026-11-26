@@ -18,7 +18,8 @@ const ROOT = join(import.meta.dirname, '../../../..');
 /** The package directory of the fixture project. */
 export const FIXTURE_PROJECT = join(ROOT, 'fixtures/billing-sfdx');
 export const FIXTURE_DIR = join(FIXTURE_PROJECT, 'force-app');
-const ANSWER_KEY = join(ROOT, 'fixtures/expected/answer-key.v3.yaml');
+/** The newest version of the answer key of the fixture project. */
+const KEY_VERSION = 3;
 
 /** The name of the source the test org is declared as. It gives the variables of the login their names. */
 export const SOURCE_NAME = 'test-org';
@@ -118,8 +119,9 @@ export interface AnswerKey {
   }[];
 }
 
-export function answerKey(): AnswerKey {
-  return parse(readFileSync(ANSWER_KEY, 'utf8')) as AnswerKey;
+/** The newest answer key, or an older version of it (`fixtures/expected/answer-key.v<version>.yaml`). */
+export function answerKey(version: number = KEY_VERSION): AnswerKey {
+  return parse(readFileSync(join(ROOT, `fixtures/expected/answer-key.v${String(version)}.yaml`), 'utf8')) as AnswerKey;
 }
 
 /** The components of the fixture project, as its answer key lists them. */
