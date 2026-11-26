@@ -42,10 +42,12 @@ import {
   type RetrieveState,
 } from '../sources/metadata-api.ts';
 import { loginFailed, saidBy, unreachable } from '../sources/org-errors.ts';
+import { describeObjects, type DescribeLimits } from '../sources/describe.ts';
 import { connectToOrg, type OrgSession } from '../sources/org.ts';
 import { unpackRetrieve, type Unpacked } from '../sources/retrieved.ts';
 import { byCodeUnit, systemCode } from '../sources/tree.ts';
 import { readListedIds, writeDependencies, writeFlowVersions } from '../store/dependencies.ts';
+import { objectsWithFiles, writeDescriptions } from '../store/descriptions.ts';
 import {
   addChunk,
   addChunks,
@@ -104,6 +106,8 @@ type Environment = Readonly<Record<string, string | undefined>>;
  * - `cross-checking`: every chunk is done. The org is asked what its Dependency API knows about references.
  *   It comes once before the first request, and then after every query, with the requests sent and the
  *   different rows read so far.
+ * - `describing`: the org is asked to describe the objects of which the snapshot holds a file. `done` of `total`
+ *   objects are done. It comes once before the first request, and then after every object.
  * - `analysing`: the snapshot has ended. Its files are analysed now.
  */
 export type SnapshotProgress =
@@ -115,6 +119,7 @@ export type SnapshotProgress =
   /** Every chunk is stored, and the active versions of `flows` flows are asked for by their numbers. */
   | { readonly step: 'flow-versions'; readonly snapshot: number; readonly flows: number }
   | { readonly step: 'cross-checking'; readonly snapshot: number; readonly requests: number; readonly rows: number }
+  | { readonly step: 'describing'; readonly snapshot: number; readonly done: number; readonly total: number }
   | { readonly step: 'analysing'; readonly snapshot: number };
 
 /** The numbers a snapshot of an org works with. A test sets them to make things happen that are rare. */
@@ -139,6 +144,8 @@ export interface OrgSnapshotTuning {
   readonly requests: MetadataApiLimits;
   /** The numbers the Dependency API is read with (`sources/dependency-api.ts`). */
   readonly dependencies: Partial<DependencyLimits>;
+  /** The numbers the descriptions of the objects are read with (`sources/describe.ts`). */
+  readonly descriptions: Partial<DescribeLimits>;
 }
 
 const DEFAULT_TUNING: OrgSnapshotTuning = {
@@ -152,6 +159,7 @@ const DEFAULT_TUNING: OrgSnapshotTuning = {
   flowsPerRetrieve: 100,
   requests: DEFAULT_LIMITS,
   dependencies: {},
+  descriptions: {},
 };
 
 export interface OrgSnapshotJob {
@@ -640,6 +648,7 @@ export async function takeOrgSnapshot(job: OrgSnapshotJob): Promise<CoverageRepo
         progress({ step: 'cross-checking', snapshot, requests, rows });
       });
     }
+    await readObjectDescriptions(store, snapshotId, session, api.apiVersion, tuning, progress);
     finish(store, snapshotId);
     finished = true;
     // A snapshot is a large write. The log is moved into the database file now, not by a later reader.
@@ -1258,6 +1267,59 @@ function notActiveSaid(
           `${plural(got.unpacked.problems.length, 'file', 'files')} of the retrieve could not be read as metadata. The first: ${problem.at}: ${problem.message}`,
         ]),
   ].join(' ');
+}
+
+/**
+ * Asks the org to describe every object of which the snapshot holds a file, and stores the descriptions with the
+ * snapshot (decision record 0085), so that every analysis of the snapshot checks names against the org without the
+ * org. The snapshot does not depend on them: an org that does not describe an object leaves a warning, and the
+ * snapshot goes on. It comes after the cross-check and before the snapshot ends, so that a snapshot that is
+ * interrupted here asks again.
+ */
+async function readObjectDescriptions(
+  store: Store,
+  snapshot: number,
+  session: OrgSession,
+  apiVersion: string,
+  tuning: OrgSnapshotTuning,
+  progress: (event: SnapshotProgress) => void,
+): Promise<void> {
+  const objects = objectsWithFiles(store, snapshot);
+  progress({ step: 'describing', snapshot, done: 0, total: objects.length });
+  const reading = await describeObjects(session, objects, {
+    apiVersion,
+    limits: tuning.descriptions,
+    onProgress: (done, total) => {
+      progress({ step: 'describing', snapshot, done, total });
+    },
+  });
+  store.write(() => {
+    writeDescriptions(store, snapshot, reading, now());
+    // A snapshot that was interrupted after an earlier reading has the warning of that reading.
+    removeIssues(store, snapshot, ['DESCRIPTIONS_PARTIAL']);
+    if (reading.state === 'whole') return;
+    const { unknown, failed } = { unknown: reading.unknown.length, failed: reading.failed.length };
+    const parts = [
+      ...(unknown === 0 ? [] : [`it does not know ${String(unknown)}`]),
+      ...(failed === 0
+        ? []
+        : [`${unknown === 0 ? 'it ' : ''}gave no description of ${String(failed)} (${reading.code ?? 'NO_CODE'})`]),
+    ];
+    issue(
+      store,
+      snapshot,
+      'warning',
+      'DESCRIPTIONS_PARTIAL',
+      `The org did not describe ${String(unknown + failed)} of the ${plural(objects.length, 'object', 'objects')} the snapshot holds a file of: ${parts.join(', and ')}.`,
+      {
+        asked: objects.length,
+        unknown: reading.unknown.length,
+        failed: reading.failed.length,
+        code: reading.code,
+        requests: reading.requests,
+      },
+    );
+  });
 }
 
 /**

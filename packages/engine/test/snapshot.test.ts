@@ -146,8 +146,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
           { origin: 'parser:apex', components: 2, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
-      // The Dependency API is of an org. A repository has none.
+      // The Dependency API and the descriptions of objects are of an org. A repository has neither.
       crossCheck: null,
+      descriptions: null,
       issues: [],
     });
     // The snapshot had ended before it was analysed.

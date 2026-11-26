@@ -15,6 +15,7 @@ import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { readLocalSource, type LocalReading } from '../sources/local.ts';
 import { byCodeUnit, pathDetails, systemCode } from '../sources/tree.ts';
+import { readDescriptionReading } from '../store/descriptions.ts';
 import type { Store } from '../store/open.ts';
 import { countPackaged } from '../store/packages.ts';
 import {
@@ -122,8 +123,44 @@ export interface CoverageReport {
    * not asked for this snapshot. It is never asked for a snapshot of a repository.
    */
   readonly crossCheck: CrossCheckReport | null;
+  /**
+   * How the org described the objects of which the snapshot holds a file (decision record 0085). `null`: it was not
+   * asked for this snapshot. It is never asked for a snapshot of a repository.
+   */
+  readonly descriptions: DescriptionsReport | null;
   /** Those of the reading first, then those of the analysis. */
   readonly issues: readonly SnapshotIssue[];
+}
+
+/** How an org described its objects for a snapshot (decision record 0085). */
+export interface DescriptionsReport {
+  /**
+   * - `whole`: every object that was asked for is described.
+   * - `partial`: some are not: the org did not know them, or gave no description of them.
+   * - `none`: objects were asked for, and none is described.
+   */
+  readonly state: 'whole' | 'partial' | 'none';
+  /** UTC, as `Date.prototype.toISOString` writes it. */
+  readonly readAt: string;
+  /** The requests that were sent, with those sent again. */
+  readonly requests: number;
+  /** The objects that were asked for: those of which the snapshot holds a file. */
+  readonly asked: number;
+  readonly described: number;
+  /** The objects the org said it does not know. */
+  readonly unknown: number;
+  /** The objects of which no description came, for another reason. */
+  readonly failed: number;
+  /** The code of the first failure, or `null`. */
+  readonly code: string | null;
+}
+
+/** How the org described its objects for a snapshot, or `null` for a snapshot it was not asked for. */
+function descriptionsReport(store: Store, snapshotId: number): DescriptionsReport | null {
+  const reading = readDescriptionReading(store, snapshotId);
+  if (reading === undefined) return null;
+  const { state, readAt, requests, asked, unknown, failed, code } = reading;
+  return { state, readAt, requests, asked, described: asked - unknown - failed, unknown, failed, code };
 }
 
 /** The coverage of each type of a snapshot, with how many of its listed components are of a package. */
@@ -155,6 +192,7 @@ export function snapshotReport(store: Store, source: string, id?: number): Cover
     types: typesOf(store, snapshot.id),
     analysis: analysisReport(store, snapshot.id, issues),
     crossCheck: crossCheckReport(store, snapshot.id),
+    descriptions: descriptionsReport(store, snapshot.id),
     issues: [...issues.filter(ofReading), ...issues.filter((issue) => !ofReading(issue))].map(
       ({ severity, code, message, stage, componentKey, details }) => ({
         severity,

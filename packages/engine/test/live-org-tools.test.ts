@@ -31,6 +31,8 @@ import { everydayWords, publicLog, type PublicLog } from './live/public-log.ts';
 import { probeOrg } from './live/probe-org.ts';
 import {
   conditionForm,
+  descriptionLines,
+  DESCRIPTIONS_HEADING,
   failedRequestLines,
   fileDifference,
   flowLines,
@@ -464,6 +466,125 @@ describe('the form of a name', () => {
     expect(nameForm('a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z')).toBe(
       'a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…',
     );
+  });
+});
+
+describe('the descriptions of the objects, as they are printed', () => {
+  const field = (
+    name: string,
+    type = 'string',
+    referenceTo: string[] = [],
+    relationshipName: string | null = null,
+  ) => ({
+    name,
+    type,
+    referenceTo,
+    relationshipName,
+  });
+  /** What the mock org writes for two objects: a lookup of one to the other, and its child relationship. */
+  const expected = new Map<string, Record<string, unknown>>([
+    [
+      'Parcel__c',
+      {
+        name: 'Parcel__c',
+        fields: [
+          field('Id', 'id'),
+          field('Weight__c', 'double'),
+          field('Depot__c', 'reference', ['Depot__c'], 'Depot__r'),
+        ],
+        childRelationships: [],
+      },
+    ],
+    [
+      'Depot__c',
+      {
+        name: 'Depot__c',
+        fields: [field('Id', 'id'), field('Code__c')],
+        childRelationships: [{ relationshipName: 'Parcels__r', childSObject: 'Parcel__c', field: 'Depot__c' }],
+      },
+    ],
+  ]);
+  const withFile = new Set(['Parcel__c.Weight__c', 'Parcel__c.Depot__c', 'Depot__c.Code__c']);
+  const report = {
+    state: 'partial' as const,
+    readAt: '2026-02-01T08:30:00.000Z',
+    requests: 3,
+    asked: 3,
+    described: 1,
+    unknown: 1,
+    failed: 1,
+    code: 'TIMEOUT',
+  };
+
+  it('names what differs from the mock org with the names this repository holds, and counts what only the org has', () => {
+    const { log } = collected();
+    const said = descriptionLines(
+      log,
+      report,
+      [
+        {
+          name: 'Parcel__c',
+          fields: [
+            field('Id', 'id'),
+            // Of another type, pointing at an object no file names and under a relationship of another name.
+            field('Depot__c', 'reference', ['Secret_Depot__c'], 'Secret__r'),
+            // What only the org has is counted, and not named.
+            field('Secret_Field__c'),
+          ],
+          childRelationships: [{ relationshipName: 'Secret_Children__r', childSObject: 'Secret__c', field: 'X__c' }],
+        },
+      ],
+      expected,
+      withFile,
+      '1.5',
+    );
+    expect(said.lines).toEqual([
+      '',
+      DESCRIPTIONS_HEADING,
+      'Objects asked for: 3, with 3 requests, in 1.5 s. Described: 1. Not known to the org: 1. No description for another reason: 1 (TIMEOUT).',
+      'Fields in the descriptions: 3. Lookups: 1, of which to more than one object: 0. Child relationships with a name: 1.',
+      'Objects of the fixture project: 2. Described: 1 (not: Depot__c).',
+      'Fields of the fixture project with a file, of the objects that are described: 2. In the descriptions: 1.',
+      '- Parcel__c.Weight__c: not in the description',
+      'Fields the mock org of the tests writes for the purpose (those of every object of its kind, and standard fields of Account and User): 1. In the descriptions: 1.',
+      'Fields whose type, objects or relationship differ from what the mock org writes: 1.',
+      '- Parcel__c.Depot__c: points at Depot__c here, at an object of another name in the org; relationship Depot__r here, another name in the org',
+      'Child relationships the mock org writes: 0. In the descriptions as written: 0.',
+    ]);
+    expect(said.verdict).toBe('fields missing');
+    expect(said.lines.join('\n')).not.toMatch(/Secret/);
+  });
+
+  it('says what is missing of a type and of a child relationship, and fails where no object of the project is described', () => {
+    const { log } = collected();
+    const depot = {
+      name: 'Depot__c',
+      // A type the org gives that is no name is not shown.
+      fields: [field('Id', 'id'), field('Code__c', 'not a type')],
+      childRelationships: [],
+    };
+    const said = descriptionLines(log, report, [depot], expected, withFile, null);
+    expect(said.lines.slice(2, 4)).toEqual([
+      'Objects asked for: 3, with 3 requests. Described: 1. Not known to the org: 1. No description for another reason: 1 (TIMEOUT).',
+      'Fields in the descriptions: 2. Lookups: 0, of which to more than one object: 0. Child relationships with a name: 0.',
+    ]);
+    expect(said.lines.slice(-4)).toEqual([
+      'Fields whose type, objects or relationship differ from what the mock org writes: 1.',
+      '- Depot__c.Code__c: type string here, a type that is not shown in the org',
+      'Child relationships the mock org writes: 1. In the descriptions as written: 0.',
+      '- Depot__c.Parcels__r (Parcel__c.Depot__c): not in the description',
+    ]);
+    expect(said.verdict).toBe('ok');
+
+    expect(descriptionLines(log, report, [], expected, withFile, null).verdict).toBe('none');
+    expect(descriptionLines(log, null, [], expected, withFile, null)).toEqual({
+      lines: [
+        '',
+        DESCRIPTIONS_HEADING,
+        'The snapshot holds no reading of the descriptions: the org was not asked for them.',
+      ],
+      verdict: 'none',
+    });
   });
 });
 
@@ -1272,6 +1393,22 @@ describe('reading the test org', () => {
         ),
       ) as string,
       'The parts give the same rows as the reading just before.',
+    ]);
+    // Before the cross-check, the descriptions of the objects. The mock org gives for the eight objects of the
+    // fixture project what the step holds them against, so nothing differs.
+    const descriptionsAt = cross.indexOf(DESCRIPTIONS_HEADING);
+    expect(cross.slice(descriptionsAt, descriptionsAt + 9)).toEqual([
+      DESCRIPTIONS_HEADING,
+      expect.stringMatching(
+        /^Objects asked for: 8, with 8 requests, in \d+\.\d s\. Described: 8\. Not known to the org: 0\. No description for another reason: 0\.$/,
+      ) as string,
+      'Fields in the descriptions: 134. Lookups: 29, of which to more than one object: 1. Child relationships with a name: 7.',
+      'Objects of the fixture project: 8. Described: 8.',
+      'Fields of the fixture project with a file, of the objects that are described: 59. In the descriptions: 59.',
+      'Fields the mock org of the tests writes for the purpose (those of every object of its kind, and standard fields of Account and User): 75. In the descriptions: 75.',
+      'Fields whose type, objects or relationship differ from what the mock org writes: 0.',
+      'Child relationships the mock org writes: 7. In the descriptions as written: 7.',
+      '',
     ]);
     // The snapshot asked what the number above says, and the reading after it the same without the versions.
     const second = dependencies.queries.flatMap((soql, at) => (everyRow(soql) ? [at] : []))[1];

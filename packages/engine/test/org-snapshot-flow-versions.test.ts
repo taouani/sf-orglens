@@ -206,6 +206,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         'retrieved',
         'flow-versions 1',
         'cross-checking',
+        'describing',
         'analysing',
       ]);
       // The file of the snapshot is the active version: in every place the draft differs, it says what the active

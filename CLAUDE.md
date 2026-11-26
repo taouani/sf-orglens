@@ -56,9 +56,12 @@ These rules come from the maintainer and apply to every phase.
   requests, and a test pins them. Through the Tooling API the engine queries three objects:
   `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
   and the latest version of each flow, and `Flow`, which names every version of a flow (`sources/dependency-api.ts`,
-  decision records 0067 and 0078). A test holds every query against them. A tool of the tests asks the test org for more
-  of the same kind (`packages/engine/test/live/probe-org.ts`). The objects it reads describe metadata. The same tool
-  asks the Metadata API for one flow of the fixture project by the numbers of its versions, and keeps no file.
+  decision records 0067 and 0078). A test holds every query against them. Through the REST API the engine asks for the
+  description of each object a snapshot holds a file of (`sources/describe.ts`, decision record 0085), which says what
+  the object holds and no value of a record. A test holds every address the engine asks for. A tool of the tests asks
+  the test org for more of the same kind (`packages/engine/test/live/probe-org.ts`). The objects it reads describe
+  metadata. The same tool asks the Metadata API for one flow of the fixture project by the numbers of its versions,
+  and keeps no file.
 
 ## Architecture
 
@@ -232,6 +235,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   is held against every row the reading holds in the end: a row of its query that another query gave and it lacks shows
   that it was cut off (decision record 0069). The reading is `whole` only where no answer shows that a row is missing.
   It never fails a snapshot and never makes it partial: an org that does not answer leaves a warning.
+- A snapshot of an org asks the org to describe each object it holds a file of, after the cross-check and also
+  without it (decision records 0080, 0085 and 0086). The objects are the components of the type `CustomObject` that
+  came back, by the name the org listed them with. Of each description only the fields, their types, the objects a
+  lookup points at and the child relationships are kept, as one JSON object beside the snapshot
+  (`store/descriptions.ts`), so that an analysis can check a name against the org without the org. An object the
+  org does not know, or does not describe, leaves the warning `DESCRIPTIONS_PARTIAL`, and never fails the snapshot or
+  makes it partial. Nothing of the analysis reads the descriptions yet.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it

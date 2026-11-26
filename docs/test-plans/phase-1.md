@@ -268,8 +268,10 @@ neither of us wrote.
 org in `.orglens/orglens.db` on your machine and nowhere else. OrgLens reads metadata only and writes nothing to
 the org. For the cross-check it asks three objects of the Tooling API: `MetadataComponentDependency`, since
 decision record 0067 `FlowDefinition`, which names the active and the latest version of each flow, and since
-decision record 0078 `Flow`, which names every version of a flow. Work in a new folder outside any repository, and
-delete the folder afterwards if the org is not yours to keep a copy of.
+decision record 0078 `Flow`, which names every version of a flow. Since decision record 0085 it asks the REST API
+for the description of each object the snapshot holds a file of, which says what fields the object has and no
+value of a record. Work in a new folder outside any repository, and delete the folder afterwards if the org is not
+yours to keep a copy of.
 
 If you have not run part G of the [Phase 0 test plan](phase-0.md#g-orglens-snapshot-against-an-org-with-your-own-login),
 its steps G0 to G2 come first: they show that the login works. They are the first run with a login of the

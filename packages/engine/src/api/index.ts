@@ -30,7 +30,7 @@ export type {
 } from './workspace.ts';
 export type { GitSource, OrgSource, SandboxSource, SourceDeclaration } from '../core/config/config.ts';
 
-export type { CoverageReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
+export type { CoverageReport, DescriptionsReport, SnapshotInfo, SnapshotIssue, TypeCoverage } from './snapshot.ts';
 export type { AnalysisReport, CrossCheckReport, OriginReport } from './analysis.ts';
 export type { CrossCheck, CrossCheckPair, NotReportedReason } from '../engines/cross-check.ts';
 export type { ImpactQuery, ImpactReport, ImpactReportComponent, ImpactReportResult, NewerVersion } from './impact.ts';

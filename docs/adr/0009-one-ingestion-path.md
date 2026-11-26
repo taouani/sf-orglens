@@ -7,6 +7,7 @@
 - Changed by: [0067](0067-a-row-from-a-flow-is-compared-by-its-version.md), in one point: for the cross-check, the Tooling API also names the active and the latest version of each flow, from `FlowDefinition`
 - Changed by: [0078](0078-the-ids-of-every-version-of-a-flow-are-read.md), in the same point: the Tooling API also names every version of each flow, from `Flow`
 - Changed by: [0080](0080-an-org-describes-its-objects-to-a-snapshot.md), in one point: a snapshot of an org also asks the org to describe every object of which it holds a file, and keeps the descriptions with the snapshot
+- Changed by: [0085](0085-an-org-describes-its-objects-through-the-rest-api.md), in the same point: the descriptions come from the REST API of the org, one request for each object
 
 ## Context
 

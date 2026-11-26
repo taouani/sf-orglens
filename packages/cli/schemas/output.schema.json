@@ -387,7 +387,7 @@
     "coverage": {
       "description": "What a snapshot holds, per metadata type, what its analysis found, and everything that was observed while it was taken and analysed.",
       "type": "object",
-      "required": ["snapshot", "types", "analysis", "crossCheck", "issues"],
+      "required": ["snapshot", "types", "analysis", "crossCheck", "descriptions", "issues"],
       "additionalProperties": false,
       "properties": {
         "snapshot": {
@@ -477,6 +477,10 @@
         "crossCheck": {
           "description": "What the Dependency API of Salesforce said about the org, held against the analysis. Null if the API was not asked for the snapshot: a snapshot of a source of the kind git, one taken with --no-cross-check, and one taken by a version before the cross-check existed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossCheck" }]
+        },
+        "descriptions": {
+          "description": "How the org described the objects of which the snapshot holds a file. Null if it was not asked for the snapshot: a snapshot of a source of the kind git, and one taken by a version before the descriptions existed.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/descriptions" }]
         },
         "issues": {
           "description": "Everything that was left out, went wrong or is uncertain: first what the reading observed, then what the analysis observed. A snapshot with an issue of the stage `read` and the severity `error` is partial. What a snapshot of an org lacks of a type outside the logic tier is a warning of the stage `read` with `details.tier` = `other`, and leaves it complete. An analysis with an issue of the stage `analysis` and the severity `error` is not complete.",
@@ -992,6 +996,48 @@
         "comparison": {
           "description": "What the comparison found. Null if nothing was compared: the state is `none`, the snapshot is not analysed, or the analysis it has was made by a version whose comparison this version cannot show. It is made again with every analysis, from the rows the snapshot holds.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossCheckComparison" }]
+        }
+      }
+    },
+    "descriptions": {
+      "description": "How the org described its objects for a snapshot of an org, through its REST API. A description says which fields an object has, of which type, which objects a lookup points at, and which child relationships the object has. It follows the permissions of the user who logged in. The snapshot keeps them, so that every analysis of it checks names against the org without the org.",
+      "type": "object",
+      "required": ["state", "readAt", "requests", "asked", "described", "unknown", "failed", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "description": "`whole`: every object that was asked for is described. `partial`: some are not. `none`: objects were asked for, and none is described.",
+          "enum": ["whole", "partial", "none"]
+        },
+        "readAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
+        "requests": {
+          "description": "The requests that were sent to the org for them, with those sent again.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "asked": {
+          "description": "The objects the org was asked to describe: those of which the snapshot holds a file, by the names the org listed them with.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "described": {
+          "description": "The objects the snapshot holds a description of.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "description": "The objects the org said it does not know.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "description": "The objects of which no description came for another reason: the org refused the request or gave no answer, or the reading stopped before them because the org could not be reached or did not accept the session.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "description": "The code of the first failure, such as TIMEOUT or INVALID_SESSION_ID. Null if no request failed. An object the org does not know is no failure.",
+          "type": ["string", "null"]
         }
       }
     },

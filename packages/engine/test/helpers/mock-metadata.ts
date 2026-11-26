@@ -18,12 +18,15 @@
  * under the object `Account`, and a report, a dashboard or a folder of them
  * that lies in a folder inside a folder without the outer folders. It is
  * asked for them by the listed name and hands out the files of the folder.
+ *
+ * It also describes the objects of the folder, as the REST API of an org does (`mock-descriptions.ts`).
  */
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import type * as SourceLibrary from '@salesforce/source-deploy-retrieve';
 import type { SourceComponent } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
+import { descriptionsOfFolder } from './mock-descriptions.ts';
 
 const NAMESPACE = 'http://soap.sforce.com/2006/04/metadata';
 
@@ -150,6 +153,17 @@ export interface MockMetadata {
   readonly calls: MetadataCall[];
   /** The members of every retrieve that was started, in order, each as `Type:FullName`. */
   readonly retrieves: string[][];
+  /**
+   * The descriptions of the objects of the org, by the name the folder gives the object (`mock-descriptions.ts`). A
+   * test deletes one to make the org not know the object.
+   */
+  readonly descriptions: Map<string, Record<string, unknown>>;
+  /**
+   * The description the org gives of an object it is asked about by name, or `null` for an object it does not
+   * know. An object of a package is known by its name with the prefix of the package, as the org lists it, and not
+   * by the name it has in the folder.
+   */
+  describe(object: string): Record<string, unknown> | null;
   /** The id the org lists a component with, or `null` for a component it does not list. */
   idOf(type: string, fullName: string): string | null;
   /**
@@ -457,6 +471,18 @@ export async function metadataFromSource(dir: string): Promise<MockMetadata> {
     deploys: [],
     calls: [],
     retrieves: [],
+    descriptions: descriptionsOfFolder(dir),
+    describe: (object) => {
+      for (const [id, prefix] of metadata.packaged) {
+        const short = id.slice('CustomObject:'.length);
+        if (!id.startsWith('CustomObject:')) continue;
+        if (object === short) return null;
+        if (object !== `${prefix}__${short}`) continue;
+        const description = metadata.descriptions.get(short);
+        return description === undefined ? null : { ...description, name: object };
+      }
+      return metadata.descriptions.get(object) ?? null;
+    },
     idOf: (type, fullName) => {
       const index = listed.findIndex((item) => item.type === type && item.fullName === fullName);
       return index === -1 ? null : idOf(index);
