@@ -1236,12 +1236,15 @@ describe('reading the test org', () => {
     // Salesforce library writes a retrieve: of Account its seven custom fields, one a lookup, and its validation rule.
     expect(output).toContain(
       [
-        'What the snapshot holds of the standard objects Account and Contact:',
-        'OBJECT   FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
-        'Account  yes                 0                7              1                                1',
-        'Contact  no                  0                0              0                                0',
+        'What the snapshot holds of the standard objects Account, Contact and PersonAccount:',
+        'OBJECT         FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
+        'Account        yes                 0                7              1                                1',
+        'Contact        no                  0                0              0                                0',
+        'PersonAccount  no                  0                0              0                                0',
         'Files of standard fields of any object: 0. Of them, files that name a relationship (relationshipName): 0.',
-        'Files of XML in which the child relationship Contacts of the standard field Contact.AccountId is the whole text of an element: 0, of which 0 of the fixture project.',
+        'The child relationship Contacts of the standard field Contact.AccountId, as the whole text of an element of a file of metadata: in 0 files, of which 0 of the fixture project. Files by the element: none.',
+        // The class of the fixture project that queries the contacts of an account.
+        'The word Contacts in another file: in 1 file, of which 1 of the fixture project. Files by the first folder: classes 1.',
         '',
       ].join('\n'),
     );
@@ -1346,6 +1349,11 @@ describe('reading the test org', () => {
     expect(section).toContain(
       'The answer key holds 171 pairs of a component and a component it refers to for these entries. The Dependency API reports 81 of them.',
     );
+    // The two pairs of a flow and the class of its action have entries of Phase 3 as well: the method, and the
+    // variable of the action that the flow sets.
+    expect(section).toContain(
+      'None of them is in key v1. 2 pairs have entries of another phase too, and are counted there as well.',
+    );
     expect(section).toMatch(/^Flow +CustomField +62 +47$/m);
     expect(section).toMatch(/^EmailTemplate +CustomField +7 +3$/m);
     // What the API reports of a report type and a quick action was not measured, and the mock org reports nothing.
@@ -1360,24 +1368,27 @@ describe('reading the test org', () => {
     expect(section).toMatch(/^listed-field +35 +4$/m);
     expect(section).toMatch(/^join +1 +0$/m);
     expect(section).toMatch(/^action +10 +5$/m);
-    // By the kind of reference: the actions of flows that start Apex, which the test org reports.
-    expect(section).toMatch(/^calls +3 +3$/m);
-    expect(section).toMatch(/^reads +91 +47$/m);
-    expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path)');
-    expect(section).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
+    // By the type that refers and the kind of reference: the subflow and the actions of flows that start Apex, which
+    // the test org reports, and the fields the rules read, which it does not.
+    expect(section).toMatch(/^Flow +calls +3 +3$/m);
+    expect(section).toMatch(/^Flow +reads +52 +37$/m);
+    expect(section).toMatch(/^WorkflowRule +reads +12 +0$/m);
+    expect(section).toMatch(/^CustomMetadata +references +24 +5$/m);
+    expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path; reads)');
+    expect(section).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action; calls)');
     // The row with an id the org did not list is no row of the flow for the engine.
-    expect(section).toContain('- missing   Flow:invoice_after_save -> CustomObject:account  (record)');
+    expect(section).toContain('- missing   Flow:invoice_after_save -> CustomObject:account  (record; references)');
     expect(section).toContain(
-      '- reported  WorkflowRule:invoice__c.remind_when_sent -> WorkflowFieldUpdate:invoice__c.set_sub_status_reminder  (action)',
+      '- reported  WorkflowRule:invoice__c.remind_when_sent -> WorkflowFieldUpdate:invoice__c.set_sub_status_reminder  (action; references)',
     );
     expect(section).toContain(
-      '- reported  CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt  (record-of)',
+      '- reported  CustomMetadata:billing_rule.default -> CustomObject:billing_rule__mdt  (record-of; references)',
     );
     expect(section).toContain(
-      '- reported  FieldSet:invoice__c.invoice_summary -> CustomField:account.tier__c  (listed-field)',
+      '- reported  FieldSet:invoice__c.invoice_summary -> CustomField:account.tier__c  (listed-field; reads)',
     );
     expect(section).toContain(
-      '- missing   FieldSet:invoice__c.invoice_summary -> CustomField:invoice__c.name  (listed-field)',
+      '- missing   FieldSet:invoice__c.invoice_summary -> CustomField:invoice__c.name  (listed-field; reads)',
     );
     expect(section.split('\n').slice(-3)).toEqual([
       'Pairs the Dependency API reports from a component of the types CustomMetadata, EmailTemplate, FieldSet, Flow, QuickAction, RecordType, ReportType, WorkflowAlert, WorkflowFieldUpdate, WorkflowOutboundMessage, WorkflowRule, WorkflowTask that the answer key does not hold: 1.',
@@ -1416,32 +1427,48 @@ describe('reading the test org', () => {
     expect(section).toContain(
       'The answer key holds 244 pairs of a component and a component it refers to for these entries. The Dependency API reports 185 of them.',
     );
-    expect(section).toMatch(/^ApexClass +ApexClass +24 +24$/m);
-    expect(section).toMatch(/^ApexClass +CustomField +136 +112$/m);
-    expect(section).toMatch(/^ApexClass +NamedCredential +1 +1$/m);
-    expect(section).toMatch(/^ApexTrigger +ApexClass +2 +2$/m);
-    expect(section).toMatch(/^ApexPage +ApexClass +3 +0$/m);
-    expect(section).toMatch(/^AuraDefinitionBundle +ApexClass +1 +0$/m);
-    expect(section).toMatch(/^LightningComponentBundle +CustomField +5 +0$/m);
-    expect(section).toMatch(/^NamedCredential +ExternalCredential +1 +0$/m);
+    // Key v2 holds the pairs of the Apex that was there before Phase 3, and the pair of a flow of Phase 2 and its
+    // invocable action. The two pairs of a flow and a class have entries of Phase 2 as well.
+    expect(section).toContain(
+      'Of them, 147 pairs are not in key v2, and the Dependency API reports 101 of those. 2 pairs have entries of another phase too, and are counted there as well.',
+    );
+    expect(section).toMatch(/^ApexClass +ApexClass +24 +24 +23 +23$/m);
+    expect(section).toMatch(/^ApexClass +CustomField +136 +112 +57 +42$/m);
+    expect(section).toMatch(/^ApexClass +NamedCredential +1 +1 +1 +1$/m);
+    expect(section).toMatch(/^ApexTrigger +ApexClass +2 +2 +2 +2$/m);
+    expect(section).toMatch(/^ApexPage +ApexClass +3 +0 +3 +0$/m);
+    expect(section).toMatch(/^AuraDefinitionBundle +ApexClass +1 +0 +1 +0$/m);
+    expect(section).toMatch(/^LightningComponentBundle +CustomField +5 +0 +5 +0$/m);
+    expect(section).toMatch(/^NamedCredential +ExternalCredential +1 +0 +1 +0$/m);
     // The entries of Phase 3 in a file of flows: the method of the invocable action, which is a pair of the flow
-    // and the class, and the generic action that the new flow hands its record to.
-    expect(section).toMatch(/^Flow +ApexClass +2 +2$/m);
+    // and the class that key v2 holds, and the generic action that the new flow hands its record to.
+    expect(section).toMatch(/^Flow +ApexClass +2 +2 +1 +1$/m);
     expect(section).toContain(
-      '- reported  Flow:invoice_object_name -> ApexClass:recordobjectaction  (action, parameter)',
-    );
-    // By the way the source names the target, and by the kind of reference.
-    expect(section).toMatch(/^call +15 +15$/m);
-    expect(section).toMatch(/^import +7 +0$/m);
-    expect(section).toMatch(/^tag +2 +0$/m);
-    expect(section).toMatch(/^calls +21 +19$/m);
-    expect(section).toMatch(/^implements +2 +2$/m);
-    expect(section).toMatch(/^uses-type +52 +40$/m);
-    expect(section).toContain(
-      '- missing   LightningComponentBundle:invoicesummary -> ApexClass:invoicecontroller  (import)',
+      '- reported  Flow:invoice_object_name -> ApexClass:recordobjectaction  (action, parameter; calls, writes)',
     );
     expect(section).toContain(
-      '- reported  ApexClass:invoicecalloutservice -> NamedCredential:billing_gateway  (credential)',
+      '- reported  Flow:invoice_review_screen -> ApexClass:invoicepaidaction  (action; calls; in key v2)',
+    );
+    // By the way the source names the target, and by the type that refers and the kind of reference.
+    expect(section).toMatch(/^call +15 +15 +15 +15$/m);
+    expect(section).toMatch(/^import +7 +0 +7 +0$/m);
+    expect(section).toMatch(/^tag +2 +0 +2 +0$/m);
+    expect(section).toMatch(/^ApexClass +calls +15 +15 +15 +15$/m);
+    expect(section).toMatch(/^ApexTrigger +calls +2 +2 +2 +2$/m);
+    expect(section).toMatch(/^AuraDefinitionBundle +calls +1 +0 +1 +0$/m);
+    expect(section).toMatch(/^LightningComponentBundle +calls +1 +0 +1 +0$/m);
+    expect(section).toMatch(/^ApexPage +references +4 +0 +4 +0$/m);
+    expect(section).toMatch(/^ApexClass +implements +2 +2 +2 +2$/m);
+    expect(section).toMatch(/^ApexClass +uses-type +51 +39 +39 +30$/m);
+    expect(section).toMatch(/^ApexClass +reads +141 +118 +65 +52$/m);
+    expect(section).toContain(
+      '- missing   LightningComponentBundle:invoicesummary -> ApexClass:invoicecontroller  (import; calls)',
+    );
+    expect(section).toContain(
+      '- reported  ApexClass:invoicecalloutservice -> NamedCredential:billing_gateway  (credential; references)',
+    );
+    expect(section).toContain(
+      '- reported  ApexClass:dynamicaccess -> CustomField:account.risk_score__c  (text; reads, writes; in key v2)',
     );
     expect(section.split('\n').slice(-2)).toEqual([
       'Pairs the Dependency API reports from a component of the types ApexClass, ApexPage, ApexTrigger, AuraDefinitionBundle, LightningComponentBundle, NamedCredential that the answer key does not hold: 0.',
@@ -2347,14 +2374,20 @@ describe('reading an org that holds more than the fixture project', () => {
 
   it('counts what a snapshot holds of Account and Contact, and names none of their fields', () => {
     // Files as a retrieve of an org can hand them out: standard fields, a standard lookup that does and one that
-    // does not name its relationship, fields of the org and of a package, and the child relationship of the
-    // contacts in a report type of the org and in a file of the project, but not in Apex, which is no XML.
+    // does not name its relationship, fields of the org and of a package, a field of person accounts, a field of an
+    // object whose name starts with Account, and the child relationship of the contacts: as the whole text of an
+    // element of metadata, also with an attribute, as a word in a class and a page, and in a document, whose
+    // elements are no words of the Metadata API and must not be named.
     const files = new Map([
       ['objects/Account/Account.object-meta.xml', '<CustomObject><sharingModel>Read</sharingModel></CustomObject>'],
       ['objects/Account/fields/Industry.field-meta.xml', '<CustomField><type>Picklist</type></CustomField>'],
       ['objects/Account/fields/ParentId.field-meta.xml', '<CustomField><type>Hierarchy</type></CustomField>'],
       ['objects/Account/fields/Takeover_Tier__c.field-meta.xml', '<CustomField><type>Text</type></CustomField>'],
       ['objects/Account/listViews/SecretPlanAccounts.listView-meta.xml', '<ListView><label>All</label></ListView>'],
+      [
+        'objects/AccountContactRelation/fields/Roles.field-meta.xml',
+        '<CustomField><type>Picklist</type></CustomField>',
+      ],
       ['objects/Contact/Contact.object-meta.xml', '<CustomObject><sharingModel>Read</sharingModel></CustomObject>'],
       [
         'objects/Contact/fields/AccountId.field-meta.xml',
@@ -2365,6 +2398,10 @@ describe('reading an org that holds more than the fixture project', () => {
         '<CustomField><type>Lookup</type><relationshipName>Secret_Plans</relationshipName></CustomField>',
       ],
       ['objects/Contact/fields/Budget__Rating__c.field-meta.xml', '<CustomField><type>Number</type></CustomField>'],
+      [
+        'objects/PersonAccount/fields/Takeover_Score__pc.field-meta.xml',
+        '<CustomField><type>Number</type></CustomField>',
+      ],
       ['objects/Opportunity/fields/StageName.field-meta.xml', '<CustomField><type>Picklist</type></CustomField>'],
       [
         'reportTypes/Takeover_Contacts.reportType-meta.xml',
@@ -2374,22 +2411,37 @@ describe('reading an org that holds more than the fixture project', () => {
         'reportTypes/Account_Contacts.reportType-meta.xml',
         '<ReportType><relationship>Contacts</relationship></ReportType>',
       ],
-      ['classes/SecretPlan.cls', 'for (Contact c : account.Contacts) {}'],
+      [
+        'flexipages/Takeover_Account.flexipage-meta.xml',
+        '<FlexiPage><value>Contacts</value><label>Contacts</label><value>Opportunities</value></FlexiPage>',
+      ],
+      [
+        'customMetadata/Takeover.Plan.md-meta.xml',
+        '<CustomMetadata><values><field>Child__c</field><value xsi:type="xsd:string">Contacts</value></values></CustomMetadata>',
+      ],
+      ['classes/SecretPlan.cls', "String plan = '<a>Contacts</a>'; for (Contact c : account.Contacts) {}"],
       ['classes/SecretPlan.cls-meta.xml', '<ApexClass><status>Contacts and more</status></ApexClass>'],
+      ['classes/BudgetContactsReport.cls', 'public class BudgetContactsReport {}'],
+      ['pages/InvoiceStatement.page', '<apex:page><apex:relatedList list="Contacts"/></apex:page>'],
+      ['documents/Deals/plan.xml', '<SecretPlanTakeover>Contacts</SecretPlanTakeover>'],
     ]);
+    const log = publicLog(() => undefined);
     const lines = standardObjectLines(
+      log,
       [...files.keys()],
       (path) => files.get(path) ?? '',
-      new Set(['reportTypes/Account_Contacts.reportType-meta.xml']),
+      new Set(['reportTypes/Account_Contacts.reportType-meta.xml', 'pages/InvoiceStatement.page']),
     );
     expect(lines).toEqual([
       '',
-      'What the snapshot holds of the standard objects Account and Contact:',
-      'OBJECT   FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
-      'Account  yes                 2                1              0                                1',
-      'Contact  yes                 1                2              2                                0',
-      'Files of standard fields of any object: 4. Of them, files that name a relationship (relationshipName): 1.',
-      'Files of XML in which the child relationship Contacts of the standard field Contact.AccountId is the whole text of an element: 2, of which 1 of the fixture project.',
+      'What the snapshot holds of the standard objects Account, Contact and PersonAccount:',
+      'OBJECT         FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
+      'Account        yes                 2                1              0                                1',
+      'Contact        yes                 1                2              2                                0',
+      'PersonAccount  no                  0                1              0                                0',
+      'Files of standard fields of any object: 5. Of them, files that name a relationship (relationshipName): 1.',
+      'The child relationship Contacts of the standard field Contact.AccountId, as the whole text of an element of a file of metadata: in 4 files, of which 1 of the fixture project. Files by the element: label 1, relationship 2, value 2.',
+      'The word Contacts in another file: in 3 files, of which 1 of the fixture project. Files by the first folder: classes 1, documents 1, pages 1.',
     ]);
     expectNothingForeign(lines.join('\n'));
   });
