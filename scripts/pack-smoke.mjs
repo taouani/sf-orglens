@@ -4,7 +4,9 @@
  *
  * This catches what tests from source cannot: a wrong `files` list, a broken
  * `exports` map, a missing dependency, or a binary that does not start. The
- * installed binary also takes a snapshot of the fixture project.
+ * installed binary also takes a snapshot of the fixture project, and of the
+ * project with a class that does not parse: the grammar of Apex is a file of
+ * its own in a dependency, and is found only where the package is installed.
  *
  * Run `pnpm run build` first.
  */
@@ -20,18 +22,24 @@ const windows = process.platform === 'win32';
 /** Quotes one argument for cmd.exe. Paths with spaces would otherwise be split. */
 const quote = (text) => (/[\s"&|<>^()]/.test(text) ? `"${text.replaceAll('"', '\\"')}"` : text);
 
+/** Runs a program and returns what it wrote. An exit code other than 0 is a failure. */
 function run(command, args, cwd) {
+  return started(command, args, cwd).stdout;
+}
+
+/** Runs a program and returns what it wrote and its exit code. An exit code other than 0 and those `allowed` is a failure. */
+function started(command, args, cwd, allowed = []) {
   // npm and pnpm are .cmd shims on Windows and need a shell to start. A shell joins its arguments
   // without quoting, so they are quoted here. Node.js itself is started directly, without a shell.
   const viaShell = windows && command !== process.execPath;
   const result = viaShell
     ? spawnSync([command, ...args].map(quote).join(' '), { cwd, encoding: 'utf8', shell: true })
     : spawnSync(command, args, { cwd, encoding: 'utf8' });
-  if (result.status !== 0) {
+  if (result.status !== 0 && !allowed.includes(result.status)) {
     console.error(`$ ${command} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
     throw new Error(`${command} exited with code ${String(result.status)}`);
   }
-  return result.stdout;
+  return result;
 }
 
 function fail(message) {
@@ -103,8 +111,9 @@ try {
   // The installed binary creates a workspace and reports on it, and its output matches the envelope.
   const workspace = join(app, 'workspace');
   mkdirSync(workspace);
-  const orglens = (...args) =>
-    run('npm', ['exec', '--offline', '--', 'orglens', '--workspace', workspace, ...args], app).trim();
+  const orglensWithStatus = (allowed, ...args) =>
+    started('npm', ['exec', '--offline', '--', 'orglens', '--workspace', workspace, ...args], app, allowed);
+  const orglens = (...args) => orglensWithStatus([], ...args).stdout.trim();
   const lastLine = (text) => text.split('\n').at(-1) ?? '';
   orglens('init', '--json');
   orglens('source', 'add', 'repo', '--kind', 'git', '--json');
@@ -126,6 +135,34 @@ try {
     fail(`unexpected snapshot of the fixture project: ${JSON.stringify(snapshot)}`);
   } else {
     console.log(`orglens snapshot: ${String(components)} components in ${String(snapshot.data.snapshot.files)} files`);
+  }
+  const malformed = (report) => (report.data?.issues ?? []).filter((issue) => issue.code === 'APEX_MALFORMED');
+  if (snapshot.data?.analysis?.complete !== true || malformed(snapshot).length > 0) {
+    fail(`the analysis of the fixture project is not complete: ${JSON.stringify(snapshot.data?.analysis)}`);
+  }
+
+  // The installed binary loads the grammar of Apex and parses with it: a class that does not parse is an error of
+  // the analysis, at the line the parser stops at, and the snapshot ends with 5, since its analysis is incomplete.
+  const classes = join(workspace, 'project/force-app/main/default/classes');
+  writeFileSync(join(classes, 'SmokeBroken.cls'), 'public class SmokeBroken {\n    Integer x = ;\n}\n');
+  writeFileSync(
+    join(classes, 'SmokeBroken.cls-meta.xml'),
+    readFileSync(
+      join(
+        classes,
+        readdirSync(classes).find((name) => name.endsWith('.cls-meta.xml')),
+      ),
+      'utf8',
+    ),
+  );
+  const second = orglensWithStatus([5], 'snapshot', 'fixture', '--json');
+  if (second.status !== 5) fail(`the snapshot with a class that does not parse ended with ${String(second.status)}`);
+  const broken = JSON.parse(lastLine(second.stdout.trim()));
+  const [issue, ...more] = malformed(broken);
+  if (issue?.component !== 'ApexClass:smokebroken' || issue.details?.line !== 2 || more.length > 0) {
+    fail(`the class that does not parse is not the one error of Apex: ${JSON.stringify(malformed(broken))}`);
+  } else {
+    console.log(`orglens snapshot: ${issue.message}`);
   }
 
   // The schema of the JSON output is shipped and can be found by its package path.

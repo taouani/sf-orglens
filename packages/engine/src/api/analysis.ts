@@ -12,8 +12,9 @@
 import { EngineError, type JsonValue } from '../core/errors.ts';
 import { engineVersion } from '../core/version.ts';
 import { crossCheck, crossCheckIssues, type CrossCheck } from '../engines/cross-check.ts';
-import { analyseSource } from '../extraction/analyse.ts';
+import { analyseSource, readsApex } from '../extraction/analyse.ts';
 import type { AnalysisIssue } from '../extraction/analysed.ts';
+import { loadApexReader } from '../extraction/apex-reader.ts';
 import type { ProjectLayout } from '../sources/project.ts';
 import { resolveComponents } from '../sources/resolve.ts';
 import { pathDetails } from '../sources/tree.ts';
@@ -79,7 +80,9 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
   // The files are placed with the layout the snapshot keeps: the one its source had when it was read. Neither
   // the folder the command runs in nor the source as it is today plays a part.
   const resolution = await resolveComponents(tree, [''], snapshot.layout);
-  const analysis = analyseSource(tree, resolution.components);
+  // The grammar of Apex is loaded only for a snapshot that holds Apex (decision record 0083).
+  const apex = readsApex(resolution.components) ? await loadApexReader() : undefined;
+  const analysis = analyseSource(tree, resolution.components, apex === undefined ? {} : { apex });
 
   const issues: AnalysisIssue[] = [];
   for (const problem of resolution.problems) {

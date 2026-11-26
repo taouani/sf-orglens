@@ -241,7 +241,16 @@ importers:
       undici:
         specifier: 8.13.1
         version: 8.13.1
+      web-tree-sitter:
+        specifier: 0.27.2
+        version: 0.27.2
+      web-tree-sitter-sfapex:
+        specifier: 3.0.2
+        version: 3.0.2
     devDependencies:
+      '@apexdevtools/apex-parser':
+        specifier: 5.3.0
+        version: 5.3.0
       better-sqlite3:
         specifier: 13.2.0
         version: 13.2.0

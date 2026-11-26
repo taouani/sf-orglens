@@ -7,6 +7,9 @@
  * It works on a tree of files and on the list of the components the files make up (`sources/resolve.ts`), and
  * on nothing else: it does not know whether the files come from an org or from a repository.
  *
+ * The code of an Apex class and of a trigger is parsed, where a reader of Apex is given, and a file that does not
+ * parse is an error of its component (decision record 0083). Nothing else of Apex is analysed yet.
+ *
  * A component it is handed is never dropped without an issue, and a failure costs the one component it happens
  * in. Decision records 0041 and 0042 list what it does not read.
  */
@@ -17,6 +20,7 @@ import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
+import type { ApexReader, Problem } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
 import { readFlow, type FlowReading } from './flows.ts';
@@ -37,6 +41,29 @@ export interface SourceAnalysis {
   readonly work: readonly OriginWork[];
   readonly issues: readonly AnalysisIssue[];
 }
+
+/** What an analysis is given besides the files and the list of components. */
+export interface AnalysisOptions {
+  /**
+   * The reader of Apex (`loadApexReader`). Without it the code of classes and triggers is not parsed. A source
+   * that holds Apex is analysed with it (`readsApex`).
+   */
+  readonly apex?: ApexReader;
+}
+
+/** The types whose code is Apex, with the kind of file the reader of Apex reads it as. */
+const APEX_KINDS: ReadonlyMap<string, 'class' | 'trigger'> = new Map([
+  ['ApexClass', 'class'],
+  ['ApexTrigger', 'trigger'],
+]);
+
+/** Whether an analysis of these components needs the reader of Apex: whether one of them is a class or a trigger. */
+export const readsApex = (listed: readonly ResolvedComponent[]): boolean =>
+  listed.some((component) => APEX_KINDS.has(component.type));
+
+/** The text that Salesforce hands out for a class whose code it hides, as it does for a class of a managed package. */
+const HIDDEN = '(hidden)';
+const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 /** The types that are read. A component of another type gets a row and nothing else. */
 const ANALYSED: ReadonlySet<string> = new Set([
@@ -111,7 +138,11 @@ interface Entry {
  * object that the source holds only parts of gets one that is not defined. The parts that stand inside the
  * file of their object, as Salesforce hands them out, get a row each, and fields and rules are read from there.
  */
-export function analyseSource(tree: SourceTree, listed: readonly ResolvedComponent[]): SourceAnalysis {
+export function analyseSource(
+  tree: SourceTree,
+  listed: readonly ResolvedComponent[],
+  options: AnalysisOptions = {},
+): SourceAnalysis {
   const issues: AnalysisIssue[] = [];
   const registry = new KeyRegistry();
   const entries: Entry[] = [];
@@ -314,6 +345,55 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
       return null;
     }
   };
+  /**
+   * Parses the code of a class or a trigger, and says where it cannot be read. Nothing of it is kept yet: the
+   * analysis of Apex starts with work package 3 of the Phase 3 plan. A class whose code Salesforce hides is not
+   * parsed. A reader that throws has a fault of its own, which costs the component as any fault of an analyser.
+   */
+  const parseApex = (
+    key: ComponentKey,
+    type: string,
+    kind: 'class' | 'trigger',
+    contents: readonly { readonly file: string; readonly bytes: Uint8Array | null }[],
+  ): void => {
+    const { apex } = options;
+    if (apex === undefined) return;
+    for (const { file, bytes } of contents) {
+      if (file.endsWith('-meta.xml') || bytes === null) continue;
+      let source: string;
+      try {
+        source = utf8.decode(bytes);
+      } catch {
+        issues.push({
+          severity: 'error',
+          code: 'APEX_MALFORMED',
+          message: `${file} is not text in UTF-8. Nothing of its Apex is analysed.`,
+          componentKey: key,
+          details: { path: file, line: null, column: null },
+        });
+        continue;
+      }
+      if (source.trim() === HIDDEN) continue;
+      let problems: readonly Problem[];
+      try {
+        ({ problems } = apex.parseUnit(source, kind));
+      } catch (error) {
+        failed(key, type, file, error);
+        continue;
+      }
+      const [first] = problems;
+      if (first === undefined) continue;
+      const { line, column } = first.at;
+      issues.push({
+        severity: 'error',
+        code: 'APEX_MALFORMED',
+        message: `${file}, line ${String(line)}, column ${String(column)}: ${first.message} The parser of Apex cannot read the file, and nothing of it is analysed.`,
+        componentKey: key,
+        details: { path: file, line, column },
+      });
+    }
+  };
+
   const readingsOf = (file: string, reading: ElementReading | null): Entry['readings'] =>
     reading === null ? [] : [{ file, reading }];
 
@@ -444,6 +524,8 @@ export function analyseSource(tree: SourceTree, listed: readonly ResolvedCompone
 
     const contents = files.map((file) => ({ file, bytes: bytesOf(file) }));
     const definition = definitionOf(component, contents);
+    const apexKind = APEX_KINDS.get(type);
+    if (apexKind !== undefined) parseApex(key, type, apexKind, contents);
     // An object, a field and a rule have no file that is not XML. An object that lies in two package folders
     // can have a file of its own in each, and both are read. An email template is read on its own.
     const readings: { file: string; reading: ElementReading }[] = [];
