@@ -261,6 +261,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       };
       for (const [component, outgoing] of [
         [KEY, false],
+        // The org lists a definition under the name of every flow: the name alone means the flow (record 0082).
+        [FLOW_WITH_DRAFT, false],
         [`${FLOW_WITH_DRAFT}.Set_Amount`, false],
         ['Invoice__c.Amount__c', false],
         ['Flow:invoice_after_save', true],
@@ -272,6 +274,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         expect(withDraft.rest, component).toEqual(without.rest);
         expect(withDraft.rest.results.length + withDraft.rest.parts, component).toBeGreaterThan(0);
       }
+      const bare = (await ask(dir, FLOW_WITH_DRAFT, false)).rest;
+      expect([bare.component.key, bare.sameName]).toEqual([KEY, ['FlowDefinition:invoice_recalculate']]);
       // A flow that has no newer version is not named, and neither is a flow that is not in the answer.
       for (const component of ['Flow:invoice_before_save', 'Invoice__c.Legacy_Code__c']) {
         expect((await ask(dir, component, false)).newerVersions, component).toEqual([]);

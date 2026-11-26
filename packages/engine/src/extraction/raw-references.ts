@@ -30,7 +30,10 @@ export type Via =
   | 'display-field'
   | 'formula'
   | 'merge-field'
-  /** In a flow: the object of a record element, of a start or of a choice set. */
+  /**
+   * In a flow: the object of a record element, of a start or of a choice set, and the object an element gives the
+   * records of to a generic Apex action or component (`dataTypeMappings`).
+   */
   | 'object'
   /** In a flow: the resource a record element writes or deletes. The reference is to the object it is of. */
   | 'record'
@@ -82,7 +85,9 @@ export type Via =
   /** The page or component that overrides an action of an object, such as the Lightning page of its records. */
   | 'action-override'
   /** A child relationship a report type joins: the reference is to the lookup field that defines it. */
-  | 'join';
+  | 'join'
+  /** In a flow: the flow it overrides (`overriddenFlow`), which is a flow of a managed package. */
+  | 'override';
 
 /** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
 export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
@@ -274,6 +279,12 @@ export function fieldsANameCanBe(name: string): string[] {
 export const relationshipOf = (field: string): string =>
   /__p?c$/i.test(field) ? `${field.slice(0, -1)}r` : /[A-Za-z0-9]id$/i.test(field) ? field.slice(0, -2) : field;
 
+/**
+ * Whether the names that were not followed are the field `Id` alone. It gives no reference where its object is
+ * known, so nothing is missed where it is not, and no warning says it (decision record 0082).
+ */
+const onlyId = (names: readonly NameAt[]): boolean => names.length === 1 && foldName(names[0]?.name ?? '') === 'id';
+
 /** The component the names of a file are resolved for. */
 interface Owner {
   readonly key: ComponentKey;
@@ -344,6 +355,7 @@ export function resolveReferences(
     /** The names are a field of the object at the end, which the file names apart from the relationship. */
     apart = false,
   ): void => {
+    if (endsAt === 'field' && onlyId(rest)) return;
     // A formula can hold a path of any length. The issue shows the start of what was not followed.
     const names = rest.slice(0, MOST_NAMES_SHOWN).map((at) => at.name);
     const shown = `"${cut(names.join('.'), LONGEST_PATH_SHOWN)}"`;
@@ -373,7 +385,7 @@ export function resolveReferences(
   /** Says that nothing says which object the names are a field of, so that they were not followed. */
   const nothingSays = (names: readonly NameAt[], endsAt: EndsAt): void => {
     const [first] = names;
-    if (first === undefined) return;
+    if (first === undefined || (endsAt === 'field' && onlyId(names))) return;
     issues.push({
       severity: 'warning',
       code: 'PATH_NOT_FOLLOWED',
@@ -406,8 +418,10 @@ export function resolveReferences(
       if (target === 'entitydefinition') add(first, model.object(first.name), 'references', one);
       else if (target === 'fielddefinition') {
         // The name of the field alone. The object is the value of the field the file of the relationship names.
+        // `Id` gives no reference, as at the end of a path, so it needs no object (decision record 0082).
         const controlling = facts.controllingField ?? '';
         const object = one.record.get(foldName(controlling.slice(controlling.lastIndexOf('.') + 1)));
+        if (foldName(first.name) === 'id') return;
         if (object === undefined || !ONE_NAME.test(object)) nothingSays([first], 'field');
         else add(first, model.field(object, first.name), 'references', one, { object });
       } else if (target.endsWith('__mdt')) {

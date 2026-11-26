@@ -430,7 +430,8 @@ export interface FoundComponent {
   readonly component: GraphComponent;
   /**
    * The keys of the other components that the name fits, sorted, where it was a name alone that fits an object
-   * and more. Empty for a name that fits one component, and for a key or a type with a name.
+   * and more, or a flow and its definition. Empty for a name that fits one component, and for a key or a type with
+   * a name.
    */
   readonly sameName: readonly ComponentKey[];
 }
@@ -474,8 +475,10 @@ function keyOfText(text: string): ComponentKey | null {
  *
  * A name alone is looked for in every type of `types` and in every type the engine knows by name. A name that
  * fits an object and other components means the object, and the others are named with it: the file of the
- * workflow rules of an object has the name of the object (decision record 0064). A name that fits components of
- * several types and no object is an error that lists them: the engine does not choose.
+ * workflow rules of an object has the name of the object (decision record 0064). A name that fits a flow and its
+ * definition and nothing else means the flow, and the definition is named with it (decision record 0082). Any
+ * other name that fits components of several types and no object is an error that lists them: the engine does not
+ * choose.
  */
 export function findComponent(graph: SnapshotGraph, named: string, types: readonly string[]): FoundComponent {
   const text = named.trim();
@@ -516,6 +519,16 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
   const object = candidates.find((one) => one.type === 'CustomObject');
   if (object !== undefined) {
     return { component: object.found, sameName: keys.filter((key) => key !== object.found.key).sort(compareText) };
+  }
+  // An org lists a definition of every flow under the name of the flow. A name that fits the two and nothing else
+  // means the flow (decision record 0082).
+  const flow = candidates.find((one) => isFlow(one.found));
+  if (
+    flow !== undefined &&
+    candidates.length === 2 &&
+    candidates.some((one) => typeOf(one.found.key) === 'FlowDefinition')
+  ) {
+    return { component: flow.found, sameName: keys.filter((key) => key !== flow.found.key).sort(compareText) };
   }
   throw new EngineError(
     'COMPONENT_AMBIGUOUS',

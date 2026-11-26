@@ -244,7 +244,7 @@ Outcome 6. Run this part in the root of the clone: `cd "$ORGLENS_REPO"` in bash,
 | F1  | `pnpm run corpora:fetch`                                                                                                                                                   | Eight codebases are downloaded into `.corpora`, each at the commit `fixtures/corpora.toml` names: Apex Recipes, Nebula Logger, NPSP, PMM, Volunteers for Salesforce, Outbound Funds, Coral Cloud and EDA.                                                                                                                                                                                                                                                                            |
 | F2  | `pnpm exec vitest run packages/engine/test/extraction-corpora-checked.test.ts`                                                                                             | 18 tests pass, and none is skipped. They hold the counts and the digest of what I checked by hand: when the analysis reports something else for an entry, a test fails.                                                                                                                                                                                                                                                                                                              |
 | F3  | `pnpm run corpora:listing coral-cloud > coral-cloud.txt` and `pnpm run corpora:listing nebula-logger > nebula-logger.txt`                                                  | On the error stream, among the counts, a line `coral-cloud, flows and configuration: 95 entries` and one `nebula-logger, flows and configuration: 53 entries`, each with a time and a digest. Each file has, after the formulas of Phase 1, a part headed `flows and configuration`: every flow, then every element of it, each with its values, its references and its issues. Delete the files afterwards: they hold text of the codebases, which is not stored in the repository. |
-| F4  | Read the five flows of the table below: open the file of the flow in `.corpora`, and find its entries in the listing by `## flow` and `## element` and the key of the flow | For every element, every name of a field, an object, a flow or a class in its values has a reference, with the right target and kind (`reads`, `writes`, `calls`, `references`, `triggers-on`), and no reference is there for a name that is not in the element. Two of the five have a name the analysis misses, named below.                                                                                                                                                       |
+| F4  | Read the five flows of the table below: open the file of the flow in `.corpora`, and find its entries in the listing by `## flow` and `## element` and the key of the flow | For every element, every name of a field, an object, a flow or a class in its values has a reference, with the right target and kind (`reads`, `writes`, `calls`, `references`, `triggers-on`), and no reference is there for a name that is not in the element. Two of the five have a name that version 0.1.0-next.2 misses, named below.                                                                                                                                          |
 | F5  | `pnpm run bench:corpora coral-cloud --runs 3`                                                                                                                              | A table of times for `snapshot`, `analyse`, `coverage` and `impact` on Coral Cloud. Your times are yours: I ask for no number here.                                                                                                                                                                                                                                                                                                                                                  |
 
 The five flows of F4. The paths are below `.corpora` in the clone.
@@ -258,10 +258,12 @@ The five flows of F4. The paths are below `.corpora` in the clone.
 | 5   | `Flow:logentryhandler_screen_tests_for_flow` | `nebula-logger/nebula-logger/extra-tests/integration-tests/flows/LogEntryHandler_Screen_Tests_for_Flow.flow-meta.xml` | A screen flow                      | 5        |
 
 Flows 3 and 5 each have an action that hands records to a generic Apex action and names their object in
-`<dataTypeMappings>` (`Account` and `User`). The analysis gives no reference for that name and no warning: two of the
-seven missed names of the [note](../research/phase-2/public-codebases.md). If you find another, it is a finding. The
-note also names the rules by which a name gives no reference, such as the component of a screen and the object a
-variable declares.
+`<dataTypeMappings>` (`Account` and `User`). The analysis of version 0.1.0-next.2 gives no reference for that name and
+no warning: two of the seven missed names of the [note](../research/phase-2/public-codebases.md). Since 26 November
+2026 the analysis reads them (decision record 0082): a clone of `main` from that day lists a reference of the kind
+`references` to the object at each, which is no finding. If you find another missed name, it is a finding. The note
+also names the rules by which a name gives no reference, such as the component of a screen and the object a variable
+declares.
 
 [public-codebases.md](../research/phase-2/public-codebases.md) has the numbers of the check and what it does not
 show. F4 matters more than its five flows suggest: no person has read an entry yet. A flow is where I am most likely
@@ -370,7 +372,8 @@ whatever package has that name.
 2. Whether `0.1.0-next.2` is published. Done: you said so on 25 November 2026, and it is published.
 3. Whether the reader of flows reads the two kinds of names it misses (`overriddenFlow` and `dataTypeMappings`), and
    whether the warning for `Id` at the end of a path goes. Answered: you chose both with the Phase 3 plan on 26
-   November 2026 (record 0082). They are built in the first pull request of Phase 3, so this test plan does not
-   show them.
+   November 2026 (record 0082). They are built in the first pull request of Phase 3. This test plan was written
+   before it, so where it says what the analysis misses, it speaks of version 0.1.0-next.2, as the note to the
+   five flows of F4 says.
 4. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.
 5. The draft of the Phase 3 plan and its questions. Done: you approved it on 26 November 2026.

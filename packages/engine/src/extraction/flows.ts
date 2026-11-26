@@ -556,6 +556,11 @@ class Reader {
       // What a step that makes records sets is a field of the records it makes. Their object is read with the step.
       case 'mapItems':
         return fieldsOf(textOf(childOf(parent, 'outputSObjectType')));
+      // The object that stands for a generic type of an Apex action or of a component of a screen: the element
+      // gives it records of that object (decision record 0082). Nothing else in the group is a name.
+      case 'dataTypeMappings':
+        this.object(sink, childOf(group, 'typeValue'), more);
+        return null;
       default:
         return SAME_OBJECT.has(group.local) ? of : null;
     }
@@ -626,6 +631,20 @@ class Reader {
     }
   }
 
+  /**
+   * The flow this flow overrides, by its name (`overriddenFlow`). Salesforce lets a flow override a template flow
+   * of a managed package, so the flow it names is of a package (decision record 0082).
+   */
+  overridden(sink: Sink, element: XmlElement): void {
+    const value = valueOf(element);
+    if (value === null) return;
+    if (!NAME.test(value.value)) this.#refuse(sink, element, value);
+    else {
+      const at = this.#places(value)(0, value.value.length);
+      sink.references.push({ form: 'component', type: 'Flow', at, kind: 'references', via: 'override' });
+    }
+  }
+
   /** What a subflow and an Apex plug-in start: another flow and an Apex class. */
   started(sink: Sink, element: XmlElement, group: string): void {
     if (group === 'subflows') {
@@ -672,6 +691,7 @@ export function readFlow(document: XmlDocument): FlowReading {
     if (isLeaf(element)) {
       // A setting of the flow. The label of an interview is a text with merge fields.
       if (group === 'interviewLabel') reader.text(own, element);
+      else if (group === 'overriddenFlow') reader.overridden(own, element);
       else if (group !== 'description' && group !== 'label') reader.text(own, element, 'probable');
       continue;
     }

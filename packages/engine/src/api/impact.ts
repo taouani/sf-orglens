@@ -85,8 +85,9 @@ export interface ImpactReport {
   readonly component: ImpactReportComponent;
   /**
    * The keys of the other components of the same name, sorted, where the component was named by its name alone
-   * and the name fits an object and more: the answer is about the object (decision record 0064). Empty for a
-   * name that fits one component, and for a key or a type with a name.
+   * and the name fits an object and more: the answer is about the object (decision record 0064). Also where it
+   * fits a flow and its definition and nothing else: the answer is about the flow (decision record 0082). Empty for
+   * a name that fits one component, and for a key or a type with a name.
    */
   readonly sameName: readonly ComponentKey[];
   /** How many components of the snapshot it contains. The answer is about them too. */

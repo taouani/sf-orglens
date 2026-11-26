@@ -614,8 +614,8 @@ The values of `reason` are `standard-field`, `standard-object`, `inactive-rule`,
 of a workflow rule), `workflow-action` (a reference of an email alert, an outbound message or a task),
 `field-update` (a reference of a field update that is not in its formula), `custom-metadata` (a reference of a
 record of a custom metadata type that is not to the type of the record), `record-type` (a reference of a record
-type), `subflow` (a reference of a flow to a flow it starts), `name-in-text` (a reference of a flow that only a
-text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
+type), `subflow` (a reference of a flow to a flow it starts or overrides), `name-in-text` (a reference of a flow that
+only a text names), `global-variable` (a reference of a flow to a field of a custom setting or a custom permission that
 only its formulas name), `action-override` (a reference of an object to a Visualforce page, a Lightning component or
 an s-control that overrides one of its actions), `report-type` (a reference of a report type), `quick-action` (a
 reference of a quick action) and `other`. A pair to a standard field or a standard object has one
@@ -762,18 +762,21 @@ their longest value.
 | `--outgoing`              | Shows what the component refers to, in place of what refers to it.                                 |
 | `--packages`              | Keeps the components of managed packages among what refers to the component.                       |
 
-**How the component is named.** By its name (`Account.Industry`), by its type and name
-(`CustomField:Account.Industry`) or by its key (`CustomField:account.industry`). Upper and lower case do not
-matter. An element of a flow is named by the name of the flow and its own, `Invoice_After_Save.Update_Account`,
-alone or after `Flow:`. A name alone is looked up among the types the snapshot holds and the types OrgLens knows by
-name. If it fits an object and other components, the answer is about the object, and the line below the first one
-names the others, which `sameName` lists. A file of workflow rules has the name of its object, so `orglens impact
-Invoice__c` answers for the object on every org with workflow rules for it. If the name fits components of several
-types and none of them is an object, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys. Decision
-record [0064](adr/0064-a-name-alone-that-fits-an-object-means-the-object.md) says why. The snapshot also knows a
-component that it does not hold and that something in it refers to, such as a standard field: `orglens impact
-Account.Name` works in a repository that has no file for that field. A component of that kind whose type is neither
-in the snapshot nor known to OrgLens by name is not found by its name alone: name it with its type.
+**How the component is named.** By its name (`Account.Industry`), by its type and name (`CustomField:Account.Industry`)
+or by its key (`CustomField:account.industry`). Upper and lower case do not matter. An element of a flow is named by the
+name of the flow and its own, `Invoice_After_Save.Update_Account`, alone or after `Flow:`. A name alone is looked up
+among the types the snapshot holds and the types OrgLens knows by name. If it fits an object and other components, the
+answer is about the object, and the line below the first one names the others, which `sameName` lists. A file of
+workflow rules has the name of its object, so `orglens impact Invoice__c` answers for the object on every org with
+workflow rules for it. An org lists a definition of every flow under the name of the flow (`FlowDefinition`). If the
+name fits a flow and its definition and nothing else, the answer is about the flow, and the line below the first one
+names the definition, which `sameName` lists. If the name fits components of several types in any other way and none of
+them is an object, the command ends with `COMPONENT_AMBIGUOUS` and lists their keys. Decision records
+[0064](adr/0064-a-name-alone-that-fits-an-object-means-the-object.md) and
+[0082](adr/0082-what-phase-2-left-open-about-flows-comes-first.md) say why. The snapshot also knows a component that it
+does not hold and that something in it refers to, such as a standard field: `orglens impact Account.Name` works in a
+repository that has no file for that field. A component of that kind whose type is neither in the snapshot nor known to
+OrgLens by name is not found by its name alone: name it with its type.
 
 **What the answer holds.**
 
@@ -873,15 +876,16 @@ the flow of an element that is asked about does not count: what they name never 
 of an object nothing says, and says what the path ends at (`details.endsAt`): `object` for the record that an
 element of a flow writes or deletes as a whole, `field` for any other path. It counts only where the answer holds
 a field whose name one of the names can be, on whatever object, a record type where one of the names is
-`RecordType`, or an object where the path ends at one. One that kept twenty names, which may be fewer than the
-path has, counts as any other. So does one without `details.endsAt`. An analysis made by an earlier version wrote
-such a warning: it kept no warning for a field that an element sets behind a record of no known object, and
-`orglens analyse <source>` analyses the snapshot again. A report type writes one for a child relationship that no
-file of the snapshot defines and that is not one of the few the engine knows of every org (`details.relationship`):
-the lookup field behind it can have any name (decision record 0077). Every other warning counts for what refers to
-a component. A warning about a file as a whole, which names no component, counts for every answer. The count is of
-the warnings that bear on the answer directly: one whose names fit only a component that another missing
-reference would bring into the answer is not counted, and the answer is not complete all the same.
+`RecordType`, or an object where the path ends at one. A path of which only the field `Id` was not followed gives no
+such warning, since `Id` gives no reference where its object is known (decision record 0082). One that kept twenty
+names, which may be fewer than the path has, counts as any other. So does one without `details.endsAt`. An analysis made
+by an earlier version wrote such a warning: it kept no warning for a field that an element sets behind a record of no
+known object, and `orglens analyse <source>` analyses the snapshot again. A report type writes one for a child
+relationship that no file of the snapshot defines and that is not one of the few the engine knows of every org
+(`details.relationship`): the lookup field behind it can have any name (decision record 0077). Every other warning
+counts for what refers to a component. A warning about a file as a whole, which names no component, counts for every
+answer. The count is of the warnings that bear on the answer directly: one whose names fit only a component that another
+missing reference would bring into the answer is not counted, and the answer is not complete all the same.
 
 For what refers to a component, a type that is not analysed is left out where its components can name no type
 of the answer: neither the type of the component, nor that of something it contains or of a result, nor a type
@@ -918,7 +922,7 @@ needs a complete answer reads `data.complete`: the exit code `0` does not say it
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `snapshot`        | `id`, `source`, `kind`, `status` (`complete` or `partial`), `finishedAt`, and `analysedBy`: the version of the engine that analysed it.                                                                                                                                                                                           |
 | `component`       | The component that was asked about: `key`, `type`, `name`, `file` and `package`. `name` and `file` are `null` for a component the snapshot does not hold. `package` is the prefix of the managed package it is of, or `null`.                                                                                                     |
-| `sameName`        | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object. Empty otherwise.                                                                                                                                                                      |
+| `sameName`        | The keys of the other components the name fits, where it was a name alone that fits an object and more, and the answer is about the object, or that fits a flow and its definition, and the answer is about the flow. Empty otherwise.                                                                                            |
 | `parts`           | How many components of the snapshot it contains, such as the fields of an object or the elements of a flow. The answer is about them too.                                                                                                                                                                                         |
 | `elementOf`       | For an element of a flow, the key of the flow, and `null` for any other component. The flow runs the element, so for `incoming` what refers to the flow is in the answer.                                                                                                                                                         |
 | `direction`       | `incoming` or `outgoing`.                                                                                                                                                                                                                                                                                                         |
@@ -1170,7 +1174,7 @@ The code is fixed now, so that scripts written today keep their meaning when the
 | `SOURCE_IN_USE`          | 2    | The source cannot be removed, because another source refers to it.                                                 |
 | `SNAPSHOT_NOT_FOUND`     | 2    | The source has no snapshot yet, or none with the given number, or none that can be analysed or asked.              |
 | `COMPONENT_NOT_FOUND`    | 2    | The snapshot knows no component with the name that was given to `impact`.                                          |
-| `COMPONENT_AMBIGUOUS`    | 2    | The name fits components of several types, and none is an object. `details.candidates` lists their keys.           |
+| `COMPONENT_AMBIGUOUS`    | 2    | The name fits components of several types, and `impact` chooses none. `details.candidates` lists their keys.       |
 | `KEY_INVALID`            | 2    | A component key does not follow the key grammar.                                                                   |
 | `LOGIN_FAILED`           | 4    | No login for the org of a source was found, the login did not work, or the org is silent.                          |
 | `ORG_MISMATCH`           | 4    | The login belongs to another org than the one the source declares.                                                 |

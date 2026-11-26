@@ -104,6 +104,32 @@ describe('orglens impact', () => {
     expect((await orglensJson(dir, ['impact', 'CustomObject:Invoice__c'])).data).toMatchObject({ sameName: [] });
   });
 
+  it('says that the answer is about the flow where a name fits a flow and its definition', async () => {
+    // An org lists a definition of every flow under the name of the flow (decision record 0082). A repository can
+    // hold one too, as a file.
+    const dir = await fixtureWorkspace((at) => {
+      const definitions = join(at, 'project/force-app/main/default/flowDefinitions');
+      mkdirSync(definitions);
+      writeFileSync(
+        join(definitions, 'Invoice_Recalculate.flowDefinition-meta.xml'),
+        [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<FlowDefinition xmlns="http://soap.sforce.com/2006/04/metadata">',
+          '    <activeVersionNumber>1</activeVersionNumber>',
+          '</FlowDefinition>',
+          '',
+        ].join('\n'),
+      );
+    });
+    expect((await orglens(dir, ['impact', 'Invoice_Recalculate'])).stdout.split('\n')[1]).toBe(
+      'The name also fits FlowDefinition:invoice_recalculate. The answer is about the flow. To ask about the other, name it by its key.',
+    );
+    expect((await orglensJson(dir, ['impact', 'Invoice_Recalculate'])).data).toMatchObject({
+      component: { key: 'Flow:invoice_recalculate' },
+      sameName: ['FlowDefinition:invoice_recalculate'],
+    });
+  });
+
   it('says that an answer is complete where every type was analysed and no warning bears on it', async () => {
     // A project of one object with two fields, one of which reads the other and follows a path that nothing
     // says where it leads. The path ends in a field named Width__c, which is not what is asked about.

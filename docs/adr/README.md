@@ -116,9 +116,6 @@ list holds the answers of the maintainer. The records that the work packages of 
 section 7 of the [Phase 3 plan](../plans/phase-3.md#7-pull-requests-and-review) names, come with the pull requests
 that build them and are not listed.
 
-- **What Phase 2 left open about flows.** Record
-  [0082](0082-what-phase-2-left-open-about-flows-comes-first.md) is built in the first pull request of
-  the [Phase 3 plan](../plans/phase-3.md), which completes records 0041, 0061, 0064 and 0074.
 - **The mark of a test.** Record [0081](0081-a-test-class-stays-in-an-answer-and-is-marked.md) says what is marked.
   How the store keeps it is written with work package 3, and the JSON output with work package 7.
 - **The descriptions of objects.** Record [0080](0080-an-org-describes-its-objects-to-a-snapshot.md)
