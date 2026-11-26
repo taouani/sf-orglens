@@ -5,8 +5,10 @@
 # an email template and an Apex class that a flow calls, and later a report type and a quick action (work package
 # 8). Everything of version 1 is here, entry for entry.
 #
-# It was written by hand, by reading the files, before any analyser of these types existed. It
-# says which references an analyser must find in the project, and which it must
+# It was written by hand, by reading the files. The entries of what work package 1 added were
+# written before any analyser of those types existed. The entries of the report type and the
+# quick action were written in the pull request that added their analysers (work package 8).
+# It says which references an analyser must find in the project, and which it must
 # never report. The format and the rules of what is keyed are in ../README.md.
 # packages/engine/test/fixture-key.test.ts checks this file against the project.
 #
