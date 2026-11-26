@@ -26,10 +26,11 @@ name: Pre-release
 # trusted publishing first and falls back to a token, so a run with a token
 # would say nothing about trusted publishing. A package that is not on npm yet
 # cannot be published by this workflow as it is. A new trusted publisher
-# expires when no version is published through it within two days. Version
-# 0.1.0-next.1 was published that way on the same day, and the tag "latest"
-# moved with it. docs/releases/publishing.md has the steps of the maintainer,
-# and what the two publishes showed.
+# expires when no version is published through it within two days. Versions
+# 0.1.0-next.1 on 17 November 2026 and 0.1.0-next.2 on 26 November 2026 were
+# published that way, and the tag "latest" moved with each. The file
+# docs/releases/publishing.md has the steps of the maintainer, and what the
+# publishes showed.
 #
 # Each publish also moves the tag "latest" to the new version, while "latest"
 # is a pre-release: npm install and npm update without a tag follow "latest",

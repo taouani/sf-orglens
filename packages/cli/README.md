@@ -6,9 +6,9 @@ your own machine.
 
 > **Pre-release.** The commands below manage a workspace and its configuration, take snapshots of repository
 > folders and of orgs, and analyse the objects, fields, validation rules, formulas, flows, workflow rules, record
-> types, field sets and records of custom metadata types in them. `orglens impact` shows what refers to a component
-> among those types. Apex and the other types are not analysed yet, and an answer names the types it does not
-> cover. See the
+> types, field sets, records of custom metadata types, email templates, report types and quick actions in them.
+> `orglens impact` shows what refers to a component among those types. Apex and the other types are not analysed
+> yet, and an answer names the types it does not cover. See the
 > [roadmap](https://github.com/taouani/sf-orglens/blob/main/docs/plans/re-architecture-plan.md#roadmap).
 
 ```sh

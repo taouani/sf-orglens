@@ -17,7 +17,7 @@ The plan is written by the AI assistant that built the phase, addressed to the m
 - **Part H is the main part, and only you can do it:** `orglens snapshot`, `coverage` and `impact` on an org you
   know, with flows whose uses you know. No command of this version has run against an org. It also shows whether
   the corrections from your snapshot of a large org on 23 November 2026 hold there.
-- Part I installs `0.1.0-next.2` from npm, once it is published on your word.
+- Part I installs `0.1.0-next.2` from npm, where it is published since 26 November 2026.
 
 Every expected output of parts B to D was produced on Linux x64 with Node.js 24.22.3 on 25 November 2026, as the root
 user, with the code of the commit named below. Times and sizes on your machine will differ. Numbers of components,
@@ -336,15 +336,15 @@ project.
 
 ## I. The pre-release
 
-Version `0.1.0-next.2` is published only on your word, by the workflow "Pre-release" and with your approval of its job
-(records 0050 and 0053). Run this part once it is published. Until then, `npm install` finds no such version.
+Version `0.1.0-next.2` was published on 26 November 2026, on your word, by the workflow "Pre-release" and with your
+approval of its job (records 0050 and 0053).
 
-| #   | Do                                                                                                                                        | Expect                                                                                                                                   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository                                                     | `OrgLens 0.1.0-next.2 (pre-release)` above the two earlier ones, marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`. |
-| I2  | In a terminal without the shell function of this plan, where `0.1.0-next.1` is installed: `npm update --global`, then `orglens --version` | `sf-orglens/0.1.0-next.2 engine/0.1.0-next.2`. Without an earlier install: `npm install --global sf-orglens@0.1.0-next.2`.               |
-| I3  | `orglens doctor` in any folder that is no workspace                                                                                       | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`. The last line is `OrgLens can run here.`             |
-| I4  | `orglens --help`, then `orglens impact --help`                                                                                            | The commands of `docs/cli.md`, and for `impact` the option `--packages`.                                                                 |
+| #   | Do                                                                                                                                        | Expect                                                                                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | Open the [releases](https://github.com/taouani/sf-orglens/releases) of the repository                                                     | `OrgLens 0.1.0-next.2 (pre-release)` above the two earlier ones, marked as a pre-release, with three files: two `.tgz` and `SHA256SUMS`.                                                                                                                   |
+| I2  | In a terminal without the shell function of this plan, where `0.1.0-next.1` is installed: `npm update --global`, then `orglens --version` | `sf-orglens/0.1.0-next.2 engine/0.1.0-next.2`. Without an earlier install: `npm install --global sf-orglens@0.1.0-next.2`.                                                                                                                                 |
+| I3  | `orglens doctor` in any folder that is no workspace                                                                                       | The checks `node`, `sqlite` and `git` are `ok`. The check `workspace` is `skipped`. The last line is `OrgLens can run here.`                                                                                                                               |
+| I4  | `orglens --help`, then `orglens impact --help`                                                                                            | The commands of `docs/cli.md`, and for `impact` the option `--packages`. The note at the end of the help of this version names objects, fields, validation rules and flows only: the report lists that as not done, and the next version names every type. |
 
 I2 updates every global package of your machine. To leave it out, use the install line of the release notes.
 **Do not run `npx orglens`.** The name `orglens` is the command, not a package of this project, and npx fetches
@@ -367,7 +367,7 @@ whatever package has that name.
 ## What I ask you to decide
 
 1. Whether the phase is accepted, after this plan.
-2. Whether `0.1.0-next.2` is published. I ask on a card.
+2. Whether `0.1.0-next.2` is published. Done: you said so on 25 November 2026, and it is published.
 3. Whether the reader of flows reads the two kinds of names it misses (`overriddenFlow` and `dataTypeMappings`), and
    whether the warning for `Id` at the end of a path goes. The report has my recommendations.
 4. How you count the 100,000 components of your performance targets (record 0037). Asked on 15 November 2026.

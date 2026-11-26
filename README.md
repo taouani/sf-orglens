@@ -5,12 +5,10 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 
 > **Pre-release.** The project is being built in the open. Phases 0 to 2 are built: the impact answers cover
 > objects, fields and validation rules, flows, workflow rules and the other types named below, and not Apex yet. The
-> newest pre-release on npm is version `0.1.0-next.1`, which analyses objects, fields and validation rules only
-> ([release notes](docs/releases/v0.1.0-next.1.md)). Version `0.1.0-next.2` holds what Phase 2 added and is
-> published once the maintainer says so ([release notes](docs/releases/v0.1.0-next.2.md)). No version without a
-> pre-release part exists, and until there is one the names, the JSON output and the exit codes can change from
-> one pre-release to the next. Follow the [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes
-> when.
+> newest pre-release on npm is version `0.1.0-next.2`, which holds what Phase 2 added
+> ([release notes](docs/releases/v0.1.0-next.2.md)). No version without a pre-release part exists, and until there
+> is one the names, the JSON output and the exit codes can change from one pre-release to the next. Follow the
+> [roadmap](docs/plans/re-architecture-plan.md#roadmap) to see what comes when.
 >
 > ```sh
 > npm install --global sf-orglens@next
@@ -48,7 +46,7 @@ or a Git repository, builds a dependency graph on your own machine, and answers 
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | 0 Foundations        | Repository, CI, decision records, workspace and configuration, first retrieve from a real org, Apex parser trial, first fixture project | Built, accepted |
 | 1 First slice        | Objects, fields, formulas and validation rules through every layer                                                                      | Built, accepted |
-| 2 Flows and config   | Flows, workflow rules, record types, custom metadata, email templates, report types, quick actions, managed packages                    | Built, in test  |
+| 2 Flows and config   | Flows, workflow rules, record types, field sets, custom metadata, email templates, report types, quick actions, managed packages        | Built, in test  |
 | 3 Apex               | Classes and triggers at method level, dynamic references                                                                                | Not started     |
 | 4 Compare and access | Snapshot comparison, change-set impact, permissions                                                                                     | Not started     |
 | Correctness gate     | Proof on public codebases and a real 10,000+ component org                                                                              | Not started     |
