@@ -1046,6 +1046,7 @@ describe('small flows that are written here', () => {
         '    <name>Ok</name>',
         ...condition('Some.Id'),
         ...condition('Some.Name'),
+        ...condition('Some.Account__r.Id'),
         ...condition('$Record.Nowhere__r.Id'),
         ...condition('$Record.Nowhere__r.Tier__c'),
         '</rules>',
@@ -1072,17 +1073,18 @@ describe('small flows that are written here', () => {
       '15:24 references CustomObject:invoice__c [Invoice__c] object confirmed',
     ]);
     expect(from(analysis, 'check')).toEqual([
-      '37:41 reads unresolved [Nowhere__r] path confirmed',
       '40:41 reads unresolved [Nowhere__r] path confirmed',
+      '43:41 reads unresolved [Nowhere__r] path confirmed',
     ]);
     // `Id` gives no reference where the object is known, so nothing is missed where it is not, and no warning says
-    // it. Another field after the same stop is still a warning.
+    // it. Another field after the same stop is still a warning, and so is a relationship before `Id`.
     expect(messages(analysis)).toEqual([
       `${FILE}, line 19: the element "typeValue" holds "Not a name", which is not read as a name.`,
       `${FILE}, line 34: it is not known which object "Some" holds, so "Name" after it was not followed.`,
-      `${FILE}, line 40: it is not known which object "Nowhere__r" leads to, so "Tier__c" after it was not followed.`,
-      `${FILE}, line 46: the element "object" holds "Not a name", which is not read as a name.`,
-      `${FILE}, line 51: nothing says which object "Status__c" is a field of, so it was not followed.`,
+      `${FILE}, line 37: it is not known which object "Some" holds, so "Account__r.Id" after it was not followed.`,
+      `${FILE}, line 43: it is not known which object "Nowhere__r" leads to, so "Tier__c" after it was not followed.`,
+      `${FILE}, line 49: the element "object" holds "Not a name", which is not read as a name.`,
+      `${FILE}, line 54: nothing says which object "Status__c" is a field of, so it was not followed.`,
     ]);
   });
 
