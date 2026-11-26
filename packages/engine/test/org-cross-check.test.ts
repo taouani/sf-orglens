@@ -298,8 +298,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const without = workspaceDir();
       await snap(withRows);
       await snap(without, { crossCheck: false });
-      // A class refers to this field, and the API has a row for it. The analysis of this phase does not read
-      // classes, so no answer may show the class.
+      // A class refers to this field, and the API has a row for it. An answer shows the class by the reference the
+      // analysis of its code found, and never by the row.
       const ask = async (dir: string): Promise<unknown> => {
         const answer = await (await openWorkspace({ root: dir, env })).impact('prod', 'Invoice__c.Amount__c');
         return {
@@ -308,7 +308,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         };
       };
       const answer = await ask(withRows);
-      expect(JSON.stringify(answer)).not.toContain('ApexClass:');
+      expect(JSON.stringify(answer)).toContain('"origin":"parser:apex"');
       expect(JSON.stringify(answer)).not.toContain('dependency-api');
       expect(answer).toEqual(await ask(without));
       expect(count(without, 'SELECT count(*) AS n FROM snapshot_dependency_reading')).toBe(0);

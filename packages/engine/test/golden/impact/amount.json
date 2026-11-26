@@ -23,6 +23,246 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:accountinvoices#method:goldtotal(account)",
+      "type": "ApexClass",
+      "name": "AccountInvoices.goldTotal(Account)",
+      "file": "force-app/main/default/classes/AccountInvoices.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:accountinvoices#method:goldtotal(account)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/AccountInvoices.cls",
+        "line": 23,
+        "column": 34
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:dynamicaccess#method:amountbytoken(invoice__c)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.amountByToken(Invoice__c)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:amountbytoken(invoice__c)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 31,
+        "column": 45
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:dynamicaccess#method:canreadamount()",
+      "type": "ApexClass",
+      "name": "DynamicAccess.canReadAmount()",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:canreadamount()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "references",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 35,
+        "column": 53
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:dynamicaccess#method:setamountbytoken(invoice__c,decimal)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.setAmountByToken(Invoice__c, Decimal)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:setamountbytoken(invoice__c,decimal)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 53,
+        "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceconstants#var:amount",
+      "type": "ApexClass",
+      "name": "InvoiceConstants.AMOUNT",
+      "file": "force-app/main/default/classes/InvoiceConstants.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceconstants#var:amount",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "references",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceConstants.cls",
+        "line": 11,
+        "column": 65
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicecontroller#method:saveamount(id,decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceController.saveAmount(Id, Decimal)",
+      "file": "force-app/main/default/classes/InvoiceController.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecontroller#method:saveamount(id,decimal)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceController.cls",
+        "line": 28,
+        "column": 61
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceevents#method:latefee(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceEvents.lateFee(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceEvents.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceevents#method:latefee(invoice__c)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceEvents.cls",
+        "line": 28,
+        "column": 24
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.invoiceWithLines()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 6,
+        "column": 70
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceService.createDraft(Account, Decimal)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 33,
+        "column": 13
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservicetest#method:setup()",
+      "type": "ApexClass",
+      "name": "InvoiceServiceTest.setup()",
+      "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservicetest#method:setup()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+        "line": 7,
+        "column": 56
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+      "type": "ApexClass",
+      "name": "InvoiceTriggerHandler.afterUpdate(List<SObject>, Map<Id,SObject>)",
+      "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+        "line": 31,
+        "column": 44
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#prop:lastamount",
+      "type": "ApexClass",
+      "name": "ParserTorture.lastAmount",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#prop:lastamount",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 17,
+        "column": 37
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:invoice__c.late_fee__c",
       "type": "CustomField",
       "name": "Invoice__c.Late_Fee__c",
@@ -603,6 +843,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
+      "type": "ApexClass",
+      "name": "InvoiceService.totalDue(List<Invoice__c>)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
+        "to": "CustomField:invoice__c.total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 47,
+        "column": 30
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:invoice__c.grand_total__c",
       "type": "CustomField",
       "name": "Invoice__c.Grand_Total__c",
@@ -679,6 +939,46 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 19,
         "column": 27
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicebatch#inner:result/method:add(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceBatch.Result.add(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceBatch.cls",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicebatch#inner:result/method:add(invoice__c)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceBatch.cls",
+        "line": 11,
+        "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicecalloutservice#method:send(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceCalloutService.send(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceCalloutService.cls",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecalloutservice#method:send(invoice__c)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceCalloutService.cls",
+        "line": 12,
+        "column": 32
       },
       "package": null
     },

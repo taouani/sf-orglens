@@ -39,7 +39,9 @@ const REST_TYPE: Readonly<Record<string, string>> = {
   Lookup: 'reference',
   LongTextArea: 'textarea',
   MasterDetail: 'reference',
-  MetadataRelationship: 'reference',
+  // The org describes a relationship of a custom metadata type as a text, which points at nothing (run 32 of
+  // "Live org").
+  MetadataRelationship: 'string',
   MultiselectPicklist: 'multipicklist',
   Number: 'double',
   Percent: 'percent',
@@ -72,12 +74,18 @@ const audit = (): Field[] => [
 ];
 
 /**
- * The fields Salesforce gives every object of a kind. A detail of a master-detail relationship has no owner, a
- * custom setting has the owner of its setting, a custom metadata type has the names of a record of metadata, and a
- * platform event has the fields of an event.
+ * The fields Salesforce gives every object of a kind. The owner of a custom object can be a user or a queue, which is
+ * a group, and the owner of an account is a user (run 32 of "Live org"). A detail of a master-detail relationship has
+ * no owner, a custom setting has the owner of its setting, a custom metadata type has the names of a record of
+ * metadata, and a platform event has the fields of an event. A user has neither an owner nor `IsDeleted`.
  */
 const SYSTEM: Readonly<Record<Kind, () => Field[]>> = {
-  object: () => [plain('Id', 'id'), plain('IsDeleted', 'boolean'), ...audit(), lookup('OwnerId', 'User', 'Owner')],
+  object: () => [
+    plain('Id', 'id'),
+    plain('IsDeleted', 'boolean'),
+    ...audit(),
+    { name: 'OwnerId', type: 'reference', referenceTo: ['Group', 'User'], relationshipName: 'Owner' },
+  ],
   detail: () => [plain('Id', 'id'), plain('IsDeleted', 'boolean'), ...audit()],
   setting: () => [
     plain('Id', 'id'),
@@ -137,6 +145,14 @@ const STANDARD_CHILDREN: Readonly<Record<string, readonly Child[]>> = {
   ],
 };
 
+/** The fields of every object as the standard objects of the fixture project have them. */
+function ownSystem(object: string, fields: readonly Field[]): Field[] {
+  if (object === 'User') return fields.filter((field) => field.name !== 'OwnerId' && field.name !== 'IsDeleted');
+  if (object === 'Account')
+    return fields.map((field) => (field.name === 'OwnerId' ? lookup('OwnerId', 'User', 'Owner') : field));
+  return [...fields];
+}
+
 const tag = (xml: string, name: string): string | null =>
   new RegExp(`<${name}>([^<]*)</${name}>`).exec(xml)?.[1]?.trim() ?? null;
 
@@ -184,7 +200,8 @@ export function descriptionsOfFolder(dir: string): Map<string, Record<string, un
         const name = file.slice(0, -'.field-meta.xml'.length);
         const type = tag(xml, 'type') ?? 'Text';
         // A hierarchy field names no object in its file: it always points at a user.
-        const to = tag(xml, 'referenceTo') ?? (type === 'Hierarchy' ? 'User' : null);
+        const to =
+          type === 'MetadataRelationship' ? null : (tag(xml, 'referenceTo') ?? (type === 'Hierarchy' ? 'User' : null));
         if (to === null) {
           own.push(plain(name, REST_TYPE[type] ?? 'string'));
           continue;
@@ -208,7 +225,7 @@ export function descriptionsOfFolder(dir: string): Map<string, Record<string, un
     const system = SYSTEM[kind === 'object' && details.has(object) ? 'detail' : kind]();
     // A custom object and a custom setting have a name. A custom metadata type and a platform event do not.
     const named = custom && (kind === 'object' || kind === 'setting') ? [plain('Name')] : [];
-    const all = [...system, ...named, ...(custom ? [] : (STANDARD[object] ?? [])), ...own];
+    const all = [...ownSystem(object, system), ...named, ...(custom ? [] : (STANDARD[object] ?? [])), ...own];
     described.set(object, {
       name: object,
       label: `${object} (a label, which the engine drops)`,

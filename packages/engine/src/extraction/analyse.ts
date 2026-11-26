@@ -26,10 +26,20 @@ import {
   type SubComponent,
 } from '../core/keys.ts';
 import type { Reference, ReferenceOrigin } from '../core/references.ts';
+import type { ObjectDescription } from '../sources/describe.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
-import { buildApexTypes, readApexUnit, resolveApex, type ApexUnitReading, type TypeUse } from './apex.ts';
+import {
+  buildApexTypes,
+  readApexUnit,
+  resolveApex,
+  type ApexPart,
+  type ApexUnitReading,
+  type TypeUse,
+} from './apex.ts';
+import { buildApexResolver, type ApexUnitInput } from './apex-resolver.ts';
+import { buildApexSchema } from './apex-schema.ts';
 import type { ApexReader, Problem, Span, Unit } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
@@ -62,6 +72,11 @@ export interface AnalysisOptions {
    * that holds Apex is analysed with it (`readsApex`).
    */
   readonly apex?: ApexReader;
+  /**
+   * The descriptions of the objects of the org the snapshot was taken of (decision record 0080). The resolver of
+   * Apex checks names against them where no file defines them (decision record 0087).
+   */
+  readonly descriptions?: readonly ObjectDescription[];
 }
 
 /** The types whose code is Apex. They are analysed where a reader of Apex is given. */
@@ -187,6 +202,8 @@ export function analyseSource(
   const malformed = new Set<string>();
   /** The inner types of each class or trigger that parsed. */
   const innerTypes = new Map<ComponentKey, ApexUnitReading['inner']>();
+  /** Each class and trigger that parsed, with the parts of it that are components, for the resolver of Apex. */
+  const apexUnits: ApexUnitInput[] = [];
 
   const bytesOf = (path: string): Uint8Array | null => {
     if (unreadable.has(path)) return null;
@@ -460,6 +477,8 @@ export function analyseSource(
     const { file, source } = parsed;
     const reading = readApexUnit(parsed.unit, name);
     innerTypes.set(key, reading.inner);
+    const unitParts: { key: ComponentKey; part: ApexPart }[] = [];
+    apexUnits.push({ key, type: type === 'ApexTrigger' ? 'ApexTrigger' : 'ApexClass', file, parts: unitParts });
     const starts = [0];
     for (let at = source.indexOf('\n'); at !== -1; at = source.indexOf('\n', at + 1)) starts.push(at + 1);
     const what = type === 'ApexTrigger' ? 'member of a trigger' : 'member of a class';
@@ -468,6 +487,7 @@ export function analyseSource(
       const apexOf = { file, unit: key, attrs: part.attrs, uses: part.uses };
       if (part.subs.length === 0) {
         entries.push({ key, type, name, definition, readings: [], apex: apexOf });
+        unitParts.push({ key, part });
         continue;
       }
       const path = part.subs.map((sub) => `${sub.kind}:${foldName(sub.name)}/`).join('');
@@ -477,6 +497,7 @@ export function analyseSource(
         dropped.push(path);
         continue;
       }
+      unitParts.push({ key: member, part });
       const text = part.spans.map((span) => spannedText(source, starts, span)).join('\n');
       entries.push({
         key: member,
@@ -718,6 +739,7 @@ export function analyseSource(
     ),
     inner: innerTypes,
   });
+  const apexResolver = buildApexResolver(apexUnits, buildApexSchema(model, options.descriptions), apexTypes);
 
   const analysed = new Map<ReferenceOrigin, number>();
   let withFormula = 0;
@@ -784,15 +806,17 @@ export function analyseSource(
       const { file, unit, attrs, uses } = entry.apex;
       try {
         const events = attrs['events'];
-        const references = resolveApex(
+        const types = resolveApex(
           model,
           apexTypes,
           { key, unit, file },
           uses,
           Array.isArray(events) ? events.map(String) : undefined,
         );
+        const code = apexResolver.resolve(key);
+        for (const issue of code.issues) issues.push(issue);
         analysed.set('parser:apex', (analysed.get('parser:apex') ?? 0) + 1);
-        return { key, name, definition, attrs, references };
+        return { key, name, definition, attrs, references: [...types, ...code.references] };
       } catch (error) {
         failed(key, entry.type, file, error);
         return bare;

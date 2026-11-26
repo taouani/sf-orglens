@@ -1,13 +1,17 @@
 /**
- * The one thing the analysis of the fixture project says it does not know: a path through the output of a
- * subflow, which the answer key lists among its unknowns. Every analysis of the whole project holds a warning
- * for it. `extraction-flows.test.ts` holds that warning against the key, word for word.
+ * The two things the analysis of the fixture project says it does not know, which the answer key lists among its
+ * unknowns: a path through the output of a subflow, and DML on a list of `SObject`, whose object is known only when
+ * the code runs. Every analysis of the whole project holds a warning for each. `extraction-flows.test.ts` and
+ * `extraction-apex-resolver.test.ts` hold these warnings against the key, word for word.
  */
-const KNOWN_GAP = {
-  severity: 'warning',
-  code: 'PATH_NOT_FOLLOWED',
-  component: 'Flow:invoice_after_save#element:check_result',
-} as const;
+const KNOWN_GAPS = [
+  { severity: 'warning', code: 'PATH_NOT_FOLLOWED', component: 'Flow:invoice_after_save#element:check_result' },
+  {
+    severity: 'warning',
+    code: 'PATH_NOT_FOLLOWED',
+    component: 'ApexClass:invoiceevents#method:saveall(list<sobject>)',
+  },
+] as const;
 
 interface Reported {
   readonly severity: string;
@@ -15,14 +19,19 @@ interface Reported {
   readonly component: string | null;
 }
 
+const gapOf = (issue: Reported): number =>
+  KNOWN_GAPS.findIndex(
+    (gap) => issue.severity === gap.severity && issue.code === gap.code && issue.component === gap.component,
+  );
+
 /**
- * The issues of a report on the fixture project without that warning. It has to be among them exactly once: a
- * test that leaves it out says with that that the analysis read the flows.
+ * The issues of a report on the fixture project without those warnings. Each has to be among them exactly once: a
+ * test that leaves one out says with that that the analysis read the flows and the code of the classes.
  */
 export function besidesKnownGap<T extends Reported>(issues: readonly T[]): T[] {
-  const isGap = (issue: Reported): boolean =>
-    issue.severity === KNOWN_GAP.severity && issue.code === KNOWN_GAP.code && issue.component === KNOWN_GAP.component;
-  const gaps = issues.filter(isGap).length;
-  if (gaps !== 1) throw new Error(`The warning about the output of the subflow is reported ${String(gaps)} times.`);
-  return issues.filter((issue) => !isGap(issue));
+  KNOWN_GAPS.forEach((gap, index) => {
+    const count = issues.filter((issue) => gapOf(issue) === index).length;
+    if (count !== 1) throw new Error(`The warning ${gap.code} of ${gap.component} is reported ${String(count)} times.`);
+  });
+  return issues.filter((issue) => gapOf(issue) === -1);
 }

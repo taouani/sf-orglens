@@ -23,6 +23,106 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:accountinvoices#method:goldtotal(account)",
+      "type": "ApexClass",
+      "name": "AccountInvoices.goldTotal(Account)",
+      "file": "force-app/main/default/classes/AccountInvoices.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:accountinvoices#method:goldtotal(account)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/AccountInvoices.cls",
+        "line": 22,
+        "column": 36
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricing#method:discount(account)",
+      "type": "ApexClass",
+      "name": "InvoicePricing.discount(Account)",
+      "file": "force-app/main/default/classes/InvoicePricing.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricing#method:discount(account)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricing.cls",
+        "line": 12,
+        "column": 24
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.invoiceWithLines()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "to": "CustomField:account.tier__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 4,
+        "column": 57
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservicetest#method:setup()",
+      "type": "ApexClass",
+      "name": "InvoiceServiceTest.setup()",
+      "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservicetest#method:setup()",
+        "to": "CustomField:account.tier__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceServiceTest.cls",
+        "line": 5,
+        "column": 54
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#method:tierof(invoice__c)",
+      "type": "ApexClass",
+      "name": "ParserTorture.tierOf(Invoice__c)",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:tierof(invoice__c)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 42,
+        "column": 37
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:account.is_key_account__c",
       "type": "CustomField",
       "name": "Account.Is_Key_Account__c",
@@ -139,6 +239,26 @@
         "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
         "line": 25,
         "column": 31
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:standardpricing#method:discount(account)",
+      "type": "ApexClass",
+      "name": "StandardPricing.discount(Account)",
+      "file": "force-app/main/default/classes/StandardPricing.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:standardpricing#method:discount(account)",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/StandardPricing.cls",
+        "line": 15,
+        "column": 24
       },
       "package": null
     },

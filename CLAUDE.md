@@ -120,9 +120,19 @@ packages/cli   the `orglens` binary                            imports only `@sf
   type a class of the snapshot or an object. A name of Salesforce that is no object gives nothing, and a `new` of a
   class is a call, which is not read yet. A test class, its members and a test method carry `test` in their
   attributes. A class whose code is `(hidden)`, or that has no file of code, is not analysed, with the warning
-  `APEX_NO_CODE`. What the code reads, writes and calls is not read yet: the analysis does not list `ApexClass` and
-  `ApexTrigger` among the types it read, so an answer names them as not analysed, and their rows of the Dependency
-  API are not compared.
+  `APEX_NO_CODE`.
+- What the code of a member reads and writes is read by the resolver of Apex (`extraction/apex-resolver.ts`,
+  decision record 0087), once every class and trigger was read: the fields of records, also through relationships,
+  the variables and properties of classes, the tokens of objects and fields, and the objects DML writes, with `op`.
+  A name is a local or a parameter, then a member of its class, of a class it extends or around it, then a class,
+  then an object. Each name of an object or a field is checked against the files and the descriptions of the snapshot
+  (`extraction/apex-schema.ts`): one that a file or a description defines, or an object every org has, keeps the tier
+  of its syntax, and any other is `probable`, also a field of the short lists of the model. A field that an object the
+  org described lacks is `unresolved`, with `FIELD_NOT_DESCRIBED`. A `__r` name nothing defines is guessed as its
+  lookup, with `RELATIONSHIP_GUESSED`, and a name the code uses as a list is a child relationship that is not
+  followed. A relationship of no known end and DML on records of no known object leave `PATH_NOT_FOLLOWED`. Queries,
+  calls and names in texts are not read yet: the analysis does not list `ApexClass` and `ApexTrigger` among the types
+  it read, so an answer names them as not analysed, and their rows of the Dependency API are not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the
@@ -242,7 +252,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   their types, the objects a lookup points at and the child relationships are kept, as one JSON object beside the
   snapshot (`store/descriptions.ts`), so that an analysis can check a name against the org without the org. An object
   the org does not know, or does not describe, leaves the warning `DESCRIPTIONS_PARTIAL`, and never fails the snapshot
-  or makes it partial. Nothing of the analysis reads the descriptions yet.
+  or makes it partial. The resolver of Apex reads the descriptions (decision record 0087). An object the org did not
+  describe is checked as in a repository.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it

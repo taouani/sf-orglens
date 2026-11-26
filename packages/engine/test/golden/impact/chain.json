@@ -23,6 +23,126 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:invoicelineservice#method:addline(invoice__c,decimal,decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceLineService.addLine(Invoice__c, Decimal, Decimal)",
+      "file": "force-app/main/default/classes/InvoiceLineService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicelineservice#method:addline(invoice__c,decimal,decimal)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceLineService.cls",
+        "line": 35,
+        "column": 14
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicelineservice#method:billableamount(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceLineService.billableAmount(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceLineService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicelineservice#method:billableamount(invoice__c)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceLineService.cls",
+        "line": 26,
+        "column": 32
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricing#method:price(invoice_line__c)",
+      "type": "ApexClass",
+      "name": "InvoicePricing.price(Invoice_Line__c)",
+      "file": "force-app/main/default/classes/InvoicePricing.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricing#method:price(invoice_line__c)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricing.cls",
+        "line": 8,
+        "column": 21
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.invoiceWithLines()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 8,
+        "column": 61
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#method:describe(sobject)",
+      "type": "ApexClass",
+      "name": "ParserTorture.describe(SObject)",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:describe(sobject)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 30,
+        "column": 39
+      },
+      "package": null
+    },
+    {
+      "key": "ApexTrigger:invoicelinetrigger#inner:linetotals/method:add(invoice_line__c)",
+      "type": "ApexTrigger",
+      "name": "InvoiceLineTrigger.LineTotals.add(Invoice_Line__c)",
+      "file": "force-app/main/default/triggers/InvoiceLineTrigger.trigger",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexTrigger:invoicelinetrigger#inner:linetotals/method:add(invoice_line__c)",
+        "to": "CustomField:invoice_line__c.quantity__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/triggers/InvoiceLineTrigger.trigger",
+        "line": 6,
+        "column": 27
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:invoice_line__c.line_amount__c",
       "type": "CustomField",
       "name": "Invoice_Line__c.Line_Amount__c",
@@ -243,6 +363,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:accountinvoices#method:goldtotal(account)",
+      "type": "ApexClass",
+      "name": "AccountInvoices.goldTotal(Account)",
+      "file": "force-app/main/default/classes/AccountInvoices.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:accountinvoices#method:goldtotal(account)",
+        "to": "CustomField:invoice_line__c.line_amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/AccountInvoices.cls",
+        "line": 26,
+        "column": 31
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:invoice__c.lines_total__c",
       "type": "CustomField",
       "name": "Invoice__c.Lines_Total__c",
@@ -359,6 +499,46 @@
         "file": "force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml",
         "line": 98,
         "column": 47
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicebatch#inner:result/method:add(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceBatch.Result.add(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceBatch.cls",
+      "depth": 4,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicebatch#inner:result/method:add(invoice__c)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceBatch.cls",
+        "line": 11,
+        "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicecalloutservice#method:send(invoice__c)",
+      "type": "ApexClass",
+      "name": "InvoiceCalloutService.send(Invoice__c)",
+      "file": "force-app/main/default/classes/InvoiceCalloutService.cls",
+      "depth": 4,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecalloutservice#method:send(invoice__c)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceCalloutService.cls",
+        "line": 12,
+        "column": 32
       },
       "package": null
     }

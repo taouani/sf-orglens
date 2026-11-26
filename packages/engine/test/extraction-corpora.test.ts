@@ -92,6 +92,22 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * the review of the pull request: 909 name the class or the object itself (`StubExample.class`), 106 a type argument
  * (`List<Rollup__mdt>.class`) and one the type of an array. A script found each at a class literal of its line, and
  * 30 of them were read by hand.
+ *
+ * Since 26 November 2026 the resolver of Apex reads what the code of a class or a trigger names (decision record
+ * 0087): `field` is a field of a record, also through a relationship, and a variable or a property of a class, `token`
+ * a field or an object token, the object in front of one and that of a describe call or of a method of a custom
+ * setting, and `dml` the object that DML writes. These counts were not checked by hand: the fixture project and its
+ * key hold each case. A field or an object that no file defines and that not every org has is `probable`, as is a
+ * field of the short lists of the model, so that no reference at `confirmed` names a field no file defines. The
+ * resolver warns where it cannot follow a name, with `PATH_NOT_FOLLOWED`: DML on records of which nothing says the
+ * object, such as a list of `SObject` that a method of a generic class is handed or a list of `Id` that
+ * `Database.delete` is (Apex Recipes 15, Nebula Logger 4, NPSP 64, PMM 5, V4S 9, Outbound Funds 6, EDA 21), a
+ * relationship whose object is not one or not known, with the names after it (Nebula Logger 15, at `UserLicense` and
+ * `SetupOwner`, NPSP 104, all at a relationship the resolver guessed, 6 of them with more than one name), and a child
+ * relationship nothing defines that the code uses as a list (NPSP 83, Outbound Funds 1). NPSP has 4 more, of its
+ * formulas, as before. `RELATIONSHIP_GUESSED` is a name nothing defines that the code uses as a relationship, which
+ * the resolver takes for the lookup field the rule names (`Account__r` is `Account__c`): all 133 are of NPSP, which
+ * names relationships of the packages it builds on.
  */
 interface Expected {
   readonly components: number;
@@ -108,15 +124,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     references: {
       'controlling-field': 1,
       declaration: 14,
+      dml: 138,
+      field: 1013,
       'listed-field': 19,
       lookup: 8,
       new: 161,
       object: 1,
       'record-of': 11,
+      token: 20,
       type: 1011,
       value: 12,
     },
-    issues: {},
+    issues: { PATH_NOT_FOLLOWED: 15 },
   },
   'nebula-logger': {
     components: 3979,
@@ -128,6 +147,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'controlling-field': 3,
       declaration: 45,
       'display-field': 4,
+      dml: 145,
+      field: 11_353,
       filter: 7,
       formula: 387,
       'listed-field': 153,
@@ -136,11 +157,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 55,
       summary: 16,
       text: 32,
+      token: 1006,
       type: 4022,
       value: 6,
       'value-set': 2,
     },
-    issues: {},
+    issues: { PATH_NOT_FOLLOWED: 19 },
   },
   npsp: {
     components: 29_761,
@@ -153,6 +175,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'controlling-field': 5,
       declaration: 407,
       'display-field': 2,
+      dml: 3356,
+      field: 57_367,
       filter: 11,
       formula: 70,
       'listed-field': 2241,
@@ -164,11 +188,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       summary: 4,
       template: 2,
       text: 18,
+      token: 3810,
       type: 26_036,
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 4 },
+    issues: { PATH_NOT_FOLLOWED: 255, RELATIONSHIP_GUESSED: 133 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -181,6 +206,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       assignment: 16,
       'controlling-field': 1,
       declaration: 19,
+      dml: 82,
+      field: 4074,
       filter: 4,
       formula: 133,
       join: 1,
@@ -189,10 +216,11 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 187,
       object: 14,
       'record-of': 27,
+      token: 873,
       type: 1816,
       value: 25,
     },
-    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4 },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 5 },
   },
   // Added on 25 November 2026, with the codebases.
   'volunteers-for-salesforce': {
@@ -205,6 +233,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       assignment: 2,
       declaration: 9,
       'display-field': 7,
+      dml: 306,
+      field: 3595,
       filter: 11,
       formula: 43,
       join: 6,
@@ -215,9 +245,10 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       object: 4,
       summary: 24,
       template: 13,
+      token: 163,
       type: 973,
     },
-    issues: {},
+    issues: { PATH_NOT_FOLLOWED: 9 },
   },
   'outbound-funds': {
     components: 841,
@@ -228,6 +259,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'action-override': 3,
       assignment: 3,
       declaration: 3,
+      dml: 15,
+      field: 268,
       filter: 3,
       formula: 3,
       join: 4,
@@ -236,9 +269,10 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 25,
       object: 6,
       summary: 6,
+      token: 104,
       type: 239,
     },
-    issues: {},
+    issues: { PATH_NOT_FOLLOWED: 7 },
   },
   // Added on 25 November 2026, for the check by hand of Phase 2.
   'coral-cloud': {
@@ -249,6 +283,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 1,
       'action-override': 5,
       assignment: 10,
+      dml: 27,
+      field: 228,
       filter: 11,
       formula: 42,
       lookup: 6,
@@ -259,6 +295,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       path: 4,
       record: 1,
       summary: 6,
+      token: 11,
       type: 161,
     },
     issues: {},
@@ -271,15 +308,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'action-override': 10,
       declaration: 380,
       'display-field': 2,
+      dml: 2285,
+      field: 19_861,
       formula: 76,
       'listed-field': 32,
       lookup: 69,
       new: 1720,
       'record-of': 2,
       text: 3,
+      token: 508,
       type: 12_910,
     },
-    issues: {},
+    issues: { PATH_NOT_FOLLOWED: 21 },
   },
 };
 
@@ -505,6 +545,12 @@ describe('the analysis of the public codebases', () => {
           inFormulas.length === 0 ? {} : { confirmed: inFormulas.length },
         );
         expect(inFormulas.filter((one) => one.resolution === 'unresolved')).toEqual([]);
+        // No reference of Apex at `confirmed` names a field that no file defines, or a name that nothing knows. The
+        // one name at `confirmed` that has no key can be an object that a file names, as the target of a lookup,
+        // and that the codebase holds no file of (decision record 0087). None of the codebases has one.
+        const inApex = references.filter((one) => one.origin === 'parser:apex' && one.confidence === 'confirmed');
+        expect(inApex.filter((one) => one.toType === 'CustomField' && one.resolution !== 'resolved')).toEqual([]);
+        expect(inApex.filter((one) => one.resolution === 'unresolved')).toEqual([]);
         // Every override of an action names a page or a component that the codebase defines.
         const overrides = references.filter((one) => one.attrs?.['via'] === 'action-override');
         expect(overrides.filter((one) => one.resolution !== 'resolved')).toEqual([]);

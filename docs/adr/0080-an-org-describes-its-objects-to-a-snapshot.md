@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-26
 - Decisions: none (an answer of the maintainer to the Phase 3 plan)
+- Changed by: [0087](0087-the-resolver-of-apex-and-the-tier-of-a-name-nothing-checks.md), in one sentence, as a choice of its author: in a snapshot of an org, a name of an object the org did not describe is checked as in a repository, and is not `unresolved`
 
 ## Context
 

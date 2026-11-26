@@ -186,12 +186,12 @@ describe('orglens impact', () => {
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
       '',
-      '10 components refer to it, 6 of them directly.',
+      '16 components refer to it, 11 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
-    // The one warning of the analysis is about a path that ends in a field named Amount__c, and the answer holds
-    // no such field and no object (decision record 0074).
+    // The two warnings of the analysis are about a path that ends in a field named Amount__c and about the write of
+    // records of an object nothing says, and the answer holds no such field and no object (decision record 0074).
     expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
       'Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:',
       ...NOT_ANALYSED,
@@ -207,7 +207,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('15 components refer to it, 11 of them directly.');
+    expect(lines).toContain('22 components refer to it, 17 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -219,7 +219,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('29 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('41 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -245,8 +245,9 @@ describe('orglens impact', () => {
     expect(called.filter((line) => /^\d+ +Flow:invoice_recalculate#element:/.test(line))).toEqual([]);
     expect(outgoing.stdout).not.toContain('REFERRED TO BY can name');
 
-    // A class is read in part: the answer holds the objects its members use as a type, and says that more may be
-    // missing.
+    // A class is read in part: the answer holds the objects its members use as a type and the fields and constants
+    // their code reads and writes, and says that more may be missing.
+    const where = 'force-app/main/default/classes/InvoiceService.cls';
     const apex = await orglens(quiet, ['impact', 'InvoiceService', '--outgoing']);
     expect(apex.stdout.split('\n')).toEqual([
       'What ApexClass:invoiceservice (InvoiceService) refers to, in snapshot #1 of "fixture".',
@@ -254,11 +255,21 @@ describe('orglens impact', () => {
       'The answer is not complete: 1 type is not analysed yet. The details are below the answer.',
       'ApexClass is not analysed yet, or only in part: what the component itself refers to may be missing from the answer.',
       '',
-      'It refers to 2 components, directly.',
+      'It refers to 12 components, directly.',
       '',
-      'DEPTH  COMPONENT                CONFIDENCE  KIND       REFERRED TO BY                                                WHERE',
-      '1      CustomObject:account     confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  force-app/main/default/classes/InvoiceService.cls:30',
-      '1      CustomObject:invoice__c  confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  force-app/main/default/classes/InvoiceService.cls:30',
+      'DEPTH  COMPONENT                                    CONFIDENCE  KIND       REFERRED TO BY                                                WHERE',
+      `1      ApexClass:invoiceconstants#var:status_draft  confirmed   reads      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
+      `1      ApexClass:invoiceconstants#var:status_paid   confirmed   reads      ApexClass:invoiceservice#method:markpaid(id)                  ${where}:22`,
+      `1      CustomField:account.credit_limit__c          confirmed   reads      ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:36`,
+      `1      CustomField:account.risk_score__c            confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:38`,
+      `1      CustomField:invoice__c.account__c            confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:32`,
+      `1      CustomField:invoice__c.amount__c             confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:33`,
+      `1      CustomField:invoice__c.paid_date__c          confirmed   writes     ApexClass:invoiceservice#method:markpaid(id)                  ${where}:26`,
+      `1      CustomField:invoice__c.status__c             confirmed   writes     ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:34`,
+      `1      CustomField:invoice__c.tax_rate__c           confirmed   reads      ApexClass:invoiceservice#method:raisetax(set<id>,decimal)     ${where}:55`,
+      `1      CustomField:invoice__c.total__c              confirmed   reads      ApexClass:invoiceservice#method:totaldue(list<invoice__c>)    ${where}:47`,
+      `1      CustomObject:account                         confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:30`,
+      `1      CustomObject:invoice__c                      confirmed   uses-type  ApexClass:invoiceservice#method:createdraft(account,decimal)  ${where}:30`,
       '',
       'Not analysed yet, or only in part. What the components of these types in the answer refer to may be missing:',
       'TYPE       LISTED  RETRIEVED',
@@ -322,12 +333,13 @@ describe('orglens impact', () => {
     });
     // The path that was not followed ends in a field named Size__c, so what refers to Amount__c lacks nothing for
     // it. Nor does what refers to the object Invoice_Line__c, which has no field of that name: the path of a
-    // formula ends at a field, never at an object (decision record 0074).
+    // formula ends at a field, never at an object (decision record 0074). What the object lacks is for the write of
+    // records of an object nothing says, a warning of the code of Apex.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
     );
     expect((await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n')).toContain(
-      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.',
     );
   });
 
@@ -344,8 +356,9 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
-    // The 34 of the project without the field that could not be read, and without the one that reads it.
-    expect(lines).toContain('32 components refer to it, 28 of them directly.');
+    // The 49 of the project without the field that could not be read, without the one that reads it, and without
+    // the 3 methods that read either.
+    expect(lines).toContain('44 components refer to it, 40 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',

@@ -20,6 +20,7 @@ import { resolveComponents } from '../sources/resolve.ts';
 import { pathDetails } from '../sources/tree.ts';
 import { readAnalysis, readOriginCoverage, writeAnalysis } from '../store/analysis.ts';
 import { readDependencyReading, readDependencyRows, readFlowVersionIds, readListedIds } from '../store/dependencies.ts';
+import { readDescriptions } from '../store/descriptions.ts';
 import type { Store } from '../store/open.ts';
 import { readIssuesOf, snapshotTree, type StoredIssue } from '../store/snapshots.ts';
 import { asEngineError } from './boundary.ts';
@@ -82,7 +83,13 @@ async function analyseSnapshot(store: Store, snapshot: Analysable): Promise<void
   const resolution = await resolveComponents(tree, [''], snapshot.layout);
   // The grammar of Apex is loaded only for a snapshot that holds Apex (decision record 0083).
   const apex = readsApex(resolution.components) ? await loadApexReader() : undefined;
-  const analysis = analyseSource(tree, resolution.components, apex === undefined ? {} : { apex });
+  // A snapshot of an org can hold the descriptions of its objects, which the resolver of Apex checks names against
+  // (decision records 0080 and 0087). They are read from the store, so the analysis needs no org.
+  const descriptions = apex === undefined ? [] : readDescriptions(store, snapshot.id);
+  const analysis = analyseSource(tree, resolution.components, {
+    ...(apex === undefined ? {} : { apex }),
+    ...(descriptions.length === 0 ? {} : { descriptions }),
+  });
 
   const issues: AnalysisIssue[] = [];
   for (const problem of resolution.problems) {
