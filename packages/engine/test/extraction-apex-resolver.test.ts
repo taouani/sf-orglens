@@ -222,6 +222,12 @@ describe('the resolver of Apex', () => {
           '        rows = acc.Assigned__r;',
           '        take(acc.Taken__r);',
           '        Integer n = acc.Partners.size();',
+          '        List<List<SObject>> nested = new List<List<SObject>>{ acc.Nested__r };',
+          '        Map<Id, List<SObject>> byId = new Map<Id, List<SObject>>{ acc.Id => acc.Mapped__r };',
+          '        String o = t.What.Owner.Name;',
+          '        acc.Agent__r.Owner.Name = null;',
+          "        Object f = acc.Guessed__r.get('Name');",
+          '        acc.Cleared__r.clear();',
           '    }',
           '    List<SObject> back(Account acc) { return acc.Returned__r; }',
           '    void take(List<SObject> rows) { }',
@@ -241,6 +247,11 @@ describe('the resolver of Apex', () => {
       '12:27 reads null [Checked__r] field probable unresolved of Account',
       '13:9 reads ApexClass:children#var:rows [rows] field confirmed resolved',
       '15:9 writes ApexClass:children#var:rows [rows] field confirmed resolved',
+      '20:22 reads CustomField:task.whatid [What] field probable external',
+      '21:13 reads null [Agent__r] field probable unresolved of Account',
+      // `get` with a text and `clear` are methods of a record too: they say nothing of a list.
+      '22:24 reads null [Guessed__r] field probable unresolved of Account',
+      '23:13 reads null [Cleared__r] field probable unresolved of Account',
     ]);
     const child = (line: number, column: number, name: string): string =>
       `PATH_NOT_FOLLOWED ${String(line)}:${String(column)} {"relationship":"${name}","notFollowed":[],"origin":"parser:apex"}`;
@@ -261,13 +272,27 @@ describe('the resolver of Apex', () => {
       child(16, 18, 'Taken__r'),
       // So is a name of Salesforce that nothing checks.
       child(17, 25, 'Partners'),
-      child(19, 50, 'Returned__r'),
+      // And a value of a list of lists or of a map of lists.
+      child(18, 67, 'Nested__r'),
+      child(19, 81, 'Mapped__r'),
+      // Every name after a relationship that is not followed is one of the warning, as for a flow.
+      'PATH_NOT_FOLLOWED 20:22 {"relationship":"What","notFollowed":["Owner","Name"],"endsAt":"field","origin":"parser:apex"}',
+      'RELATIONSHIP_GUESSED 21:13 {"relationship":"Agent__r","object":"Account","field":"Agent__c"}',
+      'PATH_NOT_FOLLOWED 21:13 {"relationship":"Agent__r","notFollowed":["Owner","Name"],"endsAt":"field","origin":"parser:apex"}',
+      'RELATIONSHIP_GUESSED 22:24 {"relationship":"Guessed__r","object":"Account","field":"Guessed__c"}',
+      'RELATIONSHIP_GUESSED 23:13 {"relationship":"Cleared__r","object":"Account","field":"Cleared__c"}',
+      child(25, 50, 'Returned__r'),
     ]);
+    expect(analysis.issues.find((one) => one.details?.['line'] === 20)?.message).toBe(
+      'classes/Children.cls, line 20: it is not known which object "What" of "Task" leads to, so "Owner.Name" after it was not followed.',
+    );
   });
 
   it('writes the object of DML, with the field an upsert tells records apart by, and warns where nothing says it', () => {
     const analysis = analysed((source) => {
       source.field('Invoice__c', 'External_Id__c', '<externalId>true</externalId>', '<type>Text</type>');
+      // A lookup names the object `Vendor__c`, which no file defines.
+      source.field('Invoice__c', 'Vendor__c', ...lookup('Vendor__c', 'Invoices'));
       source.apexClass(
         'Writes',
         code(
@@ -288,35 +313,70 @@ describe('the resolver of Apex', () => {
           '        List<Database.SaveResult> results = Database.update(invs);',
           '        merge inv invs[0];',
           '        String error = results[0].getErrors()[0].getMessage();',
+          '        Database.delete(new List<Id>{ inv.Id });',
+          '        upsert invs Id;',
+          '        upsert invs KEY;',
+          '        Schema.SObjectField f = Invoice__c.External_Id__c;',
+          '        upsert invs f;',
+          '        SObject one = new Invoice__c();',
+          '        insert one;',
+          '        SObject two = new Invoice__c();',
+          '        two = rows[0];',
+          '        insert two;',
+          "        insert new Vendor__c(Name = 'x');",
+          '        Database.upsert(invs, Invoice__c.fields.Id);',
           '    }',
+          '    static final Schema.SObjectField KEY = Invoice__c.External_Id__c;',
           '}',
         ),
       );
     });
     expect(said(analysis)).toEqual([
-      '3:9 writes CustomObject:invoice__c [insert] dml confirmed resolved insert',
-      '4:9 writes CustomObject:invoice__c [update] dml confirmed resolved update',
-      '5:9 writes CustomObject:invoice__c [upsert] dml confirmed resolved upsert',
+      '3:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved insert',
+      '4:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved update',
+      '5:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
       '5:32 references CustomField:invoice__c.external_id__c [External_Id__c] dml confirmed resolved',
       // A type of Salesforce that DML writes is an object, which nothing checks.
-      '6:9 writes CustomObject:permissionsetassignment [delete] dml probable external delete',
-      '7:9 writes CustomObject:permissionset [insert] dml probable external insert',
+      '6:9 writes CustomObject:permissionsetassignment [PermissionSetAssignment] dml probable external delete',
+      '7:9 writes CustomObject:permissionset [PermissionSet] dml probable external insert',
       '7:34 writes CustomField:permissionset.name [Name] field probable external',
       '7:46 writes CustomField:permissionset.label [Label] field probable external',
-      '9:9 writes CustomObject:permissionset [undelete] dml probable external undelete',
-      '11:18 writes CustomObject:invoice__c [insert] dml confirmed resolved insert',
-      '12:18 writes CustomObject:invoice__c [upsert] dml confirmed resolved upsert',
+      '9:9 writes CustomObject:permissionset [PermissionSet] dml probable external undelete',
+      '11:18 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved insert',
+      '12:18 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
       '12:31 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
       '12:42 references CustomField:invoice__c.status__c [Status__c] token confirmed resolved',
       // An object that no file defines keeps its name.
-      '14:18 writes null [publish] dml probable unresolved publish of Invoice_Event__e',
-      '15:54 writes CustomObject:invoice__c [update] dml confirmed resolved update',
-      '16:9 writes CustomObject:invoice__c [merge] dml confirmed resolved merge',
+      '14:18 writes null [Invoice_Event__e] dml probable unresolved publish of Invoice_Event__e',
+      '15:54 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved update',
+      '16:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved merge',
+      // `Database.delete` of a list of `Id` writes records of an object nothing says, and the field `Id` gives
+      // nothing as the field an upsert tells records apart by.
+      '19:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
+      // A constant and a variable that hold the token of the field stand for it.
+      '20:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
+      '20:21 reads ApexClass:writes#var:key [KEY] field confirmed resolved',
+      '20:21 references CustomField:invoice__c.external_id__c [KEY] token confirmed resolved',
+      '21:33 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '21:44 references CustomField:invoice__c.external_id__c [External_Id__c] token confirmed resolved',
+      '22:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
+      '22:21 references CustomField:invoice__c.external_id__c [f] token confirmed resolved',
+      // A variable that is never assigned again keeps the type of its value, and one that is does not.
+      '24:9 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved insert',
+      // An object that a lookup names keeps the tier of its syntax, though no file of the snapshot defines it.
+      '28:9 writes null [Vendor__c] dml confirmed unresolved insert of Vendor__c',
+      '28:30 writes null [Name] field probable unresolved of Vendor__c',
+      '29:18 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
+      '29:31 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '31:44 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '31:55 references CustomField:invoice__c.external_id__c [External_Id__c] token confirmed resolved',
     ]);
     // A list of `SObject`: the warning bears on an answer that holds an object (decision record 0074).
     expect(warned(analysis.issues)).toEqual([
       'PATH_NOT_FOLLOWED 10:9 {"op":"update","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 13:18 {"op":"delete","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 18:18 {"op":"delete","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 27:9 {"op":"insert","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
     ]);
   });
 
@@ -468,6 +528,8 @@ describe('the resolver of Apex', () => {
           '    for (SObject one : Trigger.newMap.values()) { Object s = one.get(Invoice__c.Status__c); }',
           '    Integer n = Trigger.new.size();',
           '    Decimal d = Trigger.new[0].Amount__c + Trigger.oldMap.get(old.Id).Amount__c;',
+          '    String s = Trigger.old[0].Status__c;',
+          '    Decimal v = Trigger.newMap.values()[0].Amount__c;',
           '}',
         ),
       );
@@ -479,6 +541,8 @@ describe('the resolver of Apex', () => {
       '5:81 reads CustomField:invoice__c.status__c [Status__c] token confirmed resolved',
       '7:32 reads CustomField:invoice__c.amount__c [Amount__c] field confirmed resolved',
       '7:71 reads CustomField:invoice__c.amount__c [Amount__c] field confirmed resolved',
+      '8:31 reads CustomField:invoice__c.status__c [Status__c] field confirmed resolved',
+      '9:44 reads CustomField:invoice__c.amount__c [Amount__c] field confirmed resolved',
     ]);
     expect(analysis.issues).toEqual([]);
   });
@@ -572,7 +636,7 @@ describe('the resolver of Apex', () => {
       // did not describe.
       '12:25 references CustomField:contact.accountid [Contacts] field confirmed external',
       '13:24 reads null [Ghost__c] field probable unresolved of Invoice__c',
-      '14:9 writes CustomObject:pkg__thing__c [insert] dml confirmed external insert',
+      '14:9 writes CustomObject:pkg__thing__c [pkg__Thing__c] dml confirmed external insert',
       '14:34 writes CustomField:pkg__thing__c.pkg__size__c [pkg__Size__c] field confirmed external',
     ]);
     const missing = (line: number, column: number, object: string, name: string): string =>
@@ -600,13 +664,94 @@ describe('the resolver of Apex', () => {
       '11:30 references CustomField:account.rating [Rating] token probable external',
       '12:25 references CustomField:contact.accountid [Contacts] field probable external',
       '13:24 reads null [Ghost__c] field probable unresolved of Invoice__c',
-      '14:9 writes CustomObject:pkg__thing__c [insert] dml probable external insert',
+      '14:9 writes CustomObject:pkg__thing__c [pkg__Thing__c] dml probable external insert',
       '14:34 writes CustomField:pkg__thing__c.pkg__size__c [pkg__Size__c] field probable external',
     ]);
     expect(warned(inRepository.issues)).toEqual([
       'RELATIONSHIP_GUESSED 6:24 {"relationship":"pkg__Partner__r","object":"Account","field":"pkg__Partner__c"}',
       'PATH_NOT_FOLLOWED 6:24 {"relationship":"pkg__Partner__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 7:36 {"relationship":"pkg__Things__r","notFollowed":[],"origin":"parser:apex"}',
+    ]);
+  });
+
+  it('takes a name before a dot for a relationship, and a field of the short lists never for a child relationship', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Steps',
+        code(
+          'public class Steps {',
+          '    void m(Lead l, Contact c) {',
+          '        String n = l.ConvertedAccount.Name;',
+          '        Integer k = c.AccountId.size();',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis)).toEqual([
+      '3:22 reads CustomField:lead.convertedaccountid [ConvertedAccount] field probable external',
+      '4:23 reads CustomField:contact.accountid [AccountId] field probable external',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 3:22 {"relationship":"ConvertedAccount","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+    ]);
+  });
+
+  it('takes a file before a description, names the field a described object lacks, and stops at an owner that can be a group', () => {
+    const field = (
+      name: string,
+      type = 'string',
+      referenceTo: readonly string[] = [],
+      relationshipName: string | null = null,
+    ): ObjectDescription['fields'][number] => ({ name, type, referenceTo, relationshipName });
+    const descriptions: ObjectDescription[] = [
+      {
+        name: 'Account',
+        fields: [field('Id', 'id'), field('Name')],
+        childRelationships: [
+          { relationshipName: 'Contacts', childSObject: 'Contact', field: 'AccountId' },
+          // The file of the field `Account__c` of the invoice names the relationship, and comes first.
+          { relationshipName: 'Invoices__r', childSObject: 'Payment__c', field: 'Account__c' },
+        ],
+      },
+      { name: 'Contact', fields: [field('Id', 'id'), field('LastName')], childRelationships: [] },
+      {
+        name: 'Invoice__c',
+        fields: [
+          field('Account__c', 'reference', ['Account'], 'Account__r'),
+          field('Id', 'id'),
+          field('OwnerId', 'reference', ['Group', 'User'], 'Owner'),
+        ],
+        childRelationships: [],
+      },
+    ];
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Owners',
+        code(
+          'public class Owners {',
+          '    void m(Invoice__c inv, Account acc) {',
+          '        String o = inv.Owner.Name;',
+          '        Integer c = acc.Contacts.size();',
+          '        for (Invoice__c i : acc.Invoices__r) { }',
+          '        String p = inv.Partner__r.Name;',
+          '    }',
+          '}',
+        ),
+      );
+    }, descriptions);
+    expect(said(analysis)).toEqual([
+      '3:24 reads CustomField:invoice__c.ownerid [Owner] field confirmed external',
+      '4:25 references null [Contacts] field probable unresolved of Contact',
+      '5:33 references CustomField:invoice__c.account__c [Invoices__r] field confirmed resolved',
+      '6:24 reads null [Partner__r] field probable unresolved of Invoice__c',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 3:24 {"relationship":"Owner","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      // The name of the field the description lacks: behind a relationship, the lookup field.
+      'FIELD_NOT_DESCRIBED 4:25 {"object":"Contact","name":"AccountId"}',
+      'FIELD_NOT_DESCRIBED 6:24 {"object":"Invoice__c","name":"Partner__c"}',
+      'PATH_NOT_FOLLOWED 6:24 {"relationship":"Partner__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
     ]);
   });
 });

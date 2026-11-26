@@ -26,6 +26,8 @@ export interface Checked {
   readonly known: boolean;
   /** The org described the object, and neither the description nor a file defines the name. */
   readonly notDescribed: boolean;
+  /** Where the description lacks the name: the name of the field it lacks, also behind a relationship. */
+  readonly lacks?: string;
 }
 
 /** A relationship of a record: the lookup field behind it, and the object it leads to. */
@@ -145,6 +147,7 @@ export function buildApexSchema(model: ObjectModel, descriptions: readonly Objec
       checked: false,
       known: false,
       notDescribed: true,
+      lacks: name,
     };
   };
 

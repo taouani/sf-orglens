@@ -657,7 +657,7 @@
                 "type": "string"
               },
               "name": {
-                "description": "The target as the source writes it.",
+                "description": "The target as the source writes it. For DML of Apex, the name of the object it writes.",
                 "type": "string"
               },
               "kind": {

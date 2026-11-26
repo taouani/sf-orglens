@@ -21,6 +21,7 @@
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
+import { MOST_NAMES_SHOWN } from './raw-references.ts';
 import type { ApexPart, ApexTypes } from './apex.ts';
 import type { ApexSchema, Checked } from './apex-schema.ts';
 import type { Expr, Name, Param, Stmt, TypeRef } from './apex-syntax.ts';
@@ -97,7 +98,7 @@ type Type =
       readonly k: 'record';
       readonly object: string | undefined;
       /** The relationship the record was reached through, where it leads to no known object. */
-      readonly through?: { readonly name: Name; readonly object: string };
+      readonly through?: Through;
     }
   | { readonly k: 'list'; readonly of: Type }
   | { readonly k: 'map'; readonly key: Type; readonly value: Type }
@@ -114,12 +115,23 @@ type Type =
   /** `fields` of a describe: the next name is a field of the object. */
   | { readonly k: 'fields'; readonly object: string | undefined }
   /**
-   * A type of Salesforce or of a package that is no class of the snapshot and no object the analysis knows. Only an
-   * object can be written by DML or made with the values of its fields, so what DML writes or such a `new` makes is
-   * an object of this name, as `PermissionSet`. Anything else of it gives nothing, as any type of Salesforce.
+   * A type of Salesforce or of a package that is no class of the snapshot, no object the analysis knows and no
+   * primitive type (`Id`, `String`). Only an object can be written by DML or made with the values of its fields, so
+   * what DML writes or such a `new` makes is an object of this name, as `PermissionSet`. Anything else of it gives
+   * nothing, as any type of Salesforce.
    */
   | { readonly k: 'named'; readonly name: string }
+  /**
+   * What stands after a relationship that leads to no known object, as `Owner.Name` of `task.What.Owner.Name`: each
+   * name joins the warning that the path was not followed, at the place of the relationship.
+   */
+  | { readonly k: 'beyond'; readonly through: Through; readonly names: readonly string[] }
   | { readonly k: 'other' };
+
+interface Through {
+  readonly name: Name;
+  readonly object: string;
+}
 
 type Namespace = 'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus';
 const NAMESPACES: ReadonlySet<string> = new Set<Namespace>(['schema', 'trigger', 'database', 'eventbus']);
@@ -143,11 +155,11 @@ type Access = 'read' | 'write' | 'both';
 /**
  * The methods of a list that show that a value is a list: the child relationship of a record is one. A value of a
  * field has none of them, also a text, which has `contains`, `indexOf` and `remove` and so is told by these alone.
+ * A record has `clear` and `get` too: `get` with a text or a token is the method of a record (`Resolver.invoke`).
  */
 const LIST_METHODS: ReadonlySet<string> = new Set([
   'add',
   'addall',
-  'clear',
   'deepclone',
   'get',
   'isempty',
@@ -155,6 +167,25 @@ const LIST_METHODS: ReadonlySet<string> = new Set([
   'set',
   'size',
   'sort',
+]);
+
+/**
+ * The primitive types of Apex, which are never objects: `Database.delete(ids)` with a list of `Id` deletes records of
+ * an object that nothing says.
+ */
+const PRIMITIVES: ReadonlySet<string> = new Set([
+  'blob',
+  'boolean',
+  'date',
+  'datetime',
+  'decimal',
+  'double',
+  'id',
+  'integer',
+  'long',
+  'object',
+  'string',
+  'time',
 ]);
 
 /** The methods of a list, a set or a map whose first argument is a list, a set or a map as well. */
@@ -466,6 +497,7 @@ class Resolver implements ApexResolver {
         return { k: 'describe', object: undefined };
       default:
     }
+    if (words.length === 1 && PRIMITIVES.has(foldName(words[0] ?? ''))) return OTHER;
     const found = this.findClass(words, cls);
     if (found === 'opaque') return OTHER;
     if (found !== undefined) return { k: 'instance', cls: found };
@@ -545,7 +577,12 @@ class Resolver implements ApexResolver {
     kind: Reference['kind'],
     checked: Checked,
     via: string,
-    more: { readonly tier?: ConfidenceTier; readonly op?: string; readonly object?: string } = {},
+    more: {
+      readonly tier?: ConfidenceTier;
+      readonly op?: string;
+      readonly object?: string;
+      readonly raw?: string;
+    } = {},
   ): string | undefined {
     const ctx = this.context;
     if (ctx.quiet) return undefined;
@@ -558,7 +595,7 @@ class Resolver implements ApexResolver {
         from: ctx.from,
         to: target.to,
         toType: target.toType,
-        toNameRaw: at.text,
+        toNameRaw: more.raw ?? at.text,
         kind,
         origin: 'parser:apex',
         confidence: Resolver.tierOf(checked, more.tier ?? 'confirmed'),
@@ -592,16 +629,17 @@ class Resolver implements ApexResolver {
     for (const id of ids ?? []) if (id !== undefined) this.found.delete(id);
   }
 
+  /** Gives a warning once for its code and its place. Says whether it gave it. */
   private warn(
     at: Name,
     code: string,
     message: string,
     details: Readonly<Record<string, string | readonly string[]>>,
-  ): void {
+  ): boolean {
     const ctx = this.context;
-    if (ctx.quiet) return;
+    if (ctx.quiet) return false;
     const id = `${code}\n${String(at.at.line)}:${String(at.at.column)}`;
-    if (this.issueIds.has(id)) return;
+    if (this.issueIds.has(id)) return false;
     this.issueIds.add(id);
     const { file } = ctx.unit;
     this.issues.push({
@@ -611,16 +649,44 @@ class Resolver implements ApexResolver {
       componentKey: ctx.from,
       details: { path: file, line: at.at.line, column: at.at.column, ...details },
     });
+    return true;
+  }
+
+  /**
+   * The warning that the names after a relationship that leads to no known object were not followed, as for a flow
+   * (decision record 0074): at most `MOST_NAMES_SHOWN` of them, and a warning with that many bears on every answer.
+   * The first name gives the warning, and each name after it joins the warning at the place of the relationship.
+   */
+  private notFollowed(through: Through, names: readonly string[]): Type {
+    const message = `it is not known which object "${cut(through.name.text, 80)}" of "${cut(through.object, 80)}" leads to, so "${cut(names.join('.'), 200)}" after it was not followed.`;
+    const details = { relationship: through.name.text, notFollowed: names, endsAt: 'field', origin: 'parser:apex' };
+    if (names.length === 1) {
+      return this.warn(through.name, 'PATH_NOT_FOLLOWED', message, details) ? { k: 'beyond', through, names } : OTHER;
+    }
+    const { line, column } = through.name.at;
+    const at = this.issues.findIndex(
+      (one) => one.code === 'PATH_NOT_FOLLOWED' && one.details?.['line'] === line && one.details['column'] === column,
+    );
+    const before = this.issues[at];
+    if (before === undefined || before.details === null) return OTHER;
+    this.issues[at] = {
+      ...before,
+      message: `${this.context.unit.file}, line ${String(line)}: ${message}`,
+      details: { ...before.details, notFollowed: names },
+    };
+    return { k: 'beyond', through, names };
   }
 
   /** A field or a relationship as the check found it, with the warning where the org did not describe it. */
   private notDescribed(at: Name, checked: Checked, object: string): void {
     if (!checked.notDescribed) return;
+    // The name of the field: behind a relationship, the lookup field and not the relationship.
+    const name = checked.lacks ?? at.text;
     this.warn(
       at,
       'FIELD_NOT_DESCRIBED',
-      `the org described "${cut(object, 80)}" without "${cut(at.text, 80)}", and no file of the snapshot defines it. It is recorded as unresolved: the org does not know it, or the user who took the snapshot cannot see it.`,
-      { object, name: at.text },
+      `the org described "${cut(object, 80)}" without "${cut(name, 80)}", and no file of the snapshot defines it. It is recorded as unresolved: the org does not know it, or the user who took the snapshot cannot see it.`,
+      { object, name },
     );
   }
 
@@ -738,13 +804,8 @@ class Resolver implements ApexResolver {
           this.objectNotKnown(at, stmt.op);
           return;
         }
-        this.add(at, 'writes', this.schema.object(object), 'dml', { op: stmt.op, object });
-        const field = stmt.key.at(-1);
-        if (field !== undefined) {
-          const checked = this.schema.field(object, field.text);
-          this.add(field, 'references', checked, 'dml', { object });
-          this.notDescribed(field, checked, object);
-        }
+        this.add(at, 'writes', this.schema.object(object), 'dml', { op: stmt.op, object, raw: object });
+        this.upsertKey(object, stmt.key);
         return;
       }
       case 'runas':
@@ -802,11 +863,13 @@ class Resolver implements ApexResolver {
       case 'new':
         return this.construct(expr);
       case 'collection': {
+        // `new List<List<SObject>>{ account.Things__r }`: a value given to a list of lists is a list.
         const type = this.resolveType(expr.type, this.context.cls);
-        for (const element of expr.elements) this.ev(element);
+        const item = type.k === 'list' ? type.of : OTHER;
+        for (const element of expr.elements) this.given(this.ev(element), item);
         for (const pair of expr.pairs) {
-          this.ev(pair.key);
-          this.ev(pair.value);
+          this.given(this.ev(pair.key), type.k === 'map' ? type.key : OTHER);
+          this.given(this.ev(pair.value), type.k === 'map' ? type.value : OTHER);
         }
         return { type };
       }
@@ -907,17 +970,13 @@ class Resolver implements ApexResolver {
     switch (type.k) {
       case 'record':
         if (type.object !== undefined) return this.field(type.object, name, access, step);
-        if (type.through !== undefined && folded !== 'id') {
-          // `task.What.Name`: the relationship can lead to records of several objects, or to one not known here.
-          const { through } = type;
-          this.warn(
-            through.name,
-            'PATH_NOT_FOLLOWED',
-            `it is not known which object "${cut(through.name.text, 80)}" of "${cut(through.object, 80)}" leads to, so "${cut(name.text, 80)}" after it was not followed.`,
-            { relationship: through.name.text, notFollowed: [name.text], endsAt: 'field', origin: 'parser:apex' },
-          );
-        }
+        // `task.What.Name`: the relationship can lead to records of several objects, or to one not known here.
+        if (type.through !== undefined && folded !== 'id') return { type: this.notFollowed(type.through, [name.text]) };
         return VALUE;
+      case 'beyond':
+        // `task.What.Owner.Name`: every name after the relationship is one that was not followed.
+        if (type.names.length >= MOST_NAMES_SHOWN) return { type };
+        return { type: this.notFollowed(type.through, [...type.names, name.text]) };
       case 'instance':
       case 'static': {
         const inner = type.k === 'static' ? type.cls.inner.get(folded) : undefined;
@@ -1057,6 +1116,66 @@ class Resolver implements ApexResolver {
     return { type };
   }
 
+  /**
+   * The field an `upsert` statement tells records apart by: `upsert invoices External_Id__c` and
+   * `upsert invoices Invoice__c.Fields.External_Id__c` name it, and `upsert invoices key` names a variable or a
+   * constant that holds its token, as an argument of `Database.upsert` does. The field `Id` gives nothing.
+   */
+  private upsertKey(object: string, key: readonly Name[]): void {
+    const [first] = key;
+    const last = key.at(-1);
+    if (first === undefined || last === undefined || foldName(last.text) === 'id') return;
+    const folded = foldName(first.text);
+    const { cls } = this.context;
+    const found = key.length > 1 ? this.findClass([first.text], cls) : undefined;
+    const holds =
+      this.lookup(folded) !== undefined ||
+      this.findVar(cls, folded) !== undefined ||
+      (found !== undefined && found !== 'opaque');
+    if (!holds) {
+      const checked = this.schema.field(object, last.text);
+      this.add(last, 'references', checked, 'dml', { object });
+      this.notDescribed(last, checked, object);
+      return;
+    }
+    let expr: Expr = { kind: 'name', name: first };
+    for (const name of key.slice(1)) expr = { kind: 'dot', target: expr, name, safe: false };
+    this.upsertToken(this.ev(expr), last);
+  }
+
+  /** The field whose token a value holds, as the field an `upsert` tells records apart by. */
+  private upsertToken(token: Value, at: Name): void {
+    const { type } = token;
+    if (type.k !== 'fieldToken' || type.object === undefined || type.field === undefined) return;
+    if (foldName(type.field) === 'id') return;
+    this.add(at, 'references', this.schema.field(type.object, type.field), 'token', { object: type.object });
+  }
+
+  /**
+   * Whether an argument is a text or the token of a field, which `get` of a record takes, and not a number, which
+   * `get` of a list takes. Only what the syntax and the declarations show counts.
+   */
+  private textOrToken(arg: Expr): boolean {
+    if (arg.kind === 'string') return true;
+    let first: Expr = arg;
+    while (first.kind === 'dot') first = first.target;
+    if (first.kind !== 'name') return false;
+    const folded = foldName(first.name.text);
+    const local = this.lookup(folded);
+    const member = local === undefined ? this.findVar(this.context.cls, folded) : undefined;
+    if (arg.kind === 'name') {
+      if (local !== undefined) return local.type.k === 'fieldToken';
+      return member !== undefined && this.resolveType(member.type, member.owner).k === 'fieldToken';
+    }
+    // `Invoice__c.Status__c`, `Schema.Invoice__c.Status__c`: a token, unless a variable has that name.
+    return (
+      arg.kind === 'dot' &&
+      local === undefined &&
+      member === undefined &&
+      (folded === 'schema' || this.schema.isObject(first.name.text))
+    );
+  }
+
   private invoke(expr: Extract<Expr, { kind: 'call' }>): Value {
     const method = foldName(expr.name.text);
     const { args } = expr;
@@ -1065,7 +1184,8 @@ class Resolver implements ApexResolver {
     };
     if (expr.target === undefined) return this.returned(this.context.cls, method, args, true);
     let target = this.ev(expr.target);
-    if (LIST_METHODS.has(method) || OF_LISTS.has(method)) target = this.asList(target);
+    const ofRecord = method === 'get' && args.length === 1 && args[0] !== undefined && this.textOrToken(args[0]);
+    if ((LIST_METHODS.has(method) && !ofRecord) || OF_LISTS.has(method)) target = this.asList(target);
     const { type } = target;
     if (OF_LISTS.has(method) && args[0] !== undefined && (type.k === 'list' || type.k === 'map')) {
       // `ids.addAll(account.Contacts)`: the argument is a list too.
@@ -1191,20 +1311,12 @@ class Resolver implements ApexResolver {
       const records = this.ev(first);
       const object = Resolver.objectOf(records.type);
       if (object === undefined) this.objectNotKnown(expr.name, op);
-      else this.add(expr.name, 'writes', this.schema.object(object), 'dml', { op, object });
+      else this.add(expr.name, 'writes', this.schema.object(object), 'dml', { op, object, raw: object });
       if (op === 'upsert' && second !== undefined) {
         // The field that says which record is which: a field token, here or in a constant.
-        const token = this.ev(second);
         const at = anchor(second);
-        if (
-          token.type.k === 'fieldToken' &&
-          token.type.object !== undefined &&
-          token.type.field !== undefined &&
-          at !== undefined
-        ) {
-          const checked = this.schema.field(token.type.object, token.type.field);
-          this.add(at, 'references', checked, 'token', { object: token.type.object });
-        }
+        const token = this.ev(second);
+        if (at !== undefined) this.upsertToken(token, at);
         for (const arg of args.slice(2)) this.ev(arg);
       } else for (const arg of args.slice(1)) this.ev(arg);
       return VALUE;

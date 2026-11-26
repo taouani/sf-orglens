@@ -395,8 +395,12 @@ export function tierInRepository(
   answers: AnswerKey,
 ): (reference: Pick<KeyReference, 'file' | 'to' | 'tier'>) => ConfidenceTier {
   const standard = new Set<string>(answers.standard);
+  // Only `confirmed` is lowered: a reference at `possible` stays there.
   return (reference) =>
-    /\.(?:cls|trigger)$/.test(reference.file) && reference.to.startsWith('CustomField:') && standard.has(reference.to)
+    reference.tier === 'confirmed' &&
+    /\.(?:cls|trigger)$/.test(reference.file) &&
+    reference.to.startsWith('CustomField:') &&
+    standard.has(reference.to)
       ? 'probable'
       : reference.tier;
 }

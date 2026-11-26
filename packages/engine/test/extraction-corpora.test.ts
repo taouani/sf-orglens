@@ -100,13 +100,14 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * key hold each case. A field or an object that no file defines and that not every org has is `probable`, as is a
  * field of the short lists of the model, so that no reference at `confirmed` names a field no file defines. The
  * resolver warns where it cannot follow a name, with `PATH_NOT_FOLLOWED`: DML on records of which nothing says the
- * object, such as a list of `SObject` that a method of a generic class is handed (Apex Recipes 15, Nebula Logger 4,
- * NPSP 63, PMM 5, V4S 8, Outbound Funds 5, EDA 21), a relationship whose object is not one or not known, with a
- * name after it (Nebula Logger 15, at `UserLicense` and `SetupOwner`, NPSP 104, all at a relationship the resolver
- * guessed), and a child relationship nothing defines that the code uses as a list (NPSP 83, Outbound Funds 1).
- * NPSP has 4 more, of its formulas, as before. `RELATIONSHIP_GUESSED` is a name nothing defines that the code uses as
- * a relationship, which the resolver takes for the lookup field the rule names (`Account__r` is `Account__c`): all
- * 133 are of NPSP, which names relationships of the packages it builds on.
+ * object, such as a list of `SObject` that a method of a generic class is handed or a list of `Id` that
+ * `Database.delete` is (Apex Recipes 15, Nebula Logger 4, NPSP 64, PMM 5, V4S 9, Outbound Funds 6, EDA 21), a
+ * relationship whose object is not one or not known, with the names after it (Nebula Logger 15, at `UserLicense` and
+ * `SetupOwner`, NPSP 104, all at a relationship the resolver guessed, 6 of them with more than one name), and a child
+ * relationship nothing defines that the code uses as a list (NPSP 83, Outbound Funds 1). NPSP has 4 more, of its
+ * formulas, as before. `RELATIONSHIP_GUESSED` is a name nothing defines that the code uses as a relationship, which
+ * the resolver takes for the lookup field the rule names (`Account__r` is `Account__c`): all 133 are of NPSP, which
+ * names relationships of the packages it builds on.
  */
 interface Expected {
   readonly components: number;
@@ -174,7 +175,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'controlling-field': 5,
       declaration: 407,
       'display-field': 2,
-      dml: 3358,
+      dml: 3356,
       field: 57_367,
       filter: 11,
       formula: 70,
@@ -192,7 +193,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 254, RELATIONSHIP_GUESSED: 133 },
+    issues: { PATH_NOT_FOLLOWED: 255, RELATIONSHIP_GUESSED: 133 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -232,7 +233,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       assignment: 2,
       declaration: 9,
       'display-field': 7,
-      dml: 307,
+      dml: 306,
       field: 3595,
       filter: 11,
       formula: 43,
@@ -247,7 +248,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       token: 163,
       type: 973,
     },
-    issues: { PATH_NOT_FOLLOWED: 8 },
+    issues: { PATH_NOT_FOLLOWED: 9 },
   },
   'outbound-funds': {
     components: 841,
@@ -258,7 +259,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'action-override': 3,
       assignment: 3,
       declaration: 3,
-      dml: 16,
+      dml: 15,
       field: 268,
       filter: 3,
       formula: 3,
@@ -271,7 +272,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       token: 104,
       type: 239,
     },
-    issues: { PATH_NOT_FOLLOWED: 6 },
+    issues: { PATH_NOT_FOLLOWED: 7 },
   },
   // Added on 25 November 2026, for the check by hand of Phase 2.
   'coral-cloud': {
@@ -544,7 +545,9 @@ describe('the analysis of the public codebases', () => {
           inFormulas.length === 0 ? {} : { confirmed: inFormulas.length },
         );
         expect(inFormulas.filter((one) => one.resolution === 'unresolved')).toEqual([]);
-        // No reference of Apex at `confirmed` names a field that no file defines, or a name that nothing knows.
+        // No reference of Apex at `confirmed` names a field that no file defines, or a name that nothing knows. The
+        // one name at `confirmed` that has no key can be an object that a file names, as the target of a lookup,
+        // and that the codebase holds no file of (decision record 0087). None of the codebases has one.
         const inApex = references.filter((one) => one.origin === 'parser:apex' && one.confidence === 'confirmed');
         expect(inApex.filter((one) => one.toType === 'CustomField' && one.resolution !== 'resolved')).toEqual([]);
         expect(inApex.filter((one) => one.resolution === 'unresolved')).toEqual([]);

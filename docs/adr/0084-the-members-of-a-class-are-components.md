@@ -4,6 +4,7 @@
 - Date: 2026-11-26
 - Decisions: none (it builds work package 3 of the Phase 3 plan, with the choices of the author, which the maintainer
   can strike)
+- Changed by: [0087](0087-the-resolver-of-apex-and-the-tier-of-a-name-nothing-checks.md), in one point: the use of an object as a type is `probable` where no file defines the object and not every org has it
 
 ## Context
 
