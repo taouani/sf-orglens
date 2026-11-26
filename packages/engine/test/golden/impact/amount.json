@@ -43,6 +43,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:accountinvoices#method:relatedcounts(set<id>)",
+      "type": "ApexClass",
+      "name": "AccountInvoices.relatedCounts(Set<Id>)",
+      "file": "force-app/main/default/classes/AccountInvoices.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:accountinvoices#method:relatedcounts(set<id>)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/AccountInvoices.cls",
+        "line": 10,
+        "column": 29
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:dynamicaccess#method:amountbytoken(invoice__c)",
       "type": "ApexClass",
       "name": "DynamicAccess.amountByToken(Invoice__c)",
@@ -163,6 +183,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicepagecontroller#ctor:()",
+      "type": "ApexClass",
+      "name": "InvoicePageController.InvoicePageController()",
+      "file": "force-app/main/default/classes/InvoicePageController.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepagecontroller#ctor:()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePageController.cls",
+        "line": 8,
+        "column": 38
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoicepricingtest#method:invoicewithlines()",
       "type": "ApexClass",
       "name": "InvoicePricingTest.invoiceWithLines()",
@@ -199,6 +239,26 @@
         "file": "force-app/main/default/classes/InvoiceService.cls",
         "line": 33,
         "column": 13
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservice#method:openinvoices(id)",
+      "type": "ApexClass",
+      "name": "InvoiceService.openInvoices(Id)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:openinvoices(id)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 9,
+        "column": 30
       },
       "package": null
     },
@@ -243,6 +303,66 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)",
+      "type": "ApexClass",
+      "name": "InvoiceTriggerHandler.refreshRisk(Set<Id>)",
+      "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+        "line": 44,
+        "column": 46
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#method:averagepaid()",
+      "type": "ApexClass",
+      "name": "ParserTorture.averagePaid()",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:averagepaid()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 68,
+        "column": 43
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#method:typeof()",
+      "type": "ApexClass",
+      "name": "ParserTorture.typeOf()",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:typeof()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 61,
+        "column": 38
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:parsertorture#prop:lastamount",
       "type": "ApexClass",
       "name": "ParserTorture.lastAmount",
@@ -257,8 +377,8 @@
         "confidence": "confirmed",
         "resolution": "resolved",
         "file": "force-app/main/default/classes/ParserTorture.cls",
-        "line": 17,
-        "column": 37
+        "line": 16,
+        "column": 45
       },
       "package": null
     },
@@ -843,6 +963,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicecontroller#method:recentinvoices(id)",
+      "type": "ApexClass",
+      "name": "InvoiceController.recentInvoices(Id)",
+      "file": "force-app/main/default/classes/InvoiceController.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecontroller#method:recentinvoices(id)",
+        "to": "CustomField:invoice__c.summary__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceController.cls",
+        "line": 8,
+        "column": 30
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
       "type": "ApexClass",
       "name": "InvoiceService.totalDue(List<Invoice__c>)",
@@ -959,6 +1099,26 @@
         "file": "force-app/main/default/classes/InvoiceBatch.cls",
         "line": 11,
         "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicebatch#method:start(database.batchablecontext)",
+      "type": "ApexClass",
+      "name": "InvoiceBatch.start(Database.BatchableContext)",
+      "file": "force-app/main/default/classes/InvoiceBatch.cls",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicebatch#method:start(database.batchablecontext)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceBatch.cls",
+        "line": 19,
+        "column": 24
       },
       "package": null
     },

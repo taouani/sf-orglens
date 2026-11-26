@@ -4,6 +4,7 @@
 - Date: 2026-11-26
 - Decisions: none (builds part B of work package 4 of the Phase 3 plan and record 0080, with the choices the author
   made in it, which the maintainer can strike)
+- Changed by: [0088](0088-the-resolver-of-apex-reads-queries-and-searches.md), in one point: queries and searches, with their binds, are read
 
 ## Context
 
@@ -102,7 +103,8 @@ defines is `unresolved`, with a warning, and that the coverage counts both. Find
    (`tierInRepository` of `test/helpers/answer-key.ts`). The key is not changed. The snapshot of the mock org, whose
    descriptions define three of those fields, keeps them `confirmed` (`org-snapshot.test.ts`).
 9. **Not built here.** The count of the names nothing checks in the coverage, which the plan asks for, comes with the
-   coverage of Apex. Queries and searches, with their binds, are part C: a query gives its records the type of its
+   coverage of Apex. Queries and searches, with their binds, are part C (record
+   [0088](0088-the-resolver-of-apex-reads-queries-and-searches.md)): here a query gives its records the type of its
    object, and nothing more. Calls, `new` of a class, overrides, interfaces and the values of a `switch` are part D.
    Names in texts, also `get('Name')` and `put('Name', v)` with a text, are work package 5. The readers of formulas,
    flows and the other metadata do not read the descriptions, and their answers do not move. `ApexClass` and

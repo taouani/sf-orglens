@@ -301,9 +301,23 @@ function collect(node: Node, into: QueryParts, inSelect: boolean): void {
   }
 }
 
+/** The functions that make a query give rows of `AggregateResult`. */
+const AGGREGATES: ReadonlySet<string> = new Set(['avg', 'count', 'count_distinct', 'max', 'min', 'sum']);
+
+/** Whether an entry of the select list is an aggregate function, also inside another function. */
+const aggregates = (node: Node | undefined): boolean =>
+  node?.type === 'function_expression' &&
+  (AGGREGATES.has(kids(node)[0]?.text.toLowerCase() ?? '') || kids(node).some(aggregates));
+
+function givesOf(body: Node): Query['gives'] {
+  const entries = kids(one(body, 'select_clause')).map((kid) => (kid.type === 'alias_expression' ? kids(kid)[0] : kid));
+  if (entries.some((entry) => entry?.type === 'count_expression')) return 'count';
+  return entries.some(aggregates) || one(body, 'group_by_clause') !== undefined ? 'aggregates' : 'records';
+}
+
 function query(body: Node | undefined): Query {
   const parts = emptyParts();
-  if (body === undefined) return { from: [], alias: undefined, ...parts };
+  if (body === undefined) return { from: [], alias: undefined, ...parts, gives: 'records' };
   const from = kids(field(body, 'from_clause') ?? one(body, 'from_clause'))[0];
   const aliased = from?.type === 'storage_alias';
   collect(body, parts, false);
@@ -311,6 +325,7 @@ function query(body: Node | undefined): Query {
     from: path(aliased ? one(from, 'storage_identifier') : from),
     alias: aliased ? one(from, 'identifier')?.text.toLowerCase() : undefined,
     ...parts,
+    gives: givesOf(body),
   };
 }
 

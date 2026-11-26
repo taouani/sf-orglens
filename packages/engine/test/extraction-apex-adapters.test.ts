@@ -144,4 +144,15 @@ describe('the two readers of Apex', () => {
     const escape = 'SELECT Id FROM Account];} class Z{Object z=[SELECT Name FROM Contact';
     expect([engine.parseQuery(escape), second.parseQuery(escape)]).toEqual([undefined, undefined]);
   });
+
+  it.each([
+    ['records', 'SELECT Id, toLabel(Status__c) FROM Invoice__c'],
+    ['count', 'SELECT COUNT() FROM Invoice__c WHERE Amount__c > 0'],
+    ['aggregates', 'SELECT COUNT(Id) n FROM Invoice__c'],
+    ['aggregates', 'SELECT FORMAT(SUM(Amount__c)) total FROM Invoice__c'],
+    ['aggregates', 'SELECT Account__c a FROM Invoice__c GROUP BY Account__c'],
+  ])('say alike that a query gives %s: %s', (gives, text) => {
+    expect([engine.parseQuery(text)?.gives, second.parseQuery(text)?.gives]).toEqual([gives, gives]);
+    expect(engine.parseQuery(text)).toEqual(second.parseQuery(text));
+  });
 });

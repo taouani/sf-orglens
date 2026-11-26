@@ -63,6 +63,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:parsertorture#method:typeof()",
+      "type": "ApexClass",
+      "name": "ParserTorture.typeOf()",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:typeof()",
+        "to": "CustomField:account.credit_limit__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 60,
+        "column": 44
+      },
+      "package": null
+    },
+    {
       "key": "CustomField:account.is_key_account__c",
       "type": "CustomField",
       "name": "Account.Is_Key_Account__c",
@@ -199,6 +219,26 @@
         "file": "force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml",
         "line": 5,
         "column": 54
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.invoiceWithLines()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "to": "CustomField:account.is_key_account__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 10,
+        "column": 55
       },
       "package": null
     },

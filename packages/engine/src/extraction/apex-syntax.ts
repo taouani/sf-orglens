@@ -229,6 +229,11 @@ export interface Query {
   readonly typeOfs: readonly TypeOf[];
   /** The Apex expressions after a colon. */
   readonly binds: readonly Expr[];
+  /**
+   * What the query gives: records of its object, rows of `AggregateResult` where its select list has an aggregate
+   * function or it groups its rows, or a number for `COUNT()`.
+   */
+  readonly gives: 'records' | 'aggregates' | 'count';
 }
 
 export interface TypeOf {

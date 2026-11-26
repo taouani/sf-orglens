@@ -43,6 +43,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicelineservice#method:billlines(id)",
+      "type": "ApexClass",
+      "name": "InvoiceLineService.billLines(Id)",
+      "file": "force-app/main/default/classes/InvoiceLineService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicelineservice#method:billlines(id)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceLineService.cls",
+        "line": 9,
+        "column": 39
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoicepricing#method:discount(account)",
       "type": "ApexClass",
       "name": "InvoicePricing.discount(Account)",
@@ -83,6 +103,46 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoiceservice#method:countbytier(string)",
+      "type": "ApexClass",
+      "name": "InvoiceService.countByTier(String)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:countbytier(string)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 61,
+        "column": 65
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceservice#method:openinvoices(id)",
+      "type": "ApexClass",
+      "name": "InvoiceService.openInvoices(Id)",
+      "file": "force-app/main/default/classes/InvoiceService.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoiceservice#method:openinvoices(id)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceService.cls",
+        "line": 10,
+        "column": 28
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservicetest#method:setup()",
       "type": "ApexClass",
       "name": "InvoiceServiceTest.setup()",
@@ -103,6 +163,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:parsertorture#method:search(string)",
+      "type": "ApexClass",
+      "name": "ParserTorture.search(String)",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:search(string)",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 53,
+        "column": 29
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:parsertorture#method:tierof(invoice__c)",
       "type": "ApexClass",
       "name": "ParserTorture.tierOf(Invoice__c)",
@@ -119,6 +199,26 @@
         "file": "force-app/main/default/classes/ParserTorture.cls",
         "line": 42,
         "column": 37
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:parsertorture#method:typeof()",
+      "type": "ApexClass",
+      "name": "ParserTorture.typeOf()",
+      "file": "force-app/main/default/classes/ParserTorture.cls",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:parsertorture#method:typeof()",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/ParserTorture.cls",
+        "line": 60,
+        "column": 35
       },
       "package": null
     },
@@ -239,6 +339,26 @@
         "file": "force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml",
         "line": 25,
         "column": 31
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicecontroller#method:recentinvoices(id)",
+      "type": "ApexClass",
+      "name": "InvoiceController.recentInvoices(Id)",
+      "file": "force-app/main/default/classes/InvoiceController.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecontroller#method:recentinvoices(id)",
+        "to": "CustomField:invoice__c.account_tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceController.cls",
+        "line": 8,
+        "column": 42
       },
       "package": null
     },

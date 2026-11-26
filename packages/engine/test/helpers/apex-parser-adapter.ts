@@ -62,6 +62,7 @@ import {
   FormalParameterListContext,
   FromNameListContext,
   GetterContext,
+  GroupByClauseContext,
   IdContext,
   IdCreatedNamePairContext,
   IdPrimaryContext,
@@ -97,8 +98,10 @@ import {
   ReturnStatementContext,
   RunAsStatementContext,
   SelectEntryContext,
+  SelectListContext,
   SetCreatorRestContext,
   SetterContext,
+  SoqlFunctionContext,
   SoqlIdContext,
   SoqlLiteralContext,
   SoqlPrimaryContext,
@@ -430,9 +433,26 @@ function collect(node: Tree, into: QueryParts): void {
   }
 }
 
+/** The functions that make a query give rows of `AggregateResult`. */
+const AGGREGATES: ReadonlySet<string> = new Set(['avg', 'count', 'count_distinct', 'max', 'min', 'sum']);
+
+/** Whether a function is an aggregate function, also inside another function. */
+const aggregates = (fn: SoqlFunctionContext | undefined): boolean =>
+  fn !== undefined && (AGGREGATES.has(words(fn)[0] ?? '') || aggregates(one(fn, SoqlFunctionContext)));
+
+function givesOf(ctx: QueryContext | SubQueryContext): Query['gives'] {
+  const functions = all(one(ctx, SelectListContext), SelectEntryContext).flatMap((entry) => {
+    const fn = one(entry, SoqlFunctionContext);
+    return fn === undefined ? [] : [fn];
+  });
+  // `COUNT()` is the one function without an argument that gives a number.
+  if (functions.some((fn) => words(fn)[0] === 'count' && kids(fn).length === 3)) return 'count';
+  return functions.some(aggregates) || one(ctx, GroupByClauseContext) !== undefined ? 'aggregates' : 'records';
+}
+
 function query(ctx: QueryContext | SubQueryContext | undefined): Query {
   const parts: QueryParts = { fields: [], children: [], nested: [], typeOfs: [], binds: [] };
-  if (ctx === undefined) return { from: [], alias: undefined, ...parts };
+  if (ctx === undefined) return { from: [], alias: undefined, ...parts, gives: 'records' };
   const fromList = one(ctx, FromNameListContext);
   const alias = one(fromList, SoqlIdContext);
   collect(ctx, parts);
@@ -440,6 +460,7 @@ function query(ctx: QueryContext | SubQueryContext | undefined): Query {
     from: path(one(fromList, FieldNameContext)),
     alias: alias === undefined ? undefined : nameOf(one(alias, IdContext)).text.toLowerCase(),
     ...parts,
+    gives: givesOf(ctx),
   };
 }
 

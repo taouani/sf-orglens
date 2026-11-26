@@ -622,14 +622,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
       expect(org.components).toHaveLength(345);
-      // But for a tier: the mock org describes the fields `Name` of the account and of the invoice and the field
-      // `OwnerId` of the invoice, which no file of the project defines, and the description of the account names the
-      // field `AccountId` of the contact behind its child relationship `Contacts`. The code of Apex names them 11
-      // times. The org checks them, so they keep the tier of their syntax there, and in the folder they are
+      // But for a tier: the mock org describes the fields `Name` of the account and of the invoice and the fields
+      // `OwnerId` and `CreatedDate` of the invoice, which no file of the project defines, and the description of the
+      // account names the field `AccountId` of the contact behind its child relationship `Contacts`. The code of Apex
+      // names them 20 times, 9 of them in queries and a search. The org checks them, so they keep the tier of their syntax there, and in the folder they are
       // `probable` (decision record 0087). The contact is not described: where Apex names its field `AccountId`
       // itself, it is `probable` in both.
       const DESCRIBED = new Set([
         'CustomField:account.name',
+        'CustomField:invoice__c.createddate',
         'CustomField:invoice__c.name',
         'CustomField:invoice__c.ownerid',
       ]);
@@ -639,15 +640,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         (DESCRIBED.has(String(one.to)) || (one.to === 'CustomField:contact.accountid' && one.raw === 'Contacts'))
           ? { ...one, confidence: 'confirmed' }
           : one;
-      expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(11);
+      expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(20);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(checked).map(withoutPlace).sort());
-      expect(org.references).toHaveLength(656);
-      // The classes and triggers among them: 30 with 138 members, and the 322 references of them the answer key
+      expect(org.references).toHaveLength(760);
+      // The classes and triggers among them: 30 with 138 members, and the 426 references of them the answer key
       // holds. Six are tests, and the store keeps the mark: two test classes and their four methods.
       const ofApex = (one: { key?: string; from?: string }): boolean =>
         /^Apex(?:Class|Trigger):/.test(one.key ?? one.from ?? '');
       expect(org.components.filter(ofApex)).toHaveLength(168);
-      expect(org.references.filter(ofApex)).toHaveLength(322);
+      expect(org.references.filter(ofApex)).toHaveLength(426);
       const tests = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.attrs?.['test'] === true).map((one) => one.key);
       expect(tests(org.components)).toEqual([
@@ -678,8 +679,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // The org hands out a file for the two standard objects, which the folder does not have. So the objects
       // are defined in the snapshot of the org, and a reference to one of them is resolved there: the lookup of
-      // a field, the record a flow updates, the 16 places where Apex uses `Account` as a type and the 3 where DML
-      // writes accounts.
+      // a field, the record a flow updates, the 16 places where Apex uses `Account` as a type, the 3 where DML
+      // writes accounts, and the 3 where a query or a search reads them.
       const undefinedIn = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.path === null).map((one) => one.key);
       const lookupToAccount = (references: readonly StoredReference[]): string[] =>
@@ -688,7 +689,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(undefinedIn(folder.components)).toEqual(['CustomObject:account', 'CustomObject:user']);
       const toAccount = (resolution: string): string[] =>
         [
-          ...Array.from({ length: 19 }, () => `parser:apex ${resolution}`),
+          ...Array.from({ length: 22 }, () => `parser:apex ${resolution}`),
           `parser:flow ${resolution}`,
           `parser:xml ${resolution}`,
         ].sort();
@@ -707,13 +708,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
       // Of Apex, 137 references of declarations and types and 185 of fields, tokens and DML. One write by DML is
       // not followed: its records are a list of `SObject`.
-      const apex = { components: 168, failedFiles: 0, references: 322, unresolved: 0, pathsNotFollowed: 1 };
+      const apex = { components: 168, failedFiles: 0, references: 426, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 352,
-        references: 656,
+        references: 760,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
@@ -724,7 +725,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 345,
-        references: 656,
+        references: 760,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },

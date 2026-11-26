@@ -605,8 +605,10 @@ Of a class or a trigger, this version reads its members and the types they use: 
 it implements, the object of a trigger, and a class or an object that a member names as a type (decision record
 0084). It reads what the code of a member reads and writes: the fields of records, also through relationships, the
 variables and properties of classes, the tokens of objects and fields, and the objects that DML writes (decision
-record 0087). A name that no file of the snapshot and no description of the org defines, and an object that not
-every org has, are `probable`. Queries, searches, calls and names in texts are read in later versions. So an answer
+record 0087), and the object and the fields of every query and search in brackets, also in its subqueries, and what
+it binds (decision record 0088). A name that no file of the snapshot and no description of the org defines, and an
+object that not every org has, are `probable`. Calls and names in texts, such as a query in a string, are read in
+later versions. So an answer
 still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components of
 them.
 
@@ -978,7 +980,9 @@ by an earlier version wrote such a warning: it kept no warning for a field that 
 known object, and `orglens analyse <source>` analyses the snapshot again. A report type writes one for a child
 relationship that no file of the snapshot defines and that is not one of the few the engine knows of every org
 (`details.relationship`): the lookup field behind it can have any name (decision record 0077). So does Apex, for a
-child relationship that nothing defines and that the code uses as a list (decision record 0087). Every other warning
+child relationship that nothing defines and that the code uses as a list (decision record 0087) or that a subquery goes
+through, which keeps the names of the subquery (decision record 0088). The fields after `ELSE` of a `TYPEOF` of a query
+are of objects that nothing says, and their warning ends at `field`. Every other warning
 counts for what refers to a component. A warning about a file as a whole, which names no component, counts for every
 answer. The count is of the warnings that bear on the answer directly: one whose names fit only a component that another
 missing reference would bring into the answer is not counted, and the answer is not complete all the same.

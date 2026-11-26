@@ -130,9 +130,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of its syntax, and any other is `probable`, also a field of the short lists of the model. A field that an object the
   org described lacks is `unresolved`, with `FIELD_NOT_DESCRIBED`. A `__r` name nothing defines is guessed as its
   lookup, with `RELATIONSHIP_GUESSED`, and a name the code uses as a list is a child relationship that is not
-  followed. A relationship of no known end and DML on records of no known object leave `PATH_NOT_FOLLOWED`. Queries,
-  calls and names in texts are not read yet: the analysis does not list `ApexClass` and `ApexTrigger` among the types
-  it read, so an answer names them as not analysed, and their rows of the Dependency API are not compared.
+  followed. A relationship of no known end and DML on records of no known object leave `PATH_NOT_FOLLOWED`. A query
+  in brackets reads its object and every field it names, also in a subquery through a child relationship, which refers
+  to the lookup field behind it, and a search reads the objects it returns and their fields (decision record 0088),
+  with the `via` `soql` or `sosl`. A subquery through a child relationship of no known object and the fields after
+  `ELSE` of a `TYPEOF` leave `PATH_NOT_FOLLOWED` too. Calls and names in texts are not read yet: the analysis does not
+  list `ApexClass` and `ApexTrigger` among the types it read, so an answer names them as not analysed, and their rows
+  of the Dependency API are not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the
