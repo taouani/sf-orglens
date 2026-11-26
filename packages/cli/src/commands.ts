@@ -435,7 +435,7 @@ function coverageLines(report: CoverageReport, headline: string): string[] {
     lines.push('', `${count(types.length - shown.length, 'more type has', 'more types have')} no components.`);
   }
   if (issues.length > 0) lines.push('', ...table(['SEVERITY', 'CODE', 'WHAT'], readIssueRows(issues)));
-  lines.push(...analysisLines(report), ...crossCheckLines(report));
+  lines.push(...analysisLines(report), ...crossCheckLines(report), ...descriptionLines(report));
   return lines;
 }
 
@@ -523,6 +523,50 @@ function pairLines(pairs: readonly { readonly from: string; readonly to: string 
 /** Numbers with what they count, such as `CustomField 4, Flow 2`. */
 const tally = (parts: readonly (readonly [string, number])[]): string =>
   parts.map(([name, number]) => `${name} ${String(number)}`).join(', ');
+
+/**
+ * The line about how the org described its objects for a snapshot of an org (decision record 0085). Nothing for a
+ * snapshot of a repository, and for one that holds no object, of which nothing was asked.
+ */
+function descriptionLines(report: CoverageReport): string[] {
+  const { snapshot, descriptions } = report;
+  if (descriptions === null) {
+    if (snapshot.kind === 'git' || snapshot.status === 'running' || snapshot.status === 'failed') return [];
+    return [
+      '',
+      'The org was not asked to describe its objects for this snapshot: an earlier version of OrgLens took it.',
+    ];
+  }
+  const { asked, described, unknown, failed, code } = descriptions;
+  if (asked === 0) return [];
+  const took = tookLine(descriptions.startedAt, descriptions.readAt);
+  if (described === asked) {
+    return [
+      '',
+      `Descriptions: the org described ${asked === 1 ? 'the object' : `the ${String(asked)} objects`} the snapshot holds a file of. ${took}`,
+    ];
+  }
+  const lacks = [
+    ...(unknown === 0 ? [] : [`it does not know ${String(unknown)}`]),
+    ...(failed === 0
+      ? []
+      : [`${unknown === 0 ? 'it ' : ''}gave no description of ${String(failed)} (${code ?? 'no code'})`]),
+  ];
+  return [
+    '',
+    `Descriptions: the org described ${String(described)} of the ${count(asked, 'object', 'objects')} the snapshot holds a file of: ${lacks.join(', and ')}. ${took}`,
+  ];
+}
+
+/** How long a reading took, from two times as `Date.prototype.toISOString` writes them, in seconds. */
+function tookLine(startedAt: string, endedAt: string): string {
+  const seconds = Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000);
+  if (!(seconds >= 1)) return 'It took less than a second.';
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `It took ${count(seconds, 'second', 'seconds')}.`;
+  return `It took ${count(minutes, 'minute', 'minutes')}${rest === 0 ? '' : ` and ${count(rest, 'second', 'seconds')}`}.`;
+}
 
 /**
  * The lines about the cross-check of a snapshot of an org: how the Dependency API of Salesforce was read, and
@@ -639,8 +683,8 @@ const LISTED: Readonly<Record<CoverageReport['types'][number]['listing'], (liste
 };
 
 /**
- * At most one line about the listing in this many milliseconds, and one about the Dependency API. An org is
- * asked hundreds of times.
+ * At most one line about the listing in this many milliseconds, one about the Dependency API and one about the
+ * descriptions of objects. An org is asked hundreds of times.
  */
 const PROGRESS_LINE_EVERY_MS = 5_000;
 
@@ -648,6 +692,7 @@ const PROGRESS_LINE_EVERY_MS = 5_000;
 function progressLines(source: string, write: (line: string) => void): (event: SnapshotProgress) => void {
   let listingSaid = 0;
   let crossCheckSaid = 0;
+  let describeSaid = 0;
   return (event) => {
     if (event.step === 'connected') {
       write(`Logged in to the org of "${source}". It is read with API version ${event.apiVersion}.`);
@@ -684,6 +729,21 @@ function progressLines(source: string, write: (line: string) => void): (event: S
         crossCheckSaid = Date.now();
         write(
           `Snapshot #${String(event.snapshot)}: the Dependency API gave ${count(event.rows, 'row', 'rows')} so far, in ${count(event.requests, 'request', 'requests')}.`,
+        );
+      }
+    } else if (event.step === 'describing') {
+      if (event.done === 0) {
+        // A snapshot that holds no object asks nothing.
+        if (event.total > 0) {
+          write(
+            `Snapshot #${String(event.snapshot)}: asking the org to describe ${event.total === 1 ? 'the object' : `the ${String(event.total)} objects`} the snapshot holds a file of.`,
+          );
+        }
+        describeSaid = Date.now();
+      } else if (Date.now() - describeSaid >= PROGRESS_LINE_EVERY_MS) {
+        describeSaid = Date.now();
+        write(
+          `Snapshot #${String(event.snapshot)}: ${String(event.done)} of ${count(event.total, 'object is', 'objects are')} described.`,
         );
       }
     } else {

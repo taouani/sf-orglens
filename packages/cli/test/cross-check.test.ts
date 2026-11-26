@@ -95,13 +95,17 @@ const NOTHING: Engine.CrossCheck = {
   notReported: [],
 };
 
-/** The lines of the coverage after the ones about the analysis. */
+/**
+ * The lines of the coverage after the ones about the analysis, and before the one about the descriptions of the
+ * objects, which `descriptions.test.ts` tests.
+ */
 async function crossCheckLines(dir: string): Promise<string[]> {
   const shown = await orglens(dir, ['coverage', 'work']);
   expect(shown).toMatchObject({ code: 0, stderr: '' });
   const lines = shown.stdout.split('\n');
   const at = lines.findIndex((line) => line.startsWith('Cross-check:') || line.startsWith('The Dependency API'));
-  return at === -1 ? [] : lines.slice(at);
+  const end = lines.findIndex((line) => line.startsWith('Descriptions:') || line.startsWith('The org was not asked'));
+  return at === -1 ? [] : lines.slice(at, end === -1 ? undefined : end);
 }
 
 describe('the cross-check of a snapshot, as the coverage shows it', () => {

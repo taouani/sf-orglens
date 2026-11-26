@@ -143,3 +143,13 @@ Phase 2 added to what a step may do, on 23 November 2026.
   path of the fixture project that Salesforce does not support in a flow that runs before the save. That sentence
   of Salesforce is quoted in a test, in the README of the fixtures and in the note of the runs. It holds words of the platform and names
   of the fixture project and nothing else, and the public log had printed it.
+- Phase 3 added, with decision record [0085](0085-an-org-describes-its-objects-through-the-rest-api.md), the
+  descriptions of the objects of a snapshot, which the read step holds against those the mock org of the tests
+  writes (`test/helpers/mock-descriptions.ts`). That file of the repository names standard fields and objects that
+  are not of the fixture project, such as `User.ManagerId`, `Account.ParentId`, the child relationship
+  `Account.Opportunities` and the objects `Organization` and `Profile` that a lookup points at. They are the same in
+  every org and written for the purpose, so the log may name them as it names the fixture project: where a
+  description of the org lacks one, and where its type, the objects of its lookup or the name of its relationship
+  differ. A name that only the org has stays counted and not shown. Of a type of a field, the log shows the type where it has the form of a name, which is a word of the
+  REST API. The rule above is widened by this to the names the repository writes for its mock org, and to nothing
+  else.

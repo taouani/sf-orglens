@@ -10,7 +10,10 @@
  * - names of metadata types and of the elements of a metadata file, which
  *   are the vocabulary of the Metadata API and the same in every org,
  * - names of folders of the source format (`classes`),
- * - names and paths of the fixture project, which this repository holds.
+ * - names and paths of the fixture project, which this repository holds,
+ *   and the names of fields and relationships that the mock org of the
+ *   tests writes into its descriptions of the objects of the project
+ *   (`mock-descriptions.ts`).
  *
  * No name of a component that is not of the fixture project is printed.
  * No message of Salesforce, of a Salesforce library or of OrgLens is
@@ -36,7 +39,11 @@
  * (`probe-org.ts`), and of a file the org hands out for such a version
  * its name where that is the name of the flow with or without a number,
  * its size, its state if it is one of the four the Metadata API knows,
- * and which of the two versions of the project it is (`flow-versions.ts`). On top of the forms,
+ * and which of the two versions of the project it is (`flow-versions.ts`).
+ * Of the description of an object that the org gives, a tool may show the
+ * type of a field where it has the form of a name, which is a word of the
+ * REST API, and of any other name in it only how many there are
+ * (`descriptionLines` in `read-org.ts`). On top of the forms,
  * nothing is printed that contains a word of the settings of the login or
  * of the address or the id of the org.
  */

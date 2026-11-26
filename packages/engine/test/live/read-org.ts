@@ -21,6 +21,12 @@
  * - the components and the files of the fixture project: whether they are
  *   in the snapshot, and how a file that came back differs from the file
  *   of the repository,
+ * - the descriptions of the objects that the org gave the snapshot: how
+ *   many objects were asked for and described, and whether they hold the
+ *   fields of the fixture project and those the mock org of the tests
+ *   writes, with the same type, the same objects of a lookup and the same
+ *   name of its relationship, and its child relationships. A name only the
+ *   org has is counted and not shown,
  * - the cross-check: what the Dependency API of Salesforce reports for the
  *   org, held by the engine against its analysis of the snapshot, and how
  *   many versions of flows the org named for it. A pair of components, and
@@ -37,13 +43,15 @@
  *   the types, and the number of ids in the place of the ids.
  *
  * The step fails when the snapshot does not end, when the fixture project
- * is not whole in it, when the Dependency API gave nothing to compare, when
+ * is not whole in it, when the org described no object of the fixture
+ * project, when the Dependency API gave nothing to compare, when
  * the analysis missed a reference that Salesforce reports, when answers of
  * the Dependency API do not agree with each other, when the parts give a
  * row that the reading just before did not give, or when a reading in
  * parts that the engine calls whole lacks a row of that reading. A real
  * org lists components it does not hand out, so a snapshot that is partial
- * for that reason is a warning.
+ * for that reason is a warning, and so is a field of the fixture project
+ * that a description lacks.
  *
  *   node --no-warnings packages/engine/test/live/read-org.ts
  */
@@ -55,7 +63,7 @@ import { registry } from '@salesforce/source-deploy-retrieve';
 import { workspacePaths } from '../../src/api/layout.ts';
 import type { CrossCheckReport } from '../../src/api/analysis.ts';
 import type { SnapshotProgress } from '../../src/api/org-snapshot.ts';
-import type { CoverageReport } from '../../src/api/snapshot.ts';
+import type { CoverageReport, DescriptionsReport } from '../../src/api/snapshot.ts';
 import { openWorkspace } from '../../src/api/workspace.ts';
 import { buildKey, parseKey } from '../../src/core/keys.ts';
 import { listedMatcher, type CrossCheckPair } from '../../src/engines/cross-check.ts';
@@ -66,11 +74,14 @@ import {
   type FlowVersionIds,
 } from '../../src/sources/dependency-api.ts';
 import { notFoundIn } from '../../src/sources/metadata-api.ts';
+import type { ObjectDescription } from '../../src/sources/describe.ts';
 import { requestFailure } from '../../src/sources/org-http.ts';
 import { connectToOrg, type OrgSession } from '../../src/sources/org.ts';
 import { getBlob } from '../../src/store/blobs.ts';
 import { readDependencyRows, readFlowVersionIds, readListedIds, type ListedId } from '../../src/store/dependencies.ts';
+import { readDescriptions } from '../../src/store/descriptions.ts';
 import { openStore, type Store } from '../../src/store/open.ts';
+import { descriptionsOfFolder } from '../helpers/mock-descriptions.ts';
 import { draftPlaces, FLOW_WITH_DRAFT } from './deploy-fixture.ts';
 import { asStep } from './own-output.ts';
 import { everydayWords, type PublicLog } from './public-log.ts';
@@ -79,6 +90,7 @@ import {
   type AnswerKey,
   failureLines,
   fixtureComponents,
+  FIXTURE_DIR,
   fixtureFiles,
   loginEnvironment,
   SOURCE,
@@ -1275,6 +1287,157 @@ export function flowVersionLines(log: PublicLog, versions: readonly FlowVersionI
   ];
 }
 
+/** The heading of the lines about the descriptions of the objects, with the request of the REST API. */
+export const DESCRIPTIONS_HEADING =
+  'The descriptions of the objects of the snapshot (REST API, sobjects/<object>/describe)';
+
+/** A field as a description of the mock org or of the org gives it. */
+interface FieldShape {
+  readonly name: string;
+  readonly type: string;
+  readonly referenceTo: readonly string[];
+  readonly relationshipName: string | null;
+}
+
+/** A child relationship as a description of the mock org or of the org gives it. */
+interface ChildShape {
+  readonly relationshipName: string;
+  readonly childSObject: string;
+  readonly field: string;
+}
+
+const fieldsOf = (description: Record<string, unknown>): FieldShape[] =>
+  (Array.isArray(description['fields']) ? (description['fields'] as Record<string, unknown>[]) : []).map((field) => ({
+    name: text(field['name']),
+    type: text(field['type']),
+    referenceTo: Array.isArray(field['referenceTo']) ? (field['referenceTo'] as unknown[]).map(text).sort() : [],
+    relationshipName: typeof field['relationshipName'] === 'string' ? field['relationshipName'] : null,
+  }));
+const childrenOf = (description: Record<string, unknown>): ChildShape[] =>
+  (Array.isArray(description['childRelationships'])
+    ? (description['childRelationships'] as Record<string, unknown>[])
+    : []
+  ).map((child) => ({
+    relationshipName: text(child['relationshipName']),
+    childSObject: text(child['childSObject']),
+    field: text(child['field']),
+  }));
+
+/**
+ * Says how the org described the objects of the snapshot, and holds the descriptions of the objects of the fixture
+ * project against what the mock org of the tests gives for them (`helpers/mock-descriptions.ts`): every field of
+ * the fixture project with a file, the fields the mock org writes for the purpose, their types, the objects of a
+ * lookup and the names of relationships, and the child relationships. A name is printed only where the mock org
+ * writes it, which this repository holds. What only the org has is counted. Returns what the step makes of it:
+ * `ok`, `fields missing` where a field of the fixture project with a file is not in the description of its object,
+ * and `none` where no object of the fixture project is described.
+ */
+export function descriptionLines(
+  log: PublicLog,
+  report: DescriptionsReport | null,
+  held: readonly ObjectDescription[],
+  expected: ReadonlyMap<string, Record<string, unknown>>,
+  withFile: ReadonlySet<string>,
+): { readonly lines: string[]; readonly verdict: 'ok' | 'fields missing' | 'none' } {
+  const lines = ['', DESCRIPTIONS_HEADING];
+  if (report === null) {
+    lines.push('The snapshot holds no reading of the descriptions: the org was not asked for them.');
+    return { lines, verdict: 'none' };
+  }
+  const code = report.code === null ? '' : ` (${log.code(report.code) ?? 'a code that is not shown'})`;
+  lines.push(
+    `Objects asked for: ${String(report.asked)}, with ${plural(report.requests, 'request', 'requests')}, in ${seconds(Date.parse(report.readAt) - Date.parse(report.startedAt))} s. ` +
+      `Described: ${String(report.described)}. Not known to the org: ${String(report.unknown)}. No description for another reason: ${String(report.failed)}${code}.`,
+  );
+  const allFields = held.flatMap((one) => one.fields);
+  const lookups = allFields.filter((field) => field.referenceTo.length > 0);
+  lines.push(
+    `Fields in the descriptions: ${String(allFields.length)}. Lookups: ${String(lookups.length)}, of which to more than one object: ${String(lookups.filter((field) => field.referenceTo.length > 1).length)}. ` +
+      `Child relationships with a name: ${String(held.reduce((sum, one) => sum + one.childRelationships.length, 0))}.`,
+  );
+
+  const byName = new Map(held.map((one) => [one.name, one]));
+  /** Names this repository holds: the objects the mock org describes and those its lookups point at. */
+  const known = new Set<string>([...expected.keys()]);
+  for (const description of expected.values())
+    for (const field of fieldsOf(description)) for (const to of field.referenceTo) known.add(to);
+  const objects = (names: readonly string[]): string =>
+    names.length === 0
+      ? 'none'
+      : names.map((name) => (known.has(name) ? name : 'an object of another name')).join(', ');
+
+  const notDescribed = [...expected.keys()].filter((object) => !byName.has(object));
+  lines.push(
+    `Objects of the fixture project: ${String(expected.size)}. Described: ${String(expected.size - notDescribed.length)}${notDescribed.length > 0 ? ` (not: ${notDescribed.join(', ')})` : ''}.`,
+  );
+  const missingFixture: string[] = [];
+  const missingWritten: string[] = [];
+  const differing: string[] = [];
+  let written = 0;
+  let childrenWritten = 0;
+  const missingChildren: string[] = [];
+  for (const [object, description] of expected) {
+    const own = byName.get(object);
+    if (own === undefined) continue;
+    const fields = new Map(own.fields.map((field) => [field.name, field]));
+    for (const field of fieldsOf(description)) {
+      const name = `${object}.${field.name}`;
+      const fixture = withFile.has(name);
+      if (!fixture) written += 1;
+      const theirs = fields.get(field.name);
+      if (theirs === undefined) {
+        (fixture ? missingFixture : missingWritten).push(name);
+        continue;
+      }
+      const differences: string[] = [];
+      if (theirs.type !== field.type) {
+        differences.push(`type ${field.type} here, ${log.name(theirs.type) ?? 'a type that is not shown'} in the org`);
+      }
+      if (theirs.referenceTo.join(',') !== field.referenceTo.join(',')) {
+        differences.push(`points at ${objects(field.referenceTo)} here, at ${objects(theirs.referenceTo)} in the org`);
+      }
+      if (theirs.relationshipName !== field.relationshipName) {
+        const shown = (relationship: string | null): string =>
+          relationship === null ? 'none' : relationship === field.relationshipName ? relationship : 'another name';
+        differences.push(
+          `relationship ${field.relationshipName ?? 'none'} here, ${theirs.relationshipName === null ? 'none' : shown(theirs.relationshipName)} in the org`,
+        );
+      }
+      if (differences.length > 0) differing.push(`- ${name}: ${differences.join('; ')}`);
+    }
+    const children = new Map(own.childRelationships.map((child) => [child.relationshipName, child]));
+    for (const child of childrenOf(description)) {
+      childrenWritten += 1;
+      const theirs = children.get(child.relationshipName);
+      const at = `${object}.${child.relationshipName} (${child.childSObject}.${child.field})`;
+      if (theirs === undefined) missingChildren.push(`- ${at}: not in the description`);
+      else if (theirs.childSObject !== child.childSObject || theirs.field !== child.field) {
+        missingChildren.push(`- ${at}: of another object or field in the org`);
+      }
+    }
+  }
+  const named = (names: readonly string[]): string[] => [
+    ...names.slice(0, MISSING_SHOWN).map((name) => `- ${name}: not in the description`),
+    ...(names.length > MISSING_SHOWN ? [`- and ${String(names.length - MISSING_SHOWN)} more fields.`] : []),
+  ];
+  const fixtureHeld = [...withFile].filter((name) => byName.has(name.slice(0, name.indexOf('.')))).length;
+  lines.push(
+    `Fields of the fixture project with a file, of the objects that are described: ${String(fixtureHeld)}. In the descriptions: ${String(fixtureHeld - missingFixture.length)}.`,
+    ...named(missingFixture),
+    `Fields the mock org of the tests writes for the purpose (those of every object of its kind, and standard fields of Account and User): ${String(written)}. In the descriptions: ${String(written - missingWritten.length)}.`,
+    ...named(missingWritten),
+    `Fields whose type, objects or relationship differ from what the mock org writes: ${String(differing.length)}.`,
+    ...differing.slice(0, DIFFERENCES_SHOWN),
+    ...(differing.length > DIFFERENCES_SHOWN
+      ? [`- and ${String(differing.length - DIFFERENCES_SHOWN)} more fields.`]
+      : []),
+    `Child relationships the mock org writes: ${String(childrenWritten)}. In the descriptions as written: ${String(childrenWritten - missingChildren.length)}.`,
+    ...missingChildren.slice(0, MISSING_SHOWN),
+  );
+  const verdict = notDescribed.length === expected.size ? 'none' : missingFixture.length > 0 ? 'fields missing' : 'ok';
+  return { lines, verdict };
+}
+
 /**
  * Says what the cross-check of the snapshot found. A pair is named if both of its components are of the fixture
  * project, and counted otherwise. `versions`: the versions of flows the snapshot holds. Returns what the step makes
@@ -1739,6 +1902,8 @@ export async function readOrg(
       log.say(
         `After ${elapsed} s: ${plural(event.flows, 'flow has', 'flows have')} a latest version that is not active. The active version of each is asked for by its number.`,
       );
+    } else if (event.step === 'describing' && event.done === 0) {
+      log.say(`After ${elapsed} s: the org is asked to describe ${plural(event.total, 'object', 'objects')}.`);
     }
   };
 
@@ -1746,11 +1911,13 @@ export async function readOrg(
     let failure: unknown;
     let taken: CoverageReport['snapshot'] | undefined;
     let crossCheck: CrossCheckReport | null = null;
+    let descriptions: DescriptionsReport | null = null;
     try {
       const workspace = await openWorkspace({ root, env });
       const report = await workspace.snapshot(SOURCE_NAME, { onProgress });
       taken = report.snapshot;
       crossCheck = report.crossCheck;
+      descriptions = report.descriptions;
     } catch (error) {
       failure = error;
     }
@@ -1771,6 +1938,7 @@ export async function readOrg(
     );
 
     let fixtureWhole = false;
+    let described: ReturnType<typeof descriptionLines>['verdict'] = 'ok';
     let compared: ReturnType<typeof crossCheckLines> = 'ok';
     let inParts: Awaited<ReturnType<typeof readInParts>> = 'same';
     if (existsSync(database)) {
@@ -1783,6 +1951,21 @@ export async function readOrg(
         if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
         // The cross-check is of a snapshot that ended. One that did not end has not asked the API yet.
         if (row !== undefined && taken !== undefined) {
+          // How the org described the objects, before the cross-check, whose lines end what the step prints.
+          const withFile = new Set(
+            fixtureComponents()
+              .filter((component) => component.type === 'CustomField')
+              .map((component) => component.fullName),
+          );
+          const said = descriptionLines(
+            log,
+            descriptions,
+            readDescriptions(store, taken.id),
+            descriptionsOfFolder(FIXTURE_DIR),
+            withFile,
+          );
+          for (const line of said.lines) log.say(line);
+          described = said.verdict;
           // What Salesforce reports for the entries of Phases 2 and 3, most of which the cross-check leaves out.
           if (crossCheck !== null && crossCheck.state !== 'none') {
             const rows = readDependencyRows(store, taken.id);
@@ -1814,6 +1997,9 @@ export async function readOrg(
       log.fail([
         'The fixture project is not whole in the snapshot of the test org. The lines above say what is missing.',
       ]);
+    } else if (described === 'none') {
+      log.say('');
+      log.fail(['The org described no object of the fixture project. The lines above say what the snapshot asked.']);
     } else if (compared === 'not compared') {
       log.say('');
       log.fail(['The analysis of the snapshot was not held against the Dependency API. The lines above say why.']);
@@ -1848,6 +2034,12 @@ export async function readOrg(
       log.say('');
       log.say(
         '::warning::The snapshot of the test org is not complete, and the fixture project is whole in it. The observations above say what is missing.',
+      );
+    }
+    if (!log.failed && described === 'fields missing') {
+      log.say('');
+      log.say(
+        '::warning::Fields of the fixture project are not in the descriptions the test org gave of their objects. The lines above name them. The user the run logs in as may not see them.',
       );
     }
   } finally {

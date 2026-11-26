@@ -247,3 +247,28 @@ CREATE TABLE snapshot_flow_other_version (
   PRIMARY KEY (snapshot_id, flow, version_id),
   FOREIGN KEY (snapshot_id, flow) REFERENCES snapshot_flow_version (snapshot_id, flow) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE snapshot_description_reading (
+  snapshot_id INTEGER PRIMARY KEY REFERENCES snapshot (id) ON DELETE CASCADE,
+  -- whole: every object asked for is described. partial: some are not. none: objects were asked for, none is described.
+  state       TEXT NOT NULL CHECK (state IN ('whole', 'partial', 'none')),
+  -- When the first request was sent and when the reading ended, so that its time is known.
+  started_at  TEXT NOT NULL CHECK (started_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+  read_at     TEXT NOT NULL CHECK (read_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'
+                                   AND read_at >= started_at),
+  requests    INTEGER NOT NULL CHECK (requests >= 0),
+  -- The objects that were asked for, those the org does not know, and those for which no description came otherwise.
+  asked       INTEGER NOT NULL CHECK (asked >= 0),
+  unknown     INTEGER NOT NULL CHECK (unknown >= 0),
+  failed      INTEGER NOT NULL CHECK (failed >= 0),
+  -- The code of the first failure.
+  code        TEXT
+) STRICT;
+
+CREATE TABLE snapshot_object_description (
+  snapshot_id INTEGER NOT NULL REFERENCES snapshot_description_reading (snapshot_id) ON DELETE CASCADE,
+  -- The name of the object, as the org writes it.
+  object      TEXT NOT NULL CHECK (object <> ''),
+  description TEXT NOT NULL CHECK (json_valid(description) AND json_type(description) = 'object'),
+  PRIMARY KEY (snapshot_id, object)
+) STRICT, WITHOUT ROWID;

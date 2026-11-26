@@ -280,7 +280,7 @@ describe('orglens status', () => {
       [
         `Workspace  test (${dir})`,
         'Config     orglens.toml',
-        'Database   .orglens/orglens.db, schema version 11, N KiB, node:sqlite',
+        'Database   .orglens/orglens.db, schema version 12, N KiB, node:sqlite',
         '',
         'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT  ANALYSED',
         'prod    org   0          none',
@@ -297,7 +297,7 @@ describe('orglens status', () => {
         root: dir,
         name: 'test',
         configFiles: ['orglens.toml'],
-        store: { state: 'ready', schemaVersion: 11, driver: 'node:sqlite' },
+        store: { state: 'ready', schemaVersion: 12, driver: 'node:sqlite' },
         sources: [{ name: 'prod', kind: 'org', snapshots: 0, latestSnapshot: null }],
       },
     });
@@ -521,6 +521,7 @@ describe('orglens snapshot and coverage', () => {
         ],
       },
       crossCheck: null,
+      descriptions: null,
       issues: [
         {
           stage: 'read',

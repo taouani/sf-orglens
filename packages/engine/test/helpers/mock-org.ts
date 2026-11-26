@@ -8,8 +8,9 @@
  * recorded, so a test can say what was asked.
  *
  * It knows no metadata until a test gives it some (`mock-metadata.ts`).
- * Then it answers the Metadata API as well. With rows of the Dependency
- * API (`mock-dependencies.ts`) it answers the queries for them.
+ * Then it answers the Metadata API as well, and describes the objects of
+ * the metadata through the REST API. With rows of the Dependency API
+ * (`mock-dependencies.ts`) it answers the queries for them.
  */
 import { createVerify } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -159,6 +160,12 @@ export async function startMockOrg(options: { orgId?: string; versions?: readonl
       }
       const { status, body } = org.dependencies.answer(request.query.get('q') ?? '', org.metadata);
       return { status, body };
+    }
+    const described = /^\/services\/data\/v\d+\.\d\/sobjects\/([^/]+)\/describe\/?$/.exec(request.path)?.[1];
+    if (described !== undefined && request.method === 'GET') {
+      const description = org.metadata?.describe(decodeURIComponent(described)) ?? null;
+      if (description !== null) return json(description);
+      return json([{ errorCode: 'NOT_FOUND', message: 'The requested resource does not exist' }], 404);
     }
     // After it has renewed a session, the Salesforce library itself asks the org about the org.
     if (/\/query\/?$/.test(request.path)) {
