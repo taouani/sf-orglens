@@ -378,6 +378,7 @@ describe('small records of custom metadata types that are written here', () => {
       ['Group__c', 'Main'],
     );
     record(source, 'Rule.Standard', ['Object__c', 'Account'], ['Field__c', 'Industry'], ['Group__c', 'Gone']);
+    record(source, 'Rule.Ids', ['Object__c', 'Account'], ['Field__c', 'Id'], ['Other_Field__c', 'Id']);
     const analysis = source.analyse();
     expect(from(analysis, 'CustomMetadata:rule.mapping')).toEqual([
       '2:2 references CustomObject:rule__mdt [Rule__mdt] record-of confirmed',
@@ -399,6 +400,15 @@ describe('small records of custom metadata types that are written here', () => {
       '11:38 references CustomField:account.industry [Industry] value confirmed',
       '14:16 references CustomField:rule__mdt.group__c [Group__c] listed-field confirmed',
       '15:38 references unresolved [Gone] value confirmed',
+    ]);
+    // `Id` gives no reference, as at the end of a path, whether the object is known or not, and so no warning
+    // where it is not (decision record 0082).
+    expect(from(analysis, 'CustomMetadata:rule.ids')).toEqual([
+      '2:2 references CustomObject:rule__mdt [Rule__mdt] record-of confirmed',
+      '6:16 references CustomField:rule__mdt.object__c [Object__c] listed-field confirmed',
+      '7:38 references CustomObject:account [Account] value confirmed',
+      '10:16 references CustomField:rule__mdt.field__c [Field__c] listed-field confirmed',
+      '14:16 references CustomField:rule__mdt.other_field__c [Other_Field__c] listed-field confirmed',
     ]);
     // The field whose value says the object of `Other_Field__c` has no value in the record.
     expect(issuesOf(analysis)).toEqual([

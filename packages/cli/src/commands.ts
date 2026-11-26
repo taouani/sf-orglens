@@ -898,10 +898,12 @@ function impactLines(report: ImpactReport): string[] {
   if (component.package !== null) {
     lines.push(`It is of the managed package ${component.package}, which is installed in the org.`);
   }
-  // A name alone that fits an object and more means the object. The others are named, so that none is missed.
+  // A name alone that fits an object and more means the object, and one that fits a flow and its definition means
+  // the flow (decision records 0064 and 0082). The others are named, so that none is missed.
   if (report.sameName.length > 0) {
+    const about = component.key.startsWith('Flow:') ? 'the flow' : 'the object';
     lines.push(
-      `The name also fits ${report.sameName.join(', ')}. The answer is about the object. To ask about ${report.sameName.length === 1 ? 'the other' : 'another'}, name it by its key.`,
+      `The name also fits ${report.sameName.join(', ')}. The answer is about ${about}. To ask about ${report.sameName.length === 1 ? 'the other' : 'another'}, name it by its key.`,
     );
   }
   if (report.parts > 0) {

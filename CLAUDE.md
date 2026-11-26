@@ -110,14 +110,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   of a field or a rule, the formula of a flow, which has a merge field `{!Resource.Path}` where the other has a
   name, and a text with merge fields, where only what stands in the braces is read. The caller says what the
   first name of a merge field is. `fixtures/merge-field-probes.yaml` must be read as each probe says.
-- A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component, and
-  each of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a reference
-  starts at. `resourcesOf` says what each resource holds: a record of an object, something that holds no record, or
-  something of which that is not known, and then a path from it is not followed and a warning says so, unless only
-  `Id` stands after it, which gives no reference anyway (decision record 0082). An element
-  of a kind the reader does not know is kept, with a warning and its names as `probable`. The analysis has a row of
-  its own for flows (`parser:flow`). A row of the Dependency API from a flow is compared where it is from the
-  version the snapshot holds, and counted otherwise (decision records 0067 and 0078).
+- A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component, and each
+  of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a reference starts at.
+  `resourcesOf` says what each resource holds: a record of an object, something that holds no record, or something of
+  which that is not known, and then a path from it is not followed and a warning says so, unless only `Id` stands after
+  it, which gives no reference anyway (decision record 0082). An element of a kind the reader does not know is kept,
+  with a warning and its names as `probable`. The analysis has a row of its own for flows (`parser:flow`). A row of the
+  Dependency API from a flow is compared where it is from the version the snapshot holds, and counted otherwise
+  (decision records 0067 and 0078).
 - A file of workflow rules is read by `extraction/workflows.ts` (decision record 0063). The file is a component
   with the name of its object, and so is each rule, field update, email alert, outbound message and task in it,
   under the name Salesforce gives it (`WorkflowRule:Invoice__c.Mark_Overdue`). The file contains them, as an object

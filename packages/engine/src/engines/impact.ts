@@ -522,13 +522,13 @@ export function findComponent(graph: SnapshotGraph, named: string, types: readon
   }
   // An org lists a definition of every flow under the name of the flow. A name that fits the two and nothing else
   // means the flow (decision record 0082).
-  const flow = candidates.find((one) => typeOf(one.found.key) === 'Flow' && !one.found.key.includes('#'));
+  const flow = candidates.find((one) => isFlow(one.found));
   if (
     flow !== undefined &&
     candidates.length === 2 &&
     candidates.some((one) => typeOf(one.found.key) === 'FlowDefinition')
   ) {
-    return { component: flow.found, sameName: keys.filter((key) => key !== flow.found.key) };
+    return { component: flow.found, sameName: keys.filter((key) => key !== flow.found.key).sort(compareText) };
   }
   throw new EngineError(
     'COMPONENT_AMBIGUOUS',

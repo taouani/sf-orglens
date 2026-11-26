@@ -1067,6 +1067,14 @@ describe('small flows that are written here', () => {
     expect(from(analysis, '')).toEqual([
       '8:21 references Flow:pkg__template_flow [Pkg__Template_Flow] override confirmed',
     ]);
+    const overrides = analysis.components.find((one) => one.key === element(''))?.references ?? [];
+    expect(overrides.map((one) => one.resolution)).toEqual(['external']);
+    // A value that is no name is not read, and says so.
+    const odd = analysed([ACTIVE, ...ON_INVOICE, '<overriddenFlow>Not a name</overriddenFlow>']);
+    expect(from(odd, '')).toEqual([]);
+    expect(messages(odd)).toEqual([
+      `${FILE}, line 8: the element "overriddenFlow" holds "Not a name", which is not read as a name.`,
+    ]);
     // The action is given records of the object its generic class stands for. A value that is no name is not read.
     expect(from(analysis, 'log_it')).toEqual([
       '11:21 calls unresolved [Logger] action confirmed',

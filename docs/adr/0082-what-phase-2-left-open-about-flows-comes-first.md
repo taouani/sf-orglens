@@ -60,7 +60,10 @@ Six statements below are conclusions of the author of this record. The maintaine
   before `Id` is a read that was missed.
 - **The rule is in the code that resolves the names of every reader**, the only code that gives the warning
   (`extraction/raw-references.ts`). So it holds for formulas, workflow rules, records of custom metadata types,
-  email templates, report types and quick actions as for flows, and the reason holds for each.
+  email templates, report types and quick actions as for flows. The reason holds for each because `Id` gives no
+  reference in any of them: a path skipped it already, and the value `Id` of a record of a custom metadata type in a
+  relationship to the definition of a field, which referred to the field `Id` where the record named its object, no
+  longer does. The tests hold the rule for flows and for such records.
 - **A name that fits a flow, its definition and something else stays as it is.** If one of the others is an object,
   record 0064 takes the object. If none is, the name is still `COMPONENT_AMBIGUOUS`.
 - **The proof of points 1 and 2 is the public codebases**: the seven names are found there, and the listing of Phase 2

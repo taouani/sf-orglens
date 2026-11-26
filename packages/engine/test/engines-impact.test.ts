@@ -707,8 +707,13 @@ describe.each(DRIVERS)('the impact engine with $name', (driver) => {
       component: { key: definition },
       sameName: [],
     });
-    // A third component of the name makes it an error again, unless it is an object.
+    // A flow and one other component that is no definition, such as a tab, are no flow and its definition.
     const tab = buildKey({ type: 'CustomTab', fullName: 'Invoice_After_Save' });
+    const flowAndTab = graphOf([holds(flow('Invoice_After_Save')), holds(tab)]);
+    expect(codeOf(() => findComponent(flowAndTab, 'Invoice_After_Save', ['Flow', 'CustomTab']))).toBe(
+      'COMPONENT_AMBIGUOUS',
+    );
+    // A third component of the name makes it an error again, unless it is an object.
     const three = graphOf([holds(flow('Invoice_After_Save')), holds(definition), holds(tab)]);
     expect(codeOf(() => findComponent(three, 'Invoice_After_Save', [...types, 'CustomTab']))).toBe(
       'COMPONENT_AMBIGUOUS',

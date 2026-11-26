@@ -418,8 +418,10 @@ export function resolveReferences(
       if (target === 'entitydefinition') add(first, model.object(first.name), 'references', one);
       else if (target === 'fielddefinition') {
         // The name of the field alone. The object is the value of the field the file of the relationship names.
+        // `Id` gives no reference, as at the end of a path, so it needs no object (decision record 0082).
         const controlling = facts.controllingField ?? '';
         const object = one.record.get(foldName(controlling.slice(controlling.lastIndexOf('.') + 1)));
+        if (foldName(first.name) === 'id') return;
         if (object === undefined || !ONE_NAME.test(object)) nothingSays([first], 'field');
         else add(first, model.field(object, first.name), 'references', one, { object });
       } else if (target.endsWith('__mdt')) {
