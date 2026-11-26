@@ -120,7 +120,7 @@ Q3 a, Q4 as proposed, Q5 b or else a, Q6 a". The recommendations are those of th
 | --- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Q1  | (a)                                            | Lightning web components and Aura components refer to the Apex they call, the fields and objects they import or name in an attribute, the labels, and the components they hold. A Visualforce page refers to its controller, its extensions and its standard controller, and `ApexPage` joins the logic tier. | Record [0079](../adr/0079-lightning-components-and-visualforce-pages-in-phase-3.md) |
 | Q2  | (a), and the two kinds of (c) for a repository | A snapshot of an org asks the org to describe every object of which it holds a file, and keeps the descriptions with it. In a repository a name is checked against the files, and a child relationship taken for a field and a `__r` name guessed as a lookup are `probable` with a warning.                  | Record [0080](../adr/0080-an-org-describes-its-objects-to-a-snapshot.md)            |
-| Q3  | (a)                                            | A test class is kept in an answer, marked as a test, and the summary counts the tests.                                                                                                                                                                                                                        | Record [0081](../adr/0081-a-test-class-stays-in-an-answer-and-is-marked.md)         |
+| Q3  | (a)                                            | A test class is kept in an answer, marked as a test, and the summary counts the test classes.                                                                                                                                                                                                                 | Record [0081](../adr/0081-a-test-class-stays-in-an-answer-and-is-marked.md)         |
 | Q4  | As proposed                                    | The six pass marks as proposed. If one is missed, the phase reports the gap and we decide together.                                                                                                                                                                                                           | Here                                                                                |
 | Q5  | (b), or else (a)                               | A colleague of yours with Apex in their daily work reads ten entries of the new key and 20 references of the sample of work package 9. If you have nobody, you read them, in the test plan.                                                                                                                   | Here                                                                                |
 | Q6  | (a)                                            | In the first pull request of the phase, the reader of flows reads `overriddenFlow` and `dataTypeMappings`, the warning for `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow. The token of PMM stays unread.                                                | Record [0082](../adr/0082-what-phase-2-left-open-about-flows-comes-first.md)        |
@@ -335,11 +335,12 @@ Build, for answer (a) of Q1, which you gave (record 0079):
   `@salesforce/messageChannel`, `@salesforce/user`, `@salesforce/i18n`, `@salesforce/client` and `lightning/*`
   name no component of the logic tier and give nothing, without a warning. The JavaScript is read for its imports
   and for nothing else, with the reader of the engine for the forms of an import that the public codebases show.
-  Fields named in an attribute of a base component, such as `lightning-record-form`, are `probable`.
+  Fields and objects named in an attribute of a base component, such as `lightning-record-form`, are `probable`.
 - An Aura component: `controller` refers to the class, `component.get('c.method')` in its JavaScript, the
   controller or the helper, calls that method at `probable`, an attribute of an object type refers to the object,
-  `force:recordData` refers to the fields it names (`references`, as an import), and a tag of another component of
-  the project refers to it.
+  `force:recordData` refers to the fields it names (`references`, as an import), a label in an expression,
+  `{!$Label.c.Name}` in the markup or `$A.get('$Label.c.Name')` in the JavaScript, refers to the label, and a tag of
+  another component of the project refers to it. Nothing else of an expression is read.
 - A Visualforce page: `controller`, `extensions` and `standardController` refer to the classes and the object, and
   `ApexPage` joins the logic tier with its analyser (record 0058).
 - A callout: a text that begins with `callout:` in a method that makes a request refers to the named credential at
@@ -368,7 +369,7 @@ Build:
   field is the error `COMPONENT_AMBIGUOUS`, with a hint. So is a name that fits a class and a Lightning web
   component, such as `InvoiceList` and `invoiceList`: the hint names both with their types (`ApexClass:InvoiceList`),
   as record 0064 has it for a name that fits several components and no object.
-- **Tests.** An answer marks the results that are tests and counts them (Q3).
+- **Tests.** An answer marks the results that are tests, and its summary counts the test classes in it (Q3).
 - **The cross-check of Apex.** The rows from an Apex class or a trigger, and from a Lightning component, an Aura
   component and a page, are compared at the level of the class or the component: a row is met by a reference from the
   component or any member of it to the target or any member of it. A pair the analysis lacks is `REFERENCE_MISSED`. A
@@ -401,7 +402,7 @@ Build:
   followed, which Phase 2 could not.
 - For answer (a) of Q6, which you gave (record 0082): `overriddenFlow` and `dataTypeMappings` are read, the warning for
   `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow. This comes first,
-  in the first pull request of the phase, and records 0061 and 0064 are completed.
+  in the first pull request of the phase, and records 0041, 0061, 0064 and 0074 are completed.
 
 Accepted when:
 
@@ -512,7 +513,8 @@ calendar days. Elapsed time depends on how fast you can answer, review the key a
 1. Answer Q1 to Q6 and approve this plan. Done on 26 November 2026.
 2. Run the test plan of Phase 2, which holds your reading of ten entries of its key and five flows. This phase does
    not wait for it.
-3. Read ten entries of the new key and 20 references of the sample, in the test plan of this phase (Q5).
+3. Name a colleague with Apex in their daily work who reads ten entries of the new key and 20 references of the
+   sample, in the test plan of this phase, or read them yourself (Q5).
 4. Start "Live org" once the fixture of work package 1 is merged, again for the descriptions of Q2 (work package
    4), and for the cross-check of work package 7.
 5. Review the pull requests you want to look at. Merging is done by the assistant under the rule of Phase 0.

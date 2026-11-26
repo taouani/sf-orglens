@@ -10,8 +10,8 @@ The Apex trial of Phase 0 (record [0018](0018-apex-analysis-foundation.md)) know
 and their relationships by rule, and checks no name against them. On NPSP it reports 7,249 references at
 `confirmed` to fields that no file of the repository defines, nearly all with the prefix of a package the repository
 does not hold. It takes at least 49 child relationships of a standard object for a field (`acc.Contacts`), and of
-370 names behind which it guesses a lookup (`__r`), at least 86 are child relationships. Record 0018 asks that the
-tier of a name the resolver cannot check be lowered.
+370 references that rest on a name it guesses as a lookup (`__r`), at least 86 rest on a child relationship. Record
+0018 asks that the tier of a name the resolver cannot check be lowered.
 
 The formulas of Phase 1 take the name of a standard field as written, as `external`. That stays right for a
 formula, which Salesforce checks when it saves it. In Apex a name can also be a child relationship, and the type of
@@ -43,26 +43,27 @@ November 2026, with the recommended answers to the other five questions of the p
    name guessed as a lookup are `probable`, with a warning.
 5. **No description of Salesforce is written by hand** beyond the short list there is. For a snapshot of an org the
    descriptions take its place. For a repository it stays.
+6. **The request comes with what every new request about metadata comes with**: this record, a test that holds it,
+   a line in the data rules, an answer of the mock org, a run of "Live org", and a store migration with a record of
+   its own, since it changes the storage format.
 
 That is all the maintainer decided. Point 1 changes record 0009 in one point: the engine asks an org for one more
-kind of metadata, the description of an object, which is neither a file of the Metadata API nor a row of the
-Tooling API.
+kind of metadata, the description of an object, which it does not ask for today. Which API serves it is chosen in
+work package 4.
 
 ## What goes further than the answer of the maintainer
 
 Seven statements below are conclusions of the author of this record. The maintainer can strike any of them.
 
 - **A description is metadata and no record.** It says what an object holds, and no value of a record. The data
-  rule that OrgLens reads metadata only stands. The line of the data rules in `CLAUDE.md` that names the requests
-  to an org gets this one, in the pull request that builds it.
+  rule that OrgLens reads metadata only stands, and its line in `CLAUDE.md` that names the requests to an org gets
+  this one in the pull request that builds it.
 - **Which calls of the API of Salesforce are used is a choice of work package 4.** The record written with it names
-  every request, and a test holds them, as for the queries of the Tooling API. The mock org of the tests answers
-  them, and a run of "Live org", which the maintainer starts, shows them on the test org, with whether they hold
-  every field of the fixture.
+  every request, as for the queries of the Tooling API. The run of "Live org", which the maintainer starts, shows
+  whether the descriptions of the test org hold every field of the fixture.
 - **Only what the resolver reads is kept** of a description: the names of the fields and their types, the objects a
   lookup points at, the names of relationships, and the child relationships with their objects and fields. Labels,
-  help texts and the values of picklists are not kept. Work package 4 lists the parts. How they are stored is a
-  store migration, which changes the storage format and gets a record of its own.
+  help texts and the values of picklists are not kept. Work package 4 lists the parts.
 - **An object that Apex names and of which the snapshot holds no file is not described.** A name that neither a
   file nor a description defines is `unresolved` in a snapshot of an org, with a warning, as the plan says.
 - **An org that does not answer leaves a warning and never fails a snapshot**, as for the Dependency API (record
