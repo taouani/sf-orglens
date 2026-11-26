@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const SCHEMA = readFileSync(require.resolve('@jsforce/jsforce-node/lib/api/metadata/schema.d.ts'), 'utf8');
 /**
  * The version of the library. The table and decision record 0073 name 3.13.1, whose schema is the same file as that
- * of 3.13.3 and 3.13.4, byte for byte.
+ * of the version pinned here, byte for byte.
  */
 const LIBRARY = JSON.parse(readFileSync(require.resolve('@jsforce/jsforce-node/package.json'), 'utf8')) as {
   readonly version: string;
