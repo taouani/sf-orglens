@@ -224,8 +224,8 @@ importers:
   packages/engine:
     dependencies:
       '@jsforce/jsforce-node':
-        specifier: 3.13.3
-        version: 3.13.3
+        specifier: 3.13.4
+        version: 3.13.4
       '@salesforce/core':
         specifier: 9.6.0
         version: 9.6.0
@@ -452,8 +452,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@jsforce/jsforce-node@3.13.3':
-    resolution: {integrity: sha512-agRQQDaUiptVn8bdx0AhOkS/oX0HDVldwQivs/rMNnc7RoZHwNumiKXhGGtBrIyb8+mpsaqrVHpTE7n+NYePiw==}
+  '@jsforce/jsforce-node@3.13.4':
+    resolution: {integrity: sha512-qAaK03OwByrCfSNj4Rz/1kLOZtHFaLujqvlEMCG+I+8ypT3FcBKX/1xNnYCp399ThrmSIyKk+LRwwpCJSXNe1Q==}
     engines: {node: '>=22'}
 
   '@jsonjoy.com/base64@1.1.2':
@@ -2765,7 +2765,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@jsforce/jsforce-node@3.13.3':
+  '@jsforce/jsforce-node@3.13.4':
     dependencies:
       '@sindresorhus/is': 4.6.0
       base64url: 3.0.1
@@ -3115,7 +3115,7 @@ snapshots:
 
   '@salesforce/core@9.6.0':
     dependencies:
-      '@jsforce/jsforce-node': 3.13.3
+      '@jsforce/jsforce-node': 3.13.4
       '@salesforce/kit': 4.0.10
       '@salesforce/ts-types': 3.2.4
       ajv: 8.20.0
