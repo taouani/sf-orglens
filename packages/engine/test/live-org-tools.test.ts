@@ -44,6 +44,7 @@ import {
   readOrg,
   remarkForm,
   rowsByTypes,
+  standardObjectLines,
 } from './live/read-org.ts';
 import type { DependencyRow } from '../src/sources/dependency-api.ts';
 import { fixtureComponents, fixtureFiles } from './live/test-org.ts';
@@ -1231,6 +1232,19 @@ describe('reading the test org', () => {
     expect(output).toMatch(
       /^Files by folder: aura 4, classes 56, customMetadata 5, customPermissions 1, email 3, externalCredentials 1, flowDefinitions 7, flows 7, globalValueSets 1, labels 1, lwc 6, namedCredentials 1, objects \d+, pages 4, quickActions 1, reportTypes 1, triggers 4, workflows 2$/m,
     );
+    // The mock org hands out of a standard object what the project holds of it, and the file of the object, as the
+    // Salesforce library writes a retrieve: of Account its seven custom fields, one a lookup, and its validation rule.
+    expect(output).toContain(
+      [
+        'What the snapshot holds of the standard objects Account and Contact:',
+        'OBJECT   FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
+        'Account  yes                 0                7              1                                1',
+        'Contact  no                  0                0              0                                0',
+        'Files of standard fields of any object: 0. Of them, files that name a relationship (relationshipName): 0.',
+        'Files of XML in which the child relationship Contacts of the standard field Contact.AccountId is the whole text of an element: 0, of which 0 of the fixture project.',
+        '',
+      ].join('\n'),
+    );
     // The cross-check: the rows of the mock org, held against the analysis by the engine. The rows of the flows,
     // 62 as on the test org before the draft and 2 of the flow that Phase 3 added, are compared: the org names one
     // version of each flow, the latest.
@@ -1278,7 +1292,7 @@ describe('reading the test org', () => {
     expectNoSecret(output);
   });
 
-  it('says which pairs of the files of Phase 2 Salesforce reports, by the ids the org listed', async () => {
+  it('says which pairs of the entries of Phase 2 Salesforce reports, by the ids the org listed', async () => {
     const flow = ['Flow', 'Invoice_After_Save'] as const;
     dependencies.rows.push(
       // In the answer key, and not reported by the test org: the flow that the flow calls, and an action the rule
@@ -1301,29 +1315,36 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     const lines = output.split('\n');
+    const ids = lines.indexOf('The rows of the Dependency API, by what the id of each end is the id of');
     const head = lines.indexOf(
-      'The files of Phase 2 of the fixture project in the rows of the Dependency API, held against the pairs of its answer key',
+      'The entries of Phase 2 of the answer key of the fixture project in the rows of the Dependency API',
+    );
+    const next = lines.indexOf(
+      'The entries of Phase 3 of the answer key of the fixture project in the rows of the Dependency API',
     );
     const end = lines.indexOf(CROSS_CHECK);
-    const section = lines.slice(head, end).join('\n');
-    expect(head).toBeGreaterThan(0);
-    expect(end).toBeGreaterThan(head);
-    // What the id of a row is the id of.
-    expect(section).toMatch(/^Flow +Flow +65$/m);
-    expect(section).toMatch(/^Flow +not listed +1$/m);
+    expect(ids).toBeGreaterThan(0);
+    expect(head).toBeGreaterThan(ids);
+    expect(next).toBeGreaterThan(head);
+    expect(end).toBeGreaterThan(next);
+    // What the id of a row is the id of. The rows are counted once, before the entries of each phase.
+    const idSection = lines.slice(ids, head).join('\n');
+    expect(idSection).toMatch(/^Flow +Flow +65$/m);
+    expect(idSection).toMatch(/^Flow +not listed +1$/m);
     // The email template: the three custom fields of its merge fields, and, as the test org reports it and the
     // answer key does not hold it, the object whose fields they are.
-    expect(section).toMatch(/^EmailTemplate +EmailTemplate +4$/m);
-    expect(section).toMatch(/^WorkflowRule +WorkflowRule +1$/m);
+    expect(idSection).toMatch(/^EmailTemplate +EmailTemplate +4$/m);
+    expect(idSection).toMatch(/^WorkflowRule +WorkflowRule +1$/m);
     // The rows of the mock org from the formulas of field updates, from the records of the custom metadata type and
     // from the field set, as the test org reports them.
-    expect(section).toMatch(/^WorkflowFieldUpdate +WorkflowFieldUpdate +3$/m);
-    expect(section).toMatch(/^\(the name of a custom metadata type\) +CustomMetadata +5$/m);
-    expect(section).toMatch(/^FieldSet +FieldSet +4$/m);
-    expect(section).toMatch(/^WorkflowAlert +WorkflowAlert +1$/m);
-    // The pairs of the key for these files, and how many of them the rows are.
+    expect(idSection).toMatch(/^WorkflowFieldUpdate +WorkflowFieldUpdate +3$/m);
+    expect(idSection).toMatch(/^\(the name of a custom metadata type\) +CustomMetadata +5$/m);
+    expect(idSection).toMatch(/^FieldSet +FieldSet +4$/m);
+    expect(idSection).toMatch(/^WorkflowAlert +WorkflowAlert +1$/m);
+    const section = lines.slice(head, next).join('\n');
+    // The pairs of the key for these entries, and how many of them the rows are.
     expect(section).toContain(
-      'The answer key holds 171 pairs of a component and a component it refers to for these files. The Dependency API reports 81 of them.',
+      'The answer key holds 171 pairs of a component and a component it refers to for these entries. The Dependency API reports 81 of them.',
     );
     expect(section).toMatch(/^Flow +CustomField +62 +47$/m);
     expect(section).toMatch(/^EmailTemplate +CustomField +7 +3$/m);
@@ -1339,6 +1360,9 @@ describe('reading the test org', () => {
     expect(section).toMatch(/^listed-field +35 +4$/m);
     expect(section).toMatch(/^join +1 +0$/m);
     expect(section).toMatch(/^action +10 +5$/m);
+    // By the kind of reference: the actions of flows that start Apex, which the test org reports.
+    expect(section).toMatch(/^calls +3 +3$/m);
+    expect(section).toMatch(/^reads +91 +47$/m);
     expect(section).toContain('- reported  Flow:invoice_after_save -> CustomField:invoice__c.amount__c  (path)');
     expect(section).toContain('- reported  Flow:invoice_after_save -> Flow:invoice_recalculate  (action)');
     // The row with an id the org did not list is no row of the flow for the engine.
@@ -1371,6 +1395,58 @@ describe('reading the test org', () => {
     expect(output).toContain(
       'Rows compared: 140, which are 140 pairs of components. The analysis has 137 of them, has 3 as a reference to a part of the object Salesforce names, and missed 0.',
     );
+    expectNoSecret(output);
+  });
+
+  it('says which pairs of the entries of Phase 3 Salesforce reports, by kind and by the type that refers', async () => {
+    const { log, text } = collected();
+    await readOrg(log, { env: environment() });
+    const output = text();
+    expect(log.failed).toBe(false);
+    const lines = output.split('\n');
+    const head = lines.indexOf(
+      'The entries of Phase 3 of the answer key of the fixture project in the rows of the Dependency API',
+    );
+    const end = lines.indexOf(CROSS_CHECK);
+    expect(head).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(head);
+    const section = lines.slice(head, end).join('\n');
+    // The mock org reports a pair of Apex where its target is something the project defines, and nothing from a
+    // Lightning component, an Aura component, a page or a named credential, which was not measured.
+    expect(section).toContain(
+      'The answer key holds 244 pairs of a component and a component it refers to for these entries. The Dependency API reports 185 of them.',
+    );
+    expect(section).toMatch(/^ApexClass +ApexClass +24 +24$/m);
+    expect(section).toMatch(/^ApexClass +CustomField +136 +112$/m);
+    expect(section).toMatch(/^ApexClass +NamedCredential +1 +1$/m);
+    expect(section).toMatch(/^ApexTrigger +ApexClass +2 +2$/m);
+    expect(section).toMatch(/^ApexPage +ApexClass +3 +0$/m);
+    expect(section).toMatch(/^AuraDefinitionBundle +ApexClass +1 +0$/m);
+    expect(section).toMatch(/^LightningComponentBundle +CustomField +5 +0$/m);
+    expect(section).toMatch(/^NamedCredential +ExternalCredential +1 +0$/m);
+    // The entries of Phase 3 in a file of flows: the method of the invocable action, which is a pair of the flow
+    // and the class, and the generic action that the new flow hands its record to.
+    expect(section).toMatch(/^Flow +ApexClass +2 +2$/m);
+    expect(section).toContain(
+      '- reported  Flow:invoice_object_name -> ApexClass:recordobjectaction  (action, parameter)',
+    );
+    // By the way the source names the target, and by the kind of reference.
+    expect(section).toMatch(/^call +15 +15$/m);
+    expect(section).toMatch(/^import +7 +0$/m);
+    expect(section).toMatch(/^tag +2 +0$/m);
+    expect(section).toMatch(/^calls +21 +19$/m);
+    expect(section).toMatch(/^implements +2 +2$/m);
+    expect(section).toMatch(/^uses-type +52 +40$/m);
+    expect(section).toContain(
+      '- missing   LightningComponentBundle:invoicesummary -> ApexClass:invoicecontroller  (import)',
+    );
+    expect(section).toContain(
+      '- reported  ApexClass:invoicecalloutservice -> NamedCredential:billing_gateway  (credential)',
+    );
+    expect(section.split('\n').slice(-2)).toEqual([
+      'Pairs the Dependency API reports from a component of the types ApexClass, ApexPage, ApexTrigger, AuraDefinitionBundle, LightningComponentBundle, NamedCredential that the answer key does not hold: 0.',
+      '',
+    ]);
     expectNoSecret(output);
   });
 
@@ -2236,7 +2312,7 @@ describe('reading an org that holds more than the fixture project', () => {
     expectNothingForeign(output);
   });
 
-  it('names no flow and no rule of the org among the pairs of the files of Phase 2', () => {
+  it('names no flow and no rule of the org among the pairs of the entries of Phase 2', () => {
     // The mock org above has no flow of its own, so the rows are made here, with the ids an org would list.
     const listed = [
       { type: 'Flow', fullName: 'Takeover', id: '300xx0000000001AAA' },
@@ -2260,11 +2336,60 @@ describe('reading an org that holds more than the fixture project', () => {
       { from: end(3, 'Invoice_After_Save'), to: end(4, 'Paid_Date') },
     ];
     const { log } = collected();
-    const lines = phaseLines(log, rows, listed);
+    const lines = phaseLines(log, rows, listed, 2);
     expect(lines.slice(-3)).toEqual([
       'Pairs the Dependency API reports from a component of the types CustomMetadata, EmailTemplate, FieldSet, Flow, QuickAction, RecordType, ReportType, WorkflowAlert, WorkflowFieldUpdate, WorkflowOutboundMessage, WorkflowRule, WorkflowTask that the answer key does not hold: 5.',
       '- Flow:invoice_after_save -> CustomField:invoice__c.paid_date__c',
       '- 4 pairs have a component that is not of the fixture project, and are not named.',
+    ]);
+    expectNothingForeign(lines.join('\n'));
+  });
+
+  it('counts what a snapshot holds of Account and Contact, and names none of their fields', () => {
+    // Files as a retrieve of an org can hand them out: standard fields, a standard lookup that does and one that
+    // does not name its relationship, fields of the org and of a package, and the child relationship of the
+    // contacts in a report type of the org and in a file of the project, but not in Apex, which is no XML.
+    const files = new Map([
+      ['objects/Account/Account.object-meta.xml', '<CustomObject><sharingModel>Read</sharingModel></CustomObject>'],
+      ['objects/Account/fields/Industry.field-meta.xml', '<CustomField><type>Picklist</type></CustomField>'],
+      ['objects/Account/fields/ParentId.field-meta.xml', '<CustomField><type>Hierarchy</type></CustomField>'],
+      ['objects/Account/fields/Takeover_Tier__c.field-meta.xml', '<CustomField><type>Text</type></CustomField>'],
+      ['objects/Account/listViews/SecretPlanAccounts.listView-meta.xml', '<ListView><label>All</label></ListView>'],
+      ['objects/Contact/Contact.object-meta.xml', '<CustomObject><sharingModel>Read</sharingModel></CustomObject>'],
+      [
+        'objects/Contact/fields/AccountId.field-meta.xml',
+        '<CustomField><type>Lookup</type><relationshipName>Account</relationshipName></CustomField>',
+      ],
+      [
+        'objects/Contact/fields/Secret_Plan__c.field-meta.xml',
+        '<CustomField><type>Lookup</type><relationshipName>Secret_Plans</relationshipName></CustomField>',
+      ],
+      ['objects/Contact/fields/Budget__Rating__c.field-meta.xml', '<CustomField><type>Number</type></CustomField>'],
+      ['objects/Opportunity/fields/StageName.field-meta.xml', '<CustomField><type>Picklist</type></CustomField>'],
+      [
+        'reportTypes/Takeover_Contacts.reportType-meta.xml',
+        '<ReportType><join><relationship> Contacts </relationship></join></ReportType>',
+      ],
+      [
+        'reportTypes/Account_Contacts.reportType-meta.xml',
+        '<ReportType><relationship>Contacts</relationship></ReportType>',
+      ],
+      ['classes/SecretPlan.cls', 'for (Contact c : account.Contacts) {}'],
+      ['classes/SecretPlan.cls-meta.xml', '<ApexClass><status>Contacts and more</status></ApexClass>'],
+    ]);
+    const lines = standardObjectLines(
+      [...files.keys()],
+      (path) => files.get(path) ?? '',
+      new Set(['reportTypes/Account_Contacts.reportType-meta.xml']),
+    );
+    expect(lines).toEqual([
+      '',
+      'What the snapshot holds of the standard objects Account and Contact:',
+      'OBJECT   FILE OF THE OBJECT  STANDARD FIELDS  CUSTOM FIELDS  FIELDS THAT NAME A RELATIONSHIP  OTHER FILES',
+      'Account  yes                 2                1              0                                1',
+      'Contact  yes                 1                2              2                                0',
+      'Files of standard fields of any object: 4. Of them, files that name a relationship (relationshipName): 1.',
+      'Files of XML in which the child relationship Contacts of the standard field Contact.AccountId is the whole text of an element: 2, of which 1 of the fixture project.',
     ]);
     expectNothingForeign(lines.join('\n'));
   });

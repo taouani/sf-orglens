@@ -14,6 +14,9 @@
  * - the retrieves: how many, how large, how long,
  * - the components the org listed and did not hand out, and the other way
  *   round: how many, and how their names are built, without a name,
+ * - what it holds of the standard objects Account and Contact: how many
+ *   standard and custom fields have a file, and in how many files a child
+ *   relationship of a standard lookup stands,
  * - the components and the files of the fixture project: whether they are
  *   in the snapshot, and how a file that came back differs from the file
  *   of the repository,
@@ -21,9 +24,9 @@
  *   org, held by the engine against its analysis of the snapshot, and how
  *   many versions of flows the org named for it. A pair of components, and
  *   a flow, is named only if it is of the fixture project,
- * - the files of Phase 2 of the fixture project: which of the pairs its
- *   answer key has for them the Dependency API reports, by the ids the org
- *   listed, and which version of each flow the org handed out,
+ * - the entries of Phases 2 and 3 of the answer key of the fixture
+ *   project: which of their pairs the Dependency API reports, by the ids
+ *   the org listed, and which version of each flow the org handed out,
  * - the rows read twice more, as the snapshot reads them and then with
  *   every answer cut off at a few rows, to see that the parts the engine
  *   asks for then give every row, and that the org answers each way of
@@ -594,6 +597,70 @@ export function flowVersionsNotReadLine(log: PublicLog, details: Record<string, 
   );
 }
 
+/**
+ * The standard objects whose files a snapshot is counted for (finding 11 of the plan of Phase 3), and the child
+ * relationship that Salesforce gives the first through a standard lookup of the second: `Contacts`, of
+ * `Contact.AccountId`. The documentation says that a retrieve of a standard object brings its custom fields and
+ * the standard fields that can be customised, without the fields of the system
+ * (`docs/research/phase-0/salesforce-libs.md`). Whether a child relationship appears anywhere was not looked at.
+ */
+const STANDARD_OBJECTS: readonly string[] = ['Account', 'Contact'];
+const CHILD_RELATIONSHIP = 'Contacts';
+
+/**
+ * What a snapshot holds of the standard objects above, in numbers: the file of each object, its fields, standard
+ * and custom, those that name a relationship, its other files, and the files in which the child relationship stands
+ * as the whole text of an element. Nothing of a file of the org is shown but these numbers.
+ *
+ * `paths`: the paths of the snapshot. `textOf`: the text of one of them. `ours`: the paths of the fixture project.
+ */
+export function standardObjectLines(
+  paths: readonly string[],
+  textOf: (path: string) => string,
+  ours: ReadonlySet<string>,
+): string[] {
+  const names = (path: string): boolean => textOf(path).includes('<relationshipName>');
+  const rows = STANDARD_OBJECTS.map((object) => {
+    const folder = `objects/${object}/`;
+    const below = paths.filter((path) => path.startsWith(folder));
+    const own = below.includes(`${folder}${object}.object-meta.xml`);
+    const fields = below.filter((path) => path.startsWith(`${folder}fields/`));
+    const standard = fields.filter((path) => !path.slice(`${folder}fields/`.length).includes('__'));
+    return [
+      object,
+      own ? 'yes' : 'no',
+      String(standard.length),
+      String(fields.length - standard.length),
+      String(fields.filter(names).length),
+      String(below.length - fields.length - (own ? 1 : 0)),
+    ];
+  });
+  const standardFields = paths.filter((path) => {
+    const field = /^objects\/[^/]+\/fields\/([^/]+)\.field-meta\.xml$/.exec(path)?.[1];
+    return field !== undefined && !field.includes('__');
+  });
+  const relationship = new RegExp(`>\\s*${CHILD_RELATIONSHIP}\\s*<`);
+  const withChild = paths.filter((path) => path.endsWith('.xml') && relationship.test(textOf(path)));
+  const childOfOurs = withChild.filter((path) => ours.has(path)).length;
+  return [
+    '',
+    `What the snapshot holds of the standard objects ${STANDARD_OBJECTS.join(' and ')}:`,
+    ...table([
+      [
+        'OBJECT',
+        'FILE OF THE OBJECT',
+        'STANDARD FIELDS',
+        'CUSTOM FIELDS',
+        'FIELDS THAT NAME A RELATIONSHIP',
+        'OTHER FILES',
+      ],
+      ...rows,
+    ]),
+    `Files of standard fields of any object: ${String(standardFields.length)}. Of them, files that name a relationship (relationshipName): ${String(standardFields.filter(names).length)}.`,
+    `Files of XML in which the child relationship ${CHILD_RELATIONSHIP} of the standard field Contact.AccountId is the whole text of an element: ${String(withChild.length)}, of which ${String(childOfOurs)} of the fixture project.`,
+  ];
+}
+
 function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   const files = store.get(
     `SELECT COUNT(*) AS files, COALESCE(SUM(b.raw_size), 0) AS bytes
@@ -801,6 +868,13 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
     log.say('');
     log.say(`Files by folder: ${[...folders].map(([folder, files]) => `${folder} ${String(files)}`).join(', ')}`);
   }
+  const inSnapshot = new Map(paths.map((row) => [text(row['path']), count(row['blob_id'])]));
+  const fileText = (path: string): string => {
+    const blob = inSnapshot.get(path);
+    return blob === undefined ? '' : Buffer.from(getBlob(store, blob)).toString('utf8');
+  };
+  const ours = fixtureFiles();
+  for (const line of standardObjectLines([...inSnapshot.keys()], fileText, new Set(ours.keys()))) log.say(line);
 
   // The fixture project.
   const expected = fixtureComponents();
@@ -825,8 +899,6 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   }
   if (incomplete.length > MISSING_SHOWN) log.say(`- and ${String(incomplete.length - MISSING_SHOWN)} more components.`);
 
-  const inSnapshot = new Map(paths.map((row) => [text(row['path']), count(row['blob_id'])]));
-  const ours = fixtureFiles();
   const missing: string[] = [];
   const differences: string[] = [];
   let same = 0;
@@ -851,10 +923,7 @@ function describe(log: PublicLog, store: Store, snapshotId: number): boolean {
   if (differences.length > DIFFERENCES_SHOWN) {
     log.say(`- and ${String(differences.length - DIFFERENCES_SHOWN)} more files that differ.`);
   }
-  for (const line of flowLines(log, (path) => {
-    const blob = inSnapshot.get(path);
-    return blob === undefined ? null : Buffer.from(getBlob(store, blob)).toString('utf8');
-  })) {
+  for (const line of flowLines(log, (path) => (inSnapshot.has(path) ? fileText(path) : null))) {
     log.say(line);
   }
   return incomplete.length === 0 && missing.length === 0;
@@ -874,35 +943,20 @@ function fixtureKeys(): Set<string> {
 }
 
 /**
- * The roadmap phase whose files are held against the rows. Of a file of workflow rules the API reports only the
- * fields the formula of a field update reads (decision record 0063), and a row from a flow can be from a version
- * of it that the snapshot does not hold (decision record 0067).
+ * The roadmap phases whose entries are held against the rows: Phase 2, of which a file of workflow rules gives only
+ * the fields the formula of a field update reads (decision record 0063), and a row from a flow can be from a
+ * version of it that the snapshot does not hold (decision record 0067), and Phase 3, whose analysers are not built
+ * yet, so that the cross-check leaves its rows out.
  */
-const PHASE_MEASURED = 2;
+export const PHASES_MEASURED: readonly number[] = [2, 3];
 
 /**
- * What the Dependency API reports for the files of a phase of the fixture project: the pairs of components the
- * answer key has for them, held against the rows. An end of a row is matched to a component by the id the org
- * listed the component with, as the cross-check did before it asked for the versions of flows, so that the runs can
- * be held against each other: a row from the active version of a flow that has a newer one is matched to nothing,
- * and a row from the newer one is matched to the flow. The cross-check of the engine matches such a row by the
- * version (decision record 0067).
- *
- * The first lines say what the id of a row is the id of. A row from a flow can carry the id of a version of the
- * flow, which the org may not list.
+ * What the id of a row of the Dependency API is the id of: the rows by the type a row writes for an end and the
+ * type the org listed the id with. A row from a flow can carry the id of a version of the flow, which the org may
+ * not list.
  */
-export function phaseLines(
-  log: PublicLog,
-  rows: readonly DependencyRow[],
-  listed: readonly ListedId[],
-  phase = PHASE_MEASURED,
-): string[] {
-  const lines = [
-    '',
-    `The files of Phase ${String(phase)} of the fixture project in the rows of the Dependency API, held against the pairs of its answer key`,
-  ];
-  const match = listedMatcher(listed);
-  const typeOf = (key: string): string => key.slice(0, key.indexOf(':'));
+export function rowIdLines(log: PublicLog, rows: readonly DependencyRow[], listed: readonly ListedId[]): string[] {
+  const lines = ['', 'The rows of the Dependency API, by what the id of each end is the id of'];
   // A row writes the name of a custom metadata type as the type of a record of it. That name is not shown.
   const shownType = (type: string): string =>
     log.name(type) ?? (/__mdt$/i.test(type) ? '(the name of a custom metadata type)' : '(a type that is not shown)');
@@ -935,22 +989,51 @@ export function phaseLines(
       ]),
     );
   }
+  return lines;
+}
 
-  // The pairs of the key for the files of the phase, component to component.
-  const pairs = new Map<string, { from: string; to: string; via: Set<string> }>();
+/**
+ * What the Dependency API reports for the entries of a phase of the fixture project: the pairs of components the
+ * answer key has for them, held against the rows. An entry is of the phase of its file, unless it names another
+ * (`phase` on the entry). An end of a row is matched to a component by the id the org listed the component with, as
+ * the cross-check did before it asked for the versions of flows, so that the runs can be held against each other: a
+ * row from the active version of a flow that has a newer one is matched to nothing, and a row from the newer one is
+ * matched to the flow. The cross-check of the engine matches such a row by the version (decision record 0067).
+ */
+export function phaseLines(
+  log: PublicLog,
+  rows: readonly DependencyRow[],
+  listed: readonly ListedId[],
+  phase: number,
+): string[] {
+  const lines = [
+    '',
+    `The entries of Phase ${String(phase)} of the answer key of the fixture project in the rows of the Dependency API`,
+  ];
+  const match = listedMatcher(listed);
+  const typeOf = (key: string): string => key.slice(0, key.indexOf(':'));
+
+  // The pairs of the key for the entries of the phase, component to component.
+  interface Pair {
+    readonly from: string;
+    readonly to: string;
+    readonly via: Set<string>;
+    readonly kind: Set<string>;
+  }
+  const pairs = new Map<string, Pair>();
   const types = new Set<string>();
   const otherTypes = new Set<string>();
   for (const file of answerKey().references ?? []) {
     for (const member of file.members) {
       const from = member.from.split('#')[0] ?? '';
       (file.phase === phase ? types : otherTypes).add(typeOf(from));
-      if (file.phase !== phase) continue;
       for (const ref of member.refs) {
         const to = ref.to.split('#')[0] ?? '';
         if (from === to || (ref.phase ?? file.phase) !== phase) continue;
         const id = `${from} -> ${to}`;
-        const pair = pairs.get(id) ?? { from, to, via: new Set<string>() };
+        const pair = pairs.get(id) ?? { from, to, via: new Set<string>(), kind: new Set<string>() };
         pair.via.add(ref.via);
+        pair.kind.add(ref.kind);
         pairs.set(id, pair);
       }
     }
@@ -964,9 +1047,9 @@ export function phaseLines(
   const expected = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   lines.push(
     '',
-    `The answer key holds ${plural(expected.length, 'pair', 'pairs')} of a component and a component it refers to for these files. The Dependency API reports ${String(expected.filter(([id]) => reported.has(id)).length)} of them.`,
+    `The answer key holds ${plural(expected.length, 'pair', 'pairs')} of a component and a component it refers to for these entries. The Dependency API reports ${String(expected.filter(([id]) => reported.has(id)).length)} of them.`,
   );
-  const tally = (group: (pair: { from: string; to: string; via: Set<string> }) => string[]): string[][] => {
+  const tally = (group: (pair: Pair) => string[]): string[][] => {
     const groups = new Map<string, { inKey: number; reported: number }>();
     for (const [id, pair] of expected) {
       for (const name of group(pair)) {
@@ -987,7 +1070,9 @@ export function phaseLines(
     ]),
     'By the way the source names the target. A pair is counted under every way the key has for it:',
     ...table([['WAY', 'IN THE KEY', 'REPORTED'], ...tally((pair) => [...pair.via])]),
-    'Every pair of these files:',
+    'By the kind of reference. A pair is counted under every kind the key has for it:',
+    ...table([['KIND', 'IN THE KEY', 'REPORTED'], ...tally((pair) => [...pair.kind])]),
+    'Every pair of these entries:',
     ...expected.map(
       ([id, pair]) => `- ${reported.has(id) ? 'reported' : 'missing '}  ${id}  (${[...pair.via].sort().join(', ')})`,
     ),
@@ -1604,10 +1689,12 @@ export async function readOrg(
         if (row !== undefined) fixtureWhole = describe(log, store, count(row['id']));
         // The cross-check is of a snapshot that ended. One that did not end has not asked the API yet.
         if (row !== undefined && taken !== undefined) {
-          // What Salesforce reports for the files of Phase 2, most of which the cross-check leaves out.
+          // What Salesforce reports for the entries of Phases 2 and 3, most of which the cross-check leaves out.
           if (crossCheck !== null && crossCheck.state !== 'none') {
             const rows = readDependencyRows(store, taken.id);
-            for (const line of phaseLines(log, rows, readListedIds(store, taken.id))) log.say(line);
+            const listed = readListedIds(store, taken.id);
+            for (const line of rowIdLines(log, rows, listed)) log.say(line);
+            for (const phase of PHASES_MEASURED) for (const line of phaseLines(log, rows, listed, phase)) log.say(line);
           }
           compared = crossCheckLines(log, crossCheck, readFlowVersionIds(store, taken.id));
           if (crossCheck !== null && crossCheck.state !== 'none') {
