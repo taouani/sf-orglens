@@ -112,4 +112,6 @@ part of every class.
 - An overload is told apart by the spelling of its types. A class that changes `Account` to `Schema.Account` in a
   parameter gets a method with a new key, and the old one goes away.
 - Not verified: that an org hands out the code of a class of a managed package as `(hidden)` and in no other form.
-  A run of "Live org" on an org with a managed package can show it. The test org holds none.
+  The test org lists one installed package, and the log of its run 31 does not say whether a class of it is among
+  the classes the org hands out ([note](../research/phase-3/real-org.md), section 8). A run of "Live org" with this
+  version shows it: a class handed out as `(hidden)` has the warning `APEX_NO_CODE`.
