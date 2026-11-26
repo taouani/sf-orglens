@@ -1002,26 +1002,33 @@
     "descriptions": {
       "description": "How the org described its objects for a snapshot of an org, through its REST API. A description says which fields an object has, of which type, which objects a lookup points at, and which child relationships the object has. It follows the permissions of the user who logged in. The snapshot keeps them, so that every analysis of it checks names against the org without the org.",
       "type": "object",
-      "required": ["state", "readAt", "requests", "asked", "described", "unknown", "failed", "code"],
+      "required": ["state", "startedAt", "readAt", "requests", "asked", "described", "unknown", "failed", "code"],
       "additionalProperties": false,
       "properties": {
         "state": {
           "description": "`whole`: every object that was asked for is described. `partial`: some are not. `none`: objects were asked for, and none is described.",
           "enum": ["whole", "partial", "none"]
         },
-        "readAt": { "description": "UTC, as in 2026-01-31T09:30:00.000Z.", "type": "string" },
+        "startedAt": {
+          "description": "When the first request was sent. UTC, as in 2026-01-31T09:30:00.000Z.",
+          "type": "string"
+        },
+        "readAt": {
+          "description": "When the reading ended: its time is the difference to startedAt. UTC, as in 2026-01-31T09:31:10.500Z.",
+          "type": "string"
+        },
         "requests": {
           "description": "The requests that were sent to the org for them, with those sent again.",
           "type": "integer",
           "minimum": 0
         },
         "asked": {
-          "description": "The objects the org was asked to describe: those of which the snapshot holds a file, by the names the org listed them with.",
+          "description": "The objects the org was asked to describe: those of which the snapshot holds a file, by the names the org listed them with, or the names they came back with where the org did not list them.",
           "type": "integer",
           "minimum": 0
         },
         "described": {
-          "description": "The objects the snapshot holds a description of.",
+          "description": "The objects the org described: asked, less unknown and failed. Two names that differ in their capitals only and that the org describes as one object count as two.",
           "type": "integer",
           "minimum": 0
         },
@@ -1031,7 +1038,7 @@
           "minimum": 0
         },
         "failed": {
-          "description": "The objects of which no description came for another reason: the org refused the request or gave no answer, or the reading stopped before them because the org could not be reached or did not accept the session.",
+          "description": "The objects of which no description came for another reason: the org refused the request or gave no answer, its answer was no description of the object, the name cannot be one of an object, or the reading stopped before them because the org could not be reached, did not accept the session or refused for a reason that holds for every request, such as a used-up limit of requests.",
           "type": "integer",
           "minimum": 0
         },

@@ -305,7 +305,7 @@ they have below a package directory, such as `classes/Foo.cls`.
   `MetadataComponentDependency`, which says which component refers to which, `FlowDefinition`, which names the active
   and the latest version of each flow (decision record 0067), and `Flow`, which names every version of a flow (decision
   record 0078). Through the REST API it asks for the description of each object the snapshot holds a file of
-  (`/services/data/v66.0/sobjects/<object>/describe`, decision record 0085): its fields, their types, the objects a
+  (`/services/data/v<version>/sobjects/<object>/describe`, decision record 0085): its fields, their types, the objects a
   lookup points at and the child relationships. A description says what an object holds and no value of a record.
   One thing is not in its hands: when the session of a Salesforce CLI login expires while a snapshot is taken, the
   Salesforce library renews it and asks the org about the org itself (decision record 0031 names the requests).
@@ -518,7 +518,8 @@ against them, is not built yet.
 - `orglens snapshot` of an org or a sandbox asks after the cross-check and before the snapshot ends, also with
   `--no-cross-check`. A source of the kind `git` is not described.
 - The objects are the components of the type `CustomObject` that the snapshot holds a file of, each by the name the
-  org listed it with: an object of a package that came back without its prefix is asked for with it. An org lists
+  org listed it with, or by the name it came back with where the org did not list it: an object of a package that
+  came back without its prefix is asked for with it. An org lists
   its standard objects as well, so a real org has hundreds of them. An object that the snapshot holds no file of,
   such as `Organization` or `RecordType`, is not asked for.
 - There is one request for each object, `GET /services/data/v<version>/sobjects/<object>/describe`, with the API
@@ -529,11 +530,12 @@ against them, is not built yet.
   objects a lookup points at and the name of its relationship, and of each child relationship with a name its
   name, the object of its records and the field that points back. Labels, help texts, the values of picklists and
   the rest of the answer are not kept.
-- An object the org answers with `NOT_FOUND` is one it does not know. A request it refuses for another reason, or
-  an answer that is no description, costs that object, and the next one is asked for. A request that got no
-  answer after the repetitions, and a session the org does not accept, stop the reading: the objects that are left
-  count as not described. None of this stops a snapshot or makes it partial. Where an object is not described,
-  the snapshot has the warning `DESCRIPTIONS_PARTIAL`.
+- An object the org answers with `NOT_FOUND` is one it does not know. A request it refuses for another reason, or an
+  answer that is no description of the object asked for, costs that object, and the next one is asked for. A request
+  that got no answer after the repetitions, a session the org does not accept, and a refusal that holds for every
+  request, such as a used-up limit of requests (`REQUEST_LIMIT_EXCEEDED`) or a redirect, stop the reading: no more
+  request is sent, and the objects that are left count as not described. None of this stops a snapshot or makes it
+  partial. Where an object is not described, the snapshot has the warning `DESCRIPTIONS_PARTIAL`.
 - A snapshot that was interrupted and is continued asks again, and the new reading takes the place of an earlier
   one and of its warning.
 - A snapshot that an earlier version took holds no descriptions, and none are added to it. A new snapshot has
@@ -679,22 +681,23 @@ of the first two, from any component. A later version can add one.
 Last comes how the org described the objects of a snapshot of an org:
 
 ```
-Descriptions: the org described 609 of the 612 objects the snapshot holds a file of: it does not know 1, and gave no description of 2 (TIMEOUT).
+Descriptions: the org described 609 of the 612 objects the snapshot holds a file of: it does not know 1, and gave no description of 2 (TIMEOUT). It took 3 minutes and 12 seconds.
 ```
 
-Where it described every object, the line is `Descriptions: the org described the 612 objects the snapshot holds a
-file of.` A snapshot of an org that an earlier version took says that the org was not asked to describe its
-objects. A snapshot of a repository, and a snapshot of an org that holds no object, say nothing.
+Where it described every object, the line is `Descriptions: the org described the 612 objects the snapshot holds a file
+of.`, followed by the time. A snapshot of an org that an earlier version took says that the org was not asked to
+describe its objects. A snapshot of a repository, and a snapshot of an org that holds no object, say nothing.
 
 In `--json`, `descriptions` is `null` for a snapshot the org was not asked for. Otherwise it holds:
 
-| Field                | Meaning                                                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `state`              | `whole`: the org described every object it was asked for. `partial`: it described some. `none`: it described none. |
-| `readAt`, `requests` | When the org was asked, and with how many requests, the repetitions among them.                                    |
-| `asked`, `described` | The objects the snapshot holds a file of, which the org was asked to describe, and those it described.             |
-| `unknown`, `failed`  | The objects the org does not know, and those of which no description came.                                         |
-| `code`               | The code of the first failure, such as `TIMEOUT` or `INVALID_SESSION_ID`, or `null`.                               |
+| Field                 | Meaning                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `state`               | `whole`: the org described every object it was asked for. `partial`: it described some. `none`: it described none. |
+| `startedAt`, `readAt` | When the first request was sent and when the reading ended. The difference is the time it took.                    |
+| `requests`            | How many requests were sent, the repetitions among them.                                                           |
+| `asked`, `described`  | The objects the snapshot holds a file of, which the org was asked to describe, and those it described.             |
+| `unknown`, `failed`   | The objects the org does not know, and those of which no description came.                                         |
+| `code`                | The code of the first failure, such as `TIMEOUT` or `INVALID_SESSION_ID`, or `null`.                               |
 
 The issue codes of the reading (`stage` is `read`):
 
@@ -726,7 +729,8 @@ named no flow and was not asked), and the number of requests of both in `details
 `CROSS_CHECK_PARTIAL` carries `details.cutOff`, `details.failed`, `details.unproven`, `details.code` and `details.rows`.
 `DESCRIPTIONS_PARTIAL` carries the number of objects asked for in `details.asked`, of those the org does not know in
 `details.unknown` and of those it gave no description of in `details.failed`, the code of the first failure in
-`details.code`, or `null`, and the number of requests in `details.requests`.
+`details.code`, or `null`, and the number of requests in `details.requests`. `details.unknownObjects` and
+`details.failedObjects` name the first 50 of each, in the order they were asked for.
 
 `LISTING_FAILED`, `RETRIEVE_FAILED`, `NOT_RETRIEVED` and `RESOLVE_FAILED` of an org carry `details.tier`: `logic`
 for an error, `other` for a warning. A warning `NOT_RETRIEVED` with `details.holdsNothing` or `details.ofPackages`

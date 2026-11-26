@@ -1286,6 +1286,7 @@ async function readObjectDescriptions(
 ): Promise<void> {
   const objects = objectsWithFiles(store, snapshot);
   progress({ step: 'describing', snapshot, done: 0, total: objects.length });
+  const startedAt = now();
   const reading = await describeObjects(session, objects, {
     apiVersion,
     limits: tuning.descriptions,
@@ -1294,7 +1295,7 @@ async function readObjectDescriptions(
     },
   });
   store.write(() => {
-    writeDescriptions(store, snapshot, reading, now());
+    writeDescriptions(store, snapshot, reading, { startedAt, readAt: now() });
     // A snapshot that was interrupted after an earlier reading has the warning of that reading.
     removeIssues(store, snapshot, ['DESCRIPTIONS_PARTIAL']);
     if (reading.state === 'whole') return;
@@ -1317,6 +1318,9 @@ async function readObjectDescriptions(
         failed: reading.failed.length,
         code: reading.code,
         requests: reading.requests,
+        // The first of them by name, so that a user can look them up.
+        unknownObjects: reading.unknown.slice(0, NAMES_PER_ISSUE),
+        failedObjects: reading.failed.slice(0, NAMES_PER_ISSUE),
       },
     );
   });

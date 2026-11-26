@@ -10,7 +10,6 @@ import { takeOrgSnapshot, type OrgSnapshotTuning, type SnapshotProgress } from '
 import type { CoverageReport } from '../src/api/snapshot.ts';
 import { openWorkspace } from '../src/api/workspace.ts';
 import type { OrgSource } from '../src/core/config/config.ts';
-import { describeAddress } from '../src/sources/describe.ts';
 import { objectsWithFiles, readDescriptions, writeDescriptions } from '../src/store/descriptions.ts';
 import { openStore } from '../src/store/open.ts';
 import { addIssue } from '../src/store/snapshots.ts';
@@ -127,11 +126,17 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('asks the org to describe every object of which the snapshot holds a file, and keeps what the resolver reads', async () => {
       const dir = workspaceDir();
       const events: SnapshotProgress[] = [];
+      // Each description takes a while, so that the time of the reading shows.
+      mock.intercept = async (request) => {
+        if (DESCRIBE.test(`${request.method} ${request.path}`)) await new Promise((resolve) => setTimeout(resolve, 25));
+        return undefined;
+      };
       const report = await snap(dir, { onProgress: (event) => events.push(event) });
 
       expect(report.snapshot.status).toBe('complete');
       expect(report.descriptions).toEqual({
         state: 'whole',
+        startedAt: expect.stringMatching(UTC) as string,
         readAt: expect.stringMatching(UTC) as string,
         requests: 8,
         asked: 8,
@@ -141,6 +146,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         code: null,
       });
       expect(ofReading(report).filter((issue) => issue.code.startsWith('DESCRIPTIONS'))).toEqual([]);
+      // The reading started after the snapshot and before it ended.
+      const { startedAt, readAt } = report.descriptions ?? { startedAt: '', readAt: '' };
+      expect(report.snapshot.startedAt <= startedAt).toBe(true);
+      expect(Date.parse(readAt) - Date.parse(startedAt)).toBeGreaterThanOrEqual(25);
+      expect(readAt <= (report.snapshot.finishedAt ?? '')).toBe(true);
       expect(described().sort()).toEqual(OBJECTS);
       // After the cross-check and before the analysis, once before the first request and after every object.
       const steps = events.map((event) => event.step);
@@ -194,7 +204,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           'GET /services/data/v66.0/',
           'POST /services/Soap/m/66.0',
           'GET /services/data/v66.0/tooling/query',
-          ...objects.map((object) => `GET ${describeAddress('66.0', object)}`),
+          ...objects.map((object) => `GET /services/data/v66.0/sobjects/${object}/describe`),
         ]),
       );
       expect(
@@ -229,7 +239,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           code: 'DESCRIPTIONS_PARTIAL',
           message: 'The org did not describe 2 of the 8 objects the snapshot holds a file of: it does not know 2.',
           component: null,
-          details: { asked: 8, unknown: 2, failed: 0, code: null, requests: 8 },
+          details: {
+            asked: 8,
+            unknown: 2,
+            failed: 0,
+            code: null,
+            requests: 8,
+            unknownObjects: ['Invoice_Paid__e', 'Tax_Code__c'],
+            failedObjects: [],
+          },
         },
       ]);
 
@@ -286,7 +304,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           store,
           1,
           { descriptions: [], state: 'none', requests: 1, unknown: [], failed: ['Account'], code: 'TIMEOUT' },
-          '2026-01-31T09:30:00.000Z',
+          { startedAt: '2026-01-31T09:30:00.000Z', readAt: '2026-01-31T09:30:00.000Z' },
         );
         addIssue(store, 1, {
           severity: 'warning',

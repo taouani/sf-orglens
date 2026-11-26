@@ -31,15 +31,15 @@ These rules come from the maintainer and apply to every phase.
 - Never add data from a real org: no metadata, recorded API responses, org ids, host names or user names. Test
   data is written for the purpose, or fetched from public repositories pinned by commit.
 - Never copy fixtures, recordings or code from the earlier private OrgLens prototypes into this repository.
-- No credentials anywhere: not in code, tests, fixtures, logs, workflow files or pull request text. Credentials for
-  the test org exist only as GitHub Actions secrets and are used only by the live-org workflow, which a maintainer
-  starts and which logs in once a week by itself. Its log is public: a step of it prints sentences of its own.
-  They hold numbers, codes, names of metadata types and of their elements, and names of the fixture project. They
-  hold no name of another component of the org, only how such a name is built. They hold no message that OrgLens,
-  a Salesforce library or Salesforce wrote, unless its whole text has a form the step lists. Of a message in
-  another form, only the words of a short list of everyday words are shown
-  (`packages/engine/test/live/public-log.ts` has the rule, decision record 0033 the reasons). No file of the org
-  is kept or uploaded.
+- No credentials anywhere: not in code, tests, fixtures, logs, workflow files or pull request text. Credentials for the
+  test org exist only as GitHub Actions secrets and are used only by the live-org workflow, which a maintainer starts
+  and which logs in once a week by itself. Its log is public: a step of it prints sentences of its own. They hold
+  numbers, codes, names of metadata types and of their elements, and names of the fixture project, among them the
+  standard fields and objects the mock org of the tests writes into its descriptions of the objects of the project. They
+  hold no name of another component of the org, only how such a name is built. They hold no message that OrgLens, a
+  Salesforce library or Salesforce wrote, unless its whole text has a form the step lists. Of a message in another form,
+  only the words of a short list of everyday words are shown (`packages/engine/test/live/public-log.ts` has the rule,
+  decision record 0033 the reasons). No file of the org is kept or uploaded.
 - The assistant publishes nothing to npm and moves no tag there. It has no account on npm and never holds a
   token for it. The packages are published by the workflow "Pre-release", started by hand on `main`, in the
   environment `npm-next` of GitHub, which waits for the maintainer's approval (decision record 0053). A run with
@@ -235,13 +235,14 @@ packages/cli   the `orglens` binary                            imports only `@sf
   is held against every row the reading holds in the end: a row of its query that another query gave and it lacks shows
   that it was cut off (decision record 0069). The reading is `whole` only where no answer shows that a row is missing.
   It never fails a snapshot and never makes it partial: an org that does not answer leaves a warning.
-- A snapshot of an org asks the org to describe each object it holds a file of, after the cross-check and also
-  without it (decision records 0080, 0085 and 0086). The objects are the components of the type `CustomObject` that
-  came back, by the name the org listed them with. Of each description only the fields, their types, the objects a
-  lookup points at and the child relationships are kept, as one JSON object beside the snapshot
-  (`store/descriptions.ts`), so that an analysis can check a name against the org without the org. An object the
-  org does not know, or does not describe, leaves the warning `DESCRIPTIONS_PARTIAL`, and never fails the snapshot or
-  makes it partial. Nothing of the analysis reads the descriptions yet.
+- A snapshot of an org asks the org to describe each object it holds a file of, after the cross-check and also without
+  it (decision records 0080, 0085 and 0086). The objects are the components of the type `CustomObject` that came back,
+  by the name the org listed them with, or the one they came back with where the org did not list them. A refusal that
+  holds for every request, such as a used-up limit of requests, stops the reading. Of each description only the fields,
+  their types, the objects a lookup points at and the child relationships are kept, as one JSON object beside the
+  snapshot (`store/descriptions.ts`), so that an analysis can check a name against the org without the org. An object
+  the org does not know, or does not describe, leaves the warning `DESCRIPTIONS_PARTIAL`, and never fails the snapshot
+  or makes it partial. Nothing of the analysis reads the descriptions yet.
 - A snapshot of an org reads every type and is judged over the logic tier (decision records 0038, 0046 and 0068).
   The tier is a list of names of the Metadata API in `core/tiers.ts`, and a type is of it by its own name. Every
   type an analyser reads is on it: a type joins in the pull request that analyses it, and a test fails until it

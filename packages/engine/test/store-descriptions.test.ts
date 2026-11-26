@@ -20,6 +20,9 @@ import { codeOf, DRIVERS, tempDirs } from './helpers/store.ts';
 const T0 = '2026-01-31T09:30:00.000Z';
 const T1 = '2026-01-31T09:31:10.500Z';
 const T2 = '2026-01-31T09:40:00.000Z';
+/** A reading that started at T0 and ended at T1, and one that ended at T2. */
+const AT_T1 = { startedAt: T0, readAt: T1 };
+const AT_T2 = { startedAt: T1, readAt: T2 };
 
 const PARCEL: ObjectDescription = {
   name: 'Parcel__c',
@@ -74,11 +77,12 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
         store,
         id,
         reading({ state: 'partial', unknown: ['Gone__c'], failed: ['Slow__c'], code: 'TIMEOUT' }),
-        T1,
+        AT_T1,
       );
     });
     expect(readDescriptionReading(store, id)).toEqual({
       state: 'partial',
+      startedAt: T0,
       readAt: T1,
       requests: 2,
       asked: 4,
@@ -95,13 +99,13 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     const id = snapshot(store);
     const other = snapshot(store, 'sandbox');
     store.write(() => {
-      writeDescriptions(store, id, reading(), T1);
-      writeDescriptions(store, other, reading(), T1);
+      writeDescriptions(store, id, reading(), AT_T1);
+      writeDescriptions(store, other, reading(), AT_T1);
     });
     store.write(() => {
-      writeDescriptions(store, id, reading({ descriptions: [ACCOUNT], requests: 1 }), T2);
+      writeDescriptions(store, id, reading({ descriptions: [ACCOUNT], requests: 1 }), AT_T2);
     });
-    expect(readDescriptionReading(store, id)).toMatchObject({ readAt: T2, requests: 1, asked: 1 });
+    expect(readDescriptionReading(store, id)).toMatchObject({ startedAt: T1, readAt: T2, requests: 1, asked: 1 });
     expect(readDescriptions(store, id)).toEqual([ACCOUNT]);
     expect(readDescriptions(store, other)).toEqual([ACCOUNT, PARCEL]);
     store.close();
@@ -115,11 +119,12 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
         store,
         id,
         reading({ descriptions: [], state: 'none', requests: 3, failed: ['A__c', 'B__c'], code: 'INVALID_SESSION_ID' }),
-        T1,
+        AT_T1,
       );
     });
     expect(readDescriptionReading(store, id)).toEqual({
       state: 'none',
+      startedAt: T0,
       readAt: T1,
       requests: 3,
       asked: 2,
@@ -132,12 +137,20 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     expect(
       codeOf(() => {
         store.write(() => {
-          writeDescriptions(store, id, reading({ state: 'most' as never }), T1);
+          writeDescriptions(store, id, reading({ state: 'most' as never }), AT_T1);
+        });
+      }),
+    ).toBe('STORE_FAILED');
+    // Nor does it take a reading that ended before it started.
+    expect(
+      codeOf(() => {
+        store.write(() => {
+          writeDescriptions(store, id, reading(), { startedAt: T1, readAt: T0 });
         });
       }),
     ).toBe('STORE_FAILED');
     store.write(() => {
-      writeDescriptions(store, id, reading(), T1);
+      writeDescriptions(store, id, reading(), AT_T1);
     });
     expect(
       codeOf(() =>
@@ -161,7 +174,7 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     const store = open();
     const id = snapshot(store);
     store.write(() => {
-      writeDescriptions(store, id, reading({ descriptions: [ACCOUNT, PARCEL, { ...ACCOUNT, fields: [] }] }), T1);
+      writeDescriptions(store, id, reading({ descriptions: [ACCOUNT, PARCEL, { ...ACCOUNT, fields: [] }] }), AT_T1);
     });
     expect(readDescriptionReading(store, id)).toMatchObject({ state: 'whole', asked: 3, unknown: 0, failed: 0 });
     expect(readDescriptions(store, id)).toEqual([ACCOUNT, PARCEL]);
@@ -173,7 +186,7 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     const id = snapshot(store);
     expect(() =>
       store.write(() => {
-        writeDescriptions(store, id, reading(), T1);
+        writeDescriptions(store, id, reading(), AT_T1);
         throw new Error('the step failed');
       }),
     ).toThrow('the step failed');
@@ -187,8 +200,8 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     const id = snapshot(store);
     const other = snapshot(store, 'sandbox');
     store.write(() => {
-      writeDescriptions(store, id, reading(), T1);
-      writeDescriptions(store, other, reading(), T1);
+      writeDescriptions(store, id, reading(), AT_T1);
+      writeDescriptions(store, other, reading(), AT_T1);
     });
     store.write(() => store.run('DELETE FROM snapshot WHERE id = ?', id));
     expect(count(store, 'snapshot_description_reading')).toBe(1);
@@ -244,7 +257,7 @@ describe.each(DRIVERS)('the descriptions of the objects of a snapshot with $name
     expect(readDescriptionReading(store, id)).toBeUndefined();
     expect(readDescriptions(store, id)).toEqual([]);
     store.write(() => {
-      writeDescriptions(store, id, reading(), T1);
+      writeDescriptions(store, id, reading(), AT_T1);
     });
     expect(readDescriptions(store, id)).toEqual([ACCOUNT, PARCEL]);
     store.close();

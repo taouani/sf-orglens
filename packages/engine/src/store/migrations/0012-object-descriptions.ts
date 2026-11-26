@@ -17,7 +17,10 @@ CREATE TABLE snapshot_description_reading (
   snapshot_id INTEGER PRIMARY KEY REFERENCES snapshot (id) ON DELETE CASCADE,
   -- whole: every object asked for is described. partial: some are not. none: objects were asked for, none is described.
   state       TEXT NOT NULL CHECK (state IN ('whole', 'partial', 'none')),
-  read_at     TEXT NOT NULL CHECK (read_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+  -- When the first request was sent and when the reading ended, so that its time is known.
+  started_at  TEXT NOT NULL CHECK (started_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'),
+  read_at     TEXT NOT NULL CHECK (read_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'
+                                   AND read_at >= started_at),
   requests    INTEGER NOT NULL CHECK (requests >= 0),
   -- The objects that were asked for, those the org does not know, and those for which no description came otherwise.
   asked       INTEGER NOT NULL CHECK (asked >= 0),

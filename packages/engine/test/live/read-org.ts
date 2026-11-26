@@ -1338,7 +1338,6 @@ export function descriptionLines(
   held: readonly ObjectDescription[],
   expected: ReadonlyMap<string, Record<string, unknown>>,
   withFile: ReadonlySet<string>,
-  took: string | null,
 ): { readonly lines: string[]; readonly verdict: 'ok' | 'fields missing' | 'none' } {
   const lines = ['', DESCRIPTIONS_HEADING];
   if (report === null) {
@@ -1347,7 +1346,7 @@ export function descriptionLines(
   }
   const code = report.code === null ? '' : ` (${log.code(report.code) ?? 'a code that is not shown'})`;
   lines.push(
-    `Objects asked for: ${String(report.asked)}, with ${plural(report.requests, 'request', 'requests')}${took === null ? '' : `, in ${took} s`}. ` +
+    `Objects asked for: ${String(report.asked)}, with ${plural(report.requests, 'request', 'requests')}, in ${seconds(Date.parse(report.readAt) - Date.parse(report.startedAt))} s. ` +
       `Described: ${String(report.described)}. Not known to the org: ${String(report.unknown)}. No description for another reason: ${String(report.failed)}${code}.`,
   );
   const allFields = held.flatMap((one) => one.fields);
@@ -1881,7 +1880,7 @@ export async function readOrg(
   subscribe('undici:request:create', counted);
 
   const started = Date.now();
-  const at: { connected?: number; planned?: number; describing?: number; analysing?: number } = {};
+  const at: { connected?: number; planned?: number } = {};
   let listings = 0;
   let version: string | null = null;
   const onProgress = (event: SnapshotProgress): void => {
@@ -1904,10 +1903,7 @@ export async function readOrg(
         `After ${elapsed} s: ${plural(event.flows, 'flow has', 'flows have')} a latest version that is not active. The active version of each is asked for by its number.`,
       );
     } else if (event.step === 'describing' && event.done === 0) {
-      at.describing = Date.now();
       log.say(`After ${elapsed} s: the org is asked to describe ${plural(event.total, 'object', 'objects')}.`);
-    } else if (event.step === 'analysing') {
-      at.analysing = Date.now();
     }
   };
 
@@ -1961,15 +1957,12 @@ export async function readOrg(
               .filter((component) => component.type === 'CustomField')
               .map((component) => component.fullName),
           );
-          const took =
-            at.describing !== undefined && at.analysing !== undefined ? seconds(at.analysing - at.describing) : null;
           const said = descriptionLines(
             log,
             descriptions,
             readDescriptions(store, taken.id),
             descriptionsOfFolder(FIXTURE_DIR),
             withFile,
-            took,
           );
           for (const line of said.lines) log.say(line);
           described = said.verdict;

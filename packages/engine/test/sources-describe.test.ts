@@ -272,12 +272,64 @@ describe('reading the descriptions of objects', () => {
     expect(asked()).toEqual(['Task', 'Task']);
   });
 
-  it('never follows a redirect', async () => {
+  it('never follows a redirect, and asks for nothing more after one', async () => {
     mock.intercept = (request) =>
       ADDRESS.test(request.path)
         ? { status: 302, body: '', headers: { location: 'http://127.0.0.1:9/elsewhere' } }
         : undefined;
-    expect(await read(['Task'])).toMatchObject({ state: 'none', failed: ['Task'], code: 'REDIRECT' });
+    expect(await read(['Task', 'A__c', 'B__c'], { limits: { parallel: 1 } })).toMatchObject({
+      state: 'none',
+      failed: ['Task', 'A__c', 'B__c'],
+      code: 'REDIRECT',
+      requests: 1,
+    });
+    expect(asked()).toEqual(['Task']);
+  });
+
+  it('stops without failing when the org refuses for a reason that holds for every request', async () => {
+    mock.intercept = (request) =>
+      ADDRESS.test(request.path)
+        ? {
+            status: 403,
+            body: JSON.stringify([{ errorCode: 'REQUEST_LIMIT_EXCEEDED', message: 'TotalRequests Limit exceeded.' }]),
+          }
+        : undefined;
+    const objects = Array.from({ length: 40 }, (_, at) => `Object_${String(at)}__c`);
+    const reading = await read(objects);
+    expect(reading).toMatchObject({ state: 'none', failed: objects, code: 'REQUEST_LIMIT_EXCEEDED' });
+    // The requests that were under way when the first answer came, and no more.
+    expect(reading.requests).toBeLessThanOrEqual(describeLimits().parallel);
+    expect(asked()).toHaveLength(reading.requests);
+  });
+
+  it('sends no repetition of a request that was under way when the reading stopped', async () => {
+    mock.intercept = async (request) => {
+      if (request.path.endsWith('/sobjects/A__c/describe')) return { status: 503, body: '' };
+      if (!request.path.endsWith('/sobjects/B__c/describe')) return undefined;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        status: 403,
+        body: JSON.stringify([{ errorCode: 'REQUEST_LIMIT_EXCEEDED', message: 'TotalRequests Limit exceeded.' }]),
+      };
+    };
+    const reading = await read(['A__c', 'B__c'], { limits: { parallel: 2, repeats: 2, repeatAfterMs: 150 } });
+    expect(reading).toMatchObject({ state: 'none', failed: ['A__c', 'B__c'], code: 'REQUEST_LIMIT_EXCEEDED' });
+    // A would have been asked for twice more, after 150 and 300 ms. B stopped the reading after 20 ms.
+    expect(asked()).toEqual(['A__c', 'B__c']);
+    expect(reading.requests).toBe(2);
+  });
+
+  it('takes an answer only where it describes the object that was asked for, in any capitals', async () => {
+    mock.intercept = (request) => {
+      const object = ADDRESS.exec(request.path)?.[1];
+      if (object === undefined) return undefined;
+      const name = object === 'account' ? 'Account' : 'Other__c';
+      return { status: 200, body: JSON.stringify({ name, fields: [], childRelationships: [] }) };
+    };
+    const reading = await read(['account', 'Task'], { limits: { parallel: 1 } });
+    expect(reading).toMatchObject({ state: 'partial', failed: ['Task'], code: 'NOT_A_DESCRIPTION' });
+    // The name as the org writes it.
+    expect(reading.descriptions.map((one) => one.name)).toEqual(['Account']);
   });
 
   it('has at most as many requests under way as its limit says', async () => {

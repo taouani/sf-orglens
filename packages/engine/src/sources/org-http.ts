@@ -9,8 +9,9 @@
  * until an answer starts, follows redirects, and lets a connection that
  * breaks in the middle of an answer end the process.
  *
- * The Metadata API (`metadata-api.ts`) and the Dependency API
- * (`dependency-api.ts`) are asked through this.
+ * The Metadata API (`metadata-api.ts`), the Dependency API
+ * (`dependency-api.ts`) and the descriptions of objects of the REST API
+ * (`describe.ts`) are asked through this.
  */
 import { PassThrough } from 'node:stream';
 import { loadUndici } from './library.ts';

@@ -32,8 +32,9 @@ The statements below are choices of the author of this record. The maintainer ca
    several objects at once were not tried: the call `describeSObjects` of the SOAP API, which takes up to 100 objects
    `[unverified]`, and the objects `EntityDefinition` and `FieldDefinition` of the Tooling API.
 2. **The objects are those of which the snapshot holds a file**: every component of the type `CustomObject` of its
-   inventory that came back, by the name the org listed it with, sorted. An object of a package that came back without
-   its prefix is asked for with it, as the org knows it (record
+   inventory that came back, by the name the org listed it with, sorted, and one that came back although the org did
+   not list it by the name it came back with. An object of a package that came back without its prefix is asked for
+   with it, as the org knows it (record
    [0076](0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md)). An object that Apex names and of which
    the snapshot holds no file, such as `Organization` or `RecordType`, is not asked for, as record 0080 says. A name
    that cannot be one of an object (letters, digits and underscores, starting with a letter) is not sent.
@@ -45,26 +46,31 @@ The statements below are choices of the author of this record. The maintainer ca
    its relationship; of each child relationship with a name, its name, the object of its records and the lookup field
    that points back. The fields are sorted by name and the child relationships by theirs. A child relationship without
    a name cannot be written in Apex and is dropped. Labels, help texts, the values of picklists and everything else of
-   the answer are dropped where it is read. An answer that is no description, such as a field without a name, is a
-   failure of its object (`NOT_A_DESCRIPTION`).
+   the answer are dropped where it is read. An answer that is no description, such as a field without a name, or that
+   describes an object of another name than the one asked for, in other than its capitals, is a failure of its object
+   (`NOT_A_DESCRIPTION`).
 5. **A failure of the org never fails the snapshot.** An object the org answers with `NOT_FOUND` is one it does not
    know. A request it refuses for another reason, or an answer that is no description, is a failure of that object,
-   and the next object is asked for. A request that got no answer after the repetitions, and a session the org does
-   not accept, would hold for every request: no further request is made, and every object that is left counts as
-   failed. A fault of this machine or of the code is thrown, as for the Metadata API.
-6. **The reading is `whole`, `partial` or `none`**, as that of the Dependency API: every object described, some, or
-   none of those asked for. Where it is not whole, the snapshot has the warning `DESCRIPTIONS_PARTIAL` of the reading,
-   which says how many objects the org does not know and how many it gave no description of, with the code of the
-   first failure. It makes the snapshot neither partial nor its analysis incomplete. What an analysis does with a name
-   that a missing description would have checked is for the resolver of work package 4.
+   and the next object is asked for. A request that got no answer after the repetitions, a session the org does not
+   accept, and a refusal for a reason that holds for the whole org, the same as for the Metadata API (such as
+   `REQUEST_LIMIT_EXCEEDED` or `REDIRECT`, `isAboutTheOrg` in `sources/metadata-api.ts`), would hold for every request:
+   no further request is made, not even the repetition of a request that was under way, and every object that is left
+   counts as failed. A fault of this machine or of the code is thrown, as for the Metadata API.
+6. **The reading is `whole`, `partial` or `none`**, as that of the Dependency API: every object described, some, or none
+   of those asked for. Where it is not whole, the snapshot has the warning `DESCRIPTIONS_PARTIAL` of the reading, which
+   says how many objects the org does not know and how many it gave no description of, with the code of the first
+   failure, and names the first 50 of each in its details. It makes the snapshot neither partial nor its analysis
+   incomplete. What an analysis does with a name that a missing description would have checked is for the resolver of
+   work package 4.
 7. **The org is asked after the cross-check and before the snapshot ends**, always: `--no-cross-check` leaves the
    Dependency API out, and not the descriptions. A snapshot that is interrupted before it ends asks again when it is
    continued, and the new reading replaces the one it held, with its warning. The progress has a step of its own,
    `describing`, told once before the first request and after every object. `orglens snapshot` says on the standard
    error stream how many objects it asks for, and then at most once in five seconds how many are done.
 8. **The report of a snapshot says how the objects were described** (`descriptions` of the JSON output of `snapshot`
-   and `coverage`, and a line of text after the cross-check). It is `null` for a snapshot of a repository and for one
-   that an earlier version took.
+   and `coverage`, and a line of text after the cross-check). It says when the first request was sent and when the
+   reading ended, and the line says how long it took, as record 0080 asks of the summary of a snapshot. It is `null`
+   for a snapshot of a repository and for one that an earlier version took.
 
 This changes record [0009](0009-one-ingestion-path.md) in the point record 0080 names, and the data rules of
 `CLAUDE.md`, which name every request the engine makes to an org: the engine asks the REST API of the org for the

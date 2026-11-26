@@ -539,10 +539,11 @@ function descriptionLines(report: CoverageReport): string[] {
   }
   const { asked, described, unknown, failed, code } = descriptions;
   if (asked === 0) return [];
+  const took = tookLine(descriptions.startedAt, descriptions.readAt);
   if (described === asked) {
     return [
       '',
-      `Descriptions: the org described ${asked === 1 ? 'the object' : `the ${String(asked)} objects`} the snapshot holds a file of.`,
+      `Descriptions: the org described ${asked === 1 ? 'the object' : `the ${String(asked)} objects`} the snapshot holds a file of. ${took}`,
     ];
   }
   const lacks = [
@@ -553,8 +554,18 @@ function descriptionLines(report: CoverageReport): string[] {
   ];
   return [
     '',
-    `Descriptions: the org described ${String(described)} of the ${count(asked, 'object', 'objects')} the snapshot holds a file of: ${lacks.join(', and ')}.`,
+    `Descriptions: the org described ${String(described)} of the ${count(asked, 'object', 'objects')} the snapshot holds a file of: ${lacks.join(', and ')}. ${took}`,
   ];
+}
+
+/** How long a reading took, from two times as `Date.prototype.toISOString` writes them, in seconds. */
+function tookLine(startedAt: string, endedAt: string): string {
+  const seconds = Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000);
+  if (!(seconds >= 1)) return 'It took less than a second.';
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `It took ${count(seconds, 'second', 'seconds')}.`;
+  return `It took ${count(minutes, 'minute', 'minutes')}${rest === 0 ? '' : ` and ${count(rest, 'second', 'seconds')}`}.`;
 }
 
 /**

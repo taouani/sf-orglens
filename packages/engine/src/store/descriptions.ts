@@ -10,7 +10,8 @@ import type { Store } from './open.ts';
 /** How the descriptions were read for a snapshot. */
 export interface StoredDescriptionReading {
   readonly state: DescriptionReading['state'];
-  /** UTC, as `Date.prototype.toISOString` writes it. */
+  /** When the first request was sent, and when the reading ended. UTC, as `Date.prototype.toISOString` writes it. */
+  readonly startedAt: string;
   readonly readAt: string;
   readonly requests: number;
   /** The objects that were asked for, those the org did not know, and those for which no description came. */
@@ -24,14 +25,21 @@ export interface StoredDescriptionReading {
  * Stores what was read of the descriptions for a snapshot. What the snapshot held of them before is replaced. It is
  * called inside a write of the caller, as the other writers of a snapshot are.
  */
-export function writeDescriptions(store: Store, snapshotId: number, reading: DescriptionReading, readAt: string): void {
+export function writeDescriptions(
+  store: Store,
+  snapshotId: number,
+  reading: DescriptionReading,
+  times: { readonly startedAt: string; readonly readAt: string },
+): void {
   store.run('DELETE FROM snapshot_description_reading WHERE snapshot_id = ?', snapshotId);
   store.run(
-    `INSERT INTO snapshot_description_reading (snapshot_id, state, read_at, requests, asked, unknown, failed, code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO snapshot_description_reading
+       (snapshot_id, state, started_at, read_at, requests, asked, unknown, failed, code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     snapshotId,
     reading.state,
-    readAt,
+    times.startedAt,
+    times.readAt,
     reading.requests,
     reading.descriptions.length + reading.unknown.length + reading.failed.length,
     reading.unknown.length,
@@ -54,7 +62,7 @@ export function writeDescriptions(store: Store, snapshotId: number, reading: Des
 /** How the descriptions were read for a snapshot, or `undefined` for a snapshot they were not asked for. */
 export function readDescriptionReading(store: Store, snapshotId: number): StoredDescriptionReading | undefined {
   const row = store.get(
-    `SELECT state, read_at, requests, asked, unknown, failed, code
+    `SELECT state, started_at, read_at, requests, asked, unknown, failed, code
        FROM snapshot_description_reading WHERE snapshot_id = ?`,
     snapshotId,
   );
@@ -62,6 +70,7 @@ export function readDescriptionReading(store: Store, snapshotId: number): Stored
   const state = String(row['state']);
   return {
     state: state === 'whole' || state === 'partial' ? state : 'none',
+    startedAt: String(row['started_at']),
     readAt: String(row['read_at']),
     requests: Number(row['requests']),
     asked: Number(row['asked']),

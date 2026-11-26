@@ -20,12 +20,11 @@ snapshot, with no reference and no component made of them.
 The statements below are choices of the author of this record. The maintainer can strike any of them.
 
 1. **Migration 12 adds two tables** (`store/migrations/0012-object-descriptions.ts`). `snapshot_description_reading`
-   holds one row for a snapshot whose org was asked: the state of the reading, when it was read, the requests, the
-   objects that were asked for, those the org does not know and those of which no description came, and the code of
-   the first failure. `snapshot_object_description` holds one row for each object described: the name of the object
-   as the org writes it, and the description as a JSON object. Two names that were asked for and that the org
-   describes as one object, such as a name in other capitals, keep the first description, and both count as
-   described.
+   holds one row for a snapshot whose org was asked: the state of the reading, when it started and when it ended, the
+   requests, the objects that were asked for, those the org does not know and those of which no description came, and
+   the code of the first failure. `snapshot_object_description` holds one row for each object described: the name of the
+   object as the org writes it, and the description as a JSON object. Two names that were asked for and that the org
+   describes as one object, such as a name in other capitals, keep the first description, and both count as described.
 2. **A description is one JSON object, read whole** (`store/descriptions.ts`). The resolver reads every description
    of a snapshot once, and no query of the store looks into one, so its fields and child relationships get no tables
    of their own. The table refuses a text that is not a JSON object.

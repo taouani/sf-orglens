@@ -140,7 +140,11 @@ export interface DescriptionsReport {
    * - `none`: objects were asked for, and none is described.
    */
   readonly state: 'whole' | 'partial' | 'none';
-  /** UTC, as `Date.prototype.toISOString` writes it. */
+  /**
+   * When the first request was sent, and when the reading ended: the time of the reading is the difference. UTC, as
+   * `Date.prototype.toISOString` writes it.
+   */
+  readonly startedAt: string;
   readonly readAt: string;
   /** The requests that were sent, with those sent again. */
   readonly requests: number;
@@ -159,8 +163,8 @@ export interface DescriptionsReport {
 function descriptionsReport(store: Store, snapshotId: number): DescriptionsReport | null {
   const reading = readDescriptionReading(store, snapshotId);
   if (reading === undefined) return null;
-  const { state, readAt, requests, asked, unknown, failed, code } = reading;
-  return { state, readAt, requests, asked, described: asked - unknown - failed, unknown, failed, code };
+  const { state, startedAt, readAt, requests, asked, unknown, failed, code } = reading;
+  return { state, startedAt, readAt, requests, asked, described: asked - unknown - failed, unknown, failed, code };
 }
 
 /** The coverage of each type of a snapshot, with how many of its listed components are of a package. */

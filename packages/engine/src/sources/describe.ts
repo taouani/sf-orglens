@@ -10,6 +10,7 @@
  * dropped here. A failure of the org never throws: the reading says how far it came. Only a fault of this machine
  * or of the code is thrown.
  */
+import { isAboutTheOrg } from './metadata-api.ts';
 import type { OrgSession } from './org.ts';
 import { MetadataRequestError, openOrgHttp, repeated, requestFailure, type RequestLimits } from './org-http.ts';
 
@@ -95,11 +96,15 @@ const isText = (value: unknown): value is string => typeof value === 'string' &&
 const byName = (a: { readonly name: string }, b: { readonly name: string }): number =>
   a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
-/** What is kept of an answer, or `null` for an answer that is not a description. */
-function kept(answer: unknown): ObjectDescription | null {
+/**
+ * What is kept of an answer to the request for `object`, or `null` for an answer that is not a description of it.
+ * The org writes the name of an object as it knows it, which can differ from the name asked for in its capitals only.
+ */
+function kept(answer: unknown, object: string): ObjectDescription | null {
   if (typeof answer !== 'object' || answer === null) return null;
   const { name, fields, childRelationships } = answer as Record<string, unknown>;
   if (!isText(name) || !Array.isArray(fields)) return null;
+  if (name.toLowerCase() !== object.toLowerCase()) return null;
   const described: DescribedField[] = [];
   for (const field of fields as unknown[]) {
     if (typeof field !== 'object' || field === null) return null;
@@ -132,8 +137,9 @@ function kept(answer: unknown): ObjectDescription | null {
  * Asks the org for the description of each object of `objects`.
  *
  * Never fails because of the org. An object the org does not know is `unknown`. After a failure that would hold
- * for every request (no answer in time, after the repetitions, or a session the org does not accept) no further
- * request is made, and the objects that are left are `failed`.
+ * for every request (no answer in time, after the repetitions, a session the org does not accept, or a refusal that
+ * holds for the org, such as a used-up limit of requests) no further request is made, also no repetition of a
+ * request that is under way, and the objects that are left are `failed`.
  */
 export async function describeObjects(
   session: OrgSession,
@@ -154,7 +160,7 @@ export async function describeObjects(
   const fail = (object: string, failure: MetadataRequestError): void => {
     code ??= failure.code ?? 'NO_CODE';
     results.set(object, 'failed');
-    if (failure.kind !== 'refused') stopped = true;
+    if (failure.kind !== 'refused' || isAboutTheOrg(failure)) stopped = true;
   };
   const describeOne = async (object: string): Promise<void> => {
     if (stopped) {
@@ -167,6 +173,8 @@ export async function describeObjects(
     }
     try {
       const answer = await repeated(http, limits, async () => {
+        // A repetition of a request that was under way when the reading stopped is not sent.
+        if (stopped) throw new MetadataRequestError('refused', 'STOPPED', 'The reading of the descriptions stopped.');
         requests += 1;
         try {
           // What sends the request is an option the declaration of the client does not name.
@@ -176,7 +184,7 @@ export async function describeObjects(
           throw requestFailure(error);
         }
       });
-      const description = kept(answer);
+      const description = kept(answer, object);
       if (description === null) {
         fail(object, new MetadataRequestError('refused', 'NOT_A_DESCRIPTION', 'The answer is not a description.'));
       } else {

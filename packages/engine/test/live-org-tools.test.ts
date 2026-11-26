@@ -507,6 +507,7 @@ describe('the descriptions of the objects, as they are printed', () => {
   const withFile = new Set(['Parcel__c.Weight__c', 'Parcel__c.Depot__c', 'Depot__c.Code__c']);
   const report = {
     state: 'partial' as const,
+    startedAt: '2026-02-01T08:29:58.500Z',
     readAt: '2026-02-01T08:30:00.000Z',
     requests: 3,
     asked: 3,
@@ -536,7 +537,6 @@ describe('the descriptions of the objects, as they are printed', () => {
       ],
       expected,
       withFile,
-      '1.5',
     );
     expect(said.lines).toEqual([
       '',
@@ -563,9 +563,9 @@ describe('the descriptions of the objects, as they are printed', () => {
       fields: [field('Id', 'id'), field('Code__c', 'not a type')],
       childRelationships: [],
     };
-    const said = descriptionLines(log, report, [depot], expected, withFile, null);
+    const said = descriptionLines(log, report, [depot], expected, withFile);
     expect(said.lines.slice(2, 4)).toEqual([
-      'Objects asked for: 3, with 3 requests. Described: 1. Not known to the org: 1. No description for another reason: 1 (TIMEOUT).',
+      'Objects asked for: 3, with 3 requests, in 1.5 s. Described: 1. Not known to the org: 1. No description for another reason: 1 (TIMEOUT).',
       'Fields in the descriptions: 2. Lookups: 0, of which to more than one object: 0. Child relationships with a name: 0.',
     ]);
     expect(said.lines.slice(-4)).toEqual([
@@ -576,8 +576,8 @@ describe('the descriptions of the objects, as they are printed', () => {
     ]);
     expect(said.verdict).toBe('ok');
 
-    expect(descriptionLines(log, report, [], expected, withFile, null).verdict).toBe('none');
-    expect(descriptionLines(log, null, [], expected, withFile, null)).toEqual({
+    expect(descriptionLines(log, report, [], expected, withFile).verdict).toBe('none');
+    expect(descriptionLines(log, null, [], expected, withFile)).toEqual({
       lines: [
         '',
         DESCRIPTIONS_HEADING,
