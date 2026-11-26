@@ -113,7 +113,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
 - A flow is read by `extraction/flows.ts`, from its file alone (decision record 0061). The flow is a component, and
   each of its elements and resources is a component below it (`Flow:<flow>#element:<name>`), which a reference
   starts at. `resourcesOf` says what each resource holds: a record of an object, something that holds no record, or
-  something of which that is not known, and then a path from it is not followed and a warning says so. An element
+  something of which that is not known, and then a path from it is not followed and a warning says so, unless only
+  `Id` stands after it, which gives no reference anyway (decision record 0082). An element
   of a kind the reader does not know is kept, with a warning and its names as `probable`. The analysis has a row of
   its own for flows (`parser:flow`). A row of the Dependency API from a flow is compared where it is from the
   version the snapshot holds, and counted otherwise (decision records 0067 and 0078).

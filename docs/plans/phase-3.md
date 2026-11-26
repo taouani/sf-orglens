@@ -402,7 +402,8 @@ Build:
   followed, which Phase 2 could not.
 - For answer (a) of Q6, which you gave (record 0082): `overriddenFlow` and `dataTypeMappings` are read, the warning for
   `Id` at the end of a path goes, and a name alone that fits a flow and its definition means the flow. This comes first,
-  in the first pull request of the phase, and records 0041, 0061, 0064 and 0074 are completed.
+  in the first pull request of the phase, and records 0041, 0061, 0064 and 0074 are completed. It was built on 26
+  November 2026.
 
 Accepted when:
 

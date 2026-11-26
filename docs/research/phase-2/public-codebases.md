@@ -241,6 +241,15 @@ possible change to the reader of flows, and is not made here. One message quotes
 `myVariable_current.%%%NAMESPACE%%%Program__r.%%%NAMESPACE%%%`. It is a fault of the words, not of the analysis. Reading
 such a token as an empty prefix is not built and is not in the plan.
 
+**Since 26 November 2026.** The maintainer chose with the Phase 3 plan that the reader reads both kinds of names and
+that the warning for `Id` goes (record [0082](../../adr/0082-what-phase-2-left-open-about-flows-comes-first.md)). Its
+first pull request builds that. The listing of the eight codebases, printed before and after the change and compared,
+changed in three places and nowhere else. Nebula Logger: six references of actions to the object of
+`dataTypeMappings`, three to `Account`, which the codebase defines, and two to `User` and one to `Organization`, which
+are `external`. Coral Cloud: one reference to the flow it overrides, `external`. PMM: the 10 warnings about `Id` go, and
+the 14 others stay, 12 to `CreatedDate` and 2 to `Name`. The digests of the three listings in the test of the checked
+codebases changed with it.
+
 **What the listing can hide, and the defect that was found.** The listing shows the references of a component under its
 entry, so a reference of a flow element cannot stand under another element. A test holds that the entries are exactly
 the components of these types the analysis reports, that the file of workflow rules itself has no reference and no
