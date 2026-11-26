@@ -14,9 +14,12 @@ one into the repository, a pull request or an issue.**
 **The second, `0.1.0-next.1`, was published on the same day without a token,** through the trusted publishing of npm
 ([run 7](https://github.com/taouani/sf-orglens/actions/runs/44194660408)). It changes nothing in what OrgLens does and
 was the first try of trusted publishing (decision record
-[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)).
-[What the first publish showed](#what-the-first-publish-showed) and
-[what the second publish showed](#what-the-second-publish-showed) are at the end of this page. The steps follow the
+[0054](../adr/0054-a-pre-release-without-a-change-is-published.md)). **The third, `0.1.0-next.2`, with what Phase 2
+built, was published the same way on 26 November 2026**
+([run 9](https://github.com/taouani/sf-orglens/actions/runs/45723426510)).
+[What the first publish showed](#what-the-first-publish-showed),
+[what the second publish showed](#what-the-second-publish-showed) and
+[what the third publish showed](#what-the-third-publish-showed) are at the end of this page. The steps follow the
 pages of npm as I read them on 17 November 2026 and the workflow of your other project. Where a page of npm or GitHub
 reads differently today, the page is right.
 
@@ -24,8 +27,8 @@ reads differently today, the page is right.
 stay as they are: I prepare the version in a pull request and rehearse it, you give your word for that version, I start
 the run, and you approve its job "Publish on npm". Those are steps 1, 2 and 5 to 8 of
 [the first pre-release](#the-first-pre-release) below. That nothing has to be set up rests on the page of npm, which
-says that the first publish through a publisher validates it. Nobody has looked yet whether the two publishers left
-"Pending validation".
+says that the first publish through a publisher validates it, and the third publish needed nothing set up. Nobody has
+looked yet whether the two publishers left "Pending validation".
 
 ## Once, before the first pre-release
 
@@ -291,6 +294,29 @@ date and the times are in UTC.
   to look at. The page of npm recommends, once trusted publishing works, to require the second factor and to
   forbid tokens in the settings of each package ("Require two-factor authentication and disallow tokens").
   That is yours to set, and the workflow needs no token any more.
+
+## What the third publish showed
+
+[Run 9 of the workflow](https://github.com/taouani/sf-orglens/actions/runs/45723426510) published `0.1.0-next.2` on 26
+November 2026, from `main` at `221a4df`: the commit of the version, `497531d`, which
+[run 8](https://github.com/taouani/sf-orglens/actions/runs/45719125885) had rehearsed, with an update of two development
+tools that are not in the packages. You gave your word on 25 November 2026 at 23:42 and approved the job "Publish on
+npm" at 03:44, so the run waited about four hours, which did no harm. I read its log. I did not look at npm. The times
+are in UTC.
+
+- **npm took both packages without a token, as at the second publish,** `@sf-orglens/engine` at 03:44:56 and
+  `sf-orglens` at 03:45:01, each with its provenance, and the tag `latest` moved from `0.1.0-next.1` to `0.1.0-next.2`
+  for both. Nothing was set up on npm before the run, as the page of npm says is not needed.
+- **An install found the version on the sixth try.** In the two logs I read, of Linux and of Windows, the fifth try
+  failed with `404` and the sixth passed: on Linux 5 minutes 20 seconds and 7 minutes 25 seconds after the publish of
+  the command line, on Windows, where a try takes longer, 8 and 11 minutes after it. The other four jobs ended within
+  the same minutes. At the first two publishes the fifth try passed.
+  The jobs have eight tries, so two were left.
+- **The pre-release on GitHub was created at 03:56,** eleven minutes after the packages were on npm, once the six
+  installs had passed. It has the two packages and the file of their checksums.
+- **npm still printed its warning about tokens that bypass the second factor,** which says nothing about this job.
+- **Not seen in this run either:** a publish that npm refuses, a tag that cannot be moved, and a version that npm says
+  exists and does not show.
 
 ## Not known
 

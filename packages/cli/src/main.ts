@@ -70,9 +70,10 @@ export function buildProgram(io: Io, finish: (exitCode: ExitCode) => void, json 
     .option('--workspace <folder>', 'the workspace folder (default: found from the current folder upwards)')
     .addHelpText(
       'after',
-      '\nPre-release: an impact answer covers objects, fields, validation rules and\n' +
-        'flows. Apex and the other types are not analysed yet. An answer names the\n' +
-        'types it does not cover.',
+      '\nPre-release: an impact answer covers objects, fields, validation rules, flows,\n' +
+        'workflow rules, record types, custom metadata, email templates, report types and\n' +
+        'quick actions. Apex and the other types are not analysed yet. An answer names\n' +
+        'the types it does not cover.',
     )
     .helpCommand(false)
     .configureHelp({ showGlobalOptions: true })
