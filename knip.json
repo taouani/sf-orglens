@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["fixtures/billing-sfdx/**"],
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs", "layers.cjs", "tools/*.js"],

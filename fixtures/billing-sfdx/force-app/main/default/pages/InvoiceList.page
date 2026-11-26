@@ -1,0 +1,9 @@
+<apex:page controller="InvoicePageController" extensions="InvoicePageExtension">
+    <apex:pageBlock title="Invoices that are not paid">
+        <apex:pageBlockTable value="{!invoices}" var="invoice">
+            <apex:column value="{!invoice.Name}"/>
+            <apex:column value="{!invoice.Amount__c}"/>
+        </apex:pageBlockTable>
+        <apex:outputText value="{!summary}"/>
+    </apex:pageBlock>
+</apex:page>

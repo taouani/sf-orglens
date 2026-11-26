@@ -43,9 +43,18 @@ async function fixtureWorkspace(change: (dir: string) => void = () => undefined,
 /**
  * The types of the fixture project that no analyser reads yet and that can name a field, as an answer about a
  * field prints them. A label, the file of labels, a custom permission, a folder and a global value set cannot
- * (decision record 0073).
+ * (decision record 0073). The table of the engine has no line for a named or an external credential yet.
  */
-const NOT_ANALYSED = ['TYPE         LISTED  RETRIEVED', 'ApexClass    13      13', 'ApexTrigger  1       1'];
+const NOT_ANALYSED = [
+  'TYPE                      LISTED  RETRIEVED',
+  'ApexClass                 28      28',
+  'ApexPage                  2       2',
+  'ApexTrigger               2       2',
+  'AuraDefinitionBundle      1       1',
+  'ExternalCredential        1       1',
+  'LightningComponentBundle  2       2',
+  'NamedCredential           1       1',
+];
 
 describe('orglens impact', () => {
   it.each([
@@ -173,7 +182,7 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
       '',
       '10 components refer to it, 6 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
@@ -245,7 +254,7 @@ describe('orglens impact', () => {
       '',
       'Not analysed yet. What the components of these types in the answer refer to is not known:',
       'TYPE       LISTED  RETRIEVED',
-      'ApexClass  13      13',
+      'ApexClass  28      28',
       '',
     ]);
   });
@@ -307,10 +316,10 @@ describe('orglens impact', () => {
     // it. Nor does what refers to the object Invoice_Line__c, which has no field of that name: the path of a
     // formula ends at a field, never at an object (decision record 0074).
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
     );
     expect((await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n')).toContain(
-      'The answer is not complete: 2 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
     );
   });
 
@@ -325,10 +334,10 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 2 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
-    // The 33 of the project without the field that could not be read, and without the one that reads it.
-    expect(lines).toContain('31 components refer to it, 28 of them directly.');
+    // The 34 of the project without the field that could not be read, and without the one that reads it.
+    expect(lines).toContain('32 components refer to it, 28 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
@@ -350,7 +359,7 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 2 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
     );
     expect(lines.slice(-3)).toEqual([
       '',

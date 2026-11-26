@@ -281,12 +281,14 @@ Run `pnpm run check` before every push.
 - Expected outputs larger than a few lines are golden files in `test/golden/`, compared byte for byte with
   `toMatchFileSnapshot`. Review a changed golden file like code. Never regenerate one just to make a test pass.
 - All text is LF on every platform. Fixtures record line and column positions.
-- `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v2.yaml` belong together
+- `fixtures/billing-sfdx` and its answer key `fixtures/expected/answer-key.v3.yaml` belong together
   (`fixtures/README.md`). The key is written by hand and is never changed to make an analyser pass. Change a fixture
   file and its entries in the key in the same pull request. `fixture-key.test.ts` says which entries moved.
-  `answer-key.v0.yaml` is the key of Phase 0, which the Apex trial is scored with, and `answer-key.v1.yaml` the
-  key of Phase 1. The Apex part is the same in all three, and version 2 says about a file of fields or rules
-  what version 1 says. The test fails when they differ: change such an entry in every file that has it.
+  `answer-key.v0.yaml` is the key of Phase 0, which the Apex trial is scored with, `answer-key.v1.yaml` the key of
+  Phase 1 and `answer-key.v2.yaml` the key of Phase 2. Every entry of an older version is in the newer ones as it is
+  there: the Apex part of versions 0 to 2 is the same, every later version says about a file of fields or rules what
+  version 1 says, and version 3 says about the files of Phase 2 what version 2 says. The test fails when they differ:
+  change such an entry in every file that has it.
 - A test of how a retrieve is split, repeated or continued uses the part of the project that `org-snapshot.test.ts`
   names, so that its numbers do not move when the project grows. A new file in a folder of that part is added to
   the list of what is left out of it.

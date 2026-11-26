@@ -6,7 +6,8 @@ org, and nothing is copied from another project.
 | Path                          | What it is                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
 | `billing-sfdx/`               | A small Salesforce project in source format: invoices, their lines, and Apex.       |
-| `expected/answer-key.v2.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v3.yaml` | The answer key: every reference an analyser must find in the project.               |
+| `expected/answer-key.v2.yaml` | The key of Phase 2, kept so that the check can say what version 3 changed.          |
 | `expected/answer-key.v1.yaml` | The key of Phase 1, kept so that the check can say what version 2 changed.          |
 | `expected/answer-key.v0.yaml` | The key of Phase 0, kept as the key the Apex trial was scored with.                 |
 | `formula-probes.yaml`         | One small formula for every operator, literal and function, to test a parser with.  |
@@ -20,12 +21,14 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 120 components: 5 custom objects, 57 custom fields on them, on `Account` and on `User`, 11 validation
-rules, 13 Apex classes and 1 trigger, 6 flows, the workflow rules of two objects (2 files with 4 rules and the 6 actions
-they start), 2 record types, a field set, an email template with its folder, a report type, a quick action, 4 records of
-a custom metadata type, and four components that are only there to be referred to: the file of custom labels with one
-label, a custom permission and a global value set. Three of the objects are targets too: a custom setting, a custom
-metadata type and `Tax_Code__c`. It is small on purpose. Each file is there for a case that an analyser can get wrong:
+`billing-sfdx` has 147 components: 6 custom objects, 58 custom fields on them, on `Account` and on `User`, 11 validation
+rules, 28 Apex classes and 2 triggers, 7 flows, the workflow rules of two objects (2 files with 4 rules and the 6 actions
+they start), 2 record types, a field set, an email template with its folder, a report type, a quick action, 5 records of
+a custom metadata type, 2 Lightning web components, an Aura component, 2 Visualforce pages, a named credential with the
+external credential it signs in with, and four components that are only there to be referred to: the file of custom
+labels with one label, a custom permission and a global value set. Four of the objects are targets too: a custom
+setting, a custom metadata type, `Tax_Code__c` and the platform event `Invoice_Paid__e`. It is small on purpose. Each
+file is there for a case that an analyser can get wrong:
 
 - formulas on formulas, across a lookup, through the owner, with a comment and with a field name inside text;
 - two roll-up summaries and a lookup filter;
@@ -170,11 +173,53 @@ describe that flow as the test org hands it out for its name since 23 November 2
 `Paid_Date__c`. Asked for the name with the number of the active version, the org hands out the version the key
 is about (`docs/research/phase-2/real-org.md`).
 
+Phase 3 added 27 components in its first work package, and changed no file that was there. One field that nothing
+referred to is referred to now (`Late_Fee__c`). The new files are these cases:
+
+- an abstract class with an abstract method and two virtual ones, of which one has the name of the abstract method
+  and a parameter of another type (`InvoicePricing.price` of an invoice and of a line), a subclass that implements
+  the abstract method, overrides the other one with a call of `super`, and calls the inherited overload and the
+  two overloads of the inherited `round`, one with a number literal (`StandardPricing`), and a test that calls the
+  subclass through the abstract class, with an argument whose type decides the overload (`InvoicePricingTest`);
+- an interface with two implementations (`InvoiceNotifier`, `EmailNotifier`, `TaskNotifier`), a call through it,
+  two constructors, and `Type.forName` with the name of a class in a literal and in a parameter
+  (`InvoiceNotifications`);
+- the child relationships of a standard object (`Contacts`) and of custom lookups (`Invoices__r`, `Lines__r`,
+  `Primary_Accounts__r`), in sub-queries and in loops, beside a path through the lookup the other way
+  (`AccountInvoices`);
+- queries built in steps with `+=`, from a list of clauses that is joined, from a list of fields that is a
+  parameter, from the text another method returns, from a field name that a record of the custom metadata type
+  holds, and from the fields of a field set that is named by a literal, `Database.countQueryWithBinds` with a map
+  of bind values, and a search with `Search.query` (`InvoiceQueries`);
+- DML on a list of `SObject`, `Database.insert` with options, `EventBus.publish` of the platform event
+  `Invoice_Paid__e` with its field, `getInstance` and `getOrgDefaults` of the custom setting, a describe by the
+  name of an object, and `switch on` a field (`InvoiceEvents`);
+- a class that a trigger declares (`InvoiceLineTrigger`), a queueable class that a schedulable class enqueues
+  (`InvoiceReminderJob`, `InvoiceReminderSchedule`), and an invocable action with a variable of the type `SObject`
+  (`RecordObjectAction`), which a new flow calls with a record of `Invoice__c` (`Invoice_Object_Name`);
+- a controller and an extension of two Visualforce pages: one page has the controller, the other the standard
+  controller of `Invoice__c`, and both have the extension (`InvoiceList`, `InvoiceDetail`);
+- a Lightning web component that imports two methods of a class, an object, a field, a field across a lookup, a
+  label and a custom permission, shows fields in a form, and holds another component of the project
+  (`invoiceSummary`, `invoiceBadge`);
+- an Aura component with an Apex controller, attributes of an object type, `force:recordData` with fields, a
+  label in its markup and in its JavaScript, and the methods of the controller called from its JavaScript
+  (`invoicePanel`);
+- the named credential `Billing_Gateway` on the reserved domain `example.com`, which the callout of
+  `InvoiceCalloutService` names, and the external credential it signs in with (`Billing_Gateway_Auth`);
+- a record of the custom metadata type whose text is the name of a field that a query of `InvoiceQueries` reads
+  (`Invoice_Late_Fee`).
+
+**The 27 components have not been sent to Salesforce yet.** The tool of the tests deploys the whole folder, so the
+next run of the workflow "Live org" sends them. Until then nothing proves that the Apex compiles or that Salesforce
+accepts the components, the named credential above all.
+
 ## The answer key
 
 The key was written by hand, by reading the files, before any analyser existed. Version 2 has one exception: the
 entries of the report type and the quick action were written in the pull request that added their analysers (work
-package 8 of Phase 2). It is the measure analysers are scored with, so it must not be produced by one. Change it by
+package 8 of Phase 2). Version 3 was written before any analyser of Apex, of a Lightning component, of an Aura
+component or of a page existed in the engine. The Apex trial of Phase 0 reads Apex, and was not run on it. It is the measure analysers are scored with, so it must not be produced by one. Change it by
 hand, in the same pull request as the file it describes, and never to make an analyser pass.
 
 It has six parts:
@@ -200,24 +245,24 @@ One reference looks like this:
         - { line: 27, match: update, kind: writes, to: CustomObject:invoice__c, via: dml, op: update }
 ```
 
-| Field              | Meaning                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `from`             | The component key of the member the reference starts from: a method, a property, a field, a rule.                                                         |
-| `line`, `match`    | Where it stands: the whole word `match` on that line. The column is worked out from the file.                                                             |
-| `nth`              | Which occurrence of the word on the line, when there are several. Default `1`.                                                                            |
-| `kind`             | `reads`, `writes`, `references`, `extends`, `triggers-on` or `calls`.                                                                                     |
-| `to`               | The component key of the target.                                                                                                                          |
-| `via`              | How the source names the target, see below.                                                                                                               |
-| `tier`             | `confirmed` (default), `probable` or `possible`.                                                                                                          |
-| `op`               | For a DML statement: `insert`, `update`, `upsert`, `delete`, `undelete`, `merge`. For a record element of a flow: `lookup`, `create`, `update`, `delete`. |
-| `stretch`          | `true` for a reference that is hard to find. Missing it costs no recall, finding it costs no precision.                                                   |
-| `note`             | Why the entry is there, for the reader.                                                                                                                   |
-| `phase` (per file) | The roadmap phase whose analyser must find it: `1` for fields and rules, `2` for flows, workflow rules and the other metadata of Phase 2, `3` for Apex.   |
+| Field           | Meaning                                                                                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `from`          | The component key of the member the reference starts from: a method, a property, a field, a rule, or the component of a file of markup.                                                                                                              |
+| `line`, `match` | Where it stands: the whole word `match` on that line. The column is worked out from the file.                                                                                                                                                        |
+| `nth`           | Which occurrence of the word on the line, when there are several. Default `1`.                                                                                                                                                                       |
+| `kind`          | `reads`, `writes`, `references`, `extends`, `implements`, `uses-type`, `triggers-on` or `calls`.                                                                                                                                                     |
+| `to`            | The component key of the target: a component, or a member of an Apex class (`ApexClass:invoiceservice#method:markpaid(id)`).                                                                                                                         |
+| `via`           | How the source names the target, see below.                                                                                                                                                                                                          |
+| `tier`          | `confirmed` (default), `probable` or `possible`.                                                                                                                                                                                                     |
+| `op`            | For a DML statement: `insert`, `update`, `upsert`, `delete`, `undelete`, `merge`, and `publish` for `EventBus.publish`. For a record element of a flow: `lookup`, `create`, `update`, `delete`.                                                      |
+| `stretch`       | `true` for a reference that is hard to find. Missing it costs no recall, finding it costs no precision.                                                                                                                                              |
+| `note`          | Why the entry is there, for the reader.                                                                                                                                                                                                              |
+| `phase`         | The roadmap phase whose analyser must find it: `1` for fields and rules, `2` for flows, workflow rules and the other metadata of Phase 2, `3` for Apex, markup and named credentials. It stands on the file, and on an entry whose phase is another. |
 
 Values of `via`: `formula`, `filter`, `summary`, `lookup`, `display-field`, `controlling-field` and `value-set` in
-the files of fields and rules; `field` (plain field access), `soql`, `sosl`, `dml`, `token` (a field or object token,
-or a describe call), `text` (a name that stands in text: a query built as a string, or `get` and `put` by name) and
-`declaration` in Apex. The files of Phase 2 have these more:
+the files of fields and rules; `field` (plain field access, also of a member of a class), `soql`, `sosl`, `dml`,
+`token` (a field or object token, the object in front of one, or a describe call), `text` (a name that stands in text:
+a query built as a string, or `get` and `put` by name) and `declaration` in Apex. The files of Phase 2 have these more:
 
 | `via`          | Where the name stands                                                                                                                                                                                |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -240,6 +285,22 @@ criteria line of a workflow rule, and `display-field` also the field a custom er
 is also a value of a record of a custom metadata type that is exactly the name of a field, and a value that a
 condition of a flow compares with the name of a record type.
 
+Version 3 has these more, for Apex, for markup and for the files around them:
+
+| `via`        | Where the name stands                                                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `call`       | The name of a method in a call, in Apex.                                                                                                                                |
+| `new`        | The type after `new`: a call of a constructor, or of the class where it declares none, and a use of an object as a type.                                                |
+| `type`       | A type anywhere else in Apex: of a variable, a parameter, a property or a method, in a cast, after `instanceof`, in `when` and as the argument of a generic type.       |
+| `credential` | The named credential of a callout (`'callout:Billing_Gateway/...'`), and the external credential a named credential signs in with.                                      |
+| `import`     | A module that a Lightning web component imports: `@salesforce/apex`, `@salesforce/schema`, `@salesforce/label` and `@salesforce/customPermission`.                      |
+| `tag`        | A component of the project that the markup of another one holds: `<c-invoice-badge>`, `<c:invoiceBadge>`.                                                               |
+| `attribute`  | The value of an attribute of markup: the controller of a page or of an Aura component, the object and the fields of a base component, the type of an attribute of Aura. |
+| `parameter`  | A parameter of an Apex action that a flow sets by its name: the invocable variable of the class.                                                                        |
+
+In markup, `merge-field` is also `{!$Label.c.Name}` of an Aura component, and `text` a name that its JavaScript
+holds in a literal: `'c.pay'` for a method of its controller and `'$Label.c.Name'` for a label.
+
 ### What is keyed
 
 Within these rules the key is complete: an analyser that reports a reference of these kinds that the key does not
@@ -256,7 +317,7 @@ have is wrong.
   validation rule shows its message at, and the key of a roll-up are `references`.
 - `get` and `put` with a field token are a read and a write of the field, `via: token` and `confirmed`: the compiler
   has checked the token.
-- `extends` to a class of the project, and the object of a trigger.
+- `extends` to a class of the project, `implements` to an interface of the project, and the object of a trigger.
 - A field behind a global variable of a formula is a `reads` of that field: `$Setup.Billing_Settings__c.Grace_Days__c`
   reads the field of the custom setting, `$User.Department` the field of the user, `$Profile.Name` the name of the
   profile. The same holds for `$UserRole` and `$Organization`, and for a field that `VLOOKUP` names
@@ -280,12 +341,11 @@ what a reference is: `'... FROM Invoice__c ORDER BY ' + fieldName` holds a `prob
 ### What is not keyed
 
 - The field `Id`. It cannot be changed or deleted.
-- The use of an object as a type: declarations, casts, `new`, `instanceof`, and `when` in a `switch`.
-- An object that only qualifies a field (`Invoice__c.Amount__c` is a reference to the field).
-- In Apex, every reference to an Apex class or to a member of one, except `extends`: calls between methods, the
-  use of a constant of another class, `new` of a class. System classes and interfaces. A flow that calls a class
-  is keyed.
-- Picklist values and named credentials.
+- An object that only qualifies a field outside Apex (`Invoice__c.Amount__c` in a report type is a reference to the
+  field), and in a field access of Apex, where a variable stands in front of the field.
+- In Apex: system classes and interfaces and their methods (`Database`, `Queueable`, `Http.send`), local variables
+  and parameters, and a value in a `when` of a `switch` on a field, which is a picklist value.
+- Picklist values.
 - The object behind a global variable or in `$ObjectType`, and the custom metadata type in `$CustomMetadata`: the
   reference goes to the field, as it does for `Invoice__c.Amount__c` in Apex.
 - The hierarchy field of the user names no object in its file, so it has no entry of its own. A formula that goes
@@ -302,11 +362,13 @@ what a reference is: `'... FROM Invoice__c ORDER BY ' + fieldName` holds a `prob
   should be keyed is a question for the maintainer.
 
 Version 0 of the key did not key global variables. Version 1 does, also in the rule of Phase 0 that names
-`$Profile.Name`. Version 2 adds what Phase 2 reads. Everything of an older version is in the next one unchanged,
-and the Apex part is the same entry for entry in all three: the check compares the files.
+`$Profile.Name`. Version 2 adds what Phase 2 reads. Version 3 adds what Phase 3 reads: in the Apex that was there,
+the kinds that versions 0 to 2 did not key, and everything of the new files. Everything of an older version is in
+the next one unchanged, and the Apex part of versions 0 to 2 is the same entry for entry, and in version 3 too: the
+check compares the files. Where version 3 says more about a line of version 2, it does so with entries of its own,
+and its header lists the one such entry that stands in a file of flows.
 
-Later versions of the fixture add components and permissions with the phases that read them, and references
-between Apex classes with the Apex phase.
+Later versions of the fixture add components and permissions with the phases that read them.
 
 ### What is keyed in the files of Phase 2
 
@@ -351,6 +413,47 @@ check_amount`. The start block with its scheduled paths is `#element:flow-start`
 - A value that a condition compares with `RecordType.DeveloperName` is a `probable` reference to the record type
   of that name.
 
+### What is keyed in the files of Phase 3
+
+- A call of a method of the project is `calls`, to the method with its signature: the overload that the types of
+  the arguments decide, an inherited method, `super`, and a method of an inner class or of a class a trigger
+  declares. A call through an interface is a `calls` of the method of the interface, and of each implementation in
+  the project as `probable`. `new` of a class of the project calls its constructor, or the class where it declares
+  none.
+- A use of an object or a class of the project as a type is `uses-type`: of a variable, a parameter, a property or a
+  method, in a cast, after `instanceof`, after `when` in a `switch` on a type, after `new`, and as the argument of a
+  generic type such as `List<Invoice__c>`. `Type.forName` with the name of a class in a literal is a `probable` use
+  of the class, `via: text`.
+- A read or a write of a variable or a property of a class of the project is `reads` or `writes`, `via: field`:
+  of the own class, with or without `this`, of an inner class, and a constant of another class. A bind variable of
+  a query that is such a member is `via: soql`.
+- The object in front of a field token, of a describe and of a method of a custom setting or of a custom metadata
+  type (`Billing_Settings__c.getInstance()`) is a `references`, `via: token`.
+- A text that begins with `callout:` in a method that sends a request is a `probable` `references` to the named
+  credential, `via: credential`. The named credential refers to the external credential it signs in with,
+  `confirmed`.
+- A record of a custom metadata type and a field set that a method names by a literal are `probable` `references`,
+  `via: text`. A query whose fields come from such a record or from such a field set reads the fields that the
+  record names or the field set lists, `probable`, at the place the name comes in: the field of the record that
+  holds it, or the name of the field set. The text of a query that another method gives back is read at the call
+  of that method.
+- `EventBus.publish` is a `writes` of the platform event, with `op: publish`.
+- A Lightning web component refers to what it imports, `via: import`: a method of a class is `calls`, an object, a
+  field, a label and a custom permission are `references`. A path across a lookup refers to the lookup field and to
+  the field at its end. The JavaScript is not followed beyond the imports.
+- In markup, the object and the fields of a base component are `probable` `references`, `via: attribute`, and so are
+  the fields of `force:recordData`, whose object is the type of the attribute that it fills. The controller of an
+  Aura component, the controller, the extensions and the standard controller of a page, and the type of an
+  attribute of an Aura component are `confirmed`. A component of the project in a tag is a `references`,
+  `via: tag`.
+- The JavaScript of an Aura component calls a method of its Apex controller by `'c.name'`, a `probable` `calls`,
+  `via: text`. A label in its markup is `via: merge-field`, and in its JavaScript `via: text`, `probable`.
+- An Apex action of a flow is a `calls` of the invocable method beside the class, which version 2 names, and a
+  parameter that the flow sets is a `writes` of the invocable variable of the class, `via: parameter`. Both are of
+  Phase 3.
+- An expression of markup (`{!v.invoice.Name}`, `{row.Status__c}`) and a merge field of a page are not read in this
+  phase (decision record 0079). Each such place of the project has a negative.
+
 ### What is marked as stretch
 
 An entry is `stretch` when finding it needs one of three things, and for no other reason:
@@ -369,9 +472,10 @@ hierarchy field points at a user, and `Owner:User` takes the owner as a user.
 Fewer than 3 in 100 entries may be stretch. The check counts them.
 
 A name held in a constant of another class is not stretch: following a constant is a requirement. Nine of the 181
-Apex entries that are not stretch need it. That is just under 5 percent, so an analyser that cannot follow a constant
-is at the edge of the pass mark for recall on this count alone. How the entries are weighed is fixed with the
-scoring harness of the Apex trial.
+Apex entries of version 2 that are not stretch need it, just under 5 percent, so an analyser that could not follow a
+constant was at the edge of the pass mark of the trial for recall on this count alone. In version 3 the same nine
+are 9 of 546, since no entry it adds needs a constant: the read of the constant itself is an entry of its own. How
+the entries are weighed is fixed with the scoring harness of the Apex trial.
 
 ## The check
 
@@ -382,8 +486,9 @@ analyser. It checks that:
   of the project is left without a component;
 - every place exists: the line has the word, as a whole word, as often as `nth` says;
 - every reference and every unknown starts from the member its line belongs to. The members are read from the
-  declarations of the file, with their signatures;
-- every reference points at a component of the project or at a listed standard target;
+  declarations of the file, with their signatures, also of a class that a trigger declares;
+- every reference points at a component of the project, at a member that its Apex declares, or at a listed standard
+  target;
 - no place is in a comment, and each place is in the kind of text its entry says: in a query, in a literal, in code;
 - every place of a field or a rule stands directly in the element its entry says (a formula, a line of a filter, a
   roll-up, the target of a lookup), not just somewhere inside it, and a place in a formula stands in no comment and
@@ -391,9 +496,21 @@ analyser. It checks that:
 - the kind of such an entry follows from its place: `reads` for a field in a formula, in a line of a filter and as
   the field a roll-up sums, `references` for everything else;
 - the word of an entry stands for its target: it is its name, a DML keyword, a child relationship of the project, or
-  a constant of the project whose value holds the name. Only a name that comes from a variable is `possible`;
-- the kind fits: a plain field access is a write exactly when an assignment follows it, `extends` points at a class,
-  and the name of an object in front of a variable is not taken for a reference;
+  a constant of the project whose value holds the name. Of a member it is the name of the method without its
+  parameters, or the name of the class for a constructor, and of a tag the name of the component in kebab case. In
+  Apex it can also be a call of a method that gives back the text of a query, the name of a record that holds the
+  name, or the name of a field set that lists the field. Only a name that comes from a variable is `possible`;
+- the kind fits: a plain field access is a write exactly when an assignment follows it, `extends` points at a class
+  and `implements` at an interface, both at their declaration, a call stands before a bracket and points at a
+  method, `new` points at a constructor or at a class that declares none, a use as a type stands neither before a
+  bracket nor after `new`, and the name of an object in front of a variable is not taken for a reference;
+- every name of an object or a class of the project that Apex code holds has a reference, a negative or an unknown
+  at its place, apart from its declaration, a name after a dot and a class in front of one, so that no use as a
+  type is left out;
+- every place in markup and in its JavaScript stands where its `via` says: an import names the module of its kind
+  and, for a method, the class of its target; an attribute is a value of the attribute or one in its list; a tag
+  begins with `c-` or `c:`; a label in markup stands in `{!$Label.c.` and a name in JavaScript in a literal that
+  begins with `c.` or `$Label.c.`. A method named by `'c.'` is of the controller of the component;
 - the list of unreferenced fields is the list of fields no entry points at;
 - no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
   the tiers and operations follow the rules above;
@@ -404,10 +521,12 @@ analyser. It checks that:
 - a value of a record of a custom metadata type is `value` in a field that is a relationship and `text` in every
   other field, the object of a process is the value at the top of its file, and a text that names a record type
   is compared with `RecordType.DeveloperName`;
-- the numbers this page quotes are the numbers of the key: 510 references (112 in fields and rules, 214 in the
-  files of Phase 2, 184 in Apex), 9 of them stretch, 64 negatives and 6 unknowns;
-- versions 0 and 1 of the key still name places that exist, have nothing that version 2 has not, and have the same
-  Apex part. Version 2 says nothing else about a file of fields or rules than version 1 does;
+- the numbers this page quotes are the numbers of the key: 886 references (112 of Phase 1, 222 of Phase 2 and 552
+  of Phase 3), 12 of them stretch, 96 negatives and 9 unknowns, in 147 components;
+- versions 0, 1 and 2 of the key still name places that exist and have nothing that version 3 has not. The Apex
+  part of versions 0 and 1 is that of version 2. Versions 2 and 3 say nothing else about a file of fields or rules
+  than version 1 does, and version 3 says the same as version 2 about the entries of Phase 2 in the files that
+  version 2 has;
 - the three flows of `flow-negative/` are what their `expected.yaml` says, as far as text can tell: the places
   exist, the XML reader of the engine reads two of them and refuses the third, every reference starts from the
   element its line stands in and follows the rules above for its element, its kind and its operation, and the
@@ -437,6 +556,26 @@ refuses each of the thirteen. What it still cannot tell for these files:
 
 The code review read every entry of Phase 2 against its file and found none wrong and none missing. Besides that
 reading, nobody but me has read them.
+
+For version 3 I planted 16 defects in the entries of Phase 3, one at a time: a use as a type left out, a call of an
+override through its superclass made `confirmed`, an import keyed to a label in the place of a method, `new` keyed
+as a type, a call of a constructor the class does not declare, a call keyed to a method of another class, a field of
+`force:recordData` made `confirmed`, the controller of the Aura component keyed to another class, the parameter of
+the flow keyed as a read, the call of the invocable method put in Phase 2, the named credential of the callout made
+`confirmed`, a field that the field set only makes available keyed as read, a field that the text of another method
+does not hold, a bind variable keyed as a write, a tag keyed to another component, and a call by `'c.'` keyed to a
+method of another class. The check refuses each of the 16. Writing it found one error in the key, which was
+corrected: on line 20 of `InvoicePricingTest` the call of `price` was keyed at the variable of the same name before
+it. What the check still cannot tell for these files:
+
+- which overload a call chooses: it checks the name of the method, not its parameters. Nor which of two members of
+  the same name a word is;
+- whether an entry is missing, apart from the uses as a type, and whether a member is read or written, apart from a
+  plain assignment;
+- whether a call through an interface lists every implementation, and whether a field of markup is of the object
+  the key says.
+
+Nobody but me has read the entries of Phase 3 yet. The code review of the pull request is the second reading.
 
 ### What the project does not cover
 

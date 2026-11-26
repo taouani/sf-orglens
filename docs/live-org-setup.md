@@ -150,9 +150,12 @@ after it has logged in"). The weekly run always logs in only.
 The deploy is the one thing in this repository that changes an org. It is a tool of the tests
 (`packages/engine/test/live/deploy-fixture.ts`), not a part of OrgLens: OrgLens itself only reads. The deploy adds
 the components of `fixtures/billing-sfdx`: custom objects with their fields and validation rules, a custom setting,
-a custom metadata type with four records, fields on the standard objects Account and User, a global value set, a
-custom label, a custom permission, thirteen Apex classes and one trigger, and since Phase 2 six flows, the workflow
-rules of two objects, two record types, a field set and an email template with its folder. It removes nothing. To
+a custom metadata type with its records, fields on the standard objects Account and User, a global value set, a
+custom label, a custom permission and Apex classes and a trigger; since Phase 2 flows, the workflow rules of two
+objects, two record types, a field set, an email template with its folder, a report type and a quick action; and
+since Phase 3 more Apex classes and a second trigger, a platform event, two Lightning web components, an Aura
+component, two Visualforce pages, and a named credential on the reserved domain `example.com` with the external
+credential it signs in with, which holds no secret. `fixtures/README.md` lists them all. It removes nothing. To
 take the fixture project out of the org again, delete those components in Setup, or start over with a new org.
 
 The tool sends two things that are not the files of the repository as they are:
@@ -183,7 +186,7 @@ What follows is not verified:
 - **No tool takes the draft out again.** A version of a flow is deleted by hand, in Setup under **Flows**. I
   expect that a run of "deploy" after it makes the version of the project the latest one again, as a new version
   or in the place of the draft, and did not see it.
-- **A flow can have 50 versions.** Whether a run of "deploy" adds a version to each of the six flows when nothing
+- **A flow can have 50 versions.** Whether a run of "deploy" adds a version to each of the flows when nothing
   in them changed is not verified. The probe prints the number of versions of each flow.
 
 The probe reads through the Tooling API (`packages/engine/test/live/probe-org.ts`). The objects it asks for describe

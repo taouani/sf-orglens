@@ -1,0 +1,4 @@
+<apex:page standardController="Invoice__c" extensions="InvoicePageExtension">
+    <apex:outputField value="{!Invoice__c.Name}"/>
+    <apex:outputText value="{!summary}"/>
+</apex:page>

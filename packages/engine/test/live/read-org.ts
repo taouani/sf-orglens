@@ -947,7 +947,7 @@ export function phaseLines(
       if (file.phase !== phase) continue;
       for (const ref of member.refs) {
         const to = ref.to.split('#')[0] ?? '';
-        if (from === to) continue;
+        if (from === to || (ref.phase ?? file.phase) !== phase) continue;
         const id = `${from} -> ${to}`;
         const pair = pairs.get(id) ?? { from, to, via: new Set<string>() };
         pair.via.add(ref.via);

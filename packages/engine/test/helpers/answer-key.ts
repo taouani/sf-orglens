@@ -1,9 +1,9 @@
 /**
- * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v2.yaml`).
+ * Reads the answer key of the fixture project (`fixtures/expected/answer-key.v3.yaml`).
  *
  * The older versions are kept. Version 0 (`answer-key.v0.yaml`) is the key the Apex trial of Phase 0 was scored
- * with, and version 1 the key Phase 1 was scored with. They can still be read here, and `fixture-key.test.ts`
- * holds everything in them equal to what version 2 has.
+ * with, version 1 the key Phase 1 was scored with and version 2 the key of Phase 2. They can still be read here, and
+ * `fixture-key.test.ts` holds that every entry of an older version is in version 3 as it is there.
  *
  * The key is written by hand, so it is read strictly: an unknown field, a wrong value or a place that the text of the
  * project does not contain is a problem, and all problems are reported together. A place is written as a line and a
@@ -24,14 +24,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = join(here, '../../../../fixtures');
 
 /** The versions of the key that exist. The newest one describes the whole project. */
-type KeyVersion = 0 | 1 | 2;
+export type KeyVersion = 0 | 1 | 2 | 3;
 const keyFile = (version: KeyVersion): string => join(FIXTURES_DIR, `expected/answer-key.v${String(version)}.yaml`);
 
 /**
- * The kinds of reference the key uses. A call is keyed where a flow starts another flow or an Apex class. Calls
- * between Apex methods and uses of a type are not keyed.
+ * The kinds of reference the key uses. Versions 0 to 2 key a call only where a flow starts another flow or an Apex
+ * class. Version 3 keys calls between Apex methods, interfaces and uses of a type as well.
  */
-const KEY_KINDS = ['reads', 'writes', 'references', 'extends', 'triggers-on', 'calls'] as const;
+const KEY_KINDS = [
+  'reads',
+  'writes',
+  'references',
+  'extends',
+  'implements',
+  'uses-type',
+  'triggers-on',
+  'calls',
+] as const;
 type KeyKind = (typeof KEY_KINDS)[number];
 
 /** How the source names the target. */
@@ -64,11 +73,23 @@ const KEY_VIAS = [
   'token',
   'text',
   'declaration',
+  // Version 3.
+  'call',
+  'new',
+  'type',
+  'credential',
+  'import',
+  'tag',
+  'attribute',
+  'parameter',
 ] as const;
 type KeyVia = (typeof KEY_VIAS)[number];
 
-/** What a DML statement does to an object, and what a record element of a flow does: `lookup`, `create`. */
-const DML_OPS = ['insert', 'update', 'upsert', 'delete', 'undelete', 'merge', 'lookup', 'create'] as const;
+/**
+ * What a DML statement does to an object, `publish` for `EventBus.publish` of a platform event, and what a record
+ * element of a flow does: `lookup`, `create`.
+ */
+const DML_OPS = ['insert', 'update', 'upsert', 'delete', 'undelete', 'merge', 'publish', 'lookup', 'create'] as const;
 type DmlOp = (typeof DML_OPS)[number];
 
 /** A place in a file of the project: the word, and where it starts. Lines and columns start at 1. */
@@ -95,7 +116,7 @@ interface KeyReference extends KeyPlace {
   readonly tier: ConfidenceTier;
   readonly via: KeyVia;
   readonly op: DmlOp | undefined;
-  /** The roadmap phase whose analyser must find the reference. */
+  /** The roadmap phase whose analyser must find the reference: that of its file, or a later one the entry names. */
   readonly phase: number;
   /** A stretch reference counts neither against recall when it is missed nor against precision when it is found. */
   readonly stretch: boolean;
@@ -152,7 +173,7 @@ export function columnOf(line: string, match: string, nth: number): number | und
  * Without a version it reads the newest key. An older version lists only the components the project had in its
  * phase.
  */
-export function loadAnswerKey(wanted: KeyVersion = 2): AnswerKey {
+export function loadAnswerKey(wanted: KeyVersion = 3): AnswerKey {
   const problems: string[] = [];
   const root: unknown = parse(readFileSync(keyFile(wanted), 'utf8'));
   if (!isDict(root)) throw new Error('The answer key is not a mapping.');
@@ -277,7 +298,19 @@ export function loadAnswerKey(wanted: KeyVersion = 2): AnswerKey {
       list(`references(${file}) ${from}`, member['refs']).forEach((refValue, refIndex) => {
         const where = `${file} ${from} [${String(refIndex)}]`;
         const entry = dict(where, refValue);
-        onlyFields(where, entry, ['line', 'match', 'nth', 'kind', 'to', 'via', 'tier', 'op', 'stretch', 'note']);
+        onlyFields(where, entry, [
+          'line',
+          'match',
+          'nth',
+          'kind',
+          'to',
+          'via',
+          'tier',
+          'op',
+          'stretch',
+          'phase',
+          'note',
+        ]);
         const at = place(where, file, entry);
         const to = key(`${where}.to`, entry['to']);
         const kind = isOneOf(KEY_KINDS, entry['kind']) ? entry['kind'] : undefined;
@@ -292,6 +325,9 @@ export function loadAnswerKey(wanted: KeyVersion = 2): AnswerKey {
         const stretch = entry['stretch'] ?? false;
         if (typeof stretch !== 'boolean') problems.push(`${where}: stretch must be true or false.`);
         const note = entry['note'] === undefined ? undefined : text(`${where}.note`, entry['note']);
+        // An entry can belong to a later phase than its file, as the method an Apex action of a flow calls.
+        const ownPhase = entry['phase'] === undefined ? phase : count(`${where}.phase`, entry['phase']);
+        if (ownPhase < phase) problems.push(`${where}: an entry cannot belong to an earlier phase than its file.`);
         if (kind === undefined || via === undefined || !isConfidenceTier(tier) || typeof stretch !== 'boolean') return;
         const id = `${file}:${String(at.line)}:${String(at.column)}:${kind}:${to}`;
         if (ids.has(id)) problems.push(`${where}: the reference ${id} stands in the key twice.`);
@@ -305,7 +341,7 @@ export function loadAnswerKey(wanted: KeyVersion = 2): AnswerKey {
           tier,
           via,
           op: isOneOf(DML_OPS, op) ? op : undefined,
-          phase,
+          phase: ownPhase,
           stretch,
           note,
         });

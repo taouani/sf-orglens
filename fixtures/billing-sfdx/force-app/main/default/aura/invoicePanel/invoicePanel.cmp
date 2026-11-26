@@ -1,0 +1,12 @@
+<aura:component controller="InvoiceController" implements="flexipage:availableForRecordHome,force:hasRecordId">
+    <aura:attribute name="invoice" type="Invoice__c"/>
+    <aura:attribute name="invoices" type="Invoice__c[]"/>
+    <aura:attribute name="recordError" type="String"/>
+    <aura:handler name="init" value="{!this}" action="{!c.init}"/>
+    <force:recordData recordId="{!v.recordId}" fields="Name,Amount__c,Account__c" targetFields="{!v.invoice}" targetError="{!v.recordError}"/>
+    <lightning:card title="{!$Label.c.Overdue_Notice}">
+        <p>{!v.invoice.Name}</p>
+        <c:invoiceBadge status="{!v.invoice.Status__c}"/>
+        <lightning:button label="Pay" onclick="{!c.pay}"/>
+    </lightning:card>
+</aura:component>

@@ -85,6 +85,26 @@
       "package": null
     },
     {
+      "key": "CustomMetadata:billing_rule.invoice_late_fee",
+      "type": "CustomMetadata",
+      "name": "Billing_Rule.Invoice_Late_Fee",
+      "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Late_Fee.md-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "CustomMetadata:billing_rule.invoice_late_fee",
+        "to": "CustomObject:invoice__c",
+        "kind": "references",
+        "origin": "parser:xml",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/customMetadata/Billing_Rule.Invoice_Late_Fee.md-meta.xml",
+        "line": 11,
+        "column": 38
+      },
+      "package": null
+    },
+    {
       "key": "EmailTemplate:billing/invoice_overdue",
       "type": "EmailTemplate",
       "name": "Billing/Invoice_Overdue",
@@ -321,6 +341,66 @@
         "file": "force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml",
         "line": 13,
         "column": 43
+      },
+      "package": null
+    },
+    {
+      "key": "Flow:invoice_object_name",
+      "type": "Flow",
+      "name": "Invoice_Object_Name",
+      "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_object_name#element:flow-start",
+        "to": "CustomObject:invoice__c",
+        "kind": "triggers-on",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+        "line": 54,
+        "column": 17
+      },
+      "package": null
+    },
+    {
+      "key": "Flow:invoice_object_name#element:flow-start",
+      "type": "Flow",
+      "name": "Invoice_Object_Name.flow-start",
+      "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_object_name#element:flow-start",
+        "to": "CustomObject:invoice__c",
+        "kind": "triggers-on",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+        "line": 54,
+        "column": 17
+      },
+      "package": null
+    },
+    {
+      "key": "Flow:invoice_object_name#element:name_the_object",
+      "type": "Flow",
+      "name": "Invoice_Object_Name.Name_The_Object",
+      "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "Flow:invoice_object_name#element:name_the_object",
+        "to": "CustomObject:invoice__c",
+        "kind": "references",
+        "origin": "parser:flow",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/flows/Invoice_Object_Name.flow-meta.xml",
+        "line": 12,
+        "column": 24
       },
       "package": null
     },
@@ -1113,12 +1193,42 @@
     "notAnalysed": [
       {
         "type": "ApexClass",
-        "listed": 13,
-        "retrieved": 13,
+        "listed": 28,
+        "retrieved": 28,
+        "listing": "ok"
+      },
+      {
+        "type": "ApexPage",
+        "listed": 2,
+        "retrieved": 2,
         "listing": "ok"
       },
       {
         "type": "ApexTrigger",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "AuraDefinitionBundle",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "ExternalCredential",
+        "listed": 1,
+        "retrieved": 1,
+        "listing": "ok"
+      },
+      {
+        "type": "LightningComponentBundle",
+        "listed": 2,
+        "retrieved": 2,
+        "listing": "ok"
+      },
+      {
+        "type": "NamedCredential",
         "listed": 1,
         "retrieved": 1,
         "listing": "ok"

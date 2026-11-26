@@ -3,10 +3,12 @@
  *
  * The rows are made from the answer key of the project, which is written by hand: every reference the key has
  * for a formula or for the filter of a roll-up summary, and every reference it has for Apex, where the target
- * is something the project defines. To these come three rows to an object that the probe of the test org saw
- * (`docs/research/phase-1/real-org.md`, section 4, and `docs/research/phase-2/real-org.md`, section 3) and that the
- * key has no entry for. The rows are written the
- * way Salesforce writes them (`mock-dependencies.ts`).
+ * is something the project defines. A row names a class and a flow, not a member or an element of one, at either
+ * end. What the API reports from a Lightning component, an Aura component, a Visualforce page and a named credential
+ * was not measured, and the mock reports nothing from them. To these come three rows to an object that the probe of
+ * the test org saw (`docs/research/phase-1/real-org.md`, section 4, and `docs/research/phase-2/real-org.md`,
+ * section 3) and that the key has no entry for. The rows are written the way Salesforce writes them
+ * (`mock-dependencies.ts`).
  *
  * Of the files of Phase 2, the mock reports what the test org reports (`docs/research/phase-2/real-org.md`,
  * section 3): of a flow, every custom field and custom object and what an action starts, but not a flow it starts,
@@ -71,10 +73,10 @@ export function keyedPairs(): KeyedPair[] {
   const pairs = new Map<string, KeyedPair>();
   for (const reference of key.references) {
     if (reference.phase === 2 && !reportedOfPhase2(reference)) continue;
-    // Salesforce counts a class, not a method of it, and a flow, not an element of it.
-    const whole = reference.from.includes('#') ? reference.from.slice(0, reference.from.indexOf('#')) : reference.from;
-    const from = endOf(whole);
-    const to = endOf(reference.to);
+    // Salesforce counts a class, not a method of it, and a flow, not an element of it, at either end of a row.
+    const whole = (key: string): string => (key.includes('#') ? key.slice(0, key.indexOf('#')) : key);
+    const from = endOf(whole(reference.from));
+    const to = endOf(whole(reference.to));
     if (from === undefined || to === undefined) continue;
     const apex = from[0] === 'ApexClass' || from[0] === 'ApexTrigger';
     const reported =

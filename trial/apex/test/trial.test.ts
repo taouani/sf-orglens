@@ -19,6 +19,24 @@ import { PROBES, probeSource } from '../src/syntax-probes.ts';
 const PROJECT = join(FIXTURES_DIR, 'billing-sfdx');
 const NEGATIVE = join(FIXTURES_DIR, 'parser-negative');
 
+/**
+ * The 14 Apex files the project had before Phase 3, which the version 2 of the key lists: the 13 the trial was
+ * scored on with version 0 and the action of Phase 2, in which it finds nothing that version 0 lacks. Phase 3 added
+ * Apex that the trial is not scored on.
+ */
+function trialFiles(): ReturnType<typeof readApexFiles> {
+  const folders: Readonly<Record<string, string>> = { ApexClass: 'classes', ApexTrigger: 'triggers' };
+  const extensions: Readonly<Record<string, string>> = { ApexClass: 'cls', ApexTrigger: 'trigger' };
+  const paths = new Set(
+    loadAnswerKey(2)
+      .components.filter((component) => folders[component.type] !== undefined)
+      .map(
+        ({ type, fullName }) => `force-app/main/default/${folders[type] ?? ''}/${fullName}.${extensions[type] ?? ''}`,
+      ),
+  );
+  return readApexFiles(PROJECT).filter((file) => paths.has(file.path));
+}
+
 const adapters = new Map<string, SyntaxAdapter>();
 const analyses = new Map<string, Analysis>();
 
@@ -26,7 +44,7 @@ beforeAll(async () => {
   adapters.set('apex-parser', createApexParserAdapter());
   adapters.set('tree-sitter', await createTreeSitterAdapter());
   const schema = readSchema([PROJECT]);
-  const sources = readApexFiles(PROJECT);
+  const sources = trialFiles();
   for (const [name, adapter] of adapters) analyses.set(name, analyse(parseFiles(sources, adapter), schema, adapter));
 });
 
@@ -37,8 +55,8 @@ const adapterOf = (name: string): SyntaxAdapter => {
 };
 
 describe.each(['apex-parser', 'tree-sitter'])('the resolver on %s', (name) => {
-  it('reads every file of the fixture project without a problem', () => {
-    const files = parseFiles(readApexFiles(PROJECT), adapterOf(name));
+  it('reads every file of the fixture project that it was scored on without a problem', () => {
+    const files = parseFiles(trialFiles(), adapterOf(name));
     expect(files).toHaveLength(14);
     expect(files.flatMap((file) => file.unit.problems.map((problem) => `${file.path}: ${problem.message}`))).toEqual(
       [],

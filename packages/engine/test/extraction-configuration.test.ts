@@ -43,7 +43,7 @@ describe('the record types, field sets and records of custom metadata of the fix
   });
 
   it('give every reference of the key, from the component the key says, and no other', () => {
-    expect(keyed).toHaveLength(28);
+    expect(keyed).toHaveLength(33);
     expect(keyed.every((one) => one.phase === 2 && !one.stretch && one.op === undefined)).toBe(true);
     expect(references.map(idOf).sort()).toEqual(keyed.map(idOfKeyed).sort());
   });
@@ -92,6 +92,7 @@ describe('the record types, field sets and records of custom metadata of the fix
       'CustomMetadata:billing_rule.account_limit {}',
       'CustomMetadata:billing_rule.default {}',
       'CustomMetadata:billing_rule.invoice_amount {}',
+      'CustomMetadata:billing_rule.invoice_late_fee {}',
       'CustomMetadata:billing_rule.line_quantity {}',
       'FieldSet:invoice__c.invoice_summary {}',
       'RecordType:invoice__c.credit_note {"active":true}',
@@ -112,8 +113,8 @@ describe('the record types, field sets and records of custom metadata of the fix
 
   it('are counted for the reader of XML', async () => {
     expect(analysis.types).toEqual(expect.arrayContaining(['CustomMetadata', 'FieldSet', 'RecordType']));
-    expect(components).toHaveLength(7);
-    // Without the seven, the reader of XML looks at seven components less.
+    expect(components).toHaveLength(8);
+    // Without the eight, the reader of XML looks at eight components less.
     const tree = readFolders(join(FIXTURES_DIR, answers.project), ['force-app']).tree;
     const listed = (await resolveComponents(tree, ['force-app'])).components;
     const without = analyseSource(
@@ -122,7 +123,7 @@ describe('the record types, field sets and records of custom metadata of the fix
     );
     const read = (of: SourceAnalysis): number | undefined =>
       of.work.find((work) => work.origin === 'parser:xml')?.components;
-    expect(read(analysis)).toBe((read(without) ?? 0) + 7);
+    expect(read(analysis)).toBe((read(without) ?? 0) + 8);
   });
 });
 

@@ -65,15 +65,20 @@ describe('the requests to the Metadata API', () => {
     const types = await metadata.describe();
     expect(types.map((type) => type.name).sort()).toEqual([
       'ApexClass',
+      'ApexPage',
       'ApexTrigger',
+      'AuraDefinitionBundle',
       'CustomLabels',
       'CustomMetadata',
       'CustomObject',
       'CustomPermission',
       'EmailTemplate',
+      'ExternalCredential',
       'Flow',
       'FlowDefinition',
       'GlobalValueSet',
+      'LightningComponentBundle',
+      'NamedCredential',
       'QuickAction',
       'Report',
       'ReportType',
@@ -95,15 +100,16 @@ describe('the requests to the Metadata API', () => {
     mock.metadata = await metadataFromSource(FIXTURE);
     const metadata = await api();
     const triggers = await metadata.list('ApexTrigger');
-    expect(triggers).toHaveLength(1);
-    expect(triggers[0]).toMatchObject({
+    expect(triggers.map((one) => one.fullName).sort()).toEqual(['InvoiceLineTrigger', 'InvoiceTrigger']);
+    const trigger = triggers.find((one) => one.fullName === 'InvoiceTrigger');
+    expect(trigger).toMatchObject({
       type: 'ApexTrigger',
       fullName: 'InvoiceTrigger',
       namespacePrefix: null,
       manageableState: 'unmanaged',
     });
-    expect(triggers[0]?.id).toMatch(/^0A/);
-    expect(triggers[0]?.lastModifiedAt).toMatch(/^2026-02-0\dT08:30:00\.000Z$/);
+    expect(trigger?.id).toMatch(/^0A/);
+    expect(trigger?.lastModifiedAt).toMatch(/^2026-02-0\dT08:30:00\.000Z$/);
     const fields = await metadata.list('CustomField');
     expect(fields.map((field) => field.fullName)).toContain('Invoice__c.Amount__c');
     expect(await metadata.list('Report')).toEqual([]);
@@ -222,7 +228,7 @@ describe('the requests to the Metadata API', () => {
 
     // The next request is answered: nothing of the cut one is left behind.
     mock.intercept = null;
-    expect(await metadata.list('ApexTrigger')).toHaveLength(1);
+    expect(await metadata.list('ApexTrigger')).toHaveLength(2);
   });
 
   it('takes the answer of a gateway for an org that is not there, and asks again', async () => {
@@ -237,7 +243,7 @@ describe('the requests to the Metadata API', () => {
         ? { status: 503, type: 'text/html', body: '<html><body>Service Unavailable</body></html>' }
         : undefined;
     };
-    expect(await metadata.list('ApexTrigger')).toHaveLength(1);
+    expect(await metadata.list('ApexTrigger')).toHaveLength(2);
     expect(mock.requests.slice(before)).toHaveLength(2);
 
     mock.intercept = (request) =>

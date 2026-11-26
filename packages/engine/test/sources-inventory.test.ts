@@ -487,35 +487,45 @@ describe('the inventory of the mock org', () => {
     expect(inventory.types.filter((one) => one.listing !== 'ok')).toEqual([]);
     expect(inventory.types.filter((one) => one.role === 'top').map((one) => one.type)).toEqual([
       'ApexClass',
+      'ApexPage',
       'ApexTrigger',
+      'AuraDefinitionBundle',
       'CustomLabels',
       'CustomMetadata',
       'CustomObject',
       'CustomPermission',
       'EmailTemplate',
+      'ExternalCredential',
       'Flow',
       // The mock org keeps a definition of every flow, as an org does.
       'FlowDefinition',
       'GlobalValueSet',
+      'LightningComponentBundle',
+      'NamedCredential',
       'QuickAction',
       'ReportType',
       'Workflow',
     ]);
     const counts = new Map<string, number>();
     for (const one of inventory.items) counts.set(one.type, (counts.get(one.type) ?? 0) + 1);
-    // The org lists the five objects of the project and the user, of which the project has only fields. The
+    // The org lists the six objects of the project and the user, of which the project has only fields. The
     // account, of which it has only parts too, is the parent this org does not list.
     expect(Object.fromEntries(counts)).toMatchObject({
-      ApexTrigger: 1,
+      ApexPage: 2,
+      ApexTrigger: 2,
+      AuraDefinitionBundle: 1,
       CustomLabel: 1,
       CustomLabels: 1,
-      CustomMetadata: 4,
-      CustomObject: 6,
+      CustomMetadata: 5,
+      CustomObject: 7,
       CustomPermission: 1,
       EmailTemplate: 1,
-      Flow: 6,
-      FlowDefinition: 6,
+      ExternalCredential: 1,
+      Flow: 7,
+      FlowDefinition: 7,
       GlobalValueSet: 1,
+      LightningComponentBundle: 2,
+      NamedCredential: 1,
       QuickAction: 1,
       ReportType: 1,
       Workflow: 2,
@@ -530,6 +540,7 @@ describe('the inventory of the mock org', () => {
       'Billing_Rule__mdt',
       'Billing_Settings__c',
       'Invoice_Line__c',
+      'Invoice_Paid__e',
       'Invoice__c',
       'Tax_Code__c',
       'User',

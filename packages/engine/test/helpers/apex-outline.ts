@@ -5,7 +5,8 @@
  *
  * It is not an analyser and it knows nothing about fields. It understands the
  * plain style the fixture is written in: one class or trigger per file, and
- * members that are methods, properties, fields and inner types.
+ * members that are methods, properties, fields and inner types. A trigger can
+ * declare a class in its body.
  */
 import { apexSignature, type SubComponent } from '../../src/core/keys.ts';
 
@@ -28,11 +29,19 @@ export interface ApexOutline {
   memberAt(line: number): readonly SubComponent[];
   /** The fields that are `static final`, by their name in lower case, with the text they are set to. */
   readonly constants: ReadonlyMap<string, string>;
+  /** Every member and every inner type, as the sub-components of its key, with the lines it spans. */
+  readonly members: readonly { readonly subs: readonly SubComponent[]; readonly from: number; readonly to: number }[];
+  /** Every type the file declares, with whether it is an interface. The outer type has no sub-components. */
+  readonly types: readonly {
+    readonly subs: readonly SubComponent[];
+    readonly name: string;
+    readonly isInterface: boolean;
+  }[];
 }
 
 type Scope =
   | { readonly kind: 'type'; readonly subs: readonly SubComponent[]; readonly name: string; readonly from: number }
-  | { readonly kind: 'body'; readonly member?: Member }
+  | { readonly kind: 'body'; readonly member?: Member; readonly trigger?: true }
   | { readonly kind: 'value' };
 
 /** Splits a parameter list at the commas that are not inside `<...>`, and returns the type of each parameter. */
@@ -119,6 +128,7 @@ export function outlineApex(source: string): ApexOutline {
   // Third pass: the members, from the statements that stand directly in the body of a type.
   const members: Member[] = [];
   const types: { subs: readonly SubComponent[]; from: number; to: number }[] = [];
+  const declaredTypes: { subs: readonly SubComponent[]; name: string; isInterface: boolean }[] = [];
   const constants = new Map<string, string>();
   const scopes: Scope[] = [];
   let head = '';
@@ -141,6 +151,30 @@ export function outlineApex(source: string): ApexOutline {
     const char = masked.charAt(at);
     if (char === '\n') line += 1;
     const top = scopes.at(-1);
+    if (top?.kind === 'body' && top.trigger === true) {
+      // The body of a trigger is code, but a class can be declared in it.
+      if (char === '{') {
+        const inner = /\bclass\s+(\w+)\s*$/.exec(head.trim())?.[1];
+        if (inner !== undefined) {
+          const subs = [{ kind: 'inner' as const, name: inner }];
+          declaredTypes.push({ subs, name: inner, isInterface: false });
+          scopes.push({ kind: 'type', subs, name: inner, from: headLine });
+        } else {
+          scopes.push({ kind: 'body' });
+        }
+        reset();
+      } else if (char === '}') {
+        scopes.pop();
+        reset();
+      } else if (char === ';') {
+        reset();
+      } else {
+        if (head.trim() === '' && char.trim() !== '') headLine = line;
+        head += char;
+        raw += source.charAt(at);
+      }
+      continue;
+    }
     if (top !== undefined && top.kind !== 'type') {
       // Inside the body of a member, or inside the braces of a value: only the braces count.
       if (char === '{') scopes.push({ kind: top.kind });
@@ -169,9 +203,11 @@ export function outlineApex(source: string): ApexOutline {
         continue;
       }
       if (/^trigger\s/.test(text)) {
-        scopes.push({ kind: 'body' });
+        scopes.push({ kind: 'body', trigger: true });
+        declaredTypes.push({ subs: [], name: type?.[1] ?? '', isInterface: false });
       } else if (type?.[1] !== undefined) {
         const inner = top === undefined ? [] : [...subs, { kind: 'inner' as const, name: type[1] }];
+        declaredTypes.push({ subs: inner, name: type[1], isInterface: /\binterface\s/.test(text) });
         scopes.push({ kind: 'type', subs: inner, name: type[1], from: headLine });
       } else if (/\benum\s+\w+/.test(text)) {
         scopes.push({ kind: 'body' });
@@ -233,5 +269,7 @@ export function outlineApex(source: string): ApexOutline {
       return (inside(members) ?? inside(types))?.subs ?? [];
     },
     constants,
+    members: [...members, ...types],
+    types: declaredTypes,
   };
 }
