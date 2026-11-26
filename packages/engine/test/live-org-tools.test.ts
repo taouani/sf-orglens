@@ -813,7 +813,7 @@ describe('deploying the fixture project', () => {
     expect(text().replace(/after \d+ seconds/g, 'after N seconds')).toBe(
       [
         'The deploy of the fixture project ended as Succeeded after N seconds.',
-        'Components of the fixture project: 147. Salesforce counted 69, deployed 69 and found errors in 0.',
+        'Components of the fixture project: 148. Salesforce counted 69, deployed 69 and found errors in 0.',
         'Of the components Salesforce accepted, 34 are new in the org, 35 were changed, and 0 were as they are.',
         'The fixture project is in the test org. No Apex test was run.',
       ].join('\n'),
@@ -1005,7 +1005,7 @@ describe('deploying the fixture project', () => {
         .concat(text().split('\n').slice(2)),
     ).toEqual([
       '::error::The deploy of the fixture project ended as Failed after N seconds.',
-      'Components of the fixture project: 147. Salesforce counted 69, deployed 0 and found errors in 5.',
+      'Components of the fixture project: 148. Salesforce counted 69, deployed 0 and found errors in 5.',
       '1. ApexClass InvoiceService, file classes/InvoiceService.cls, line 14, column 9',
       '   Problem: Variable does not exist: Amount__c',
       '2. ApexClass InvoiceSelector, file classes/InvoiceSelector.cls, line 3, column 1',
@@ -1202,14 +1202,14 @@ describe('reading the test org', () => {
     const output = text();
     expect(log.failed).toBe(false);
     expect(output).toContain(
-      'Components: 156 listed by the org, 156 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
+      'Components: 157 listed by the org, 157 of them retrieved, 0 retrieved that the org had not listed, 0 of a package with a namespace.',
     );
     expect(output).toContain('logged in. The org is read with API version 66.0.');
     expect(output).toMatch(/The snapshot of the test org is complete\. It took \d+\.\d s: /);
     expect(output).toMatch(/Requests to the Metadata API: [1-9]\d*\. Largest memory of the process: \d+ MB\./);
     expect(output).toMatch(/Retrieves: 1 chunk, 1 stored, 0 failed, 0 not ended\. Started more than once: 0\./);
     expect(output).toMatch(/^ApexClass +28 +28 +ok$/m);
-    expect(output).toMatch(/^CustomField +58 +58 +ok$/m);
+    expect(output).toMatch(/^CustomField +59 +59 +ok$/m);
     expect(output).toMatch(/^CustomLabel +1 +1 +ok$/m);
     expect(output).toMatch(/^GlobalValueSet +1 +1 +ok$/m);
     // The one path of a flow that the answer key calls unknown.
@@ -2060,8 +2060,8 @@ describe('reading the test org', () => {
     expect(log.failed).toBe(true);
     expect(output).toMatch(/Retrieves: 1 chunk, 0 stored, 0 failed, 1 not ended\./);
     expect(output).toMatch(/^ApexTrigger +0 +0 +failed$/m);
-    expect(output).toContain('- and 127 more components.');
-    expect(output).toContain('- and 156 more files that are not in the snapshot.');
+    expect(output).toContain('- and 128 more components.');
+    expect(output).toContain('- and 157 more files that are not in the snapshot.');
     expect(output).toContain(
       '- error LISTING_FAILED: 1 observation. Types: ApexTrigger. Codes of Salesforce: INVALID_TYPE (1)',
     );
@@ -2184,7 +2184,7 @@ describe('reading an org that holds more than the fixture project', () => {
     expect(output).toContain("- 1 time: Entity of type 'ApexClass' named '(a name)' cannot be found");
     expect(output).toMatch(/^ApexClass +29 +28 +ok$/m);
     expect(output).toMatch(/^Report +0 +0 +failed$/m);
-    expect(output).toContain('Fixture project: 147 components. Listed by the org: 147. Retrieved: 147.');
+    expect(output).toContain('Fixture project: 148 components. Listed by the org: 148. Retrieved: 148.');
     expectNothingForeign(output);
   });
 
@@ -2580,7 +2580,7 @@ describe('asking the org what Salesforce knows about references', () => {
     expect(output).toContain('- ApexClass:invoiceservice -> ApexClass:invoiceselector');
     expect(output).toContain('- ApexClass:invoiceservice -> CustomField:invoice_line__c.status__c');
     expect(output).toContain(
-      'Fields the answer key calls unreferenced: 12. The Dependency API reports a reference to 1 of them: CustomField:invoice__c.unused_field__c.',
+      'Fields the answer key calls unreferenced: 13. The Dependency API reports a reference to 1 of them: CustomField:invoice__c.unused_field__c.',
     );
     // Every query names a type of component, never a component.
     for (const soql of asked) for (const name of FOREIGN) expect(soql).not.toContain(name);

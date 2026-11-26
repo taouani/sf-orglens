@@ -83,7 +83,7 @@ describe('the analysis of the fixture project', () => {
     );
     expect(elements).toHaveLength(57);
     expect(elements.every((one) => one.key.startsWith('Flow:'))).toBe(true);
-    expect(analysis.components).toHaveLength(206);
+    expect(analysis.components).toHaveLength(207);
     // Only those two are not defined: the project holds fields of them and no file of the object.
     expect(analysis.components.filter((one) => one.definition === null)).toEqual([
       { key: account, name: 'Account', definition: null, attrs: null, references: [] },
@@ -188,12 +188,12 @@ describe('the analysis of the fixture project', () => {
     expect(analysis.issues.map((issue) => `${issue.code} ${String(issue.componentKey)}`)).toEqual([
       'PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
-    // 6 objects, 58 fields and 11 rules, 2 files of workflow rules with 4 rules and 6 actions, 2 record types, a
+    // 6 objects, 59 fields and 11 rules, 2 files of workflow rules with 4 rules and 6 actions, 2 record types, a
     // field set, 5 records of custom metadata, an email template, a report type and a quick action. The two objects
     // without a file were not looked at. 35 of the fields and rules hold a formula or a default value, and so do 7
     // elements of flows, 2 workflow rules, 2 field updates and the quick action. The 7 flows have 57 elements.
     expect(analysis.work).toEqual([
-      { origin: 'parser:xml', components: 98, failedFiles: 0 },
+      { origin: 'parser:xml', components: 99, failedFiles: 0 },
       { origin: 'parser:formula', components: 47, failedFiles: 0 },
       { origin: 'parser:flow', components: 64, failedFiles: 0 },
     ]);
@@ -316,7 +316,7 @@ describe('the analysis of the fixture project', () => {
       });
       // 112 references of fields and rules, 129 of flows, 33 of workflow rules, 33 of record types, a field set
       // and records of custom metadata, and 27 of an email template, a report type and a quick action.
-      expect(written).toMatchObject({ components: 206, references: 334 });
+      expect(written).toMatchObject({ components: 207, references: 334 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));

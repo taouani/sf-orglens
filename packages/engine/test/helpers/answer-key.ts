@@ -126,6 +126,11 @@ interface KeyReference extends KeyPlace {
 interface KeyNegative extends KeyPlace {
   /** No reference to this target may be reported on the line. */
   readonly not: ComponentKey;
+  /**
+   * The last roadmap phase the negative holds for: its place is a reference that no analyser up to that phase reads,
+   * and a later version of the key may key it as one. `undefined` for a negative that holds in every phase.
+   */
+  readonly until: number | undefined;
   readonly why: string;
 }
 
@@ -352,11 +357,12 @@ export function loadAnswerKey(wanted: KeyVersion = 3): AnswerKey {
   const negatives = list('negatives', root['negatives']).map((value, index): KeyNegative => {
     const where = `negatives[${String(index)}]`;
     const entry = dict(where, value);
-    onlyFields(where, entry, ['file', 'line', 'match', 'nth', 'not', 'why']);
+    onlyFields(where, entry, ['file', 'line', 'match', 'nth', 'not', 'until', 'why']);
     const file = filePath(`${where}.file`, entry['file']);
     return {
       ...place(where, file, entry),
       not: key(`${where}.not`, entry['not']),
+      until: entry['until'] === undefined ? undefined : count(`${where}.until`, entry['until']),
       why: text(`${where}.why`, entry['why']),
     };
   });

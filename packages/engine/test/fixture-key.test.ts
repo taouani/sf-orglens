@@ -579,9 +579,32 @@ const attributeAt = (place: { file: string; line: number; column: number }): str
 const attributeTier = (place: { file: string; line: number; column: number }): string | undefined =>
   isMarkup(place.file) ? ATTRIBUTES[markupKind(place.file)]?.[attributeAt(place)] : undefined;
 
+/** The classes and interfaces each class of the project extends or implements, by the key's own entries. */
+const supertypes = new Map<ComponentKey, ComponentKey[]>();
+for (const reference of key.references) {
+  if (reference.kind !== 'extends' && reference.kind !== 'implements') continue;
+  const sub = componentOf(reference.from);
+  supertypes.set(sub, [...(supertypes.get(sub) ?? []), componentOf(reference.to)]);
+}
+
+/** Whether a class extends or implements another one, directly or through others. */
+function isSubtypeOf(sub: ComponentKey, of: ComponentKey): boolean {
+  const seen = new Set<ComponentKey>();
+  const todo = [sub];
+  for (let next = todo.pop(); next !== undefined; next = todo.pop()) {
+    for (const parent of supertypes.get(next) ?? []) {
+      if (parent === of) return true;
+      if (!seen.has(parent)) todo.push(parent);
+      seen.add(parent);
+    }
+  }
+  return false;
+}
+
 /**
  * Whether a call names a method that another one overrides: the call is confirmed to the method it names and
- * probable to the method of the same signature in another class, which runs when the object is of that class.
+ * probable to the method of the same signature in a class that extends or implements the class of that method,
+ * which runs when the object is of that class.
  */
 function overridesAt(reference: (typeof key.references)[number]): boolean {
   const signature = parseKey(reference.to).subs.at(-1)?.name;
@@ -593,7 +616,8 @@ function overridesAt(reference: (typeof key.references)[number]): boolean {
       other.via === 'call' &&
       other.tier === 'confirmed' &&
       other.to !== reference.to &&
-      parseKey(other.to).subs.at(-1)?.name === signature,
+      parseKey(other.to).subs.at(-1)?.name === signature &&
+      isSubtypeOf(componentOf(reference.to), componentOf(other.to)),
   );
 }
 
@@ -672,7 +696,8 @@ function fieldSetFields(name: string, within: 'displayedFields' | 'availableFiel
  * - `method`: a call of a method of the same class whose text holds the name, as the query `paidQuery()` gives back;
  * - `record-field`: a field of a custom metadata type that a record of the project sets to the name;
  * - `field-set`: a field set, named by a literal, that has the target among its fields;
- * - `stretch`: an entry that is marked as hard to find. It is not checked.
+ * - `stretch`: an entry that is marked as hard to find. It is not checked, apart from a read of an object, which
+ *   is a `variable` as any other.
  */
 function namedBy(reference: (typeof key.references)[number]): string | undefined {
   const word = reference.match.toLowerCase();
@@ -714,7 +739,6 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
     if (recordGives(word, last)) return 'record-field';
     if (fieldSetFields(word, 'displayedFields').includes(last)) return 'field-set';
   }
-  if (reference.stretch) return 'stretch';
   if (target.type === 'CustomObject' && isApex(reference.file)) {
     const { code } = outline(reference.file);
     const member = parseKey(reference.from).subs.at(-1)?.name.replace(/\(.*$/, '') ?? '';
@@ -728,6 +752,7 @@ function namedBy(reference: (typeof key.references)[number]): string | undefined
       .toLowerCase();
     if (columnOf(above, target.name, 1) !== undefined) return 'variable';
   }
+  if (reference.stretch) return 'stretch';
   return undefined;
 }
 
@@ -852,8 +877,13 @@ function kindFits(reference: (typeof key.references)[number]): boolean {
     case 'reads':
     case 'writes':
       // A variable or a property of a class is read and written by Apex, and read by a query as a bind variable.
-      // A flow sets an invocable variable as a parameter of an action.
-      if (isField) return true;
+      // A flow sets an invocable variable as a parameter of an action. The object in front of a field token and a
+      // child relationship are referred to, never read or written.
+      if (isField) {
+        if (target === 'CustomObject' && via === 'token') return false;
+        const word = reference.match.toLowerCase();
+        return (childRelationships.get(word) ?? STANDARD_CHILD_RELATIONSHIPS.get(word)) !== reference.to;
+      }
       if (declared !== 'var' && declared !== 'prop') return false;
       return where === 'apex'
         ? via === 'field' || (via === 'soql' && reference.kind === 'reads')
@@ -1057,6 +1087,14 @@ describe('the answer key', () => {
       ),
     );
     expect(forbidden).toEqual([]);
+    // A negative holds for the analysers up to a phase only where its place is a reference that is not read yet,
+    // which its reason says, and then for a phase that reads its file.
+    const phaseOfFile = new Map(key.references.map((reference) => [reference.file, reference.phase]));
+    const scoped = key.negatives.filter((negative) => / not read\b/.test(negative.why));
+    expect(key.negatives.filter((negative) => negative.until !== undefined)).toEqual(scoped);
+    expect(scoped.filter((negative) => (negative.until ?? 0) < (phaseOfFile.get(negative.file) ?? Infinity))).toEqual(
+      [],
+    );
     const overlapping = key.unknowns.filter((unknown) =>
       key.references.some(
         (reference) =>
@@ -1285,12 +1323,12 @@ describe('the answer key', () => {
       unknowns: key.unknowns.length,
     }).toEqual({
       version: 3,
-      components: 147,
+      components: 148,
       phase1: 112,
       phase2: 222,
-      phase3: 552,
-      stretch: 12,
-      negatives: 96,
+      phase3: 554,
+      stretch: 14,
+      negatives: 98,
       unknowns: 9,
     });
   });

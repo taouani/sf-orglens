@@ -245,7 +245,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         results += report.results.length;
       }
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(180);
+      expect(asked.size).toBe(181);
       expect(results).toBe(671);
 
       // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
@@ -614,7 +614,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       const report = await workspace.impact('fixture', AMOUNT);
       expect(report).toMatchObject({ complete: false, mayMiss: true });
-      expect(report.notCovered.partial).toEqual([{ type: 'CustomField', listed: 64, retrieved: 58, listing: 'ok' }]);
+      expect(report.notCovered.partial).toEqual([{ type: 'CustomField', listed: 65, retrieved: 59, listing: 'ok' }]);
       // A type that is not analysed is named, in part or not. It is not something the answer claims to cover.
       expect(report.notCovered.notAnalysed).toContainEqual({
         type: 'Report',

@@ -2,11 +2,12 @@
 #
 # Version 3 is version 2 with what Phase 3 reads. Of the Apex that was there it adds the kinds that version 2 did not
 # key: calls, uses as a type, interfaces, the reads and writes of the members of classes, the object in front of a
-# field token, and the named credential of a callout. And it keys the 27 components that work package 1 of Phase 3
+# field token, and the named credential of a callout. And it keys the 28 components that work package 1 of Phase 3
 # added: 15 Apex classes and a trigger, two Lightning web components, an Aura component, two Visualforce pages, a
-# named credential and the external credential it signs in with, a platform event with its field, a record of the
-# custom metadata type, and a flow that hands its record to a generic Apex action. Everything of version 2 is here,
-# entry for entry, and no entry of version 2 has changed.
+# named credential and the external credential it signs in with, a platform event with its field, a field of the
+# account with the name of a child relationship, a record of the custom metadata type, and a flow that hands its
+# record to a generic Apex action. Everything of version 2 is here, entry for entry, and no entry of version 2 has
+# changed.
 #
 # Where version 3 says more about a line of version 2, it does so with entries of its own: the same word with another
 # target, such as the constant a text comes from, or another word of the line, such as a type or the object in front
@@ -78,6 +79,7 @@ components:
   CustomField:
     - Account.Billing_Region__c
     - Account.Credit_Limit__c
+    - Account.Invoices__c
     - Account.Is_Key_Account__c
     - Account.Primary_Contact__c
     - Account.Risk_Score__c
@@ -258,6 +260,7 @@ standard:
 # The fields of the project that nothing in the project refers to. Unused_Field__c is the control case: its name
 # stands in comments and in text, and nowhere else.
 unreferenced:
+  - CustomField:account.invoices__c
   - CustomField:invoice__c.account_industry__c
   - CustomField:invoice__c.approver_backup_email__c
   - CustomField:invoice__c.is_my_region__c
@@ -1173,6 +1176,7 @@ references:
           - { line: 19, match: fields, kind: reads, to: CustomField:invoice__c.amount__c, via: text, tier: probable, stretch: true, note: "The names are a list constant of another class, joined into the query." }
           - { line: 19, match: fields, kind: reads, to: CustomField:invoice__c.tax_rate__c, via: text, tier: probable, stretch: true }
           - { line: 19, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 19, match: fields, kind: reads, to: CustomObject:invoice__c, via: text, tier: possible, stretch: true, note: "What an analyser reports that does not follow the list: the object is known, the fields are not. Added in version 3." }
       - from: ApexClass:invoiceselector#method:sortedby(string)
         refs:
           - { line: 23, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
@@ -1710,6 +1714,7 @@ references:
           - { line: 18, match: Account__r, kind: reads, to: CustomField:invoice__c.account__c, via: text, tier: probable, stretch: true }
           - { line: 18, match: Tier__c, kind: reads, to: CustomField:account.tier__c, via: text, tier: probable, stretch: true }
           - { line: 20, match: Invoice__c, kind: reads, to: CustomObject:invoice__c, via: text, tier: probable }
+          - { line: 20, match: clauses, kind: reads, to: CustomObject:invoice__c, via: text, tier: possible, stretch: true, note: "What an analyser reports that does not follow the list: the object is known, the fields are not." }
       - from: ApexClass:invoicequeries#method:withfields(list<string>)
         refs:
           - { line: 24, match: Invoice__c, kind: uses-type, to: CustomObject:invoice__c, via: type }
@@ -2026,7 +2031,9 @@ references:
         refs:
           - { line: 54, match: Invoice__c, kind: triggers-on, to: CustomObject:invoice__c, via: object }
 
-# What must never be reported: a reference to `not` that is located on this line of this file.
+# What must never be reported: a reference to `not` that is located on this line of this file. A negative with
+# `until` holds for the analysers up to that phase only: its place is a reference that no analyser reads yet, and a
+# later version may key it as a reference (decision record 0079).
 negatives:
   - { file: force-app/main/default/classes/ParserTorture.cls, line: 2, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: A comment that looks like code. }
   - { file: force-app/main/default/classes/ParserTorture.cls, line: 11, match: Unused_Field__c, not: CustomField:invoice__c.unused_field__c, why: Text in a literal that no query and no field access uses. }
@@ -2103,6 +2110,7 @@ negatives:
   - { file: force-app/main/default/classes/InvoicePricingTest.cls, line: 20, match: price, nth: 2, not: ApexClass:invoicepricing#method:price(invoice_line__c), why: "The argument is an invoice, so the overload for a line is not called." }
   - { file: force-app/main/default/classes/InvoiceCalloutService.cls, line: 15, match: send, not: ApexClass:invoicecalloutservice#method:send(invoice__c), why: "The method of the system class Http, which has the name of the method it stands in." }
   - { file: force-app/main/default/classes/InvoiceCalloutService.cls, line: 15, match: send, not: ApexClass:invoicenotifier#method:send(invoice__c), why: "The method of the system class Http. An interface of the project has a method of the same name." }
+  - { file: force-app/main/default/classes/InvoiceNotifications.cls, line: 18, match: send, not: ApexClass:invoicecalloutservice#method:send(invoice__c), why: "A call through the interface. A class that implements nothing has a method of the same name and parameters." }
   - { file: force-app/main/default/classes/InvoicePaidAction.cls, line: 8, match: markPaid, not: ApexClass:invoicepaidaction#method:markpaid(list<id>), why: "The method of InvoiceService, which has the name of the method it stands in." }
   - { file: force-app/main/default/classes/StandardPricing.cls, line: 8, match: price, not: ApexClass:standardpricing#method:price(invoice__c), why: "The argument is a line, so the overload for an invoice is not called." }
   - { file: force-app/main/default/classes/StandardPricing.cls, line: 8, match: price, not: ApexClass:invoicepricing#method:price(invoice__c), why: "The argument is a line, so the overload for an invoice is not called." }
@@ -2111,24 +2119,25 @@ negatives:
   - { file: force-app/main/default/classes/StandardPricing.cls, line: 19, match: round, not: ApexClass:invoicepricing#method:round(decimal), why: "10 is an Integer, so the overload for a Decimal is not called." }
   - { file: force-app/main/default/classes/InvoiceQueries.cls, line: 33, match: Paid_Date__c, not: CustomField:invoice__c.paid_date__c, why: "A name in a text that a method gives back is keyed where the text is used." }
   - { file: force-app/main/default/classes/InvoiceQueries.cls, line: 33, match: Invoice__c, not: CustomObject:invoice__c, why: "A name in a text that a method gives back is keyed where the text is used." }
+  - { file: force-app/main/default/classes/InvoiceQueries.cls, line: 33, match: Status__c, not: CustomField:invoice__c.status__c, why: "A name in a text that a method gives back is keyed where the text is used." }
   - { file: force-app/main/default/classes/InvoiceQueries.cls, line: 55, match: Invoice_Summary, not: CustomField:invoice__c.due_date__c, why: A field that the field set only makes available is not one of its fields. }
   - { file: force-app/main/default/classes/AccountInvoices.cls, line: 14, match: Contacts, not: CustomField:account.contacts, why: "A child relationship of a standard object, not a field." }
-  - { file: force-app/main/default/classes/AccountInvoices.cls, line: 21, match: Invoices__r, not: CustomField:account.invoices__c, why: "A child relationship, not a lookup of the account." }
+  - { file: force-app/main/default/classes/AccountInvoices.cls, line: 14, match: Invoices__r, not: CustomField:account.invoices__c, why: "A child relationship. The account has a field of the same name, which is no lookup." }
+  - { file: force-app/main/default/classes/AccountInvoices.cls, line: 21, match: Invoices__r, not: CustomField:account.invoices__c, why: "A child relationship, not a lookup of the account. The account has a field of the same name." }
   - { file: force-app/main/default/classes/AccountInvoices.cls, line: 35, match: Name, not: CustomField:contact.name, why: "The name of the account of the contact, not of the contact." }
   - { file: force-app/main/default/classes/AccountInvoices.cls, line: 37, match: Primary_Accounts__r, not: CustomField:contact.primary_accounts__c, why: "A child relationship of the contact, not a lookup." }
   - { file: force-app/main/default/triggers/InvoiceLineTrigger.trigger, line: 13, match: Status__c, not: CustomField:invoice__c.status__c, why: "The status of the line, which the trigger is on. The invoice has a field of the same name." }
   - { file: force-app/main/default/lwc/invoiceSummary/invoiceSummary.js, line: 11, match: Status__c, not: CustomField:invoice__c.status__c, why: A comment. }
-  - { file: force-app/main/default/lwc/invoiceSummary/invoiceSummary.html, line: 10, match: Status__c, not: CustomField:invoice__c.status__c, why: "An expression of the markup, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/aura/invoicePanel/invoicePanel.cmp, line: 8, match: Name, not: CustomField:invoice__c.name, why: "An expression of the markup, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/aura/invoicePanel/invoicePanel.cmp, line: 9, match: Status__c, not: CustomField:invoice__c.status__c, why: "An expression of the markup, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/aura/invoicePanel/invoicePanel.cmp, line: 10, match: pay, not: ApexClass:invoicecontroller#method:pay(id), why: "c. in the markup names the controller of the component in JavaScript, not the Apex class." }
-  - { file: force-app/main/default/aura/invoicePanel/invoicePanelHelper.js, line: 4, match: Account__c, not: CustomField:invoice__c.account__c, why: "The path of an attribute of the component, which is not read." }
-  - { file: force-app/main/default/pages/InvoiceList.page, line: 3, match: invoices, not: ApexClass:invoicepagecontroller#prop:invoices, why: "A merge field of a page, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/pages/InvoiceList.page, line: 4, match: Name, not: CustomField:invoice__c.name, why: "A merge field of a page, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/pages/InvoiceList.page, line: 5, match: Amount__c, not: CustomField:invoice__c.amount__c, why: "A merge field of a page, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/pages/InvoiceList.page, line: 7, match: summary, not: ApexClass:invoicepageextension#method:getsummary(), why: "A merge field of a page, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/pages/InvoiceDetail.page, line: 2, match: Name, not: CustomField:invoice__c.name, why: "A merge field of a page, which this phase does not read (record 0079)." }
-  - { file: force-app/main/default/pages/InvoiceDetail.page, line: 3, match: summary, not: ApexClass:invoicepageextension#method:getsummary(), why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/lwc/invoiceSummary/invoiceSummary.html, line: 10, match: Status__c, not: CustomField:invoice__c.status__c, until: 3, why: "An expression of the markup, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/aura/invoicePanel/invoicePanel.cmp, line: 8, match: Name, not: CustomField:invoice__c.name, until: 3, why: "An expression of the markup, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/aura/invoicePanel/invoicePanel.cmp, line: 9, match: Status__c, not: CustomField:invoice__c.status__c, until: 3, why: "An expression of the markup, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/aura/invoicePanel/invoicePanelHelper.js, line: 4, match: Account__c, not: CustomField:invoice__c.account__c, until: 3, why: "The path of an attribute of the component, which is not read." }
+  - { file: force-app/main/default/pages/InvoiceList.page, line: 3, match: invoices, not: ApexClass:invoicepagecontroller#prop:invoices, until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/pages/InvoiceList.page, line: 4, match: Name, not: CustomField:invoice__c.name, until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/pages/InvoiceList.page, line: 5, match: Amount__c, not: CustomField:invoice__c.amount__c, until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/pages/InvoiceList.page, line: 7, match: summary, not: ApexClass:invoicepageextension#method:getsummary(), until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/pages/InvoiceDetail.page, line: 2, match: Name, not: CustomField:invoice__c.name, until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
+  - { file: force-app/main/default/pages/InvoiceDetail.page, line: 3, match: summary, not: ApexClass:invoicepageextension#method:getsummary(), until: 3, why: "A merge field of a page, which this phase does not read (record 0079)." }
 # Places where the target cannot be known from the source. An analyser must say so, not stay silent and not guess.
 # One entry for each name whose target is not known.
 unknowns:

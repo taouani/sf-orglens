@@ -21,7 +21,7 @@ The decision behind the format is [record 0029](../docs/adr/0029-fixture-and-ans
 
 ## The project
 
-`billing-sfdx` has 147 components: 6 custom objects, 58 custom fields on them, on `Account` and on `User`, 11 validation
+`billing-sfdx` has 148 components: 6 custom objects, 59 custom fields on them, on `Account` and on `User`, 11 validation
 rules, 28 Apex classes and 2 triggers, 7 flows, the workflow rules of two objects (2 files with 4 rules and the 6 actions
 they start), 2 record types, a field set, an email template with its folder, a report type, a quick action, 5 records of
 a custom metadata type, 2 Lightning web components, an Aura component, 2 Visualforce pages, a named credential with the
@@ -173,7 +173,7 @@ describe that flow as the test org hands it out for its name since 23 November 2
 `Paid_Date__c`. Asked for the name with the number of the active version, the org hands out the version the key
 is about (`docs/research/phase-2/real-org.md`).
 
-Phase 3 added 27 components in its first work package, and changed no file that was there. One field that nothing
+Phase 3 added 28 components in its first work package, and changed no file that was there. One field that nothing
 referred to is referred to now (`Late_Fee__c`). The new files are these cases:
 
 - an abstract class with an abstract method and two virtual ones, of which one has the name of the abstract method
@@ -186,7 +186,8 @@ referred to is referred to now (`Late_Fee__c`). The new files are these cases:
   (`InvoiceNotifications`);
 - the child relationships of a standard object (`Contacts`) and of custom lookups (`Invoices__r`, `Lines__r`,
   `Primary_Accounts__r`), in sub-queries and in loops, beside a path through the lookup the other way
-  (`AccountInvoices`);
+  (`AccountInvoices`), and a field of the account with the name of a child relationship of it (`Invoices__c`,
+  which nothing refers to), so that a `__r` taken for a lookup finds a field;
 - queries built in steps with `+=`, from a list of clauses that is joined, from a list of fields that is a
   parameter, from the text another method returns, from a field name that a record of the custom metadata type
   holds, and from the fields of a field set that is named by a literal, `Database.countQueryWithBinds` with a map
@@ -210,7 +211,7 @@ referred to is referred to now (`Late_Fee__c`). The new files are these cases:
 - a record of the custom metadata type whose text is the name of a field that a query of `InvoiceQueries` reads
   (`Invoice_Late_Fee`).
 
-**The 27 components have not been sent to Salesforce yet.** The tool of the tests deploys the whole folder, so the
+**The 28 components have not been sent to Salesforce yet.** The tool of the tests deploys the whole folder, so the
 next run of the workflow "Live org" sends them. Until then nothing proves that the Apex compiles or that Salesforce
 accepts the components, the named credential above all.
 
@@ -219,8 +220,12 @@ accepts the components, the named credential above all.
 The key was written by hand, by reading the files, before any analyser existed. Version 2 has one exception: the
 entries of the report type and the quick action were written in the pull request that added their analysers (work
 package 8 of Phase 2). Version 3 was written before any analyser of Apex, of a Lightning component, of an Aura
-component or of a page existed in the engine. The Apex trial of Phase 0 reads Apex, and was not run on it. It is the measure analysers are scored with, so it must not be produced by one. Change it by
-hand, in the same pull request as the file it describes, and never to make an analyser pass.
+component or of a page existed in the engine. The Apex trial of Phase 0 reads Apex, and was not run on it. Its eight
+new entries of Phase 2, five of the record `Invoice_Late_Fee` and three of the flow `Invoice_Object_Name`, were
+written while the analysers of Phase 2 existed, and the tests of impact answers hold them against those analysers.
+They were written by reading the files first, all the same. The key is the measure analysers are scored with, so it
+must not be produced by one. Change it by hand, in the same pull request as the file it describes, and never to make
+an analyser pass.
 
 It has six parts:
 
@@ -228,7 +233,8 @@ It has six parts:
 - `standard`: targets that Salesforce provides, such as `Account` or the `Name` of an invoice. They have no file here.
 - `unreferenced`: the fields of the project that nothing refers to.
 - `references`: the expected references, grouped by file and by the member they start from.
-- `negatives`: places where a reference to a named target must never be reported.
+- `negatives`: places where a reference to a named target must never be reported. A negative with `until` holds
+  for the analysers up to the phase it names: the place is a reference that no analyser reads yet.
 - `unknowns`: places where the target cannot be known from the source, and an analyser has to say so. There is one
   entry for each name whose target is not known.
 
@@ -418,11 +424,14 @@ check_amount`. The start block with its scheduled paths is `#element:flow-start`
 - A call of a method of the project is `calls`, to the method with its signature: the overload that the types of
   the arguments decide, an inherited method, `super`, and a method of an inner class or of a class a trigger
   declares. A call through an interface is a `calls` of the method of the interface, and of each implementation in
-  the project as `probable`. `new` of a class of the project calls its constructor, or the class where it declares
-  none.
-- A use of an object or a class of the project as a type is `uses-type`: of a variable, a parameter, a property or a
-  method, in a cast, after `instanceof`, after `when` in a `switch` on a type, after `new`, and as the argument of a
-  generic type such as `List<Invoice__c>`. `Type.forName` with the name of a class in a literal is a `probable` use
+  the project as `probable`. A call of a virtual or an abstract method is a `calls` of the method it names, and of
+  each override in a class of the project that extends that class as `probable`. `new` of a class of the project
+  calls its constructor, or the class where it declares none. A member that names itself, as a property whose
+  getter reads and sets its own value, has no reference to itself.
+- A use of an object or a class of the project, or of a standard object, as a type is `uses-type`: of a variable, a
+  parameter, a property or a method, in a cast, after `instanceof`, after `when` in a `switch` on a type, after `new`
+  of an object, and as the argument of a generic type such as `List<Invoice__c>`. `new` of a class is a `calls`, as
+  the bullet above says. `Type.forName` with the name of a class in a literal is a `probable` use
   of the class, `via: text`.
 - A read or a write of a variable or a property of a class of the project is `reads` or `writes`, `via: field`:
   of the own class, with or without `this`, of an inner class, and a constant of another class. A bind variable of
@@ -452,7 +461,10 @@ check_amount`. The start block with its scheduled paths is `#element:flow-start`
   parameter that the flow sets is a `writes` of the invocable variable of the class, `via: parameter`. Both are of
   Phase 3.
 - An expression of markup (`{!v.invoice.Name}`, `{row.Status__c}`) and a merge field of a page are not read in this
-  phase (decision record 0079). Each such place of the project has a negative.
+  phase (decision record 0079), and neither is the path of an attribute in the JavaScript of an Aura component
+  (`'v.invoice.Account__c'`). Each such place of the project has a negative with `until: 3`: it holds for the
+  analysers up to Phase 3, and a later version of the key may turn it into a reference. Every other negative holds
+  in every version.
 
 ### What is marked as stretch
 
@@ -468,6 +480,10 @@ An entry is `stretch` when finding it needs one of three things, and for no othe
 
 Where a file of the project or the formula itself says where a relationship points, the entry is not stretch: a
 hierarchy field points at a user, and `Owner:User` takes the owner as a user.
+
+Where a list of names joined into a query is keyed as stretch, what an analyser reports that does not follow the
+list is keyed too, as stretch: a `possible` read of the object at the list, since the object is known and the
+fields are not. An analyser that follows the list and one that does not both lose nothing by it.
 
 Fewer than 3 in 100 entries may be stretch. The check counts them.
 
@@ -504,16 +520,18 @@ analyser. It checks that:
   and `implements` at an interface, both at their declaration, a call stands before a bracket and points at a
   method, `new` points at a constructor or at a class that declares none, a use as a type stands neither before a
   bracket nor after `new`, and the name of an object in front of a variable is not taken for a reference;
-- every name of an object or a class of the project that Apex code holds has a reference, a negative or an unknown
-  at its place, apart from its declaration, a name after a dot and a class in front of one, so that no use as a
+- every name of an object or a class of the project, and of a standard object the key lists, that Apex code holds
+  has a reference, a negative or an unknown at its place, apart from its declaration, a name after a dot and a class in front of one, so that no use as a
   type is left out;
 - every place in markup and in its JavaScript stands where its `via` says: an import names the module of its kind
   and, for a method, the class of its target; an attribute is a value of the attribute or one in its list; a tag
   begins with `c-` or `c:`; a label in markup stands in `{!$Label.c.` and a name in JavaScript in a literal that
   begins with `c.` or `$Label.c.`. A method named by `'c.'` is of the controller of the component;
 - the list of unreferenced fields is the list of fields no entry points at;
-- no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, and
-  the tiers and operations follow the rules above;
+- no reference contradicts a negative or an unknown, a negative names a known object and the word on its line, a
+  negative has `until` exactly where it says that its place is not read, and the tiers and operations follow the
+  rules above. A probable call of an override or an implementation points at a class that extends or implements
+  the class of the confirmed call at the same place, by the key's own `extends` and `implements`;
 - every reference of a flow or of a file of workflow rules starts from the element, the rule or the action its line
   stands in, and stands in an element of the kind its `via` says. A merge field stands between `{!` and `}`;
 - the operation of an entry for a record element is the one of the element, and `calls` and `triggers-on` point at
@@ -521,8 +539,8 @@ analyser. It checks that:
 - a value of a record of a custom metadata type is `value` in a field that is a relationship and `text` in every
   other field, the object of a process is the value at the top of its file, and a text that names a record type
   is compared with `RecordType.DeveloperName`;
-- the numbers this page quotes are the numbers of the key: 886 references (112 of Phase 1, 222 of Phase 2 and 552
-  of Phase 3), 12 of them stretch, 96 negatives and 9 unknowns, in 147 components;
+- the numbers this page quotes are the numbers of the key: 888 references (112 of Phase 1, 222 of Phase 2 and 554
+  of Phase 3), 14 of them stretch, 98 negatives and 9 unknowns, in 148 components;
 - versions 0, 1 and 2 of the key still name places that exist and have nothing that version 3 has not. The Apex
   part of versions 0 and 1 is that of version 2. Versions 2 and 3 say nothing else about a file of fields or rules
   than version 1 does, and version 3 says the same as version 2 about the entries of Phase 2 in the files that
@@ -566,16 +584,27 @@ the flow keyed as a read, the call of the invocable method put in Phase 2, the n
 does not hold, a bind variable keyed as a write, a tag keyed to another component, and a call by `'c.'` keyed to a
 method of another class. The check refuses each of the 16. Writing it found one error in the key, which was
 corrected: on line 20 of `InvoicePricingTest` the call of `price` was keyed at the variable of the same name before
-it. What the check still cannot tell for these files:
+it.
+
+The code review of the pull request read every entry of Phase 3 against its file and found none wrong. It planted 22
+defects, and the check let seven pass: two of the limits below, three calls of an override or an implementation
+keyed to a class that does not extend or implement the class of the call (the tiers of the two swapped, and a
+method of the same signature in a class that implements nothing), a field token of an object keyed as a read, and a
+child relationship keyed as a read. The check was made stricter for those five, and refuses each of them. The review
+found that a call through the interface had no negative for the method of the same signature in a class that
+implements nothing (`InvoiceCalloutService.send`), that the client-side action `pay` of the Aura component had the
+name of the Apex method it calls, which Salesforce advises against because `'c.pay'` then names the client-side
+action, and that a query joined from a list had no entry for what an analyser that does not follow the list
+reports. The negative was added, the action renamed to `payInvoice`, and a `possible` read of the object, `stretch`,
+was added at the list (`clauses` in `InvoiceQueries`, `fields` in `InvoiceSelector`). What the check still cannot
+tell for these files:
 
 - which overload a call chooses: it checks the name of the method, not its parameters. Nor which of two members of
   the same name a word is;
 - whether an entry is missing, apart from the uses as a type, and whether a member is read or written, apart from a
   plain assignment;
-- whether a call through an interface lists every implementation, and whether a field of markup is of the object
-  the key says.
-
-Nobody but me has read the entries of Phase 3 yet. The code review of the pull request is the second reading.
+- whether a call through an interface lists every implementation, which object a platform event that is published
+  is, and whether a field of markup or of `force:recordData` is of the object the key says.
 
 ### What the project does not cover
 

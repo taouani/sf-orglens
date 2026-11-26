@@ -7,6 +7,6 @@
     <lightning:card title="{!$Label.c.Overdue_Notice}">
         <p>{!v.invoice.Name}</p>
         <c:invoiceBadge status="{!v.invoice.Status__c}"/>
-        <lightning:button label="Pay" onclick="{!c.pay}"/>
+        <lightning:button label="Pay" onclick="{!c.payInvoice}"/>
     </lightning:card>
 </aura:component>

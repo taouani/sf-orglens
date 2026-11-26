@@ -42,8 +42,8 @@ const WHOLE = join(FIXTURES_DIR, 'billing-sfdx', 'force-app');
  */
 const PART = ['classes', 'triggers', 'objects/Account', 'objects/Invoice__c', 'objects/Invoice_Line__c'];
 /**
- * What these folders got with the fixtures of Phases 2 and 3: classes and a trigger, a field set, record types and a
- * rule. It is left out, so that the two numbers stay.
+ * What these folders got with the fixtures of Phases 2 and 3: classes and a trigger, a field set, record types, a
+ * rule and a field. It is left out, so that the two numbers stay.
  */
 const NOT_OF_THE_PART = [
   ...[
@@ -69,6 +69,7 @@ const NOT_OF_THE_PART = [
   'objects/Invoice__c/fieldSets',
   'objects/Invoice__c/recordTypes',
   'objects/Invoice__c/validationRules/Credit_Note_Is_Negative.validationRule-meta.xml',
+  'objects/Account/fields/Invoices__c.field-meta.xml',
 ];
 const ORG_ID = '00Dxx0000000001EAA';
 const OTHER_ORG_ID = '00Dxx0000000002EAA';
@@ -464,7 +465,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         { type: 'ApexPage', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'ApexTrigger', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'AuraDefinitionBundle', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
-        { type: 'CustomField', listed: 58, retrieved: 58, analysed: 58, listing: 'ok', note: null, packaged: 0 },
+        { type: 'CustomField', listed: 59, retrieved: 59, analysed: 59, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomLabels', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomMetadata', listed: 5, retrieved: 5, analysed: 5, listing: 'ok', note: null, packaged: 0 },
@@ -528,7 +529,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events.filter((event) => event.step === 'listing').length).toBeGreaterThan(5);
       const fromPlan = events.slice(events.findIndex((event) => event.step === 'planned'));
       expect(fromPlan.slice(0, 3)).toEqual([
-        { step: 'planned', snapshot: 1, components: 156, chunks: 1 },
+        { step: 'planned', snapshot: 1, components: 157, chunks: 1 },
         { step: 'retrieved', snapshot: 1, done: 1, chunks: 1 },
         // Before the first request to the Dependency API.
         { step: 'cross-checking', snapshot: 1, requests: 0, rows: 0 },
@@ -558,7 +559,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
                   SUM(salesforce_id IS NOT NULL) AS ids, SUM(last_modified_at IS NOT NULL) AS dates
              FROM inventory_item WHERE snapshot_id = 1`,
           ),
-        ).toEqual({ items: 156, listed: 156, retrieved: 156, ids: 156, dates: 156 });
+        ).toEqual({ items: 157, listed: 157, retrieved: 157, ids: 157, dates: 157 });
       });
       expect(chunks(dir, 1)).toEqual(['0 done - 1']);
       // Nothing is left of the work: not the lock, and not the folder the files were converted in.
@@ -614,7 +615,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(206);
+      expect(org.components).toHaveLength(207);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
       expect(org.references).toHaveLength(334);
       // The flows among them: 7 flows with 57 elements, and the 129 references of Phase 2 the answer key holds.
@@ -660,21 +661,21 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 213,
+        components: 214,
         references: 334,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 100, ...xml },
+          { origin: 'parser:xml', components: 101, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 206,
+        components: 207,
         references: 334,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 98, ...xml },
+          { origin: 'parser:xml', components: 99, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
         ],
@@ -697,14 +698,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         WorkflowTask: 1,
       };
       expect(analysed(fromOrg)).toEqual({
-        CustomField: 58,
+        CustomField: 59,
         CustomObject: 8,
         Flow: 64,
         ValidationRule: 11,
         ...ofPhase2,
       });
       expect(analysed(fromFolder)).toEqual({
-        CustomField: 58,
+        CustomField: 59,
         CustomObject: 6,
         Flow: 64,
         ValidationRule: 11,
