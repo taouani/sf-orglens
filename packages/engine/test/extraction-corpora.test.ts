@@ -2,7 +2,8 @@
  * Analyses the public codebases of `fixtures/corpora.toml`: every component gets a row, and the objects, fields
  * and validation rules are read for the references that are written in XML and for those in their formulas, and
  * so are the email templates, report types and quick actions. Every flow of them is read too, and every record of
- * a custom metadata type, also those outside the package folders the file names.
+ * a custom metadata type, also those outside the package folders the file names. Every class and trigger of their
+ * package folders is parsed.
  *
  * The codebases are not part of this repository. A codebase that was not downloaded (`pnpm run corpora:fetch`)
  * is skipped, so the test needs no network. CI does not download them.
@@ -12,6 +13,7 @@ import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { analyseSource } from '../src/extraction/analyse.ts';
+import { loadApexReader } from '../src/extraction/apex-reader.ts';
 import { namesOfTree, parseFormula } from '../src/extraction/formula.ts';
 import { readFolders } from '../src/sources/folder.ts';
 import { resolveComponents } from '../src/sources/resolve.ts';
@@ -408,6 +410,24 @@ const counted = (values: readonly string[]): Record<string, number> => {
   return Object.fromEntries(Object.entries(counts).sort());
 };
 
+/**
+ * The classes and triggers of the package folders, parsed by the reader of Apex on 26 November 2026: every one of
+ * them parses. These are the counts of finding 7 of the Phase 3 plan. Outside the package folders, 13 files of
+ * Apex do not parse, and a snapshot does not read them: 8 scripts of anonymous Apex that declare no class (4 of
+ * NPSP, one of them under `datasets`, 1 of V4S and 3 of EDA), and 5 classes of EDA under `unpackaged` that hold the
+ * token `%%%NAMESPACE_DOT%%%`, which the build tool of that project replaces before it deploys.
+ */
+const APEX_FILES: Readonly<Record<string, { readonly classes: number; readonly triggers: number }>> = {
+  'apex-recipes': { classes: 139, triggers: 3 },
+  'coral-cloud': { classes: 26, triggers: 0 },
+  eda: { classes: 601, triggers: 37 },
+  'nebula-logger': { classes: 87, triggers: 6 },
+  npsp: { classes: 1035, triggers: 26 },
+  'outbound-funds': { classes: 8, triggers: 0 },
+  pmm: { classes: 107, triggers: 2 },
+  'volunteers-for-salesforce': { classes: 71, triggers: 7 },
+};
+
 describe('the analysis of the public codebases', () => {
   for (const { name, paths } of manifest.corpus) {
     // A codebase that is not there shows in the report of the run as skipped, not as passed.
@@ -416,7 +436,7 @@ describe('the analysis of the public codebases', () => {
       async () => {
         const { tree } = readFolders(join(corpora, name), paths);
         const listed = (await resolveComponents(tree, paths)).components;
-        const analysis = analyseSource(tree, listed);
+        const analysis = analyseSource(tree, listed, { apex: await loadApexReader() });
         const references = analysis.components.flatMap((one) => one.references);
 
         expect({
@@ -429,7 +449,8 @@ describe('the analysis of the public codebases', () => {
               return typeof via === 'string' ? via : 'none';
             }),
           ),
-          // No file that the reader refuses, no name it does not read, no formula it does not read as a whole.
+          // No file that the reader refuses, no name it does not read, no formula it does not read as a whole, and no
+          // Apex that does not parse.
           issues: counted(analysis.issues.map((issue) => issue.code)),
         }).toEqual(EXPECTED[name]);
         expect(analysis.work.map((work) => `${work.origin} ${String(work.failedFiles)}`)).toEqual([
@@ -448,6 +469,28 @@ describe('the analysis of the public codebases', () => {
         expect(overrides.filter((one) => one.resolution !== 'resolved')).toEqual([]);
         // Every key once.
         expect(new Set(analysis.components.map((one) => one.key)).size).toBe(analysis.components.length);
+      },
+      300_000,
+    );
+
+    it.skipIf(!existsSync(join(corpora, name)))(
+      `parses every class and trigger of ${name}`,
+      async () => {
+        const reader = await loadApexReader();
+        const { tree } = readFolders(join(corpora, name), paths);
+        const code = tree.files.filter((path) => path.endsWith('.cls') || path.endsWith('.trigger'));
+        const notRead = code.flatMap((path) => {
+          const { problems } = reader.parseUnit(
+            Buffer.from(tree.read(path)).toString('utf8'),
+            path.endsWith('.trigger') ? 'trigger' : 'class',
+          );
+          return problems.length === 0 ? [] : [path];
+        });
+        expect({
+          classes: code.filter((path) => path.endsWith('.cls')).length,
+          triggers: code.filter((path) => path.endsWith('.trigger')).length,
+          notRead,
+        }).toEqual({ ...APEX_FILES[name], notRead: [] });
       },
       300_000,
     );

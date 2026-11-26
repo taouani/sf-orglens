@@ -47,8 +47,15 @@ const CLI = 'packages/cli';
 const EXPECTED_LAYERS = ['core', 'sources', 'extraction', 'store', 'engines', 'api'];
 const EXPECTED_SALESFORCE_LAYER = 'sources';
 const EXPECTED_SALESFORCE_PACKAGES = ['@salesforce', '@jsforce', 'jsforce'];
-const EXPECTED_CLIENT_FORBIDDEN = ['node:sqlite', 'better-sqlite3', 'fast-xml-parser'];
-const EXPECTED_ENGINE_FORBIDDEN = ['fast-xml-parser'];
+const EXPECTED_CLIENT_FORBIDDEN = [
+  'node:sqlite',
+  'better-sqlite3',
+  'fast-xml-parser',
+  'web-tree-sitter',
+  'web-tree-sitter-sfapex',
+  '@apexdevtools/apex-parser',
+];
+const EXPECTED_ENGINE_FORBIDDEN = ['fast-xml-parser', '@apexdevtools/apex-parser'];
 
 const failures = [];
 let passed = 0;
@@ -196,8 +203,8 @@ salesforcePackages.forEach((name, index) => {
 probe(`${ENGINE}/store/${MARK}sf_dynamic__.ts`, "export const load = () => import('@salesforce/core');", salesforce);
 probe(`${CLI}/src/${MARK}sf_dynamic__.ts`, "export const load = () => import('@salesforce/core');", salesforce);
 
-// The code of the engine reads XML with its own reader. Its tests may ask a second opinion.
-const ownReader = { eslint: 'engineForbiddenImport', cruise: 'engine-reads-xml-with-its-own-reader' };
+// The code of the engine reads XML and Apex with its own readers. Its tests may ask a second opinion.
+const ownReader = { eslint: 'engineForbiddenImport', cruise: 'engine-reads-with-its-own-readers' };
 engineForbiddenPackages.forEach((name, index) => {
   for (const layer of layers) {
     probe(`${ENGINE}/${layer}/${MARK}engine_forbidden_${String(index)}__.ts`, `export * from '${name}';`, ownReader);

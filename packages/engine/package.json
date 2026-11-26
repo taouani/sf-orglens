@@ -49,6 +49,7 @@
     }
   },
   "devDependencies": {
+    "@apexdevtools/apex-parser": "5.3.0",
     "better-sqlite3": "13.2.0",
     "fast-xml-parser": "5.12.1",
     "jszip": "3.10.2",
@@ -60,6 +61,8 @@
     "@salesforce/source-deploy-retrieve": "13.13.0",
     "ignore": "5.3.2",
     "smol-toml": "1.9.1",
-    "undici": "8.13.1"
+    "undici": "8.13.1",
+    "web-tree-sitter": "0.27.2",
+    "web-tree-sitter-sfapex": "3.0.2"
   }
 }

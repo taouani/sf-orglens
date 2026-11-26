@@ -59,8 +59,9 @@ const forbidden = [
     to: { path: packagePath(salesforcePackages) },
   },
   {
-    name: 'engine-reads-xml-with-its-own-reader',
-    comment: 'The code of the engine reads XML with extraction/xml.ts (decision record 0039). Its tests may differ.',
+    name: 'engine-reads-with-its-own-readers',
+    comment:
+      'The code of the engine reads XML with extraction/xml.ts (decision record 0039) and Apex with extraction/apex-reader.ts (decision record 0083). Its tests may ask a second parser.',
     severity: 'error',
     from: { path: '^packages/engine/src/' },
     to: { path: packagePath(engineForbiddenPackages) },
@@ -105,7 +106,9 @@ module.exports = {
   forbidden,
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: ['/dist/', '/test/'] },
+    // The build output and the tests of the packages, and not a folder of that name inside an installed package,
+    // whose entry point can lie in its `dist/` folder, as that of `@apexdevtools/apex-parser` does.
+    exclude: { path: ['^packages/[^/]+/(dist|test)/'] },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {
