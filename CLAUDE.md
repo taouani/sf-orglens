@@ -108,8 +108,18 @@ packages/cli   the `orglens` binary                            imports only `@sf
   file holds more than the one it declares, is the error `APEX_MALFORMED` of its component, at the first place the
   parser cannot read. A fault of the reader is `ANALYSIS_FAILED`. The tests hold the reader against a second parser,
   `@apexdevtools/apex-parser`, ported to the same model (`test/helpers/apex-parser-adapter.ts`). No code of the
-  engine imports it, and the tools of the layer rules refuse it there. The analysis records nothing of the model
-  yet: the analysers of Apex come later in Phase 3.
+  engine imports it, and the tools of the layer rules refuse it there.
+- A class or a trigger is a component, and each of its members is a component below it: a method, a constructor, a
+  property, a member variable, the static and the instance initialisers, and an inner class with its own members
+  (`extraction/apex.ts`, decision record 0084). The key of a method holds its signature, with each type as written,
+  folded, without `System.` and an inner type of the class after the name of the class. A class extends and
+  implements a class of the snapshot, a trigger is `triggers-on` its object with its events, and a member uses as a
+  type a class of the snapshot or an object. A name of Salesforce that is no object gives nothing, and a `new` of a
+  class is a call, which is not read yet. A test class, its members and a test method carry `test` in their
+  attributes. A class whose code is `(hidden)`, or that has no file of code, is not analysed, with the warning
+  `APEX_NO_CODE`. What the code reads, writes and calls is not read yet: the analysis does not list `ApexClass` and
+  `ApexTrigger` among the types it read, so an answer names them as not analysed, and their rows of the Dependency
+  API are not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the

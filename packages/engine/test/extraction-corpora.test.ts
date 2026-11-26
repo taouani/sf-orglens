@@ -82,6 +82,16 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * a formatter writes them. Its `object`, `output`, `path`, `record` and `assignment` are of its flows, and so are 10
  * of its 11 `filter`: the other is the condition of a roll-up summary. Its `override` is the flow of a package that
  * one of its flows overrides, read since 26 November 2026 (decision record 0082).
+ *
+ * Since 26 November 2026 the members of every class and trigger are components, and refer to the types they use
+ * (decision record 0084): Apex Recipes has 937 more components, Nebula Logger 3,085, NPSP 18,039, PMM 1,452, V4S 874,
+ * Outbound Funds 186, Coral Cloud 132 and EDA 5,787. `declaration` is a class that a class extends, an interface that
+ * it implements and the object of a trigger, `type` a class or an object that a member uses as a type, `new` an object
+ * of which a member makes a record, and `text` a class that `Type.forName` is given by its name. These counts were
+ * not checked by hand: the fixture project and its key hold each case. Of `type`, 1,016 are class literals, read since
+ * the review of the pull request: 909 name the class or the object itself (`StubExample.class`), 106 a type argument
+ * (`List<Rollup__mdt>.class`) and one the type of an array. A script found each at a class literal of its line, and
+ * 30 of them were read by hand.
  */
 interface Expected {
   readonly components: number;
@@ -92,41 +102,48 @@ interface Expected {
 }
 const EXPECTED: Readonly<Record<string, Expected>> = {
   'apex-recipes': {
-    components: 258,
+    components: 1195,
     analysed: 55,
     withFormula: 1,
     references: {
       'controlling-field': 1,
+      declaration: 14,
       'listed-field': 19,
       lookup: 8,
+      new: 161,
       object: 1,
       'record-of': 11,
+      type: 1011,
       value: 12,
     },
     issues: {},
   },
   'nebula-logger': {
-    components: 894,
+    components: 3979,
     analysed: 680,
     withFormula: 142,
     references: {
       action: 1,
       'action-override': 10,
       'controlling-field': 3,
+      declaration: 45,
       'display-field': 4,
       filter: 7,
       formula: 387,
       'listed-field': 153,
       lookup: 17,
+      new: 627,
       'record-of': 55,
       summary: 16,
+      text: 32,
+      type: 4022,
       value: 6,
       'value-set': 2,
     },
     issues: {},
   },
   npsp: {
-    components: 11_722,
+    components: 29_761,
     analysed: 1065,
     withFormula: 176,
     references: {
@@ -134,16 +151,20 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'action-override': 12,
       assignment: 19,
       'controlling-field': 5,
+      declaration: 407,
       'display-field': 2,
       filter: 11,
       formula: 70,
       'listed-field': 2241,
       lookup: 77,
       'merge-field': 8,
+      new: 3401,
       object: 16,
       'record-of': 193,
       summary: 4,
       template: 2,
+      text: 18,
+      type: 26_036,
       value: 318,
       'value-set': 2,
     },
@@ -151,7 +172,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
-    components: 1667,
+    components: 3119,
     analysed: 182,
     withFormula: 44,
     references: {
@@ -159,26 +180,30 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'action-override': 3,
       assignment: 16,
       'controlling-field': 1,
+      declaration: 19,
       filter: 4,
       formula: 133,
       join: 1,
       'listed-field': 652,
       lookup: 26,
+      new: 187,
       object: 14,
       'record-of': 27,
+      type: 1816,
       value: 25,
     },
     issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4 },
   },
   // Added on 25 November 2026, with the codebases.
   'volunteers-for-salesforce': {
-    components: 660,
+    components: 1534,
     analysed: 195,
     withFormula: 35,
     references: {
       action: 10,
       'action-override': 2,
       assignment: 2,
+      declaration: 9,
       'display-field': 7,
       filter: 11,
       formula: 43,
@@ -186,33 +211,38 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'listed-field': 766,
       lookup: 10,
       'merge-field': 404,
+      new: 241,
       object: 4,
       summary: 24,
       template: 13,
+      type: 973,
     },
     issues: {},
   },
   'outbound-funds': {
-    components: 655,
+    components: 841,
     analysed: 72,
     withFormula: 3,
     references: {
       action: 1,
       'action-override': 3,
       assignment: 3,
+      declaration: 3,
       filter: 3,
       formula: 3,
       join: 4,
       'listed-field': 167,
       lookup: 15,
+      new: 25,
       object: 6,
       summary: 6,
+      type: 239,
     },
     issues: {},
   },
   // Added on 25 November 2026, for the check by hand of Phase 2.
   'coral-cloud': {
-    components: 312,
+    components: 444,
     analysed: 70,
     withFormula: 23,
     references: {
@@ -222,26 +252,32 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       filter: 11,
       formula: 42,
       lookup: 6,
+      new: 21,
       object: 12,
       output: 12,
       override: 1,
       path: 4,
       record: 1,
       summary: 6,
+      type: 161,
     },
     issues: {},
   },
   eda: {
-    components: 6081,
+    components: 11_868,
     analysed: 491,
     withFormula: 90,
     references: {
       'action-override': 10,
+      declaration: 380,
       'display-field': 2,
       formula: 76,
       'listed-field': 32,
       lookup: 69,
+      new: 1720,
       'record-of': 2,
+      text: 3,
+      type: 12_910,
     },
     issues: {},
   },
@@ -457,7 +493,12 @@ describe('the analysis of the public codebases', () => {
           'parser:xml 0',
           `parser:formula ${String(FAILED_FORMULAS[name] ?? 0)}`,
           'parser:flow 0',
+          'parser:apex 0',
         ]);
+        // Every class and trigger is read, and so is each of its members.
+        const apex = analysis.components.filter((one) => /^Apex(?:Class|Trigger):/.test(one.key));
+        expect(apex.filter((one) => one.attrs === null).map((one) => one.key)).toEqual([]);
+        expect(analysis.work[3]?.components).toBe(apex.length);
         // Every name of a formula was found or has a key: none is unresolved, and none is less than confirmed.
         const inFormulas = references.filter((one) => one.origin === 'parser:formula');
         expect(counted(inFormulas.map((one) => one.confidence))).toEqual(
@@ -543,7 +584,7 @@ describe('the analysis of the public codebases', () => {
 
         // Every record was read, no file of the codebase was refused, and nothing is an error.
         expect(records.filter((one) => one.attrs === null)).toEqual([]);
-        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0]);
+        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0, 0]);
         expect(analysis.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
         expect({
           files: files.length,

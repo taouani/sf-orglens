@@ -151,8 +151,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const answers = loadAnswerKey();
       // What the analysers must find so far, which are the references of Phases 1 and 2: of fields and rules, of
       // flows, of workflow rules, of record types, of field sets, of records of custom metadata, of the email
-      // template, of the report type and of the quick action. An entry of Phase 3 in a file of flows is not.
-      const keyed = answers.references.filter((reference) => reference.phase === 1 || reference.phase === 2);
+      // template, of the report type and of the quick action. An entry of Phase 3 in a file of flows is not. Of
+      // classes and triggers, the declarations and the types their members use (decision record 0084).
+      const ofApexSoFar = (reference: { file: string; kind: string }): boolean =>
+        /\.(?:cls|trigger)$/.test(reference.file) &&
+        ['extends', 'implements', 'uses-type', 'triggers-on'].includes(reference.kind);
+      const keyed = answers.references.filter(
+        (reference) => reference.phase === 1 || reference.phase === 2 || ofApexSoFar(reference),
+      );
       const placeOf = (step: {
         from: string;
         to: string;
@@ -168,6 +174,11 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       /** The flow of an element of a flow. A flow runs its elements and refers to what they refer to. */
       const flowOf = (one: string): string | undefined =>
         one.startsWith('Flow:') && one.includes('#element:') ? parentKey(one as ComponentKey) : undefined;
+      /** What holds a component, and what holds that: the class of a method of an inner class, and the inner class. */
+      const holders = (one: ComponentKey): ComponentKey[] => {
+        const parent = parentKey(one);
+        return parent === undefined ? [] : [parent, ...holders(parent)];
+      };
 
       // Every component a reference of the key starts from or points at, and every component the key lists
       // of the types that are analysed. An object is asked about too when the key names only a field of it.
@@ -175,22 +186,19 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       for (const one of keyed.flatMap((reference) => [reference.from, reference.to])) asked.add(one);
       for (const one of answers.components) {
         if (
-          /^(?:CustomObject|CustomField|CustomMetadata|EmailTemplate|FieldSet|Flow|QuickAction|RecordType|ReportType|ValidationRule|Workflow[A-Za-z]*)$/.test(
+          /^(?:ApexClass|ApexTrigger|CustomObject|CustomField|CustomMetadata|EmailTemplate|FieldSet|Flow|QuickAction|RecordType|ReportType|ValidationRule|Workflow[A-Za-z]*)$/.test(
             one.type,
           )
         ) {
           asked.add(one.key);
         }
       }
-      for (const one of [...asked]) {
-        const parent = parentKey(one);
-        if (parent !== undefined) asked.add(parent);
-      }
+      for (const one of [...asked]) for (const holder of holders(one)) asked.add(holder);
 
       /** The answer for a component, from the key alone: level by level, the most certain way to each. */
       const implied = (start: ComponentKey): unknown[] => {
         const reached = new Map<ComponentKey, { depth: number; tier: ConfidenceTier }>();
-        let level = [...asked].filter((one) => one === start || parentKey(one) === start);
+        let level = [...asked].filter((one) => one === start || holders(one).includes(start));
         // What calls the flow of an element runs the element: the flow is part of the start.
         const startFlow = flowOf(start);
         if (startFlow !== undefined) level.push(startFlow as ComponentKey);
@@ -239,17 +247,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           });
           const last = chain.at(-1)?.to;
           expect(
-            last === component || last === flowOf(component) || (last !== undefined && parentKey(last) === component),
+            last === component ||
+              last === flowOf(component) ||
+              (last !== undefined && holders(last).includes(component)),
           ).toBe(true);
         }
         results += report.results.length;
       }
-      // The numbers say that the loop asked what it was meant to ask. They move with the fixture.
-      expect(asked.size).toBe(181);
-      expect(results).toBe(671);
+      // The numbers say that the loop asked what it was meant to ask. They move with the fixture. The classes and
+      // triggers, the members the key names and the inner classes they are in added 109 and 101.
+      expect(asked.size).toBe(290);
+      expect(results).toBe(772);
 
-      // The fields the key lists as referred to by nothing have an empty answer. Apex is not analysed yet, so
-      // other fields have one too.
+      // The fields the key lists as referred to by nothing have an empty answer. What the code of Apex reads is not
+      // analysed yet, so other fields have one too.
       for (const component of answers.unreferenced) {
         expect((await workspace.impact('fixture', component)).results).toEqual([]);
       }
@@ -564,6 +575,25 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
     });
 
+    it('counts a class whose code is hidden as a warning that bears on an answer, except one about that class', async () => {
+      const { project, workspace } = await setUp(0);
+      const CLASS = 'ApexClass:invoiceservice';
+      await workspace.snapshot('fixture');
+      const [field, own] = [await workspace.impact('fixture', AMOUNT), await workspace.impact('fixture', CLASS)];
+      writeFileSync(join(project, 'force-app/main/default/classes/InvoiceService.cls'), '(hidden)');
+      const taken = await workspace.snapshot('fixture');
+      expect([taken.snapshot.status, taken.analysis?.complete]).toEqual(['complete', true]);
+      // A warning is counted, and does not make the answer miss something (decision record 0043).
+      expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
+        mayMiss: false,
+        notCovered: { readErrors: 0, analysisWarnings: field.notCovered.analysisWarnings + 1 },
+      });
+      // The warning is about what the class refers to, which an answer about what refers to the class does not hold.
+      expect((await workspace.impact('fixture', CLASS)).notCovered.analysisWarnings).toBe(
+        own.notCovered.analysisWarnings,
+      );
+    });
+
     it('may miss something when a warning outside the logic tier is about a type the answer covers', async () => {
       const { database, workspace } = await setUp();
       const warn = (types: string[]): void => {
@@ -583,15 +613,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         mayMiss: false,
         notCovered: { readErrors: 0 },
       });
-      // A list view is outside the logic tier too. Once the analysis has analysed one, an answer covers the type.
-      warn(['ListView', 'Report']);
+      // A list view is outside the logic tier too. Once the analysis says that it read the type, an answer covers
+      // it. Analysed components alone do not make it covered: a class has them while its code is read only in part
+      // (decision record 0084).
+      warn(['ListView', 'Report', 'ApexClass']);
+      inStore(database, (store) => {
+        addCoverage(store, 1, { type: 'ListView', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null });
+      });
       expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
         mayMiss: false,
         notCovered: { readErrors: 0 },
       });
-      inStore(database, (store) => {
-        addCoverage(store, 1, { type: 'ListView', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null });
-      });
+      inStore(database, (store) =>
+        store.run(`UPDATE snapshot_analysis SET types = json_insert(types, '$[#]', 'ListView')`),
+      );
       expect(await workspace.impact('fixture', AMOUNT)).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -714,9 +749,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(rule.notCovered.notAnalysed.map((gap) => gap.type)).toEqual(['CustomPermission']);
       expect(rule).toMatchObject({ complete: false, mayMiss: false });
 
-      // A class is not analysed, so the empty answer is not a finding.
+      // A class is read in part: the answer holds the objects its members use as a type, and says that the type of
+      // the class is not analysed, since what its code refers to is not read yet (decision record 0084).
       const apex = await workspace.impact('fixture', 'InvoiceService', { outgoing: true });
-      expect(apex).toMatchObject({ results: [], complete: false, component: { key: 'ApexClass:invoiceservice' } });
+      expect(apex).toMatchObject({ complete: false, mayMiss: false, component: { key: 'ApexClass:invoiceservice' } });
+      expect(apex.results.map((result) => `${result.key} ${result.reference.from}`)).toEqual([
+        'CustomObject:account ApexClass:invoiceservice#method:createdraft(account,decimal)',
+        'CustomObject:invoice__c ApexClass:invoiceservice#method:createdraft(account,decimal)',
+      ]);
       expect(apex.notCovered.notAnalysed.map((gap) => gap.type)).toEqual(['ApexClass']);
     });
 

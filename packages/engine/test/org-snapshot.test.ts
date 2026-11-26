@@ -461,9 +461,10 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(besidesKnownGap(report.issues)).toEqual([]);
       expect(report.analysis?.complete).toBe(true);
       expect(report.types.filter((type) => type.listed > 0)).toEqual([
-        { type: 'ApexClass', listed: 28, retrieved: 28, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        // A class and a trigger are counted with their members: 138 of the 30 files.
+        { type: 'ApexClass', listed: 28, retrieved: 28, analysed: 163, listing: 'ok', note: null, packaged: 0 },
         { type: 'ApexPage', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 },
-        { type: 'ApexTrigger', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 },
+        { type: 'ApexTrigger', listed: 2, retrieved: 2, analysed: 5, listing: 'ok', note: null, packaged: 0 },
         { type: 'AuraDefinitionBundle', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomField', listed: 59, retrieved: 59, analysed: 59, listing: 'ok', note: null, packaged: 0 },
         { type: 'CustomLabel', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 },
@@ -615,9 +616,26 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The same keys and the same references. A line of a reference is compared within one snapshot only: an
       // org rewrites the files.
       expect(org.components.map((one) => one.key)).toEqual(folder.components.map((one) => one.key));
-      expect(org.components).toHaveLength(207);
+      expect(org.components).toHaveLength(345);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(withoutPlace).sort());
-      expect(org.references).toHaveLength(334);
+      expect(org.references).toHaveLength(471);
+      // The classes and triggers among them: 30 with 138 members, and the 137 references of them the answer key
+      // holds. Six are tests, and the store keeps the mark: two test classes and their four methods.
+      const ofApex = (one: { key?: string; from?: string }): boolean =>
+        /^Apex(?:Class|Trigger):/.test(one.key ?? one.from ?? '');
+      expect(org.components.filter(ofApex)).toHaveLength(168);
+      expect(org.references.filter(ofApex)).toHaveLength(137);
+      const tests = (components: readonly StoredComponent[]): string[] =>
+        components.filter((one) => one.attrs?.['test'] === true).map((one) => one.key);
+      expect(tests(org.components)).toEqual([
+        'ApexClass:invoicepricingtest',
+        'ApexClass:invoicepricingtest#method:invoicewithlines()',
+        'ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()',
+        'ApexClass:invoiceservicetest',
+        'ApexClass:invoiceservicetest#method:marksaninvoiceaspaid()',
+        'ApexClass:invoiceservicetest#method:setup()',
+      ]);
+      expect(tests(folder.components)).toEqual(tests(org.components));
       // The flows among them: 7 flows with 57 elements, and the 129 references of Phase 2 the answer key holds.
       const ofFlow = (one: { key?: string; from?: string }): boolean => (one.key ?? one.from ?? '').startsWith('Flow:');
       expect(org.components.filter(ofFlow)).toHaveLength(64);
@@ -637,15 +655,21 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       // The org hands out a file for the two standard objects, which the folder does not have. So the objects
       // are defined in the snapshot of the org, and a reference to one of them is resolved there: the lookup of
-      // a field, and the record a flow updates.
+      // a field, the record a flow updates, and the 16 places where Apex uses `Account` as a type.
       const undefinedIn = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.path === null).map((one) => one.key);
       const lookupToAccount = (references: readonly StoredReference[]): string[] =>
-        references.filter((one) => one.to === 'CustomObject:account').map((one) => one.resolution);
+        references.filter((one) => one.to === 'CustomObject:account').map((one) => `${one.origin} ${one.resolution}`);
       expect(undefinedIn(org.components)).toEqual([]);
       expect(undefinedIn(folder.components)).toEqual(['CustomObject:account', 'CustomObject:user']);
-      expect(lookupToAccount(org.references)).toEqual(['resolved', 'resolved']);
-      expect(lookupToAccount(folder.references)).toEqual(['external', 'external']);
+      const toAccount = (resolution: string): string[] =>
+        [
+          ...Array.from({ length: 16 }, () => `parser:apex ${resolution}`),
+          `parser:flow ${resolution}`,
+          `parser:xml ${resolution}`,
+        ].sort();
+      expect(lookupToAccount(org.references).sort()).toEqual(toAccount('resolved'));
+      expect(lookupToAccount(folder.references).sort()).toEqual(toAccount('external'));
 
       // What the reports say about it: no issue, and the two objects more that the org has a file of.
       // The 12 components of the two files of workflow rules are read as XML too, with 21 references, and so are
@@ -657,27 +681,30 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // of flows. One path of a flow is not followed.
       const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
+      const apex = { components: 168, failedFiles: 0, references: 137, unresolved: 0, pathsNotFollowed: 0 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
-        components: 214,
-        references: 334,
+        components: 352,
+        references: 471,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
+          { origin: 'parser:apex', ...apex },
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
-        components: 207,
-        references: 334,
+        components: 345,
+        references: 471,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
+          { origin: 'parser:apex', ...apex },
         ],
       });
       const analysed = (report: CoverageReport): Record<string, number> =>
@@ -698,6 +725,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         WorkflowTask: 1,
       };
       expect(analysed(fromOrg)).toEqual({
+        ApexClass: 163,
+        ApexTrigger: 5,
         CustomField: 59,
         CustomObject: 8,
         Flow: 64,
@@ -705,6 +734,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         ...ofPhase2,
       });
       expect(analysed(fromFolder)).toEqual({
+        ApexClass: 163,
+        ApexTrigger: 5,
         CustomField: 59,
         CustomObject: 6,
         Flow: 64,

@@ -329,6 +329,7 @@ describe('the flows that cannot be deployed', () => {
       xml,
       formula,
       { origin: 'parser:flow', components: (flow?.components ?? 0) + 10, failedFiles: 1 },
+      { origin: 'parser:apex', components: 0, failedFiles: 0 },
     ]);
   });
 });
@@ -1169,6 +1170,7 @@ describe('small flows that are written here', () => {
       'parser:xml 8',
       'parser:formula 1',
       'parser:flow 3',
+      'parser:apex 0',
     ]);
     // A process another process starts is set off by no record.
     const invoked = analysed([

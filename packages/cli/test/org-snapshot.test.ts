@@ -82,24 +82,28 @@ function setUp(): { dir: string; env: Record<string, string> } {
 
 const TIME = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g;
 
-/** What the analysis says about Apex classes, which no analyser of this phase reads. */
-const classesAnalysed = (components: string): string[] => [
-  `Analysed by engine ${engineVersion()}: ${components}, 0 references.`,
+/**
+ * What the analysis says about the Apex classes: `Greeter` and its method are two components, `GreeterTest` one. They
+ * use no type that gives a reference.
+ */
+const classesAnalysed = (components: number): string[] => [
+  `Analysed by engine ${engineVersion()}: ${String(components)} components, 0 references.`,
   '',
   'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
   'parser:xml      0           0           0             0                   0',
   'parser:formula  0           0           0             0                   0',
   'parser:flow     0           0           0             0                   0',
+  `parser:apex     ${String(components)}           0           0             0                   0`,
   '',
 ];
 
 /**
- * What the cross-check says: the one row is from a class, and no analyser of this phase reads classes, so it
- * is counted and not compared.
+ * What the cross-check says: the one row is from a class, and the rows of classes are not compared yet, so it is
+ * counted and not compared.
  */
 const CROSS_CHECKED = [
   'Cross-check: the Dependency API of Salesforce reports 1 row. No answer shows that a row is missing.',
-  '1 row is from a component of a type that is not analysed, and is not compared: ApexClass 1.',
+  '1 row is from a component of a type whose rows this version does not compare: ApexClass 1.',
   'No row was compared.',
   '',
 ];
@@ -123,9 +127,9 @@ describe('orglens snapshot of an org', () => {
         'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
-        'ApexClass  2       2          0',
+        'ApexClass  2       2          3',
         '',
-        ...classesAnalysed('2 components'),
+        ...classesAnalysed(3),
         ...CROSS_CHECKED,
       ].join('\n'),
     });
@@ -175,8 +179,8 @@ describe('orglens snapshot of an org', () => {
           commit: null,
           files: 4,
         },
-        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 0, listing: 'ok', note: null, packaged: 0 }],
-        analysis: { engineVersion: engineVersion(), components: 2, references: 0, complete: true },
+        types: [{ type: 'ApexClass', listed: 2, retrieved: 2, analysed: 3, listing: 'ok', note: null, packaged: 0 }],
+        analysis: { engineVersion: engineVersion(), components: 3, references: 0, complete: true },
         crossCheck: {
           state: 'whole',
           requests: 19,
@@ -231,13 +235,13 @@ describe('orglens snapshot of an org', () => {
         'Snapshot #1 of "prod" is partial, something is missing: 1 component in 2 files (245 bytes).',
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
-        'ApexClass  2       1          0',
+        'ApexClass  2       1          2',
         '',
         'SEVERITY  CODE               WHAT',
         "warning   RETRIEVE_MESSAGES  Salesforce made 1 remark about a retrieve. The first: Entity of type 'ApexClass' named 'GreeterTest' cannot be found",
         'error     NOT_RETRIEVED      1 component of the type ApexClass that the org listed did not come back. The first: GreeterTest',
         '',
-        ...classesAnalysed('1 component'),
+        ...classesAnalysed(2),
         ...CROSS_CHECKED,
       ].join('\n'),
     );
@@ -257,7 +261,7 @@ describe('orglens snapshot of an org', () => {
     );
     expect(lines.slice(2, 4)).toEqual([
       'TYPE       LISTED  OF PACKAGES  RETRIEVED  ANALYSED',
-      'ApexClass  2       1            1          0',
+      'ApexClass  2       1            1          2',
     ]);
     expect(lines).toContain(
       'warning   NOT_RETRIEVED      1 component of the type ApexClass that the org listed as of a managed package installed in it did not come back. A component of a package does not make the snapshot partial: Salesforce does not hand out one that is protected. The first: GreeterTest',
@@ -275,12 +279,12 @@ describe('orglens snapshot of an org', () => {
         'Snapshot #1 of "prod" is complete for the logic tier: 2 components in 4 files (456 bytes). Something of other types is missing, and the warnings below say what.',
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
-        'ApexClass  2       2          0',
+        'ApexClass  2       2          3',
         '',
         'SEVERITY  CODE            WHAT',
         'warning   RESOLVE_FAILED  tabs/Thing.mystery could not be read as metadata: The file belongs to no metadata type that is known. It is counted with the type CustomTab, which is outside the logic tier, and does not make the snapshot partial.',
         '',
-        ...classesAnalysed('2 components'),
+        ...classesAnalysed(3),
         ...CROSS_CHECKED,
       ].join('\n'),
     );
@@ -434,7 +438,7 @@ describe('orglens snapshot of an org', () => {
         'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
         '',
         'TYPE       LISTED    RETRIEVED  ANALYSED',
-        'ApexClass  2         2          0',
+        'ApexClass  2         2          3',
         'Report     left out  0          0',
         '',
         '1 more type has no components.',
@@ -443,7 +447,7 @@ describe('orglens snapshot of an org', () => {
         'info      TYPES_EXCLUDED     1 type is left out of the snapshot, as exclude_types of the source says: Report. The org was not asked for its components.',
         'warning   TYPE_NOT_EXCLUDED  exclude_types of the source names Reprot, and the org describes no metadata type of that name. Nothing was left out for it.',
         '',
-        ...classesAnalysed('2 components'),
+        ...classesAnalysed(3),
         ...CROSS_CHECKED,
       ].join('\n'),
     );
@@ -475,12 +479,12 @@ describe('orglens snapshot of an org', () => {
         'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
         '',
         'TYPE       LISTED  RETRIEVED             ANALYSED',
-        'ApexClass  1       1 (and 1 not listed)  0',
+        'ApexClass  1       1 (and 1 not listed)  3',
         '',
         'SEVERITY  CODE                 WHAT',
         'info      UNLISTED_COMPONENTS  1 component of the type ApexClass came back that the org had not listed. It is in the snapshot. The first: GreeterTest',
         '',
-        ...classesAnalysed('2 components'),
+        ...classesAnalysed(3),
         ...CROSS_CHECKED,
       ].join('\n'),
     );
@@ -535,7 +539,7 @@ describe('orglens snapshot of an org', () => {
       'SEVERITY  CODE                  WHAT',
       'warning   CROSS_CHECK_NOT_READ  The Dependency API of the org gave no answer (INVALID_TYPE). What the analysis of this snapshot finds is not held against what Salesforce knows.',
       '',
-      ...classesAnalysed('2 components'),
+      ...classesAnalysed(3),
       'Cross-check: the Dependency API of Salesforce gave no answer (INVALID_TYPE). Nothing was compared.',
       '',
     ]);
@@ -602,7 +606,7 @@ describe('orglens snapshot of an org', () => {
       'Snapshot #1 of "prod" is complete: 2 components in 4 files (456 bytes).',
       '',
       'TYPE       LISTED  RETRIEVED  ANALYSED',
-      'ApexClass  2       2          0',
+      'ApexClass  2       2          3',
       '',
       'SEVERITY  CODE              WHAT',
       // It was continued twice: once by the run that asked for JSON and was refused as well, once by this one.
@@ -612,7 +616,7 @@ describe('orglens snapshot of an org', () => {
           'info      SNAPSHOT_RESUMED  The snapshot was interrupted and continued at TIME. What it holds was read from the org at more than one time.',
       ),
       '',
-      ...classesAnalysed('2 components'),
+      ...classesAnalysed(3),
       ...CROSS_CHECKED,
     ]);
 

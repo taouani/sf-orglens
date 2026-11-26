@@ -3,7 +3,7 @@ The answer is not complete: 7 types are not analysed yet. The details are below 
 
 Nothing that was analysed refers to it.
 
-Not analysed yet. A component of these types may refer to it, and is not in the answer:
+Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED
 ApexClass                 28      28
 ApexPage                  2       2

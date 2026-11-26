@@ -8,6 +8,7 @@
 - Changed by: [0058](0058-a-type-counts-for-complete-once-it-is-analysed.md), in the point this record leaves undecided: a type counts for a complete snapshot once it is analysed. The list of this record stays in force until that is built, and the record written then replaces it
 - Changed by: [0068](0068-every-analysed-type-is-of-the-logic-tier.md), which replaces the list of this record: the four actions of a workflow rule that are analysed join it, and it has 25 names. Every type the engine analyses is of the tier again, so the rule of this record that counts a warning outside the tier for an impact answer is one for later again, as this record says of it
 - Changed by: [0076](0076-a-component-is-of-a-package-where-the-org-lists-it-as-one.md), in one point: a component of a managed package installed in the org that the org lists and Salesforce does not hand out is a warning `NOT_RETRIEVED` with `details.ofPackages`, which does not make the snapshot partial
+- Changed by: [0084](0084-the-members-of-a-class-are-components.md), in one point: where the analysis lists the types it read, only a type on that list counts as covered, also when the analysis has analysed components of another type, as of a class read in part
 
 ## Context
 

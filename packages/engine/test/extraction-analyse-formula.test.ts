@@ -115,6 +115,7 @@ describe('the formulas of a source', () => {
       { origin: 'parser:xml', components: 10, failedFiles: 0 },
       { origin: 'parser:formula', components: 3, failedFiles: 0 },
       { origin: 'parser:flow', components: 0, failedFiles: 0 },
+      { origin: 'parser:apex', components: 0, failedFiles: 0 },
     ]);
     // Only the formula of a field makes it a formula field. A default value does not.
     const attrs = (fullName: string): unknown =>
@@ -548,6 +549,7 @@ describe('a formula that is not read as a whole', () => {
       { origin: 'parser:xml', components: 8, failedFiles: 0 },
       { origin: 'parser:formula', components: 1, failedFiles: 1 },
       { origin: 'parser:flow', components: 0, failedFiles: 0 },
+      { origin: 'parser:apex', components: 0, failedFiles: 0 },
     ]);
   });
 
@@ -676,6 +678,7 @@ describe('a formula that a stranger wrote', () => {
       { origin: 'parser:xml', components: 8, failedFiles: 2 },
       { origin: 'parser:formula', components: 1, failedFiles: 0 },
       { origin: 'parser:flow', components: 0, failedFiles: 0 },
+      { origin: 'parser:apex', components: 0, failedFiles: 0 },
     ]);
   });
 });
@@ -809,6 +812,7 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
       { origin: 'parser:xml', components: 109, failedFiles: 0 },
       { origin: 'parser:formula', components: 57, failedFiles: 5 },
       alone.work[2],
+      alone.work[3],
     ]);
   });
 });

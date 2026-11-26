@@ -8,19 +8,29 @@
  * on nothing else: it does not know whether the files come from an org or from a repository.
  *
  * The code of an Apex class and of a trigger is parsed, where a reader of Apex is given, and a file that does not
- * parse is an error of its component (decision record 0083). Nothing else of Apex is analysed yet.
+ * parse is an error of its component (decision record 0083). A class or a trigger that parses is a component with
+ * a component for each of its members, which refer to the types they use (`apex.ts`, decision record 0084).
  *
  * A component it is handed is never dropped without an issue, and a failure costs the one component it happens
  * in. Decision records 0041 and 0042 list what it does not read.
  */
 import { hash } from 'node:crypto';
 import type { JsonValue } from '../core/errors.ts';
-import { buildKey, KeyRegistry, parentKey, parseKey, type ComponentKey } from '../core/keys.ts';
+import {
+  buildKey,
+  foldName,
+  KeyRegistry,
+  parentKey,
+  parseKey,
+  type ComponentKey,
+  type SubComponent,
+} from '../core/keys.ts';
 import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
-import type { ApexReader, Problem } from './apex-syntax.ts';
+import { buildApexTypes, readApexUnit, resolveApex, type ApexUnitReading, type TypeUse } from './apex.ts';
+import type { ApexReader, Problem, Span, Unit } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
 import { readFlow, type FlowReading } from './flows.ts';
@@ -34,7 +44,10 @@ import { readWorkflow, readWorkflowPart, WORKFLOW_PARTS } from './workflows.ts';
 import { childOf, childrenOf, readText, readXml, type XmlDocument, type XmlElement, type XmlReading } from './xml.ts';
 
 export interface SourceAnalysis {
-  /** The metadata types that are read, sorted. A component of another type gets a row and nothing else. */
+  /**
+   * The metadata types that are read, sorted: an answer counts what refers to a component through them as known. A
+   * component of another type gets a row and nothing else, but for classes and triggers, which are read in part.
+   */
   readonly types: readonly string[];
   /** Every component of the source, each key once, sorted by key. */
   readonly components: readonly AnalysedComponent[];
@@ -51,11 +64,8 @@ export interface AnalysisOptions {
   readonly apex?: ApexReader;
 }
 
-/** The types whose code is Apex, with the kind of file the reader of Apex reads it as. */
-const APEX_KINDS: ReadonlyMap<string, 'class' | 'trigger'> = new Map([
-  ['ApexClass', 'class'],
-  ['ApexTrigger', 'trigger'],
-]);
+/** The types whose code is Apex. They are analysed where a reader of Apex is given. */
+const APEX_KINDS: ReadonlySet<string> = new Set(['ApexClass', 'ApexTrigger']);
 
 /** Whether an analysis of these components needs the reader of Apex: whether one of them is a class or a trigger. */
 export const readsApex = (listed: readonly ResolvedComponent[]): boolean =>
@@ -63,9 +73,16 @@ export const readsApex = (listed: readonly ResolvedComponent[]): boolean =>
 
 /** The text that Salesforce hands out for a class whose code it hides, as it does for a class of a managed package. */
 const HIDDEN = '(hidden)';
+/** It drops a byte order mark, which is no Apex, so that the places of the text are those the reader gives. */
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
-/** The types that are read. A component of another type gets a row and nothing else. */
+/** The text a span of a declaration covers. */
+function spannedText(source: string, starts: readonly number[], span: Span): string {
+  const offset = (line: number, column: number): number => (starts[line - 1] ?? source.length) + column - 1;
+  return source.slice(offset(span.start.line, span.start.column), offset(span.end.line, span.end.column));
+}
+
+/** The types whose files are XML and are read as such. A component of another type gets a row and nothing else. */
 const ANALYSED: ReadonlySet<string> = new Set([
   'CustomObject',
   'CustomField',
@@ -129,6 +146,14 @@ interface Entry {
   readonly definition: AnalysedComponent['definition'];
   /** What was read of it, with the file each reading is of. Empty: nothing of it was analysed. */
   readonly readings: readonly { readonly file: string; readonly reading: ElementReading }[];
+  /** Of a class or a trigger that parsed, and of each of its members: what the reader of Apex found. */
+  readonly apex?: {
+    readonly file: string;
+    /** The class or the trigger it belongs to. */
+    readonly unit: ComponentKey;
+    readonly attrs: Readonly<Record<string, JsonValue>>;
+    readonly uses: readonly TypeUse[];
+  };
 }
 
 /**
@@ -145,6 +170,7 @@ export function analyseSource(
 ): SourceAnalysis {
   const issues: AnalysisIssue[] = [];
   const registry = new KeyRegistry();
+  const { apex } = options;
   const entries: Entry[] = [];
   /** Files the reader refused, and files that could not be opened. Each is reported once. */
   const refused = new Set<string>();
@@ -156,6 +182,11 @@ export function analyseSource(
   const wholeHashes = new Map<string, Uint8Array>();
   /** The files of flows: one that cannot be read is counted for the reader of flows. */
   const flowFiles = new Set<string>();
+  /** The files of classes and triggers, and those of them that do not parse, which are counted for Apex. */
+  const apexFiles = new Set<string>();
+  const malformed = new Set<string>();
+  /** The inner types of each class or trigger that parsed. */
+  const innerTypes = new Map<ComponentKey, ApexUnitReading['inner']>();
 
   const bytesOf = (path: string): Uint8Array | null => {
     if (unreadable.has(path)) return null;
@@ -267,28 +298,25 @@ export function analyseSource(
   };
 
   /**
-   * Gives a component its key, or reports why it has none. `element` is the name of an element of the
-   * component, for a component that is one.
+   * Gives a component its key, or reports why it has none. `part` is its place below the component of the type and
+   * the full name, for a component that is a part of one, such as an element of a flow, with its name and what it
+   * is called in a message.
    */
   const register = (
     type: string,
     fullName: string,
     file: string | undefined,
-    element?: string,
+    part?: { readonly subs: readonly SubComponent[]; readonly shown: string; readonly what: string },
   ): ComponentKey | null => {
-    const shown = element === undefined ? fullName : `${fullName}.${element}`;
+    const shown = part?.shown ?? fullName;
     let key: ComponentKey;
     try {
-      key = buildKey({
-        type,
-        fullName,
-        ...(element === undefined ? {} : { subs: [{ kind: 'element', name: element }] }),
-      });
+      key = buildKey({ type, fullName, ...(part === undefined ? {} : { subs: part.subs }) });
     } catch (error) {
       issues.push({
         severity: 'error',
         code: 'KEY_INVALID',
-        message: `The ${element === undefined ? type : `element of a ${type}`} "${cut(shown, 80)}" cannot be given a key: ${messageOf(error)}`,
+        message: `The ${part?.what ?? type} "${cut(shown, 80)}" cannot be given a key: ${messageOf(error)}`,
         componentKey: null,
         details: { type, path: file ?? null },
       });
@@ -346,50 +374,117 @@ export function analyseSource(
     }
   };
   /**
-   * Parses the code of a class or a trigger, and says where it cannot be read. Nothing of it is kept yet: the
-   * analysis of Apex starts with work package 3 of the Phase 3 plan. A class whose code Salesforce hides is not
-   * parsed. A reader that throws has a fault of its own, which costs the component as any fault of an analyser.
+   * Parses the code of a class or a trigger, and says where it cannot be read. Gives the file of its code with the
+   * unit the reader made of it, or `null` where nothing of it can be analysed. A class whose code Salesforce hides
+   * is not parsed, and a warning says that what it refers to is not known. A reader that throws has a fault of its
+   * own, which costs the component as any fault of an analyser.
    */
   const parseApex = (
+    reader: ApexReader,
     key: ComponentKey,
     type: string,
-    kind: 'class' | 'trigger',
     contents: readonly { readonly file: string; readonly bytes: Uint8Array | null }[],
-  ): void => {
-    const { apex } = options;
-    if (apex === undefined) return;
-    for (const { file, bytes } of contents) {
-      if (file.endsWith('-meta.xml') || bytes === null) continue;
-      let source: string;
-      try {
-        source = utf8.decode(bytes);
-      } catch {
-        issues.push({
-          severity: 'error',
-          code: 'APEX_MALFORMED',
-          message: `${file} is not text in UTF-8. Nothing of its Apex is analysed.`,
-          componentKey: key,
-          details: { path: file, line: null, column: null },
-        });
-        continue;
-      }
-      if (source.trim() === HIDDEN) continue;
-      let problems: readonly Problem[];
-      try {
-        ({ problems } = apex.parseUnit(source, kind));
-      } catch (error) {
-        failed(key, type, file, error);
-        continue;
-      }
-      const [first] = problems;
-      if (first === undefined) continue;
-      const { line, column } = first.at;
+  ): { readonly file: string; readonly source: string; readonly unit: Unit } | null => {
+    const what = type === 'ApexTrigger' ? 'trigger' : 'class';
+    const code = contents.filter(({ file }) => !file.endsWith('-meta.xml'));
+    for (const { file } of contents) apexFiles.add(file);
+    const noCode = (file: string, said: string): null => {
+      issues.push({
+        severity: 'warning',
+        code: 'APEX_NO_CODE',
+        message: `${file} ${said} Nothing of the ${what} is analysed, so what it refers to is not known.`,
+        componentKey: key,
+        details: { path: file },
+      });
+      return null;
+    };
+    const [only] = code;
+    if (only === undefined) {
+      const meta = contents[0]?.file;
+      return meta === undefined ? null : noCode(meta, `stands for a ${what} that has no file of code.`);
+    }
+    const { file, bytes } = only;
+    if (bytes === null) return null;
+    let source: string;
+    try {
+      source = utf8.decode(bytes);
+    } catch {
+      malformed.add(file);
       issues.push({
         severity: 'error',
         code: 'APEX_MALFORMED',
-        message: `${file}, line ${String(line)}, column ${String(column)}: ${first.message} The parser of Apex cannot read the file, and nothing of it is analysed.`,
+        message: `${file} is not text in UTF-8. Nothing of its Apex is analysed.`,
         componentKey: key,
-        details: { path: file, line, column },
+        details: { path: file, line: null, column: null },
+      });
+      return null;
+    }
+    if (source.trim() === HIDDEN) {
+      return noCode(
+        file,
+        `holds "${HIDDEN}" in the place of its code: Salesforce hides the code of a ${what} of a managed package.`,
+      );
+    }
+    let unit: Unit;
+    try {
+      unit = reader.parseUnit(source, what);
+    } catch (error) {
+      failed(key, type, file, error);
+      return null;
+    }
+    const [first]: readonly Problem[] = unit.problems;
+    if (first === undefined) return { file, source, unit };
+    const { line, column } = first.at;
+    malformed.add(file);
+    issues.push({
+      severity: 'error',
+      code: 'APEX_MALFORMED',
+      message: `${file}, line ${String(line)}, column ${String(column)}: ${first.message} The parser of Apex cannot read the file, and nothing of it is analysed.`,
+      componentKey: key,
+      details: { path: file, line, column },
+    });
+    return null;
+  };
+
+  /**
+   * A class or a trigger that parsed, and its members, each a component below it. A member whose key another one
+   * has already is reported and left out, with what it holds.
+   */
+  const apexParts = (
+    key: ComponentKey,
+    type: string,
+    name: string,
+    definition: Entry['definition'],
+    parsed: { readonly file: string; readonly source: string; readonly unit: Unit },
+  ): void => {
+    const { file, source } = parsed;
+    const reading = readApexUnit(parsed.unit, name);
+    innerTypes.set(key, reading.inner);
+    const starts = [0];
+    for (let at = source.indexOf('\n'); at !== -1; at = source.indexOf('\n', at + 1)) starts.push(at + 1);
+    const what = type === 'ApexTrigger' ? 'member of a trigger' : 'member of a class';
+    const dropped: string[] = [];
+    for (const part of reading.parts) {
+      const apexOf = { file, unit: key, attrs: part.attrs, uses: part.uses };
+      if (part.subs.length === 0) {
+        entries.push({ key, type, name, definition, readings: [], apex: apexOf });
+        continue;
+      }
+      const path = part.subs.map((sub) => `${sub.kind}:${foldName(sub.name)}/`).join('');
+      if (dropped.some((one) => path.startsWith(one))) continue;
+      const member = register(type, name, file, { subs: part.subs, shown: part.name, what });
+      if (member === null) {
+        dropped.push(path);
+        continue;
+      }
+      const text = part.spans.map((span) => spannedText(source, starts, span)).join('\n');
+      entries.push({
+        key: member,
+        type,
+        name: part.name,
+        definition: { path: file, contentHash: sha256(text) },
+        readings: [],
+        apex: apexOf,
       });
     }
   };
@@ -415,7 +510,11 @@ export function analyseSource(
       });
     }
     for (const { name: element, element: xml, reading } of read.elements) {
-      const key = register('Flow', name, file, element);
+      const key = register('Flow', name, file, {
+        subs: [{ kind: 'element', name: element }],
+        shown: `${name}.${element}`,
+        what: 'element of a Flow',
+      });
       if (key === null) continue;
       entries.push({
         key,
@@ -524,8 +623,12 @@ export function analyseSource(
 
     const contents = files.map((file) => ({ file, bytes: bytesOf(file) }));
     const definition = definitionOf(component, contents);
-    const apexKind = APEX_KINDS.get(type);
-    if (apexKind !== undefined) parseApex(key, type, apexKind, contents);
+    if (APEX_KINDS.has(type) && apex !== undefined) {
+      const parsed = parseApex(apex, key, type, contents);
+      if (parsed === null) entries.push({ key, type, name, definition, readings: [] });
+      else apexParts(key, type, name, definition, parsed);
+      return;
+    }
     // An object, a field and a rule have no file that is not XML. An object that lies in two package folders
     // can have a file of its own in each, and both are read. An email template is read on its own.
     const readings: { file: string; reading: ElementReading }[] = [];
@@ -608,6 +711,13 @@ export function analyseSource(
     namedObjects,
     fields,
   });
+  // Every class and trigger is a type a name can stand for, also one that did not parse.
+  const apexTypes = buildApexTypes({
+    units: entries.flatMap(({ key, type, name }) =>
+      (type === 'ApexClass' || type === 'ApexTrigger') && !key.includes('#') ? [{ key, type, name }] : [],
+    ),
+    inner: innerTypes,
+  });
 
   const analysed = new Map<ReferenceOrigin, number>();
   let withFormula = 0;
@@ -670,6 +780,24 @@ export function analyseSource(
   const components = entries.map((entry): AnalysedComponent => {
     const { key, name, definition, readings } = entry;
     const bare: AnalysedComponent = { key, name, definition, attrs: null, references: [] };
+    if (entry.apex !== undefined) {
+      const { file, unit, attrs, uses } = entry.apex;
+      try {
+        const events = attrs['events'];
+        const references = resolveApex(
+          model,
+          apexTypes,
+          { key, unit, file },
+          uses,
+          Array.isArray(events) ? events.map(String) : undefined,
+        );
+        analysed.set('parser:apex', (analysed.get('parser:apex') ?? 0) + 1);
+        return { key, name, definition, attrs, references };
+      } catch (error) {
+        failed(key, entry.type, file, error);
+        return bare;
+      }
+    }
     if (readings.length === 0) return bare;
     try {
       const found: AnalysisIssue[] = [];
@@ -752,15 +880,22 @@ export function analyseSource(
 
   const failedFiles = [...new Set([...refused, ...unreadable])];
   const ofFlows = failedFiles.filter((file) => flowFiles.has(file)).length;
+  const ofApex = new Set([...malformed, ...failedFiles.filter((file) => apexFiles.has(file))]).size;
+  const ofXml = failedFiles.filter((file) => !flowFiles.has(file) && !apexFiles.has(file)).length;
   return {
+    // Classes and triggers are read in part: what their members use as a type, and not yet what their code refers
+    // to. An answer counts them as not analysed, and the cross-check does not compare their rows (decision record
+    // 0084).
     types: [...ANALYSED].sort(byCodeUnit),
     components,
     work: [
-      { origin: 'parser:xml', components: analysed.get('parser:xml') ?? 0, failedFiles: failedFiles.length - ofFlows },
+      { origin: 'parser:xml', components: analysed.get('parser:xml') ?? 0, failedFiles: ofXml },
       // Components with a formula, and files with a formula that was not read as a whole.
       { origin: 'parser:formula', components: withFormula, failedFiles: formulasNotRead.size },
       // Flows and their elements, and files of flows that could not be read.
       { origin: 'parser:flow', components: analysed.get('parser:flow') ?? 0, failedFiles: ofFlows },
+      // Classes and triggers with their members, and their files that do not parse or could not be read.
+      { origin: 'parser:apex', components: analysed.get('parser:apex') ?? 0, failedFiles: ofApex },
     ],
     issues,
   };

@@ -379,7 +379,7 @@ const commitAll = (dir: string): string => commitAllIn(dir, dirs.next());
 
 const NO_COMMIT = 'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository.';
 
-/** What the analysis says about the project of these tests: one class, which no analyser of this phase reads. */
+/** What the analysis says about the project of these tests: one class, which has no member and uses no type. */
 const ONE_CLASS_ANALYSED = [
   `Analysed by engine ${engineVersion()}: 1 component, 0 references.`,
   '',
@@ -387,6 +387,7 @@ const ONE_CLASS_ANALYSED = [
   'parser:xml      0           0           0             0                   0',
   'parser:formula  0           0           0             0                   0',
   'parser:flow     0           0           0             0                   0',
+  'parser:apex     1           0           0             0                   0',
 ];
 
 describe('orglens snapshot and coverage', () => {
@@ -398,7 +399,7 @@ describe('orglens snapshot and coverage', () => {
       `Snapshot #1 of "work" is complete: 1 component in 2 files (${String(PROJECT_BYTES)} bytes).`,
       '',
       'TYPE       LISTED  RETRIEVED  ANALYSED',
-      'ApexClass  1       1          0',
+      'ApexClass  1       1          1',
       '',
       'SEVERITY  CODE            WHAT',
       NO_COMMIT,
@@ -430,7 +431,7 @@ describe('orglens snapshot and coverage', () => {
     expect(taken).toMatchObject({ code: 0, stderr: '' });
     const table = [
       'TYPE                             LISTED  RETRIEVED  ANALYSED',
-      'ApexClass                        1       1          0',
+      'ApexClass                        1       1          1',
       'CustomLabel                      1       1          0',
       'CustomLabels (holds the labels)  1       1          0',
     ];
@@ -453,7 +454,7 @@ describe('orglens snapshot and coverage', () => {
         `Snapshot #1 of "work" is complete: 1 component in 2 files (198 bytes), commit ${commit.slice(0, 10)}.`,
         '',
         'TYPE       LISTED  RETRIEVED  ANALYSED',
-        'ApexClass  1       1          0',
+        'ApexClass  1       1          1',
         '',
         ...ONE_CLASS_ANALYSED,
         '',
@@ -498,7 +499,7 @@ describe('orglens snapshot and coverage', () => {
         files: 2,
         bytes: PROJECT_BYTES,
       },
-      types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 0, listing: 'ok', note: null, packaged: 0 }],
+      types: [{ type: 'ApexClass', listed: 1, retrieved: 1, analysed: 1, listing: 'ok', note: null, packaged: 0 }],
       analysis: {
         engineVersion: engineVersion(),
         analysedAt: expect.stringMatching(/Z$/) as string,
@@ -516,6 +517,7 @@ describe('orglens snapshot and coverage', () => {
             pathsNotFollowed: 0,
           },
           { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          { origin: 'parser:apex', components: 1, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
       crossCheck: null,
@@ -545,7 +547,7 @@ describe('orglens snapshot and coverage', () => {
       'Snapshot #1 of "work" is partial, something is missing: 1 component in 2 files (198 bytes).',
       '',
       'TYPE       LISTED  RETRIEVED  ANALYSED',
-      'ApexClass  1       1          0',
+      'ApexClass  1       1          1',
       '',
       'SEVERITY  CODE                WHAT',
       'error     FOLDER_MISSING      1 folder of the source does not exist, or is a link, a submodule or a file: gone.',
@@ -671,7 +673,7 @@ describe('orglens analyse', () => {
     expect(taken.stdout.split('\n').slice(1)).toEqual([
       '',
       'TYPE          LISTED  RETRIEVED  ANALYSED',
-      'ApexClass     1       1          0',
+      'ApexClass     1       1          1',
       'CustomField   2       2          2',
       'CustomObject  1       1          1',
       '',
@@ -684,6 +686,7 @@ describe('orglens analyse', () => {
       'parser:xml      3           0           0             0                   0',
       'parser:formula  1           2           1             1                   0',
       'parser:flow     0           0           0             0                   0',
+      'parser:apex     1           0           0             0                   0',
       '',
       'SEVERITY  CODE               COUNT  THE FIRST',
       NOT_FOLLOWED,
@@ -721,6 +724,7 @@ describe('orglens analyse', () => {
             pathsNotFollowed: 1,
           },
           { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          { origin: 'parser:apex', components: 1, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
     });
@@ -744,7 +748,7 @@ describe('orglens analyse', () => {
     expect(lines.slice(1, 6)).toEqual([
       '',
       'TYPE          LISTED  RETRIEVED  ANALYSED',
-      'ApexClass     1       1          0',
+      'ApexClass     1       1          1',
       'CustomField   2       2          1',
       'CustomObject  1       1          1',
     ]);
@@ -756,6 +760,7 @@ describe('orglens analyse', () => {
       'parser:xml      2           0           0             0                   1',
       'parser:formula  1           2           1             1                   0',
       'parser:flow     0           0           0             0                   0',
+      'parser:apex     1           0           0             0                   0',
       '',
       'SEVERITY  CODE               COUNT  THE FIRST',
       `error     XML_MALFORMED      1      ${weight}: The file ends before the element "label" is closed.`,

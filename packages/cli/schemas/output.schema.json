@@ -453,7 +453,7 @@
                 "minimum": 0
               },
               "analysed": {
-                "description": "How many components of the type the analysis read something of. 0 for a type that this version does not analyse, and for a snapshot that was not analysed. It can be more than `retrieved`: the analysis also counts what it finds inside the files of other components, such as the fields in the file of an object.",
+                "description": "How many components of the type the analysis read something of. 0 for a type that this version does not analyse, and for a snapshot that was not analysed. `ApexClass` and `ApexTrigger` have a number while this version reads them only in part, and an impact answer still names them in `notCovered.notAnalysed`. It can be more than `retrieved`: the analysis also counts what it finds inside the files of other components, such as the fields in the file of an object.",
                 "type": "integer",
                 "minimum": 0
               },
@@ -739,7 +739,7 @@
           "additionalProperties": false,
           "properties": {
             "notAnalysed": {
-              "description": "The types of the snapshot that no analyser read, sorted by type. A component of such a type may refer to the component that was asked about, and is not in the answer. For `incoming`: not a type whose components can name no type of the answer, of the component, of what it contains, of the results or of a type that stays (decision record 0073). For `outgoing`: only the types of the component, of what it contains and of the results, because what a component refers to does not depend on other types.",
+              "description": "The types of the snapshot that no analyser read, or that the analysis reads only in part, sorted by type: `ApexClass` and `ApexTrigger`, of which only the types their members use are read (decision record 0084). A component of such a type may refer to the component that was asked about, and not be in the answer. For `incoming`: not a type whose components can name no type of the answer, of the component, of what it contains, of the results or of a type that stays (decision record 0073). For `outgoing`: only the types of the component, of what it contains and of the results, because what a component refers to does not depend on other types.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/impactGap"
@@ -914,16 +914,16 @@
             "additionalProperties": false,
             "properties": {
               "origin": {
-                "description": "Where the references come from, such as `parser:xml`, `parser:formula` or `parser:flow`.",
+                "description": "Where the references come from, such as `parser:xml`, `parser:formula`, `parser:flow` or `parser:apex`.",
                 "type": "string"
               },
               "components": {
-                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value. For `parser:flow`: the flows and their elements.",
+                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value. For `parser:flow`: the flows and their elements. For `parser:apex`: the classes and triggers and their members.",
                 "type": "integer",
                 "minimum": 0
               },
               "failedFiles": {
-                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`. For `parser:flow`: the files of flows.",
+                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`. For `parser:flow`: the files of flows. For `parser:apex`: the files of classes and triggers that do not parse or could not be read.",
                 "type": "integer",
                 "minimum": 0
               },
@@ -1017,7 +1017,7 @@
       "properties": {
         "rows": { "description": "The rows of the API the snapshot holds.", "type": "integer", "minimum": 0 },
         "rowsNotAnalysed": {
-          "description": "The rows from a component of a type this analysis did not read. They are not compared.",
+          "description": "The rows from a component of a type this analysis did not read, or read only in part, as `ApexClass` and `ApexTrigger`. They are not compared.",
           "type": "integer",
           "minimum": 0
         },
