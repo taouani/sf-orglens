@@ -159,6 +159,28 @@ describe('the reader of Apex', () => {
     for (const problem of problems) expect(problem.message).not.toMatch(/secret/i);
   });
 
+  it('says that a file holds something beside the one type or trigger it declares', () => {
+    const cases = [
+      { source: "public class A { } System.debug('x');", kind: 'class', word: 'System' },
+      { source: 'Integer i = 1; public class A { }', kind: 'class', word: 'Integer' },
+      { source: 'public class A { } public class B { }', kind: 'class', word: 'public class B' },
+      { source: 'public class A { } trigger T on Account (before insert) { }', kind: 'trigger', word: 'public' },
+    ] as const;
+    for (const { source, kind, word } of cases) {
+      const message = `The file holds something beside the ${kind === 'class' ? 'type' : 'trigger'} it declares.`;
+      expect(reader.parseUnit(source, kind).problems, source).toEqual([{ at: at(source, word), message }]);
+    }
+    // A comment is no declaration.
+    expect(reader.parseUnit('/* head */ public class A { } // tail', 'class').problems).toEqual([]);
+  });
+
+  it('reads an operator that is written with a space inside it', () => {
+    const source = 'public class C { void m(Integer a) { Boolean b = a > = 0; } }';
+    const [local] = methodBody(onlyType(reader.parseUnit(source, 'class')).members[0]);
+    if (local?.kind !== 'local' || local.vars[0]?.init?.kind !== 'binary') throw new Error('No comparison.');
+    expect(local.vars[0].init.op).toBe('>=');
+  });
+
   it('says that a file declares nothing', () => {
     expect(reader.parseUnit('', 'class').problems).toEqual([
       { at: { line: 1, column: 1 }, message: 'The file declares no type.' },
@@ -188,6 +210,7 @@ describe('the reader of Apex', () => {
     expect(query?.from[0]?.at).toEqual({ line: 1, column: 33 });
     expect(reader.parseQuery('SELECT Id FROM Account WHERE Name = ')).toBeUndefined();
     expect(reader.parseQuery('SELECT Id FROM Account]; delete [SELECT Id FROM Contact')).toBeUndefined();
+    expect(reader.parseQuery('SELECT Id FROM Account];} class Z{Object z=[SELECT Name FROM Contact')).toBeUndefined();
     expect(reader.parseQuery('this is not a query')).toBeUndefined();
     // A file read after a query has the places of its own text.
     expect(onlyType(reader.parseUnit('public class After { }', 'class')).name.at).toEqual({ line: 1, column: 14 });

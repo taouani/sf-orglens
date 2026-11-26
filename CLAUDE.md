@@ -104,11 +104,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
 - Apex is read with the reader of the engine, `extraction/apex-reader.ts`, built on `web-tree-sitter-sfapex`
   (decision record 0083). It lowers the tree of the parser into the model of `extraction/apex-syntax.ts`, which
   knows nothing of a parser, and frees the tree. Its grammar is loaded once in a process, by the analysis of a
-  snapshot that holds a class or a trigger, and by nothing else. A class or a trigger that does not parse is the
-  error `APEX_MALFORMED` of its component, at the first place the parser cannot read. The tests hold the reader
-  against a second parser, `@apexdevtools/apex-parser`, ported to the same model
-  (`test/helpers/apex-parser-adapter.ts`). No code of the engine imports it, and the tools of the layer rules refuse
-  it there. The analysis records nothing of the model yet: the analysers of Apex come later in Phase 3.
+  snapshot that holds a class or a trigger, and by nothing else. A class or a trigger that does not parse, or whose
+  file holds more than the one it declares, is the error `APEX_MALFORMED` of its component, at the first place the
+  parser cannot read. A fault of the reader is `ANALYSIS_FAILED`. The tests hold the reader against a second parser,
+  `@apexdevtools/apex-parser`, ported to the same model (`test/helpers/apex-parser-adapter.ts`). No code of the
+  engine imports it, and the tools of the layer rules refuse it there. The analysis records nothing of the model
+  yet: the analysers of Apex come later in Phase 3.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the

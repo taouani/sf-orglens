@@ -15,6 +15,8 @@
  */
 import type { Node, Parser } from 'web-tree-sitter';
 import { EngineError } from '../core/errors.ts';
+import { redactText } from '../core/redact.ts';
+import { cut } from './analysed.ts';
 import type {
   ApexReader,
   Declarator,
@@ -62,6 +64,12 @@ const all = (node: Node | null | undefined, type: string): Node[] => kids(node).
 const one = (node: Node | null | undefined, type: string): Node | undefined => all(node, type)[0];
 const field = (node: Node | null | undefined, name: string): Node | undefined =>
   node?.childForFieldName(name) ?? undefined;
+/**
+ * The operator of an expression, without white space. The grammars of Apex read `>=` and `>>` as tokens of one
+ * character each, so that `List<List<Id>>` can close, and so `a > = 0`, as a class of a public codebase writes it,
+ * is `a >= 0`.
+ */
+const operator = (node: Node): string | undefined => field(node, 'operator')?.text.replace(/\s+/g, '');
 /** The named children that stand in a field. A comma between them carries the name of the field too. */
 const fields = (node: Node, name: string): Node[] =>
   node.childrenForFieldName(name).filter((kid) => kid.isNamed && !COMMENTS.has(kid.type));
@@ -196,20 +204,20 @@ function expression(node: Node | undefined): Expr {
     case 'assignment_expression':
       return {
         kind: 'assign',
-        op: field(node, 'operator')?.text ?? '=',
+        op: operator(node) ?? '=',
         left: expression(field(node, 'left')),
         right: expression(field(node, 'right')),
       };
     case 'binary_expression':
       return {
         kind: 'binary',
-        op: field(node, 'operator')?.text.toLowerCase() ?? '',
+        op: operator(node)?.toLowerCase() ?? '',
         left: expression(field(node, 'left')),
         right: expression(field(node, 'right')),
       };
     case 'unary_expression':
     case 'update_expression':
-      return { kind: 'unary', op: field(node, 'operator')?.text ?? '', operand: expression(field(node, 'operand')) };
+      return { kind: 'unary', op: operator(node) ?? '', operand: expression(field(node, 'operand')) };
     case 'ternary_expression':
       return {
         kind: 'ternary',
@@ -629,28 +637,42 @@ function unit(root: Node | undefined, kind: 'class' | 'trigger'): Unit {
     return { types: [], trigger: undefined, problems: [{ at: START, message: 'The parser gave no tree.' }] };
   }
   const problems = problemsOf(root);
+  // The grammar reads anonymous Apex and several declarations in one file. A file of a class declares one class,
+  // interface or enum, and a file of a trigger one trigger, and nothing beside it: Salesforce would not deploy it,
+  // and what stands beside it would not be read. A node in error is a problem already.
+  const declared = kids(root).filter((kid) => !kid.isError);
   if (kind === 'trigger') {
     const declaration = one(root, 'trigger_declaration');
     if (declaration === undefined) problems.push({ at: START, message: 'The file declares no trigger.' });
+    const beside = declared.find((kid) => kid !== declaration);
+    if (declaration !== undefined && beside !== undefined) {
+      problems.push({ at: posOf(beside), message: 'The file holds something beside the trigger it declares.' });
+    }
     return {
       types: [],
       trigger: declaration === undefined ? undefined : trigger(declaration),
       problems: inOrder(problems),
     };
   }
-  const types = kids(root).flatMap((kid) => {
+  const types = declared.flatMap((kid) => {
     const decl = typeDeclaration(kid);
     return decl === undefined ? [] : [decl];
   });
   // An empty file gives a tree without a type and without an error node.
   if (types.length === 0 && problems.length === 0) problems.push({ at: START, message: 'The file declares no type.' });
+  const beside = declared.find((kid, index) => index > 0 || typeDeclaration(kid) === undefined);
+  if (types.length > 0 && beside !== undefined) {
+    problems.push({ at: posOf(beside), message: 'The file holds something beside the type it declares.' });
+  }
   return { types, trigger: undefined, problems: inOrder(problems) };
 }
 
 /** The query of a text that was wrapped as `class Q{Object q=[ ... ];}`, or `undefined` when it is not one query. */
 function wrappedQuery(root: Node | undefined): Query | undefined {
-  if (root === undefined || root.hasError) return undefined;
-  const declared = kids(field(one(root, 'class_declaration'), 'body'));
+  // A text that closes the wrapper can open a class of its own after it.
+  const [wrapper, ...more] = kids(root);
+  if (root === undefined || root.hasError || wrapper?.type !== 'class_declaration' || more.length > 0) return undefined;
+  const declared = kids(field(wrapper, 'body'));
   const value = declared.length === 1 ? field(field(declared[0], 'declarator'), 'value') : undefined;
   const bodies = value?.type === 'query_expression' ? kids(value) : [];
   return bodies.length === 1 && bodies[0]?.type === 'soql_query_body' ? query(bodies[0]) : undefined;
@@ -661,13 +683,9 @@ function readerOn(apex: Parser): ApexReader {
   return {
     name: 'web-tree-sitter-sfapex',
     parseUnit(source, kind): Unit {
-      try {
-        // A byte order mark is not Apex. A file may start with one.
-        return withTree(apex, source.startsWith('\uFEFF') ? source.slice(1) : source, (root) => unit(root, kind));
-      } catch (error) {
-        const message = `The parser failed: ${error instanceof Error ? error.message : String(error)}`;
-        return { types: [], trigger: undefined, problems: [{ at: START, message }] };
-      }
+      // A byte order mark is not Apex. A file may start with one. What throws here is a fault of the reader, not
+      // of the text, and is left to the caller.
+      return withTree(apex, source.startsWith('\uFEFF') ? source.slice(1) : source, (root) => unit(root, kind));
     },
     parseQuery(text): Query | undefined {
       // The grammar for SOQL alone does not read a bind variable (`:name`), which is an expression of Apex. So
@@ -698,11 +716,12 @@ export function loadApexReader(): Promise<ApexReader> {
       return readerOn(await getApexParser());
     } catch (error) {
       loading = undefined;
-      throw new EngineError(
-        'INTERNAL',
-        `The parser of Apex could not be loaded: ${error instanceof Error ? error.message : String(error)}`,
-        { hint: 'The installation of OrgLens may be incomplete. Installing it again can help.', cause: error },
-      );
+      // The message of another program can hold a path or more, so it is cut and masked.
+      const reason = redactText(cut(error instanceof Error ? error.message : String(error), 200));
+      throw new EngineError('INTERNAL', `The parser of Apex could not be loaded: ${reason}`, {
+        hint: 'The installation of OrgLens may be incomplete. Installing it again can help.',
+        cause: error,
+      });
     }
   })();
   return loading;

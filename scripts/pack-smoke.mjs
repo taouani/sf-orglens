@@ -22,8 +22,13 @@ const windows = process.platform === 'win32';
 /** Quotes one argument for cmd.exe. Paths with spaces would otherwise be split. */
 const quote = (text) => (/[\s"&|<>^()]/.test(text) ? `"${text.replaceAll('"', '\\"')}"` : text);
 
-/** Runs a program and returns what it wrote. An exit code other than 0 and those `allowed` is a failure. */
-function run(command, args, cwd, allowed = []) {
+/** Runs a program and returns what it wrote. An exit code other than 0 is a failure. */
+function run(command, args, cwd) {
+  return started(command, args, cwd).stdout;
+}
+
+/** Runs a program and returns what it wrote and its exit code. An exit code other than 0 and those `allowed` is a failure. */
+function started(command, args, cwd, allowed = []) {
   // npm and pnpm are .cmd shims on Windows and need a shell to start. A shell joins its arguments
   // without quoting, so they are quoted here. Node.js itself is started directly, without a shell.
   const viaShell = windows && command !== process.execPath;
@@ -34,7 +39,7 @@ function run(command, args, cwd, allowed = []) {
     console.error(`$ ${command} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
     throw new Error(`${command} exited with code ${String(result.status)}`);
   }
-  return result.stdout;
+  return result;
 }
 
 function fail(message) {
@@ -106,9 +111,9 @@ try {
   // The installed binary creates a workspace and reports on it, and its output matches the envelope.
   const workspace = join(app, 'workspace');
   mkdirSync(workspace);
-  const orglensAllowing = (allowed, ...args) =>
-    run('npm', ['exec', '--offline', '--', 'orglens', '--workspace', workspace, ...args], app, allowed).trim();
-  const orglens = (...args) => orglensAllowing([], ...args);
+  const orglensWithStatus = (allowed, ...args) =>
+    started('npm', ['exec', '--offline', '--', 'orglens', '--workspace', workspace, ...args], app, allowed);
+  const orglens = (...args) => orglensWithStatus([], ...args).stdout.trim();
   const lastLine = (text) => text.split('\n').at(-1) ?? '';
   orglens('init', '--json');
   orglens('source', 'add', 'repo', '--kind', 'git', '--json');
@@ -150,7 +155,9 @@ try {
       'utf8',
     ),
   );
-  const broken = JSON.parse(lastLine(orglensAllowing([5], 'snapshot', 'fixture', '--json')));
+  const second = orglensWithStatus([5], 'snapshot', 'fixture', '--json');
+  if (second.status !== 5) fail(`the snapshot with a class that does not parse ended with ${String(second.status)}`);
+  const broken = JSON.parse(lastLine(second.stdout.trim()));
   const [issue, ...more] = malformed(broken);
   if (issue?.component !== 'ApexClass:smokebroken' || issue.details?.line !== 2 || more.length > 0) {
     fail(`the class that does not parse is not the one error of Apex: ${JSON.stringify(malformed(broken))}`);

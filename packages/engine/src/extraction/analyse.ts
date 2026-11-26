@@ -20,7 +20,7 @@ import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
 import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
-import type { ApexReader } from './apex-syntax.ts';
+import type { ApexReader, Problem } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
 import { readFlow, type FlowReading } from './flows.ts';
@@ -348,10 +348,11 @@ export function analyseSource(
   /**
    * Parses the code of a class or a trigger, and says where it cannot be read. Nothing of it is kept yet: the
    * analysis of Apex starts with work package 3 of the Phase 3 plan. A class whose code Salesforce hides is not
-   * parsed.
+   * parsed. A reader that throws has a fault of its own, which costs the component as any fault of an analyser.
    */
   const parseApex = (
     key: ComponentKey,
+    type: string,
     kind: 'class' | 'trigger',
     contents: readonly { readonly file: string; readonly bytes: Uint8Array | null }[],
   ): void => {
@@ -373,7 +374,14 @@ export function analyseSource(
         continue;
       }
       if (source.trim() === HIDDEN) continue;
-      const [first] = apex.parseUnit(source, kind).problems;
+      let problems: readonly Problem[];
+      try {
+        ({ problems } = apex.parseUnit(source, kind));
+      } catch (error) {
+        failed(key, type, file, error);
+        continue;
+      }
+      const [first] = problems;
       if (first === undefined) continue;
       const { line, column } = first.at;
       issues.push({
@@ -517,7 +525,7 @@ export function analyseSource(
     const contents = files.map((file) => ({ file, bytes: bytesOf(file) }));
     const definition = definitionOf(component, contents);
     const apexKind = APEX_KINDS.get(type);
-    if (apexKind !== undefined) parseApex(key, apexKind, contents);
+    if (apexKind !== undefined) parseApex(key, type, apexKind, contents);
     // An object, a field and a rule have no file that is not XML. An object that lies in two package folders
     // can have a file of its own in each, and both are read. An email template is read on its own.
     const readings: { file: string; reading: ElementReading }[] = [];

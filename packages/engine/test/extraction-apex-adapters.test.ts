@@ -46,7 +46,8 @@ describe('the two readers of Apex', () => {
   });
 
   // The interfaces of a class and of an interface, and the values of a `when`, which the model of the trial did not
-  // have, and three differences that the code review of the trial found between its adapters.
+  // have, three differences that the code review of the trial found between its adapters, and an operator written
+  // with a space inside it, as a class of a public codebase writes one.
   it.each([
     {
       name: 'the interfaces a class implements and an interface extends',
@@ -68,6 +69,10 @@ describe('the two readers of Apex', () => {
       source: "class C { void m(Invoice__c inv) { String e = '\u{1F600}\u{1F600}'; inv.Amount__c = 1; } }",
     },
     {
+      name: 'an operator written with a space inside it',
+      source: 'class C { void m(Integer a) { Boolean b = a > = 0; Integer s = a > > 1; } }',
+    },
+    {
       name: 'a file that starts with a byte order mark',
       source: '﻿class C { void m(Invoice__c inv) { inv.Amount__c = 1; } }',
     },
@@ -87,6 +92,42 @@ describe('the two readers of Apex', () => {
     }
   });
 
+  it.each([
+    { name: 'a statement beside a class', source: "public class A { } System.debug('x');", kind: 'class' },
+    { name: 'a statement before a class', source: 'Integer i = 1; public class A { }', kind: 'class' },
+    { name: 'two classes', source: 'public class A { } public class B { }', kind: 'class' },
+    {
+      name: 'a class beside a trigger',
+      source: 'public class A { } trigger T on Account (before insert) { }',
+      kind: 'trigger',
+    },
+  ] as const)('both say that a file with $name has a problem', ({ source, kind }) => {
+    for (const reader of [engine, second]) {
+      expect(reader.parseUnit(source, kind).problems.length, reader.name).toBeGreaterThan(0);
+    }
+  });
+
+  it('both say where they cannot read a file without quoting it', () => {
+    const source = [
+      'public class Broken {',
+      "    String wide = '\u{1F600}';",
+      '    void first() {',
+      '        Integer secretValue = ;',
+      '        Integer secretOne secretOther;',
+      '    }',
+      '    void second() {',
+      '        if (secretCondition {',
+      '    }',
+      '}',
+      '',
+    ].join('\n');
+    for (const reader of [engine, second]) {
+      const { problems } = reader.parseUnit(source, 'class');
+      expect(problems.length, reader.name).toBeGreaterThan(0);
+      for (const problem of problems) expect(problem.message, reader.name).not.toMatch(/secret/i);
+    }
+  });
+
   it('lower into the same model after the cache of the second parser was emptied', () => {
     const files = readApexFiles(PROJECT);
     const before = files.map((file) => lowered(second, file.source, file.kind));
@@ -99,5 +140,8 @@ describe('the two readers of Apex', () => {
     const text = 'SELECT Id, Account__r.Name, (SELECT Id FROM Lines__r) FROM Invoice__c i WHERE Status__c = :status';
     expect(engine.parseQuery(text)).toEqual(second.parseQuery(text));
     expect(engine.parseQuery(text)?.alias).toBe('i');
+    // A text that closes the class it is read in is not one query.
+    const escape = 'SELECT Id FROM Account];} class Z{Object z=[SELECT Name FROM Contact';
+    expect([engine.parseQuery(escape), second.parseQuery(escape)]).toEqual([undefined, undefined]);
   });
 });

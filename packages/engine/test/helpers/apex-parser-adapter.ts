@@ -163,10 +163,14 @@ type Tree = ApexParseTree;
 type Ctx = ApexParserRuleContext;
 type CtxClass<T extends Ctx> = abstract new (...args: never[]) => T;
 
+/** The syntax errors of a parse. The message of ANTLR quotes the source, so a problem says only where it is. */
 class Problems extends ApexErrorListener {
   readonly found: Problem[] = [];
-  override apexSyntaxError(line: number, column: number, message: string): void {
-    this.found.push({ at: { line, column: unitColumn(line, column) + 1 }, message });
+  override apexSyntaxError(line: number, column: number): void {
+    this.found.push({
+      at: { line, column: unitColumn(line, column) + 1 },
+      message: 'The parser cannot read the text here.',
+    });
   }
 }
 
@@ -763,13 +767,13 @@ function trigger(ctx: TriggerUnitContext): TriggerDecl {
 /**
  * Gives back the memory of the prediction cache that the ANTLR run time builds as it reads. The cache belongs to
  * the classes of the parser and of the lexer, so it is shared by every parse of the process. The next files are
- * parsed more slowly until the cache has grown again. `run-corpus.ts` uses this to measure the trade.
+ * parsed more slowly until the cache has grown again. A test shows that the model does not change with it.
  */
 export function emptyApexParserCache(): void {
   for (const recognizer of [ApexParser, ApexLexer]) {
     const [first] = recognizer.DecisionsToDFA;
     if (first === undefined) continue;
-    // The class of an entry is taken from an entry: the trial does not depend on the ANTLR run time by name.
+    // The class of an entry is taken from an entry, so that the tests need not import the ANTLR run time.
     const Entry = first.constructor as new (...args: unknown[]) => (typeof ApexParser.DecisionsToDFA)[number];
     recognizer.DecisionsToDFA = recognizer._ATN.decisionToState.map((state, index) => new Entry(state, index));
   }
@@ -778,6 +782,8 @@ export function emptyApexParserCache(): void {
 export function createApexParserAdapter(): ApexReader {
   return {
     name: 'apex-parser',
+    // What throws in a parse is a fault of the adapter, not of the text, and is left to the caller, as the reader
+    // of the engine does. The lines of the text are let go when it is read.
     parseUnit(source, kind): Unit {
       const problems = new Problems();
       try {
@@ -793,9 +799,8 @@ export function createApexParserAdapter(): ApexReader {
           return decl === undefined ? [] : [decl];
         });
         return { types, trigger: undefined, problems: problems.found };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { types: [], trigger: undefined, problems: [...problems.found, { at: START, message }] };
+      } finally {
+        wideLines = undefined;
       }
     },
     parseQuery(text): Query | undefined {
@@ -808,6 +813,8 @@ export function createApexParserAdapter(): ApexReader {
         return query(tree);
       } catch {
         return undefined;
+      } finally {
+        wideLines = undefined;
       }
     },
   };

@@ -127,6 +127,29 @@ describe('the analysis of Apex', () => {
     expect(readsApex(withoutApex.listed)).toBe(false);
   });
 
+  it('makes a fault of the reader a failed analysis of the class, not a file that does not parse', () => {
+    const source = new ApexSource();
+    const path = source.apexClass('Good', 'public class Good { }\n');
+    const faulty: ApexReader = {
+      name: 'faulty',
+      parseUnit: () => {
+        throw new Error('The reader has a bug.');
+      },
+      parseQuery: () => undefined,
+    };
+    const analysis = analyseSource(source.tree, source.listed, { apex: faulty });
+    expect(analysis.issues).toEqual([
+      {
+        severity: 'error',
+        code: 'ANALYSIS_FAILED',
+        message: 'The analysis of a ApexClass failed: The reader has a bug.',
+        componentKey: key('ApexClass', 'Good'),
+        details: { type: 'ApexClass', path },
+      },
+    ]);
+    expect(analysis.components.map((one) => one.key)).toEqual([key('ApexClass', 'Good')]);
+  });
+
   it('reports a file of a class that cannot be read once, as the analysis does for every file', () => {
     const source = new ApexSource();
     const path = source.apexClass('Gone', 'public class Gone { }\n');

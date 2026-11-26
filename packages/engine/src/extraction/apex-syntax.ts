@@ -225,11 +225,17 @@ export interface Search {
   readonly binds: readonly Expr[];
 }
 
-/** What a reader of Apex offers. Neither function throws, and neither keeps anything of the text it was given. */
+/**
+ * What a reader of Apex offers. Neither function throws because of the text it is given: an exception is a fault of
+ * the reader. Neither keeps anything of the text.
+ */
 export interface ApexReader {
   /** The parser the reader is built on. */
   readonly name: string;
-  /** A file that cannot be read at all gives a unit without types and with a problem. */
+  /**
+   * A file that cannot be read at all gives a unit without types and with a problem. A file that holds something
+   * beside the one type or trigger it declares gives a problem too.
+   */
   parseUnit(source: string, kind: 'class' | 'trigger'): Unit;
   /**
    * Reads the text of a query that Apex builds at run time. The text has one line. Returns `undefined` when the
