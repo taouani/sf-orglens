@@ -27,6 +27,11 @@ type Piece =
       readonly at: Pos | undefined;
       /** The parameter of a method whose text it is: a call gives what stands there. */
       readonly param?: number;
+      /**
+       * The parameter of the member that is read, whose text it is, where it is read as it is called: the calls may
+       * read what stands there (decision record 0091).
+       */
+      readonly arg?: number;
       readonly of: HoleOf;
     };
 
@@ -72,6 +77,30 @@ export function wordText(at: Pos, word: string): Text {
 export const holeText = (at: Pos | undefined, of: HoleOf, param?: number): Text => [
   param === undefined ? { k: 'hole', at, of } : { k: 'hole', at, of, param },
 ];
+
+/** The text of a parameter of the member that is read, which its calls may give: a part not known yet. */
+export const argText = (of: HoleOf, arg: number): Text => [{ k: 'hole', at: undefined, of, arg }];
+
+/** Whether a text holds a parameter of a method, which a call gives. */
+export const holdsParam = (texts: Texts): boolean =>
+  texts.some((text) => text.some((piece) => piece.k === 'hole' && piece.param !== undefined));
+
+/** The places where a parameter of the member that is read entered the texts (`argText`). */
+export function argPlaces(texts: Texts): Pos[] {
+  const places: Pos[] = [];
+  for (const text of texts) {
+    for (const piece of text)
+      if (piece.k === 'hole' && piece.arg !== undefined && piece.at !== undefined) places.push(piece.at);
+  }
+  return places;
+}
+
+/** Whether a text holds characters that stand somewhere other than `at`. */
+export const charsBeside = (text: Text, at: Pos): boolean =>
+  text.some(
+    (piece) =>
+      piece.k === 'chars' && piece.at !== undefined && (piece.at.line !== at.line || piece.at.column !== at.column),
+  );
 
 /**
  * The texts of a value as they enter a text at `at`: a part that a way of a branch did not know, which has no place

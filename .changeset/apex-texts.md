@@ -11,7 +11,7 @@ constants it uses, `String.join`, `String.format` and the other methods of `Stri
 methods of the project give back. Each name stands where its characters stand in the code, with the `via` `text`, and
 is `probable` at most. A part of a text that is not known is a `possible` reference to its object, or the warning
 `PATH_NOT_FOLLOWED`, which says what is not known. So `orglens impact` of a field or an object now holds what names it
-in a text, and an answer can say that warnings of Apex bear on it. A text that a member is handed as a parameter, and
-the names that records of custom metadata and field sets hold, are not read yet, so `ApexClass` and `ApexTrigger` stay
-among the types that are not analysed. A snapshot analysed by an older version shows none of this until it is analysed
-again (`orglens analyse`). Decision record 0090 has the details.
+in a text, and an answer can say that warnings of Apex bear on it. The names that records of custom metadata and field
+sets hold are not read yet, so `ApexClass` and `ApexTrigger` stay among the types that are not analysed. A snapshot
+analysed by an older version shows none of this until it is analysed again (`orglens analyse`). Decision record 0090
+has the details.

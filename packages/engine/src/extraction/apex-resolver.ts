@@ -1,8 +1,8 @@
 /**
- * What the code of Apex refers to (decision records 0087, 0088 and 0089): the fields of records it reads and writes,
- * also through relationships, the variables and properties of classes, the tokens of objects and fields, the objects
- * that DML writes, the objects and fields that queries and searches read, the methods and constructors it calls and
- * the enums whose values it names.
+ * What the code of Apex refers to (decision records 0087 to 0091): the fields of records it reads and writes, also
+ * through relationships, the variables and properties of classes, the tokens of objects and fields, the objects that
+ * DML writes, the objects and fields that queries and searches read, the methods and constructors it calls, the enums
+ * whose values it names, and what the texts it builds or hands to a method name.
  *
  * It runs once every class and trigger was read (`apex.ts`), on the declarations the reader kept: an index of the
  * classes of the snapshot with the declared types of their variables, properties and methods, the classes they
@@ -28,7 +28,13 @@
  * class of the value runs in its place. A `new` of a class calls the constructor its arguments choose, or the class
  * where it declares none or where they choose one that every exception has. A call into a class whose code is not
  * read refers to the class, with the name of the method. Where the types do not tell the methods apart, each is
- * `probable`. Names in texts, such as a query in a string, are read by work package 5.
+ * `probable`.
+ *
+ * A text that a query or a search of `Database` or `Search` runs, or that `get`, `put`, `getSObject`, a describe or
+ * `Type.forName` is given, names what it holds, at `probable` at most (decision record 0090). How a member builds the
+ * text is followed, with its constants and the texts that methods of the snapshot give back. What a method does with
+ * a text it is handed as a `String` is read again at each call of it, with the text the call gives (decision record
+ * 0091). The names that records of custom metadata and field sets hold are not read yet.
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { CONFIDENCE_TIERS, validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
@@ -55,6 +61,10 @@ import {
   either as eitherText,
   escaped,
   formatted,
+  argPlaces,
+  argText,
+  charsBeside,
+  holdsParam,
   holeText,
   joined,
   known,
@@ -117,6 +127,8 @@ interface ClassInfo {
   readonly methods: Map<string, MethodInfo[]>;
   /** The classes, interfaces and enums it declares, by folded name. */
   readonly inner: Map<string, ClassInfo>;
+  /** `global`: code outside the snapshot can use it. */
+  readonly global: boolean;
 }
 
 /** A class of the snapshot whose code is not read, as `findClass` gives it: its key. */
@@ -154,6 +166,9 @@ interface MethodInfo {
   readonly open: boolean;
   /** A constructor that every exception has, which a call of refers to the class (`constructorsOf`). */
   readonly builtin?: boolean;
+  /** Its modifiers and annotations, folded, as the reader gives them. */
+  readonly modifiers: readonly string[];
+  readonly annotations: readonly string[];
 }
 
 /** A member of a class or a trigger that has a body to read, with what holds it. */
@@ -466,7 +481,73 @@ interface Context {
   ended?: boolean;
   /** What the body gives back is gathered here, where the texts a method gives back are worked out. */
   readonly gives?: { texts: Text[]; unknown: boolean };
+  /** Where a member is worked out for its callers (`Resolver.work`): what it does with a text that holds a parameter. */
+  readonly uses?: Use[];
+  /** Where a member is worked out for its callers: the methods its calls can run, and its calls of no known class. */
+  readonly calls?: Set<MethodInfo>;
+  readonly unknownCalls?: Set<string>;
+  /** The method that is read and reported, whose parameters of the type `String` its calls give. */
+  readonly method?: MethodInfo;
+  /** The places where such a parameter enters a text. */
+  readonly args?: Set<string>;
+  /**
+   * While a use of a text of a method that is called is read again at the call, at `at`: the names that stand there
+   * are of the method, which reports them, unless `all` says that what the caller gives makes them its own.
+   */
+  replay?: { readonly at: Pos; all: boolean } | undefined;
 }
+
+/**
+ * What a member does with a text, where the text holds a parameter of the member, so that each call can read it again
+ * with what it gives the parameter (decision record 0091): a field, a relationship or an object it names, a class, or
+ * a query or a search.
+ */
+type Sink =
+  | { readonly k: 'field'; readonly kind: 'reads' | 'writes'; readonly record: RecordType }
+  | { readonly k: 'relationship'; readonly method: string; readonly record: RecordType }
+  | { readonly k: 'fieldMap'; readonly object: string | undefined }
+  | { readonly k: 'object' }
+  /** `Type.forName`, with the namespace in front of the name where `space` says so. */
+  | { readonly k: 'class'; readonly space: boolean }
+  | { readonly k: 'text'; readonly kind: 'soql' | 'sosl' };
+
+type RecordType = Extract<Type, { k: 'record' }>;
+
+interface Use {
+  readonly sink: Sink;
+  /** The name of the method that takes the text, as `get`, which stands for it where nothing else says where. */
+  readonly name: Name;
+  readonly slots: readonly (Texts | undefined)[];
+}
+
+/** What a member does, worked out once without reporting anything, as its callers need it (decision record 0091). */
+interface Worked {
+  /** The texts a method gives back, with a part for each parameter. `null`: no text known. */
+  readonly gives: Texts | null;
+  readonly uses: readonly Use[];
+  /** The methods and constructors of the snapshot that its calls can run. */
+  readonly calls: ReadonlySet<MethodInfo>;
+  /** The name and the number of arguments of each call it makes on a value of no class known here. */
+  readonly unknownCalls: ReadonlySet<string>;
+}
+
+/**
+ * What makes a method callable from outside the snapshot: an annotation of Lightning, of a flow, of Visualforce
+ * remoting, of REST or of a namespace, beside the modifiers `global` and `webservice`.
+ */
+const CALLED_FROM_OUTSIDE: ReadonlySet<string> = new Set([
+  'auraenabled',
+  'invocablemethod',
+  'remoteaction',
+  'httpget',
+  'httppost',
+  'httpput',
+  'httppatch',
+  'httpdelete',
+  'namespaceaccessible',
+]);
+
+const samePlace = (a: Pos, b: Pos): boolean => a.line === b.line && a.column === b.column;
 
 /** A text of a query or a search, put together to be read, and what was read of it. */
 interface ParsedText {
@@ -507,8 +588,12 @@ class Resolver implements ApexResolver {
   private met = new Set<Pos>();
   /** While a text of a query is read: whether what it binds is read as code, which a map gives otherwise. */
   private textBinds = true;
-  /** The texts each method gives back, with a part for each parameter. `null`: no text known. */
-  private readonly templates = new Map<MethodInfo, Texts | null | 'working'>();
+  /** What each member does, as its callers need it, once it was worked out (`work`). */
+  private readonly works = new Map<ComponentKey, Worked | 'working'>();
+  /** The members whose code makes a call of a name, by the folded name: `<init>` for a constructor. */
+  private callers: Map<string, ComponentKey[]> | undefined;
+  /** Whether the calls of the snapshot give each method all it is given (`covered`). */
+  private readonly coverage = new Map<MethodInfo, boolean>();
 
   constructor(units: readonly ApexUnitInput[], schema: ApexSchema, types: ApexTypes, reader?: TextReader) {
     this.schema = schema;
@@ -540,6 +625,7 @@ class Resolver implements ApexResolver {
           vars: new Map(),
           methods: new Map(),
           inner: new Map(),
+          global: decl?.modifiers.includes('global') ?? false,
         };
         byPath.set(pathOf(part.subs), info);
         this.all.push(info);
@@ -597,6 +683,8 @@ class Resolver implements ApexResolver {
             returns: member.returns,
             static: member.static,
             open: open && !member.static && !member.ctor,
+            modifiers: member.modifiers,
+            annotations: member.annotations,
           },
         ]);
       }
@@ -609,18 +697,44 @@ class Resolver implements ApexResolver {
     this.found = new Map();
     this.issues = [];
     this.issueIds = new Set();
+    this.read(key, member, undefined);
+    this.ctx = undefined;
+    const references = [...this.found.values()].sort(
+      (a, b) =>
+        (a.location?.line ?? 0) - (b.location?.line ?? 0) ||
+        (a.location?.column ?? 0) - (b.location?.column ?? 0) ||
+        (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) ||
+        (String(a.to) < String(b.to) ? -1 : String(a.to) > String(b.to) ? 1 : 0),
+    );
+    return { references, issues: this.issues };
+  }
+
+  /**
+   * Reads a member: to report what it refers to, or, with `work`, to work out without reporting anything what its
+   * callers need of it. A parameter of a method is a part of a text that is not known: one its calls give where the
+   * member is worked out (`holeText` with the parameter), and one its calls may give where it is reported, for a
+   * parameter of the type `String` (`argText`).
+   */
+  private read(
+    key: ComponentKey,
+    member: MemberInfo,
+    work: Required<Pick<Context, 'gives' | 'uses' | 'calls' | 'unknownCalls'>> | undefined,
+  ): void {
     const { part, holder } = member;
     const { syntax } = part;
+    const method =
+      syntax.kind === 'method' ? [...holder.methods.values()].flat().find((one) => one.key === key) : undefined;
     const enter = (bodies: readonly (Stmt | Expr | undefined)[], returns?: TypeRef): void => {
       this.ctx = {
         from: key,
         unit: holder.unit,
         cls: holder,
         assigned: assignments(bodies),
-        quiet: false,
+        quiet: work !== undefined,
         returns: this.resolveType(returns, holder),
         scope: { vars: new Map(), parent: undefined },
         texts: new Map(),
+        ...(work ?? (method === undefined ? {} : { method, args: new Set<string>() })),
       };
     };
     switch (syntax.kind) {
@@ -631,10 +745,15 @@ class Resolver implements ApexResolver {
         for (const stmt of syntax.trigger.body) this.stmt(stmt);
         break;
       case 'method': {
-        const { member: method } = syntax;
-        enter([method.body], method.returns);
-        for (const param of method.params) this.bind(param.name, this.resolveType(param.type, holder));
-        this.stmt(method.body);
+        const { member: declared } = syntax;
+        enter([declared.body], declared.returns);
+        declared.params.forEach((param, index) => {
+          const type = this.resolveType(param.type, holder);
+          const local = this.bind(param.name, type);
+          if (work !== undefined) this.context.texts.set(local, [holeText(undefined, Resolver.holeOf(type), index)]);
+          else if (type.k === 'prim' && type.name === 'string') this.context.texts.set(local, [argText('text', index)]);
+        });
+        this.stmt(declared.body);
         break;
       }
       case 'property': {
@@ -660,15 +779,139 @@ class Resolver implements ApexResolver {
         for (const body of syntax.bodies) this.stmt(body);
         break;
     }
-    this.ctx = undefined;
-    const references = [...this.found.values()].sort(
-      (a, b) =>
-        (a.location?.line ?? 0) - (b.location?.line ?? 0) ||
-        (a.location?.column ?? 0) - (b.location?.column ?? 0) ||
-        (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) ||
-        (String(a.to) < String(b.to) ? -1 : String(a.to) > String(b.to) ? 1 : 0),
-    );
-    return { references, issues: this.issues };
+  }
+
+  /**
+   * What a member does, as its callers need it: the texts it gives back, what it does with a text that holds a
+   * parameter, and the methods it calls. Worked out once, without reporting anything. `undefined` while it is worked
+   * out, for a member that calls itself on the way.
+   */
+  private work(key: ComponentKey): Worked | undefined {
+    const known = this.works.get(key);
+    if (known !== undefined) return known === 'working' ? undefined : known;
+    const member = this.members.get(key);
+    if (member === undefined) return undefined;
+    this.works.set(key, 'working');
+    const working = {
+      gives: { texts: [] as Text[], unknown: false },
+      uses: [] as Use[],
+      calls: new Set<MethodInfo>(),
+      unknownCalls: new Set<string>(),
+    };
+    const outer = { ctx: this.ctx, named: this.named, holes: this.holes, met: this.met, binds: this.textBinds };
+    this.named = 'field';
+    this.holes = new Set();
+    this.met = new Set();
+    this.textBinds = true;
+    try {
+      this.read(key, member, working);
+    } finally {
+      this.ctx = outer.ctx;
+      this.named = outer.named;
+      this.holes = outer.holes;
+      this.met = outer.met;
+      this.textBinds = outer.binds;
+    }
+    const { gives } = working;
+    const worked: Worked = {
+      gives: gives.unknown || gives.texts.length === 0 ? null : distinct(gives.texts),
+      uses: working.uses,
+      calls: working.calls,
+      unknownCalls: working.unknownCalls,
+    };
+    this.works.set(key, worked);
+    return worked;
+  }
+
+  /**
+   * The texts a method gives back, with a part for each parameter that stands where the method puts the parameter.
+   * `undefined` where the method gives back a text that is not known, or calls itself on the way.
+   */
+  private template(method: MethodInfo): Texts | undefined {
+    const syntax = method.builtin === true ? undefined : this.members.get(method.key)?.part.syntax;
+    if (syntax?.kind !== 'method' || syntax.member.body === undefined) return undefined;
+    return this.work(method.key)?.gives ?? undefined;
+  }
+
+  /**
+   * Whether every call of a method gives it what it is given where it uses a text: no code outside the snapshot can
+   * call it, code of the snapshot does, and no call of its name and number of arguments is made on a value of no
+   * class known here. Its calls then read what it does with a parameter of the type `String`, and it says nothing of
+   * the parameter itself (decision record 0091).
+   */
+  private covered(method: MethodInfo): boolean {
+    const known = this.coverage.get(method);
+    if (known !== undefined) return known;
+    const covered = !this.outside(method) && this.called(method);
+    this.coverage.set(method, covered);
+    return covered;
+  }
+
+  /**
+   * Whether code outside the snapshot can call a method: one that is `global` or `webservice`, that an annotation
+   * offers to Lightning, a flow, Visualforce, REST or another namespace, of a class that is `global`, or of an object
+   * of a class that extends or implements a type the snapshot does not hold, through which Salesforce or another class
+   * can call it.
+   */
+  private outside(method: MethodInfo): boolean {
+    if (method.modifiers.some((one) => one === 'global' || one === 'webservice')) return true;
+    if (method.annotations.some((one) => CALLED_FROM_OUTSIDE.has(one))) return true;
+    for (let at: ClassInfo | undefined = method.owner; at !== undefined; at = at.outer) if (at.global) return true;
+    if (method.static || method.name === '<init>') return false;
+    for (const at of this.ancestors(method.owner)) {
+      if (at.supertypes.some((ref) => this.supertypeOf(ref, at) === undefined)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether code of the snapshot other than the method calls it, and no code calls a method of its name and number of
+   * arguments on a value whose class is not known here, which could be a call of it.
+   */
+  private called(method: MethodInfo): boolean {
+    const call = `${method.name}/${String(method.params.length)}`;
+    let called = false;
+    for (const key of this.callersOf(method.name)) {
+      const worked = this.work(key);
+      if (worked === undefined || worked.unknownCalls.has(call)) return false;
+      if (key !== method.key && worked.calls.has(method)) called = true;
+    }
+    return called;
+  }
+
+  /** The members whose code makes a call of a name, also in what a query binds. */
+  private callersOf(name: string): readonly ComponentKey[] {
+    if (this.callers === undefined) {
+      const callers = new Map<string, ComponentKey[]>();
+      for (const [key, member] of this.members) {
+        const names = new Set<string>();
+        const visit = (expr: Expr): void => {
+          if (expr.kind === 'call') {
+            const folded = foldName(expr.name.text);
+            names.add(expr.target === undefined && (folded === 'this' || folded === 'super') ? '<init>' : folded);
+          } else if (expr.kind === 'new') names.add('<init>');
+          else if (expr.kind === 'soql') for (const bind of bindsOf(expr.query)) eachExpr(bind, visit);
+          else if (expr.kind === 'sosl') for (const bind of expr.search.binds) eachExpr(bind, visit);
+        };
+        for (const body of bodiesOf(member.part.syntax)) eachExpr(body, visit);
+        for (const one of names) {
+          const list = callers.get(one);
+          if (list === undefined) callers.set(one, [key]);
+          else list.push(key);
+        }
+      }
+      this.callers = callers;
+    }
+    return this.callers.get(name) ?? [];
+  }
+
+  /**
+   * Whether a place is where a parameter of the method that is reported enters a text, and every call of the method
+   * reads what it is given there: the calls report what the text names, and the method nothing.
+   */
+  private silent(at: Pos): boolean {
+    const { args, method } = this.context;
+    return args !== undefined && method !== undefined && args.has(placeKey(at)) && this.covered(method);
   }
 
   private get context(): Context {
@@ -959,6 +1202,9 @@ class Resolver implements ApexResolver {
   ): string | undefined {
     const ctx = this.context;
     if (ctx.quiet) return undefined;
+    // Read again at a call, a name of the method that is called stands at the call, and the method reports it.
+    const { replay } = ctx;
+    if (replay !== undefined && !replay.all && samePlace(at.at, replay.at)) return undefined;
     const { target } = checked;
     const id = `${kind}\n${target.to ?? `${more.object ?? ''}.${at.text}`}\n${String(at.at.line)}:${String(at.at.column)}`;
     // A name in a text is `probable` at most (decision record 0012).
@@ -1043,15 +1289,24 @@ class Resolver implements ApexResolver {
     for (const id of ids ?? []) if (id !== undefined) this.found.delete(id);
   }
 
-  /** Gives a warning once for its code and its place. Says whether it gave it. */
+  /**
+   * Gives a warning once for its code and its place. Says whether it gave it. `by` is the place of the name it is
+   * about, where that is not its place.
+   */
   private warn(
     at: Name,
     code: string,
     message: string,
     details: Readonly<Record<string, string | readonly string[]>>,
+    by?: Pos,
   ): boolean {
     const ctx = this.context;
     if (ctx.quiet) return false;
+    // Read again at a call, a name of the method that is called stands at the call: the method warns about it. Where
+    // a parameter enters a text, the calls of the method warn, about what they give it.
+    const { replay } = ctx;
+    if (replay !== undefined && !replay.all && samePlace(by ?? at.at, replay.at)) return false;
+    if (this.silent(at.at)) return false;
     const id = `${code}\n${String(at.at.line)}:${String(at.at.column)}`;
     if (this.issueIds.has(id)) {
       if (code === 'PATH_NOT_FOLLOWED') this.widen(at, details);
@@ -1096,11 +1351,12 @@ class Resolver implements ApexResolver {
    * (decision record 0074): at most `MOST_NAMES_SHOWN` of them, and a warning with that many bears on every answer.
    * The first name gives the warning, and each name after it joins the warning at the place of the relationship.
    */
-  private notFollowed(through: Through, names: readonly string[]): Type {
+  private notFollowed(through: Through, names: readonly string[], by: Pos): Type {
     const message = `it is not known which object "${cut(through.name.text, 80)}" of "${cut(through.object, 80)}" leads to, so "${cut(names.join('.'), 200)}" after it was not followed.`;
     const details = { relationship: through.name.text, notFollowed: names, endsAt: 'field', origin: 'parser:apex' };
     if (names.length === 1) {
-      return this.warn(through.name, 'PATH_NOT_FOLLOWED', message, details) ? { k: 'beyond', through, names } : OTHER;
+      const warned = this.warn(through.name, 'PATH_NOT_FOLLOWED', message, details, by);
+      return warned ? { k: 'beyond', through, names } : OTHER;
     }
     const { line, column } = through.name.at;
     const at = this.issues.findIndex(
@@ -1228,7 +1484,12 @@ class Resolver implements ApexResolver {
    */
   private textsOf(value: Value, expr: Expr): Texts {
     const at = Resolver.placeOf(expr);
-    return value.texts === undefined ? [holeText(at, Resolver.holeOf(value.type))] : placed(value.texts, at);
+    if (value.texts === undefined) return [holeText(at, Resolver.holeOf(value.type))];
+    const texts = placed(value.texts, at);
+    // Where a parameter that the calls may give enters a text, the method says nothing that its calls say.
+    const { args } = this.context;
+    if (args !== undefined) for (const place of argPlaces(texts)) args.add(placeKey(place));
+    return texts;
   }
 
   /** The texts of a value that `+` puts together with another: a value that is `null` adds nothing. */
@@ -1716,12 +1977,13 @@ class Resolver implements ApexResolver {
       case 'record':
         if (type.object !== undefined) return this.field(type.object, name, access, step);
         // `task.What.Name`: the relationship can lead to records of several objects, or to one not known here.
-        if (type.through !== undefined && folded !== 'id') return { type: this.notFollowed(type.through, [name.text]) };
+        if (type.through !== undefined && folded !== 'id')
+          return { type: this.notFollowed(type.through, [name.text], name.at) };
         return folded === 'id' ? { type: prim('id') } : VALUE;
       case 'beyond':
         // `task.What.Owner.Name`: every name after the relationship is one that was not followed.
         if (type.names.length >= MOST_NAMES_SHOWN) return { type };
-        return { type: this.notFollowed(type.through, [...type.names, name.text]) };
+        return { type: this.notFollowed(type.through, [...type.names, name.text], name.at) };
       case 'instance':
       case 'static': {
         const inner = type.k === 'static' ? type.cls.inner.get(folded) : undefined;
@@ -1881,7 +2143,7 @@ class Resolver implements ApexResolver {
     // A `new` of a class calls the constructor its arguments choose, or the class where it declares none.
     const constructors = this.constructorsOf(type.cls);
     if (constructors.length === 0) this.addCall(at, Resolver.targetOf(type.cls), 'confirmed', 'new');
-    else this.choose(at, constructors, values, undefined, 'new');
+    else this.choose(at, constructors, values, undefined, 'new', expr.args);
     return { type };
   }
 
@@ -2077,6 +2339,8 @@ class Resolver implements ApexResolver {
       case 'ns':
         return this.system(type.name, expr);
       default: {
+        // A value of no class known here can be of a class of the snapshot, whose method the call runs.
+        if (type.k === 'other' || type.k === 'named') this.unknownCall(method, args.length);
         // Only a record has `get` and `put` with a field token, also one whose type is not known here.
         if (
           (method === 'get' || method === 'put') &&
@@ -2100,6 +2364,14 @@ class Resolver implements ApexResolver {
         return VALUE;
       }
     }
+  }
+
+  /**
+   * A call of a method of a name and a number of arguments that is not known, where the member is worked out for its
+   * callers: it can be a call of a method of the snapshot (`called`).
+   */
+  private unknownCall(method: string, args: number): void {
+    this.context.unknownCalls?.add(`${method}/${String(args)}`);
   }
 
   /** What a method of `String` gives that makes a text: `join`, `format`, `escapeSingleQuotes` and `valueOf`. */
@@ -2185,13 +2457,14 @@ class Resolver implements ApexResolver {
       }
       const constructors = this.constructorsOf(of);
       if (constructors.length === 0 && of !== cls) this.addCall(expr.name, Resolver.targetOf(of), 'confirmed', 'call');
-      else this.choose(expr.name, constructors, values, undefined, 'call');
+      else this.choose(expr.name, constructors, values, undefined, 'call', expr.args);
       return VALUE;
     }
     for (let at: ClassInfo | undefined = cls; at !== undefined; at = at.outer) {
       const methods = this.methodsOf(at, method).filter((one) => one.params.length === values.length);
       if (methods.length > 0) return this.choose(expr.name, methods, values, at, 'call', expr.args);
     }
+    this.unknownCall(method, values.length);
     return VALUE;
   }
 
@@ -2228,6 +2501,8 @@ class Resolver implements ApexResolver {
       static: false,
       open: false,
       builtin: true,
+      modifiers: [],
+      annotations: [],
     }));
     return [...declared, ...builtins];
   }
@@ -2313,6 +2588,9 @@ class Resolver implements ApexResolver {
       });
       if (lists) this.asList(value);
     });
+    const { calls } = this.context;
+    if (calls !== undefined) for (const one of run) if (one.builtin !== true) calls.add(one);
+    if (args !== undefined) this.replay(at, run, values, args);
     const [first] = chosen;
     if (first === undefined) return VALUE;
     const spelled = (one: MethodInfo): string => (one.returns === undefined ? '' : typeText(one.returns));
@@ -2331,56 +2609,6 @@ class Resolver implements ApexResolver {
       texts.push(usedAt(template, at.at, given));
     }
     return { type, texts: eitherText(texts) };
-  }
-
-  /**
-   * The texts a method gives back, worked out once, with a part for each parameter that stands where the method
-   * puts the parameter. `undefined` where the method gives back a text that is not known, or calls itself on the
-   * way.
-   */
-  private template(method: MethodInfo): Texts | undefined {
-    const known = this.templates.get(method);
-    if (known !== undefined) return known === 'working' || known === null ? undefined : known;
-    const member = this.members.get(method.key);
-    const syntax = member?.part.syntax;
-    if (member === undefined || syntax?.kind !== 'method' || syntax.member.body === undefined) {
-      this.templates.set(method, null);
-      return undefined;
-    }
-    this.templates.set(method, 'working');
-    const { holder } = member;
-    const { body, params, returns } = syntax.member;
-    const gives = { texts: [] as Text[], unknown: false };
-    const outer = { ctx: this.ctx, named: this.named, holes: this.holes, met: this.met, binds: this.textBinds };
-    this.ctx = {
-      from: method.key,
-      unit: holder.unit,
-      cls: holder,
-      assigned: assignments([body]),
-      quiet: true,
-      returns: this.resolveType(returns, holder),
-      scope: { vars: new Map(), parent: undefined },
-      texts: new Map(),
-      gives,
-    };
-    this.holes = new Set();
-    try {
-      params.forEach((param, index) => {
-        const type = this.resolveType(param.type, holder);
-        const local = this.bind(param.name, type);
-        this.context.texts.set(local, [holeText(undefined, Resolver.holeOf(type), index)]);
-      });
-      this.stmt(body);
-    } finally {
-      this.ctx = outer.ctx;
-      this.named = outer.named;
-      this.holes = outer.holes;
-      this.met = outer.met;
-      this.textBinds = outer.binds;
-    }
-    const texts = gives.unknown || gives.texts.length === 0 ? null : distinct(gives.texts);
-    this.templates.set(method, texts);
-    return texts ?? undefined;
   }
 
   /**
@@ -2574,6 +2802,8 @@ class Resolver implements ApexResolver {
 
   /** A reference to an object of which a text names something that is not known: `possible` (decision record 0012). */
   private possible(at: Pos, kind: 'reads' | 'writes' | 'references', object: string): void {
+    // Where a parameter enters the text, the calls of the method say what it names.
+    if (this.silent(at)) return;
     const checked = this.schema.object(object);
     // An object that nothing defines has no field that the snapshot holds, and a name of it says that it is not
     // found.
@@ -2588,7 +2818,7 @@ class Resolver implements ApexResolver {
   private fieldNotKnown(name: Name, record?: Extract<Type, { k: 'record' }>): void {
     if (foldName(name.text) === 'id') return;
     if (record?.through !== undefined) {
-      this.notFollowed(record.through, [name.text]);
+      this.notFollowed(record.through, [name.text], name.at);
       return;
     }
     this.warn(
@@ -2628,15 +2858,23 @@ class Resolver implements ApexResolver {
   }
 
   /** `record.get(name)` and `record.put(name, value)`: a token or a text names the field that is read or written. */
-  private byName(arg: Expr, kind: 'reads' | 'writes', record: Extract<Type, { k: 'record' }>, sink: Name): void {
-    const { object } = record;
+  private byName(arg: Expr, kind: 'reads' | 'writes', record: RecordType, sink: Name): void {
     const value = this.ev(arg);
     if (value.type.k === 'fieldToken') {
       this.byToken(value, arg, kind);
       return;
     }
     if (!Resolver.isText(value)) return;
-    for (const text of this.textsOf(value, arg)) {
+    const texts = this.textsOf(value, arg);
+    this.atSink({ k: 'field', kind, record }, sink, [texts]);
+    this.namedField(texts, kind, record, sink);
+  }
+
+  /** The field each text names, which a record of `record` reads or writes. */
+  private namedField(texts: Texts, kind: 'reads' | 'writes', record: RecordType, sink: Name): void {
+    const { object } = record;
+    for (const text of texts) {
+      this.own(text);
       const found = nameIn(text);
       if ('name' in found) {
         const name = Resolver.named(found.name, sink);
@@ -2651,17 +2889,25 @@ class Resolver implements ApexResolver {
    * `record.getSObject(name)`, `record.getSObjects(name)` and `record.putSObject(name, value)`: a text names a
    * relationship, or a child relationship, which is read as the code reads one after a dot.
    */
-  private byRelationship(arg: Expr, method: string, record: Extract<Type, { k: 'record' }>, sink: Name): Value {
-    const { object } = record;
+  private byRelationship(arg: Expr, method: string, record: RecordType, sink: Name): Value {
     const value = this.ev(arg);
+    if (!Resolver.isText(value)) return this.namedRelationship([], method, record, sink);
+    const texts = this.textsOf(value, arg);
+    this.atSink({ k: 'relationship', method, record }, sink, [texts]);
+    return this.namedRelationship(texts, method, record, sink);
+  }
+
+  /** The relationship each text names, of a record of `record`, with what `method` gives through it. */
+  private namedRelationship(texts: Texts, method: string, record: RecordType, sink: Name): Value {
+    const { object } = record;
     const children = method === 'getsobjects';
     const write = method === 'putsobject';
     const none: Value = {
       type: children ? { k: 'list', of: { k: 'record', object: undefined } } : { k: 'record', object: undefined },
     };
-    if (!Resolver.isText(value)) return write ? VALUE : none;
     const found: Value[] = [];
-    for (const text of this.textsOf(value, arg)) {
+    for (const text of texts) {
+      this.own(text);
       const one = nameIn(text);
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
@@ -2685,10 +2931,18 @@ class Resolver implements ApexResolver {
   /** `fields.getMap().get(name)`: a text names a field of the object, which gives its token. */
   private fieldByName(arg: Expr, object: string | undefined, sink: Name): Value {
     const value = this.ev(arg);
+    if (!Resolver.isText(value)) return this.namedToken([], object, sink);
+    const texts = this.textsOf(value, arg);
+    this.atSink({ k: 'fieldMap', object }, sink, [texts]);
+    return this.namedToken(texts, object, sink);
+  }
+
+  /** The field of `object` each text names, with its token. */
+  private namedToken(texts: Texts, object: string | undefined, sink: Name): Value {
     const none: Value = { type: { k: 'fieldToken', object, field: undefined, described: false } };
-    if (!Resolver.isText(value)) return none;
     const found: Value[] = [];
-    for (const text of this.textsOf(value, arg)) {
+    for (const text of texts) {
+      this.own(text);
       const one = nameIn(text);
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
@@ -2703,7 +2957,9 @@ class Resolver implements ApexResolver {
 
   /** `Schema.getGlobalDescribe().get(name)`: a text names an object, which gives its token. */
   private objectByName(arg: Expr, sink: Name): Value {
-    const objects = this.objectsNamed(this.textsOrNone(this.ev(arg), arg), sink);
+    const texts = this.textsOrNone(this.ev(arg), arg);
+    this.atSink({ k: 'object' }, sink, [texts]);
+    const objects = this.objectsNamed(texts, sink);
     const [only] = objects;
     return { type: { k: 'objectToken', object: objects.length === 1 ? only : undefined } };
   }
@@ -2712,7 +2968,11 @@ class Resolver implements ApexResolver {
   private describeObjects(arg: Expr, value: Value, sink: Name): Value {
     const objects: string[] = [];
     if (value.items === undefined) this.nameNotKnown(Resolver.placeOf(arg), sink, 'object');
-    for (const item of value.items ?? []) objects.push(...this.objectsNamed(item ?? [holeText(sink.at, 'text')], sink));
+    for (const item of value.items ?? []) {
+      const texts = item ?? [holeText(sink.at, 'text')];
+      this.atSink({ k: 'object' }, sink, [texts]);
+      objects.push(...this.objectsNamed(texts, sink));
+    }
     const [only] = objects;
     const object = objects.length === 1 ? only : undefined;
     return { type: { k: 'list', of: { k: 'describe', object }, coll: 'list' } };
@@ -2727,6 +2987,7 @@ class Resolver implements ApexResolver {
   private objectsNamed(texts: Texts, sink: Name): string[] {
     const objects: string[] = [];
     for (const text of texts) {
+      this.own(text);
       const one = nameIn(text);
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
@@ -2753,39 +3014,51 @@ class Resolver implements ApexResolver {
       values.length === 2 ? values[0] : undefined,
       expr.args.length === 2 ? expr.args[0] : undefined,
     ];
-    const spaces: (string | undefined)[] = [];
-    if (
-      space === undefined ||
-      spaceArg === undefined ||
-      (spaceArg.kind === 'literal' && foldName(spaceArg.text) === 'null')
-    ) {
-      spaces.push(undefined);
-    } else {
-      for (const text of this.textsOf(space, spaceArg)) {
-        const whole = known(text);
-        if (whole === undefined) {
-          this.nameNotKnown(text.find((piece) => piece.k === 'hole')?.at, expr.name, 'class');
-          return type;
-        }
-        spaces.push(whole === '' ? undefined : whole);
+    const spaces =
+      space === undefined || spaceArg === undefined
+        ? undefined
+        : spaceArg.kind === 'literal' && foldName(spaceArg.text) === 'null'
+          ? [[]]
+          : this.textsOf(space, spaceArg);
+    const names = this.textsOf(value, arg);
+    this.atSink(
+      { k: 'class', space: spaces !== undefined },
+      expr.name,
+      spaces === undefined ? [names] : [spaces, names],
+    );
+    this.namedClass(spaces, names, expr.name);
+    return type;
+  }
+
+  /** The class each text names, in the namespace each of `spaces` names, or in none. */
+  private namedClass(spaces: Texts | undefined, names: Texts, sink: Name): void {
+    const prefixes: (string | undefined)[] = [];
+    for (const text of spaces ?? [[]]) {
+      const whole = known(text);
+      if (whole === undefined) {
+        this.nameNotKnown(text.find((piece) => piece.k === 'hole')?.at, sink, 'class');
+        return;
       }
+      prefixes.push(whole === '' ? undefined : whole);
     }
-    for (const text of this.textsOf(value, arg)) {
+    const { replay } = this.context;
+    const spaced = replay !== undefined && (spaces ?? []).some((text) => charsBeside(text, replay.at));
+    for (const text of names) {
+      this.own(text, spaced);
       const whole = known(text);
       const start = text[0]?.at;
       if (whole === undefined || !/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)?$/.test(whole)) {
         const unknown = nameIn(text);
-        this.nameNotKnown('unknown' in unknown ? unknown.unknown : start, expr.name, 'class');
+        this.nameNotKnown('unknown' in unknown ? unknown.unknown : start, sink, 'class');
         continue;
       }
-      for (const prefix of spaces) {
+      for (const prefix of prefixes) {
         const target = this.types.find(prefix === undefined ? whole : `${prefix}.${whole}`, this.context.unit.key);
         if (target === undefined || target.to === this.context.from) continue;
         const checked: Checked = { target, checked: true, known: true, notDescribed: false };
-        this.add({ text: whole, at: start ?? expr.name.at }, 'uses-type', checked, 'text');
+        this.add({ text: whole, at: start ?? sink.at }, 'uses-type', checked, 'text');
       }
     }
-    return type;
   }
 
   /**
@@ -2795,7 +3068,14 @@ class Resolver implements ApexResolver {
    */
   private textQuery(arg: Expr, value: Value, kind: 'soql' | 'sosl', binds: boolean, sink: Name): Type | undefined {
     if (!Resolver.isText(value)) return undefined;
-    const texts = this.textsOf(value, arg).map((text) => this.parsedText(text, kind));
+    const texts = this.textsOf(value, arg);
+    this.atSink({ k: 'text', kind }, sink, [texts]);
+    return this.readQuery(texts, kind, binds, sink);
+  }
+
+  /** The texts of a query or a search, each read as one. Gives the type of what the query gives. */
+  private readQuery(all: Texts, kind: 'soql' | 'sosl', binds: boolean, sink: Name): Type | undefined {
+    const texts = all.map((text) => this.parsedText(text, kind));
     // The parts that are not known of the texts that are read as a query.
     const read = texts.some((one) => one.read !== undefined) ? new Set<string>() : undefined;
     for (const one of texts) {
@@ -2808,6 +3088,118 @@ class Resolver implements ApexResolver {
       type = type === undefined ? found : this.eitherType(type, found);
     }
     return type;
+  }
+
+  // -------------------------------------------------------------- texts a method is given
+
+  /** Keeps what a member does with a text that holds a parameter, where the member is worked out for its callers. */
+  private atSink(sink: Sink, name: Name, slots: readonly (Texts | undefined)[]): void {
+    const { uses } = this.context;
+    if (uses !== undefined && slots.some((slot) => slot !== undefined && holdsParam(slot))) {
+      uses.push({ sink, name, slots });
+    }
+  }
+
+  /** What a use of a text does, read with the texts it is given. */
+  private readSink(sink: Sink, name: Name, slots: readonly (Texts | undefined)[]): void {
+    const [first = [], second = []] = slots;
+    switch (sink.k) {
+      case 'field':
+        this.namedField(first, sink.kind, sink.record, name);
+        return;
+      case 'relationship':
+        this.namedRelationship(first, sink.method, sink.record, name);
+        return;
+      case 'fieldMap':
+        this.namedToken(first, sink.object, name);
+        return;
+      case 'object':
+        this.objectsNamed(first, name);
+        return;
+      case 'class':
+        if (sink.space) this.namedClass(first, second, name);
+        else this.namedClass(undefined, first, name);
+        return;
+      case 'text':
+        // What the query binds is code of the method, which the method reads.
+        this.readQuery(first, sink.kind, false, name);
+        return;
+    }
+  }
+
+  /** A use of a text, as a call at `at` reads it: the relationship a record was reached through stands at the call. */
+  private static movedSink(sink: Sink, at: Pos): Sink {
+    if (sink.k !== 'field' && sink.k !== 'relationship') return sink;
+    const { through } = sink.record;
+    if (through === undefined) return sink;
+    return { ...sink, record: { ...sink.record, through: { ...through, name: { ...through.name, at } } } };
+  }
+
+  /**
+   * Reads again, at a call at `at`, what each method the call can run does with a text that holds a parameter of the
+   * type `String`, with the texts the call gives (decision record 0091). What the call gives is the caller's, and is
+   * reported by it where its characters stand. Where the caller is worked out for its own callers, a use that holds a
+   * parameter of it is kept for them.
+   */
+  private replay(at: Name, run: ReadonlySet<MethodInfo>, values: readonly Value[], args: readonly Expr[]): void {
+    const ctx = this.context;
+    if (ctx.quiet && ctx.uses === undefined) return;
+    for (const one of run) {
+      if (one.builtin === true) continue;
+      const strings = one.params.map((_, index) => {
+        const type = this.paramType(one, index);
+        return type.k === 'prim' && type.name === 'string';
+      });
+      if (!strings.includes(true)) continue;
+      const uses = this.work(one.key)?.uses ?? [];
+      if (uses.length === 0) continue;
+      const given = values.map((value, index) => {
+        const arg = args[index];
+        return arg === undefined || strings[index] !== true ? undefined : this.textsOf(value, arg);
+      });
+      for (const use of uses) {
+        const slots = use.slots.map((slot) => (slot === undefined ? undefined : usedAt(slot, at.at, given)));
+        const sink = Resolver.movedSink(use.sink, at.at);
+        const name: Name = { text: use.name.text, at: at.at };
+        if (ctx.uses !== undefined) {
+          if (slots.some((slot) => slot !== undefined && holdsParam(slot))) ctx.uses.push({ sink, name, slots });
+          continue;
+        }
+        const before = ctx.replay;
+        ctx.replay = { at: at.at, all: false };
+        try {
+          this.readSink(sink, name, slots);
+        } finally {
+          ctx.replay = before;
+        }
+      }
+    }
+  }
+
+  /**
+   * While a use is read again at a call: whether the names a text holds are of the caller, where it holds characters
+   * that the call gives, or `also`. The names of the method that is called stand at the call, and the method reports
+   * them.
+   */
+  private own(text: Text, also = false): void {
+    const { replay } = this.context;
+    if (replay !== undefined) replay.all = also || charsBeside(text, replay.at);
+  }
+
+  /**
+   * While a use is read again at a call: what a query or a search reads of an object the caller names is of the
+   * caller, also the names the method wrote, which it could not report.
+   */
+  private owning<T>(object: Name | undefined, run: () => T): T {
+    const { replay } = this.context;
+    if (replay === undefined || object === undefined) return run();
+    const before = replay.all;
+    replay.all = !samePlace(object.at, replay.at);
+    try {
+      return run();
+    } finally {
+      replay.all = before;
+    }
   }
 
   /** A text of a query or a search, put together and read, where it can be read. */
@@ -2838,6 +3230,9 @@ class Resolver implements ApexResolver {
     const records: Type = { k: 'record', object: undefined };
     const none: Type = kind === 'soql' ? { k: 'list', of: records } : { k: 'list', of: { k: 'list', of: records } };
     const first = text.find((piece) => piece.at !== undefined)?.at;
+    // Read again at a call, a text that is not read as a query is the caller's where the call gives characters of
+    // it, and what a query reads is the caller's where the caller names its object (`owning`).
+    this.own(parsed.read === undefined ? text : []);
     if (parsed.read === undefined) {
       // A text that is not read as a query: the object after `FROM`, where it is known, is read with what is not
       // known of it (decision record 0012). A text that the code can only put together where it holds no query,
@@ -2945,6 +3340,10 @@ class Resolver implements ApexResolver {
    * Gives the type of what it gives: a list of records of its object, a list of `AggregateResult`, or a number.
    */
   private soql(query: Query): Type {
+    return this.owning(query.from[0], () => this.soqlOf(query));
+  }
+
+  private soqlOf(query: Query): Type {
     const [from, ...more] = query.from;
     if (from !== undefined && this.isHole(from)) {
       // `'SELECT Name FROM ' + objectName`: the names of the query are of an object nothing says.
@@ -3137,18 +3536,20 @@ class Resolver implements ApexResolver {
   private sosl(search: Search): Type {
     if (this.textBinds) for (const bind of search.binds) this.ev(bind);
     for (const { object, fields } of search.returning) {
-      if (this.isHole(object)) {
-        this.warn(
-          object,
-          'PATH_NOT_FOLLOWED',
-          'an object the search returns is a text that is not known here, so what it reads of it was not followed.',
-          { notFollowed: this.namesOutside(fields), endsAt: 'object', origin: 'parser:apex' },
-        );
-        for (const name of fields.flat()) this.isHole(name);
-        continue;
-      }
-      this.add(object, 'reads', this.schema.object(object.text), this.named);
-      for (const path of fields) this.fieldPath(object.text, Resolver.unprefixed(path, [foldName(object.text)]));
+      this.owning(object, () => {
+        if (this.isHole(object)) {
+          this.warn(
+            object,
+            'PATH_NOT_FOLLOWED',
+            'an object the search returns is a text that is not known here, so what it reads of it was not followed.',
+            { notFollowed: this.namesOutside(fields), endsAt: 'object', origin: 'parser:apex' },
+          );
+          for (const name of fields.flat()) this.isHole(name);
+          return;
+        }
+        this.add(object, 'reads', this.schema.object(object.text), this.named);
+        for (const path of fields) this.fieldPath(object.text, Resolver.unprefixed(path, [foldName(object.text)]));
+      });
     }
     return { k: 'list', of: { k: 'list', of: { k: 'record', object: undefined } } };
   }
@@ -3181,6 +3582,29 @@ function nameOfKey(key: ComponentKey): string {
 
 const typeText = (type: TypeRef): string =>
   `${foldName(type.name.replace(/\s+/g, ''))}${type.args.length > 0 ? `<${type.args.map(typeText).join(',')}>` : ''}${'[]'.repeat(type.array)}`;
+
+/** The code of a member: the body of a trigger, a method or an initialiser, the accessors of a property, a value. */
+function bodiesOf(syntax: ApexPart['syntax']): readonly (Stmt | Expr | undefined)[] {
+  switch (syntax.kind) {
+    case 'trigger':
+      return syntax.trigger.body;
+    case 'method':
+      return [syntax.member.body];
+    case 'property':
+      return syntax.member.accessors;
+    case 'var':
+      return [syntax.declarator.init];
+    case 'init':
+      return syntax.bodies;
+    case 'type':
+      return [];
+  }
+}
+
+/** What a query binds, also in its subqueries. */
+function bindsOf(query: Query): Expr[] {
+  return [...query.binds, ...query.children.flatMap(bindsOf), ...query.nested.flatMap(bindsOf)];
+}
 
 /** Calls `visit` for every expression of a statement, also the ones inside other expressions. */
 function eachExpr(node: Stmt | Expr | undefined, visit: (expr: Expr) => void): void {
