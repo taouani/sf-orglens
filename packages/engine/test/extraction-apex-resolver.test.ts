@@ -3648,8 +3648,8 @@ describe('the resolver of Apex', () => {
       '23:63 reads CustomField:invoice__c.amount__c probable "metadata"',
       '23:63 references FieldSet:invoice__c.summary probable "written"',
       '24:49 reads CustomField:invoice__c.amount__c probable "metadata"',
-      // A text of metadata that a method gives back stands where the code uses it, and is built there.
-      '25:17 reads CustomField:invoice__c.amount__c probable "built"',
+      // So is a text of metadata that a method gives back, where the code uses it.
+      '25:17 reads CustomField:invoice__c.amount__c probable "metadata"',
       // Each text has its own step, also one after another of the other step: a relationship, a field of a describe,
       // an object of the org and a class.
       '45:25 reads CustomField:invoice__c.account__c probable "built"',
@@ -3696,11 +3696,102 @@ describe('the resolver of Apex', () => {
     // The analysis counts them: a name of each step, and the possible references and the paths of texts apart.
     expect(analysis.work.find((row) => row.origin === 'parser:apex')?.texts).toEqual({
       written: 18,
-      metadata: 5,
-      built: 12,
+      metadata: 6,
+      built: 11,
       possible: 1,
       pathsNotFollowed: 7,
     });
+  });
+
+  it('takes the step of a name from the characters of its own text, whatever the code reads in between', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.metadataRecord('Rule', 'Pre', { Field__c: 'Status' });
+      source.metadataRecord('Rule', 'Suf', { Field__c: '__c' });
+      source.metadataRecord('Rule', 'Fmt', { Field__c: 'SELECT Amount__c FROM {0}' });
+      source.apexClass('Aaa', code('public class Aaa {', '    void a() { String s = Held.q(); }', '}'));
+      source.apexClass(
+        'Held',
+        code(
+          'public class Held {',
+          "    static final String Q = 'SELECT Field__c, Label__c FROM Rule__mdt';",
+          "    static final String KIND = Rule__mdt.getInstance('Late').Field__c;",
+          "    static final String TERM = Rule__mdt.getInstance('Open').Field__c;",
+          "    public static String q() { Database.query('SELECT Field__c, Label__c FROM Rule__mdt'); return ''; }",
+          '    void constant() { Database.query(Q); }',
+          '    void bound() {',
+          "        String q = 'SELECT Amount__c FROM Invoice__c';",
+          "        q += ' WHERE Status__c = :KIND';",
+          '        Database.query(q);',
+          '    }',
+          '    void searched(String more) {',
+          "        Search.query('FIND :TERM IN ALL FIELDS RETURNING Invoice__c(Amount__c)' + more);",
+          '    }',
+          '    void joined(Invoice__c inv) {',
+          "        inv.get(Rule__mdt.getInstance('Pre').Field__c + '__c');",
+          "        inv.get('Status' + Rule__mdt.getInstance('Suf').Field__c);",
+          '    }',
+          '    void sets() { Schema.SObjectType.Invoice__c.fieldSets.getMap().values(); }',
+          "    void relationship(Task t) { SObject w = t.getSObject('What'); Object n = w.Name; }",
+          '    static Object take(Invoice__c inv, String f) { return inv.get(f); }',
+          "    void readFirst(Invoice__c inv) { String f = 'Amount__c'; inv.get(f); take(inv, f); }",
+          "    void handedFirst(Invoice__c inv) { String f = 'Status__c'; take(inv, f); inv.get(f); }",
+          "    void format() { Database.query(String.format(Rule__mdt.getInstance('Fmt').Field__c, new List<String>{ 'Invoice__c' })); }",
+          '}',
+        ),
+      );
+    });
+    const stepped = [
+      ...analysis.components
+        .filter((one) => isApex(one.key))
+        .flatMap((one) => one.references.map((reference) => ({ from: one.key, reference })))
+        .filter(({ reference }) => viaOf(reference) === 'text')
+        .map(
+          ({ from, reference }) =>
+            `${from.replace(/^ApexClass:held#/, '')} ${String(reference.location?.line)}:${String(reference.location?.column)} ${reference.kind} ${String(reference.to)} ${reference.confidence} ${JSON.stringify(reference.attrs?.['step'])}`,
+        ),
+      ...warned(analysis.issues),
+    ];
+    expect(stepped).toEqual([
+      // What a query binds is read as code in the middle of its text, also a constant that reads metadata: the names of
+      // the text after it keep the step of the text, as the variable the text binds does.
+      'method:bound() 8:28 reads CustomField:invoice__c.amount__c probable "built"',
+      'method:bound() 8:43 reads CustomObject:invoice__c probable "built"',
+      'method:bound() 9:22 reads CustomField:invoice__c.status__c probable "built"',
+      'method:bound() 9:35 reads ApexClass:held#var:kind probable "built"',
+      // A field of a record of custom metadata that a query names holds no text there.
+      'method:constant() 6:38 reads CustomField:rule__mdt.field__c probable "built"',
+      'method:constant() 6:38 reads CustomField:rule__mdt.label__c probable "built"',
+      'method:constant() 6:38 reads CustomObject:rule__mdt probable "built"',
+      // The characters of a field keep their mark when the code cuts the text, here as the format of String.format.
+      'method:format() 24:73 references CustomMetadata:rule.fmt probable "written"',
+      'method:format() 24:79 reads CustomField:invoice__c.amount__c probable "metadata"',
+      'method:format() 24:108 reads CustomObject:invoice__c probable "built"',
+      // A reference made twice at one place keeps the step of the first.
+      'method:handedfirst(invoice__c) 23:52 reads CustomField:invoice__c.status__c probable "built"',
+      // A name that metadata holds only a part of is built, whichever part comes first.
+      'method:joined(invoice__c) 16:40 references CustomMetadata:rule.pre probable "written"',
+      'method:joined(invoice__c) 16:46 reads CustomField:invoice__c.status__c probable "built"',
+      'method:joined(invoice__c) 17:18 reads CustomField:invoice__c.status__c probable "built"',
+      'method:joined(invoice__c) 17:51 references CustomMetadata:rule.suf probable "written"',
+      // A method that another class works out first is the same.
+      'method:q() 5:55 reads CustomField:rule__mdt.field__c probable "written"',
+      'method:q() 5:65 reads CustomField:rule__mdt.label__c probable "written"',
+      'method:q() 5:79 reads CustomObject:rule__mdt probable "written"',
+      'method:readfirst(invoice__c) 22:50 reads CustomField:invoice__c.amount__c probable "written"',
+      'method:relationship(task) 20:59 reads CustomField:task.whatid probable "written"',
+      // So does what a search binds.
+      'method:searched(string) 13:29 reads ApexClass:held#var:term probable "built"',
+      'method:searched(string) 13:58 reads CustomObject:invoice__c probable "built"',
+      'method:searched(string) 13:69 reads CustomField:invoice__c.amount__c probable "built"',
+      // Every field set of the object is metadata too.
+      'method:sets() 19:68 reads CustomObject:invoice__c possible "metadata"',
+      'var:kind 3:55 references CustomMetadata:rule.late probable "written"',
+      'var:term 4:55 references CustomMetadata:rule.open probable "written"',
+      'PATH_NOT_FOLLOWED 13:83 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      // A path after a relationship that a text names is of a text, also where the code names what comes after it.
+      'PATH_NOT_FOLLOWED 20:59 {"relationship":"What","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+    ]);
   });
 
   it('keeps each use of a text once, so that a chain of calls is read in time', () => {

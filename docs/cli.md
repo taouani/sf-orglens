@@ -628,9 +628,10 @@ Names in texts of parser:apex: 15 written as one literal, 5 held by metadata, 26
 ```
 
 A name is written as one literal where its text is one literal of the member, also through a local variable. It is
-held by metadata where a field of a record of a custom metadata type or a field set holds it, at the place where the
-code reads the field or names the field set. Any other is in a text the code builds: a text it joins, a constant,
-what a method gives back or a text a call hands a method, also where each part is a literal. A `possible` reference
+held by metadata where a field of a record of a custom metadata type or a field set holds all of it, at the place where
+the code reads the field, uses a constant or a method that gives the text of the field, or names the field set. Any
+other is in a text the code builds: a text it joins, also of the text of a field and a literal, a constant, what a
+method gives back or a text a call hands a method, also where each part is a literal. A `possible` reference
 stands where a part of a text is not known, and is not counted among the others. The paths not followed are the
 warnings `PATH_NOT_FOLLOWED` that a text leads to, of those `PATHS NOT FOLLOWED` counts. Each reference of the `via`
 `text` says its step in `attrs.step`: `written`, `metadata` or `built`. The line is left out where every number is 0.
