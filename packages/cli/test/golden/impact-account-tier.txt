@@ -1,7 +1,7 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.
 
-25 components refer to it, 17 of them directly.
+26 components refer to it, 18 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                            CONFIDENCE  KIND        REFERS TO                                               WHERE
@@ -21,6 +21,7 @@ DEPTH  COMPONENT                                                            CONF
 1      FieldSet:invoice__c.invoice_summary                                  confirmed   reads       CustomField:account.tier__c                             force-app/main/default/objects/Invoice__c/fieldSets/Invoice_Summary.fieldSet-meta.xml:21
 1      Flow:invoice_after_save                                              confirmed   reads       CustomField:account.tier__c                             force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
 1      Flow:invoice_after_save#element:amount_changed                       confirmed   reads       CustomField:account.tier__c                             force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:82
+1      LightningComponentBundle:invoicesummary                              confirmed   references  CustomField:account.tier__c                             force-app/main/default/lwc/invoiceSummary/invoiceSummary.js:7
 1      ReportType:invoices_with_lines                                       confirmed   references  CustomField:account.tier__c                             force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:25
 2      ApexClass:invoicecontroller#method:recentinvoices(id)                confirmed   reads       CustomField:invoice__c.account_tier__c                  force-app/main/default/classes/InvoiceController.cls:8
 2      ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()  confirmed   calls       ApexClass:invoicepricingtest#method:invoicewithlines()  force-app/main/default/classes/InvoicePricingTest.cls:20

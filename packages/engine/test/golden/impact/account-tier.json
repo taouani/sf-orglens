@@ -343,6 +343,26 @@
       "package": null
     },
     {
+      "key": "LightningComponentBundle:invoicesummary",
+      "type": "LightningComponentBundle",
+      "name": "invoiceSummary",
+      "file": "force-app/main/default/lwc/invoiceSummary/invoiceSummary.js-meta.xml",
+      "depth": 1,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "LightningComponentBundle:invoicesummary",
+        "to": "CustomField:account.tier__c",
+        "kind": "references",
+        "origin": "parser:javascript",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/lwc/invoiceSummary/invoiceSummary.js",
+        "line": 7,
+        "column": 66
+      },
+      "package": null
+    },
+    {
       "key": "ReportType:invoices_with_lines",
       "type": "ReportType",
       "name": "Invoices_with_Lines",

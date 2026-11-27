@@ -117,6 +117,21 @@ export class Source {
     return path;
   }
 
+  /**
+   * A Lightning web component: its files by their paths in its folder, such as `name.js`, `name.html` or
+   * `__tests__/name.test.js`, and its file of metadata.
+   */
+  bundle(name: string, files: Readonly<Record<string, string | Uint8Array>>): string {
+    const folder = `lwc/${name}`;
+    const meta = this.file(
+      `${folder}/${name}.js-meta.xml`,
+      xml('LightningComponentBundle', '<isExposed>false</isExposed>'),
+    );
+    const paths = Object.entries(files).map(([path, content]) => this.file(`${folder}/${path}`, content));
+    this.listed.push({ type: 'LightningComponentBundle', fullName: name, files: [...paths, meta].sort() });
+    return folder;
+  }
+
   get tree(): SourceTree {
     return {
       files: [...this.files.keys()].sort(),

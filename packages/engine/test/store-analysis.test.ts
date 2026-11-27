@@ -1534,7 +1534,8 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     expect(stored).toEqual(REFERENCE_CODES);
     // Every value of the vocabulary has a number, but for the kind that is never stored as a reference.
     expect(Object.keys(REFERENCE_CODES.kind)).toEqual(REFERENCE_KINDS.filter((kind) => kind !== 'contains'));
-    expect(Object.keys(REFERENCE_CODES.origin)).toEqual([...REFERENCE_ORIGINS]);
+    // A new origin takes the next number, wherever the list of origins puts it (decision record 0094).
+    expect(Object.keys(REFERENCE_CODES.origin).sort()).toEqual([...REFERENCE_ORIGINS].sort());
     expect(Object.keys(REFERENCE_CODES.confidence)).toEqual([...CONFIDENCE_TIERS]);
     expect(Object.keys(REFERENCE_CODES.resolution)).toEqual([...RESOLUTIONS]);
     for (const codes of Object.values(REFERENCE_CODES)) {
@@ -1567,6 +1568,67 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     expect(store.migrated).toEqual({ from: 12, to: MIGRATIONS.length });
     expect(readOriginCoverage(store, id)).toEqual([
       { origin: 'parser:apex', components: 1, failedFiles: 0, references: 0, unresolved: 0 },
+    ]);
+    store.close();
+  });
+
+  it('migrates a database of schema version 13: it holds the references of Lightning web components', () => {
+    const path = join(temp.next(), 'orglens.sqlite');
+    const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 13) });
+    const origins = (store: Store): unknown[] =>
+      store.all("SELECT code, name FROM reference_vocabulary WHERE family = 'origin' AND code > 6 ORDER BY code");
+    expect(origins(old)).toEqual([]);
+    const id = snapshot(old);
+    old.close();
+
+    const store = openStore({ path, driver });
+    expect(store.migrated).toEqual({ from: 13, to: MIGRATIONS.length });
+    expect(origins(store)).toEqual([
+      { code: 7, name: 'parser:javascript' },
+      { code: 8, name: 'parser:markup' },
+    ]);
+    // A component that imports the field and holds the object in its template, read back with both origins.
+    const BUNDLE = key('LightningComponentBundle', 'invoiceSummary');
+    const script = 'lwc/invoiceSummary/invoiceSummary.js';
+    const template = 'lwc/invoiceSummary/invoiceSummary.html';
+    const bundle = component(BUNDLE, 'invoiceSummary', `${script}-meta.xml`, [
+      reference(BUNDLE, AMOUNT, script, 3, {
+        kind: 'references',
+        origin: 'parser:javascript',
+        attrs: { via: 'import' },
+      }),
+      reference(BUNDLE, INVOICE, template, 4, {
+        kind: 'references',
+        origin: 'parser:markup',
+        confidence: 'probable',
+        attrs: { via: 'attribute' },
+      }),
+    ]);
+    writeAnalysis(
+      store,
+      id,
+      analysisOf([...project(), bundle], {
+        work: [
+          { origin: 'parser:formula', components: 2, failedFiles: 0 },
+          { origin: 'dependency-api', components: 5, failedFiles: 0 },
+          { origin: 'parser:javascript', components: 1, failedFiles: 0 },
+          { origin: 'parser:markup', components: 1, failedFiles: 1 },
+        ],
+      }),
+    );
+    const graph = sqlGraph(store, id);
+    const of = (target: ComponentKey): unknown[] =>
+      graph
+        .referencesTo(graph.find(target)?.id ?? 0)
+        .filter((one) => one.from === BUNDLE)
+        .map((one) => [one.origin, one.confidence, one.location?.file, one.location?.line, one.attrs?.['via']]);
+    expect(of(AMOUNT)).toEqual([['parser:javascript', 'confirmed', script, 3, 'import']]);
+    expect(of(INVOICE)).toEqual([['parser:markup', 'probable', template, 4, 'attribute']]);
+    expect(readOriginCoverage(store, id)).toEqual([
+      { origin: 'parser:formula', components: 2, failedFiles: 0, references: 4, unresolved: 1 },
+      { origin: 'dependency-api', components: 5, failedFiles: 0, references: 1, unresolved: 0 },
+      { origin: 'parser:javascript', components: 1, failedFiles: 0, references: 1, unresolved: 0 },
+      { origin: 'parser:markup', components: 1, failedFiles: 1, references: 1, unresolved: 0 },
     ]);
     store.close();
   });

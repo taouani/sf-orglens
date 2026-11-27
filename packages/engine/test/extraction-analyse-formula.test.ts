@@ -121,6 +121,8 @@ describe('the formulas of a source', () => {
         failedFiles: 0,
         texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
       },
+      { origin: 'parser:javascript', components: 0, failedFiles: 0 },
+      { origin: 'parser:markup', components: 0, failedFiles: 0 },
     ]);
     // Only the formula of a field makes it a formula field. A default value does not.
     const attrs = (fullName: string): unknown =>
@@ -560,6 +562,8 @@ describe('a formula that is not read as a whole', () => {
         failedFiles: 0,
         texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
       },
+      { origin: 'parser:javascript', components: 0, failedFiles: 0 },
+      { origin: 'parser:markup', components: 0, failedFiles: 0 },
     ]);
   });
 
@@ -694,6 +698,8 @@ describe('a formula that a stranger wrote', () => {
         failedFiles: 0,
         texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
       },
+      { origin: 'parser:javascript', components: 0, failedFiles: 0 },
+      { origin: 'parser:markup', components: 0, failedFiles: 0 },
     ]);
   });
 });
@@ -826,8 +832,7 @@ describe('the formulas that cannot be deployed, laid over the fixture project', 
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 109, failedFiles: 0 },
       { origin: 'parser:formula', components: 57, failedFiles: 5 },
-      alone.work[2],
-      alone.work[3],
+      ...alone.work.slice(2),
     ]);
   });
 });

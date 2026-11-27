@@ -170,9 +170,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
         (['extends', 'implements', 'uses-type', 'triggers-on', 'calls'].includes(reference.kind) ||
           ['field', 'token', 'dml', 'soql', 'sosl'].includes(reference.via) ||
           ofText(reference));
+      const ofLightningSoFar = (reference: KeyReference): boolean => reference.file.includes('/lwc/');
       const tierOf = tierInRepository(answers);
       const keyed = answers.references
-        .filter((reference) => reference.phase === 1 || reference.phase === 2 || ofApexSoFar(reference))
+        .filter(
+          (reference) =>
+            reference.phase === 1 || reference.phase === 2 || ofApexSoFar(reference) || ofLightningSoFar(reference),
+        )
         .map((reference) => ({ ...reference, tier: tierOf(reference) }));
       const placeOf = (step: {
         from: string;
@@ -201,7 +205,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       for (const one of keyed.flatMap((reference) => [reference.from, reference.to])) asked.add(one);
       for (const one of answers.components) {
         if (
-          /^(?:ApexClass|ApexTrigger|CustomObject|CustomField|CustomMetadata|EmailTemplate|FieldSet|Flow|QuickAction|RecordType|ReportType|ValidationRule|Workflow[A-Za-z]*)$/.test(
+          /^(?:ApexClass|ApexTrigger|CustomObject|CustomField|CustomMetadata|EmailTemplate|FieldSet|Flow|LightningComponentBundle|QuickAction|RecordType|ReportType|ValidationRule|Workflow[A-Za-z]*)$/.test(
             one.type,
           )
         ) {
@@ -273,9 +277,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // triggers, the members the key names and the inner classes they are in added 109 and 101, what their code
       // reads, writes and names 29 and 198, what their queries and searches read 6 and 90, their calls 12 and 177,
       // the names in their texts 5 and 51, and the names that a record of custom metadata and a field set hold 0 and
-      // 18.
-      expect(asked.size).toBe(342);
-      expect(results).toBe(1306);
+      // 18. The two Lightning web components added 2 and 25.
+      expect(asked.size).toBe(344);
+      expect(results).toBe(1331);
 
       // The fields the key lists as referred to by nothing have an empty answer.
       for (const component of answers.unreferenced) {
@@ -574,8 +578,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // holds it, one that reads the formula field `Total__c`, one that queries the formula field `Summary__c`, 2 that
       // query the formula field `Late_Fee__c` in a text, one of them where a record of custom metadata holds its
       // name, and 4 that read or query `Grand_Total__c`. And 5 members that call one of those, and a trigger that
-      // calls one of them.
-      expect(report.results).toHaveLength(69);
+      // calls one of them. And the Lightning web component that imports the field.
+      expect(report.results).toHaveLength(70);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -592,7 +596,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The field that could not be read, and the one that is reached through it, are not in the answer, and neither
       // are the 5 methods that read only those fields, and the 3 that reach the field only through calls of them.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(59);
+      expect(report.results).toHaveLength(60);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -934,8 +938,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 65]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 69]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 66]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 70]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -1066,7 +1070,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(69);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(70);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

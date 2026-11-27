@@ -47,6 +47,8 @@ export const REFERENCE_CODES = {
     'parser:apex': 4,
     symboltable: 5,
     'dependency-api': 6,
+    'parser:javascript': 7,
+    'parser:markup': 8,
   },
   confidence: { confirmed: 1, probable: 2, possible: 3 },
   resolution: { resolved: 1, unresolved: 2, external: 3, dynamic: 4 },

@@ -87,7 +87,13 @@ export type Via =
   /** A child relationship a report type joins: the reference is to the lookup field that defines it. */
   | 'join'
   /** In a flow: the flow it overrides (`overriddenFlow`), which is a flow of a managed package. */
-  | 'override';
+  | 'override'
+  /** What the JavaScript of a Lightning component imports: an Apex method, an object, a field, a label, a component. */
+  | 'import'
+  /** A component that the markup of another holds, by its tag. */
+  | 'tag'
+  /** An object or a field that an attribute of a base component in markup names. */
+  | 'attribute';
 
 /** What a record element of a flow does to the records of an object. `upsert` creates or updates them. */
 export type RecordOp = 'lookup' | 'create' | 'update' | 'upsert' | 'delete';
@@ -140,6 +146,11 @@ export type RawReference = Raw &
         readonly start: string;
         readonly names: readonly (NameAt & PathHint)[];
         readonly kind: 'reads' | 'writes' | 'references';
+        /**
+         * What the path says about the field behind each relationship before the end: a read where nothing else is
+         * said. An import of a field across relationships refers to each of them, as to the field at the end.
+         */
+        readonly through?: 'references';
         readonly and?: 'writes';
         readonly value?: string;
         readonly silent?: number;
@@ -528,7 +539,7 @@ export function resolveReferences(
       const last = index === one.names.length - 1;
       if (last && foldName(at.name) === 'id') return;
       const value = last && one.value !== undefined ? { value: one.value } : {};
-      add(at, target, last ? one.kind : 'reads', one, { object: on, ...value });
+      add(at, target, last ? one.kind : (one.through ?? 'reads'), one, { object: on, ...value });
       if (last && one.and !== undefined) add(at, target, one.and, one, { object: on });
     });
     const last = one.names[walk.steps.length - 1];

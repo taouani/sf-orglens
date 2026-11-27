@@ -186,7 +186,7 @@ describe('orglens impact', () => {
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.',
       '',
-      '25 components refer to it, 17 of them directly.',
+      '26 components refer to it, 18 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
@@ -224,7 +224,7 @@ describe('orglens impact', () => {
     expect(strict.stdout.split('\n')[0]).toBe(
       `What refers to ${AMOUNT} (Invoice__c.Amount__c), in snapshot #1 of "fixture", to a depth of 1, over references that are at least confirmed.`,
     );
-    expect(strict.stdout).toContain('47 components refer to it, all of them directly.');
+    expect(strict.stdout).toContain('48 components refer to it, all of them directly.');
 
     const quiet = await fixtureWorkspace(withoutTheWarning);
     const outgoing = await orglens(quiet, ['impact', 'Invoice__c.Total__c', '--outgoing']);
@@ -375,10 +375,10 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 5 of its warnings bear on the answer. The details are below the answer.',
     );
-    // The 69 of the project without the field that could not be read, without the one that reads it, without the 5
+    // The 70 of the project without the field that could not be read, without the one that reads it, without the 5
     // methods that read only those and without the 3 that reach them only through calls of those methods.
     expect(lines.find((line) => line.endsWith('of them directly.'))).toBe(
-      '59 components refer to it, 49 of them directly.',
+      '60 components refer to it, 50 of them directly.',
     );
     expect(lines.slice(-5)).toEqual([
       '',

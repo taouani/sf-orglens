@@ -233,8 +233,13 @@ describe('the entries of the public codebases that were checked by hand', () => 
             (entry) => entry.kind === 'default' && isLiteral(entry.text) && entry.references.length === 0,
           ).length,
           references: listing.entries.reduce((sum, entry) => sum + entry.references.length, 0),
-          // Of the whole codebase. Every such warning of these codebases is about an entry.
-          notFollowed: listing.analysis.issues.filter((issue) => issue.code === 'PATH_NOT_FOLLOWED').length,
+          // Of the whole codebase. Every such warning of these codebases is about an entry, but for those of the
+          // Lightning web components, which the listing does not show (decision record 0094).
+          notFollowed: listing.analysis.issues.filter(
+            (issue) =>
+              issue.code === 'PATH_NOT_FOLLOWED' &&
+              issue.componentKey?.startsWith('LightningComponentBundle:') !== true,
+          ).length,
         }).toEqual(counts);
         // The listing shows a reference under an entry of its component by its `via`. So it shows every reference
         // once only while a component has one entry, and it hides none only while every reference with one of

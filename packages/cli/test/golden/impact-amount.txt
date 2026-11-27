@@ -1,7 +1,7 @@
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet, and 5 warnings of the analysis bear on the answer. The details are below the answer.
 
-69 components refer to it, 50 of them directly.
+70 components refer to it, 51 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                          CONFIDENCE  KIND        REFERS TO                                                                          WHERE
@@ -46,6 +46,7 @@ DEPTH  COMPONENT                                                                
 1      Flow:invoice_review_screen#element:get_invoice                                     confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:193
 1      Flow:invoice_review_screen#element:is_paid_now                                     confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:36
 1      Flow:invoice_review_screen#element:save_invoice                                    confirmed   writes      CustomField:invoice__c.amount__c                                                   force-app/main/default/flows/Invoice_Review_Screen.flow-meta.xml:215
+1      LightningComponentBundle:invoicesummary                                            confirmed   references  CustomField:invoice__c.amount__c                                                   force-app/main/default/lwc/invoiceSummary/invoiceSummary.js:6
 1      QuickAction:invoice__c.new_line                                                    confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml:14
 1      ReportType:invoices_with_lines                                                     confirmed   references  CustomField:invoice__c.amount__c                                                   force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:20
 1      ValidationRule:invoice__c.amount_within_credit_limit                               confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml:5

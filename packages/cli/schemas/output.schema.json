@@ -676,7 +676,16 @@
               },
               "origin": {
                 "description": "Where the reference was learned from.",
-                "enum": ["parser:xml", "parser:formula", "parser:flow", "parser:apex", "symboltable", "dependency-api"]
+                "enum": [
+                  "parser:xml",
+                  "parser:formula",
+                  "parser:flow",
+                  "parser:apex",
+                  "parser:javascript",
+                  "parser:markup",
+                  "symboltable",
+                  "dependency-api"
+                ]
               },
               "confidence": {
                 "description": "How certain the reference is, strongest first: confirmed, probable, possible.",
@@ -841,7 +850,16 @@
         },
         "origin": {
           "description": "Where the reference was learned from.",
-          "enum": ["parser:xml", "parser:formula", "parser:flow", "parser:apex", "symboltable", "dependency-api"]
+          "enum": [
+            "parser:xml",
+            "parser:formula",
+            "parser:flow",
+            "parser:apex",
+            "parser:javascript",
+            "parser:markup",
+            "symboltable",
+            "dependency-api"
+          ]
         },
         "confidence": {
           "description": "How certain the reference is, strongest first: confirmed, probable, possible.",
@@ -926,16 +944,16 @@
             "additionalProperties": false,
             "properties": {
               "origin": {
-                "description": "Where the references come from, such as `parser:xml`, `parser:formula`, `parser:flow` or `parser:apex`.",
+                "description": "Where the references come from, such as `parser:xml`, `parser:formula`, `parser:flow`, `parser:apex`, `parser:javascript` or `parser:markup`.",
                 "type": "string"
               },
               "components": {
-                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value. For `parser:flow`: the flows and their elements. For `parser:apex`: the classes and triggers and their members.",
+                "description": "The components the analyser looked at. For `parser:formula`: the components that hold a formula or a default value. For `parser:flow`: the flows and their elements. For `parser:apex`: the classes and triggers and their members. For `parser:javascript` and `parser:markup`: the Lightning web components whose JavaScript or templates were read.",
                 "type": "integer",
                 "minimum": 0
               },
               "failedFiles": {
-                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`. For `parser:flow`: the files of flows. For `parser:apex`: the files of classes and triggers that do not parse or could not be read.",
+                "description": "The files the analyser tried to read and could not. For `parser:formula`: the files with a formula that was not read as a whole, whose names are recorded as `probable`. For `parser:flow`: the files of flows. For `parser:apex`: the files of classes and triggers that do not parse or could not be read. For `parser:javascript` and `parser:markup`: the files of JavaScript and of templates that were not read as a whole or could not be read.",
                 "type": "integer",
                 "minimum": 0
               },

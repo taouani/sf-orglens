@@ -644,7 +644,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           : one;
       expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(20);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(checked).map(withoutPlace).sort());
-      expect(org.references).toHaveLength(851);
+      expect(org.references).toHaveLength(863);
       // The classes and triggers among them: 30 with 138 members, and 517 references of them, which the answer key
       // holds, three of them a stretch (`extraction-apex-resolver.test.ts`). Six are tests, and the store keeps the
       // mark: two test classes and their four methods.
@@ -722,29 +722,37 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // by metadata, 26 stand in a text the code builds, and 7 are `possible` (decision record 0093).
       const texts = { written: 15, metadata: 5, built: 26, possible: 7, pathsNotFollowed: 7 };
       const apex = { components: 168, failedFiles: 0, references: 517, unresolved: 0, pathsNotFollowed: 8, texts };
+      // Of the two Lightning web components, 8 references of the imports of their JavaScript and 4 of their templates.
+      const lightning = { components: 2, failedFiles: 0, unresolved: 0, pathsNotFollowed: 0, texts: null };
+      const script = { origin: 'parser:javascript', references: 8, ...lightning };
+      const markup = { origin: 'parser:markup', references: 4, ...lightning };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 352,
-        references: 851,
+        references: 863,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
           { origin: 'parser:apex', ...apex },
+          script,
+          markup,
         ],
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 345,
-        references: 851,
+        references: 863,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },
           { origin: 'parser:formula', ...formula },
           { origin: 'parser:flow', ...flow },
           { origin: 'parser:apex', ...apex },
+          script,
+          markup,
         ],
       });
       const analysed = (report: CoverageReport): Record<string, number> =>

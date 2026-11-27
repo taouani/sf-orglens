@@ -157,6 +157,16 @@ packages/cli   the `orglens` binary                            imports only `@sf
   (`texts`, decision record 0093). The analysis does not list `ApexClass` and `ApexTrigger` among the types it read
   until the answers take Apex in (work package 7 of the Phase 3 plan), so an answer names them as not analysed, and
   their rows of the Dependency API are not compared.
+- A Lightning web component is read by `extraction/lightning.ts` (decision record 0094), with two readers of the
+  engine that are no parsers: `extraction/javascript.ts` reads what a module imports, stepping over comments, strings,
+  templates and regular expressions, and `extraction/markup.ts` the elements of a template with their attributes. An
+  import of an Apex method calls it, the `@AuraEnabled` one of its name where some are, an import of an object, a field,
+  also across relationships, a label, a custom permission and a component of the project (`c/name`) refers to it, with
+  the origin `parser:javascript` and the `via` `import`. A tag `<c-name>` refers to the component (`tag`), and the
+  literal `object-api-name` of a base component and `field-name` of an input or an output field in a form refer to the
+  object and the field, `probable` (`attribute`), with the origin `parser:markup`. A module or a tag of a form not known
+  is `NAME_NOT_READ`, a file a reader cannot read to its end `FILE_NOT_READ`, and the files below `__tests__` are not
+  read. The type stays out of `analysis.types` until the answers take it in (work package 7).
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the

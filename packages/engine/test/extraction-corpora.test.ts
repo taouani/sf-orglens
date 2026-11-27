@@ -207,6 +207,10 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * token or the name of an object. No codebase names a record of custom metadata by a literal in the folders this test
  * reads. A script compared the references and warnings one by one in every codebase, and the code at each place where
  * one changed was read by hand.
+ *
+ * Since 27 November 2026 the analysis also reads the JavaScript and the templates of Lightning web components (decision
+ * record 0094): the `via` `import`, `tag` and `attribute` are theirs, and so are 8 more `PATH_NOT_FOLLOWED` of NPSP.
+ * `LIGHTNING` below counts them by origin.
  */
 interface Expected {
   readonly components: number;
@@ -226,6 +230,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       declaration: 14,
       dml: 138,
       field: 1139,
+      import: 4,
       'listed-field': 19,
       lookup: 8,
       new: 374,
@@ -233,6 +238,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 11,
       soql: 414,
       sosl: 16,
+      tag: 7,
       text: 49,
       token: 20,
       type: 1011,
@@ -255,12 +261,14 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       field: 11_484,
       filter: 7,
       formula: 387,
+      import: 39,
       'listed-field': 153,
       lookup: 17,
       new: 1278,
       'record-of': 55,
       soql: 1417,
       summary: 16,
+      tag: 10,
       text: 106,
       token: 1006,
       type: 4022,
@@ -277,6 +285,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 6,
       'action-override': 12,
       assignment: 19,
+      attribute: 4,
       call: 35_618,
       'controlling-field': 5,
       declaration: 407,
@@ -285,6 +294,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       field: 59_928,
       filter: 11,
       formula: 70,
+      import: 1660,
       'listed-field': 2241,
       lookup: 77,
       'merge-field': 8,
@@ -294,6 +304,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       soql: 10_188,
       sosl: 2,
       summary: 4,
+      tag: 151,
       template: 2,
       text: 1755,
       token: 3827,
@@ -301,7 +312,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 1420, RELATIONSHIP_GUESSED: 290 },
+    issues: { PATH_NOT_FOLLOWED: 1428, RELATIONSHIP_GUESSED: 290 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -319,6 +330,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       field: 4187,
       filter: 4,
       formula: 133,
+      import: 314,
       join: 1,
       'listed-field': 652,
       lookup: 26,
@@ -327,6 +339,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 27,
       soql: 752,
       sosl: 4,
+      tag: 61,
       text: 40,
       token: 878,
       type: 1816,
@@ -401,11 +414,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 1,
       'action-override': 5,
       assignment: 10,
+      attribute: 7,
       call: 39,
       dml: 27,
       field: 228,
       filter: 11,
       formula: 42,
+      import: 17,
       lookup: 6,
       new: 43,
       object: 12,
@@ -415,6 +430,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       record: 1,
       soql: 109,
       summary: 6,
+      tag: 7,
       text: 8,
       token: 11,
       type: 161,
@@ -433,11 +449,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       dml: 2285,
       field: 20_517,
       formula: 76,
+      import: 401,
       'listed-field': 32,
       lookup: 69,
       new: 4081,
       'record-of': 2,
       soql: 5678,
+      tag: 86,
       text: 540,
       token: 508,
       type: 12_910,
@@ -603,6 +621,118 @@ const EXPECTED_RECORDS: Readonly<Record<string, ExpectedRecords>> = {
   },
 };
 
+/**
+ * The Lightning web components of each codebase (decision record 0094): the bundles, those whose JavaScript and whose
+ * templates were read, their references by origin, kind, type of the target, resolution and tier, and their issues.
+ * Every module a component imports is of a form the reader knows, and so is every tag of a component of the project.
+ * Only 2 calls are `probable`: NPSP imports a method of `BDI_ManageAdvancedMappingCtrl` that has two overloads, both
+ * `@AuraEnabled`. A component can import only such a method, so where only one of the overloads of a name is (2
+ * imports of NPSP), the call is `confirmed` to that one. An `external` field is a standard field, or a field of an
+ * object of a package that the codebase holds no file of, and an `external` object a standard one. The 8 warnings of
+ * NPSP are paths across a relationship of a field of such a package (`npe03__Contact__r.FirstName`). Volunteers for
+ * Salesforce has no Lightning web component in the folders this test reads, and the one of Outbound Funds names
+ * nothing. A bundle that is a module of code only has no template (Apex Recipes 1, Nebula Logger 1, NPSP 18, PMM 4,
+ * Coral Cloud 1). PMM holds a folder `lwc/__tests__` of mocks for its tests, which the Salesforce library takes for a
+ * bundle, and of which nothing is read. 15 references of NPSP, 22 of Coral Cloud and 10 each of EDA, PMM and Nebula
+ * Logger, drawn at random, were checked by hand against their code.
+ */
+interface ExpectedLightning {
+  readonly bundles: number;
+  readonly scripts: number;
+  readonly templates: number;
+  readonly references: Readonly<Record<string, number>>;
+  readonly issues: Readonly<Record<string, number>>;
+}
+const NO_LIGHTNING: ExpectedLightning = { bundles: 0, scripts: 0, templates: 0, references: {}, issues: {} };
+const LIGHTNING: Readonly<Record<string, ExpectedLightning>> = {
+  'apex-recipes': {
+    bundles: 7,
+    scripts: 7,
+    templates: 6,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 3,
+      'parser:javascript references LightningComponentBundle resolved confirmed': 1,
+      'parser:markup references LightningComponentBundle resolved confirmed': 7,
+    },
+    issues: {},
+  },
+  'coral-cloud': {
+    bundles: 15,
+    scripts: 15,
+    templates: 14,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 6,
+      'parser:javascript references CustomField external confirmed': 4,
+      'parser:javascript references CustomField resolved confirmed': 6,
+      'parser:javascript references LightningComponentBundle resolved confirmed': 1,
+      'parser:markup references CustomField external probable': 2,
+      'parser:markup references CustomField resolved probable': 4,
+      'parser:markup references CustomObject resolved probable': 1,
+      'parser:markup references LightningComponentBundle resolved confirmed': 7,
+    },
+    issues: {},
+  },
+  eda: {
+    bundles: 46,
+    scripts: 46,
+    templates: 46,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 55,
+      'parser:javascript references CustomField resolved confirmed': 4,
+      'parser:javascript references CustomLabel resolved confirmed': 342,
+      'parser:markup references LightningComponentBundle resolved confirmed': 86,
+    },
+    issues: {},
+  },
+  'nebula-logger': {
+    bundles: 11,
+    scripts: 11,
+    templates: 10,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 24,
+      'parser:javascript references CustomField resolved confirmed': 14,
+      'parser:javascript references CustomObject resolved confirmed': 1,
+      'parser:markup references LightningComponentBundle resolved confirmed': 10,
+    },
+    issues: {},
+  },
+  npsp: {
+    bundles: 122,
+    scripts: 122,
+    templates: 104,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 110,
+      'parser:javascript calls ApexClass resolved probable': 2,
+      'parser:javascript references CustomField external confirmed': 88,
+      'parser:javascript references CustomField resolved confirmed': 311,
+      'parser:javascript references CustomLabel resolved confirmed': 895,
+      'parser:javascript references CustomObject external confirmed': 25,
+      'parser:javascript references CustomObject resolved confirmed': 24,
+      'parser:javascript references LightningComponentBundle resolved confirmed': 205,
+      'parser:markup references CustomObject external probable': 4,
+      'parser:markup references LightningComponentBundle resolved confirmed': 151,
+    },
+    issues: { PATH_NOT_FOLLOWED: 8 },
+  },
+  'outbound-funds': { bundles: 1, scripts: 1, templates: 1, references: {}, issues: {} },
+  pmm: {
+    bundles: 37,
+    scripts: 36,
+    templates: 32,
+    references: {
+      'parser:javascript calls ApexClass resolved confirmed': 35,
+      'parser:javascript references CustomField external confirmed': 6,
+      'parser:javascript references CustomField resolved confirmed': 57,
+      'parser:javascript references CustomLabel resolved confirmed': 181,
+      'parser:javascript references CustomObject external confirmed': 3,
+      'parser:javascript references CustomObject resolved confirmed': 9,
+      'parser:javascript references LightningComponentBundle resolved confirmed': 23,
+      'parser:markup references LightningComponentBundle resolved confirmed': 61,
+    },
+    issues: {},
+  },
+};
+
 const counted = (values: readonly string[]): Record<string, number> => {
   const counts: Record<string, number> = {};
   for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
@@ -683,12 +813,31 @@ describe('the analysis of the public codebases', () => {
           `parser:formula ${String(FAILED_FORMULAS[name] ?? 0)}`,
           'parser:flow 0',
           'parser:apex 0',
+          'parser:javascript 0',
+          'parser:markup 0',
         ]);
         // Every class and trigger is read, and so is each of its members.
         const apex = analysis.components.filter((one) => /^Apex(?:Class|Trigger):/.test(one.key));
         expect(apex.filter((one) => one.attrs === null).map((one) => one.key)).toEqual([]);
         expect(analysis.work[3]?.components).toBe(apex.length);
         expect(analysis.work[3]?.texts).toEqual(TEXTS[name]);
+        // What the Lightning web components import and hold, and that every file of them was read as a whole.
+        const bundles = analysis.components.filter((one) => one.key.startsWith('LightningComponentBundle:'));
+        expect({
+          bundles: bundles.length,
+          scripts: analysis.work[4]?.components,
+          templates: analysis.work[5]?.components,
+          references: counted(
+            bundles
+              .flatMap((one) => one.references)
+              .map((one) => `${one.origin} ${one.kind} ${one.toType} ${one.resolution} ${one.confidence}`),
+          ),
+          issues: counted(
+            analysis.issues
+              .filter((one) => one.componentKey?.startsWith('LightningComponentBundle:') === true)
+              .map((one) => one.code),
+          ),
+        }).toEqual(LIGHTNING[name] ?? NO_LIGHTNING);
         // Every name of a formula was found or has a key: none is unresolved, and none is less than confirmed.
         const inFormulas = references.filter((one) => one.origin === 'parser:formula');
         expect(counted(inFormulas.map((one) => one.confidence))).toEqual(
@@ -780,7 +929,7 @@ describe('the analysis of the public codebases', () => {
 
         // Every record was read, no file of the codebase was refused, and nothing is an error.
         expect(records.filter((one) => one.attrs === null)).toEqual([]);
-        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0, 0]);
+        expect(analysis.work.map((work) => work.failedFiles)).toEqual([0, FAILED_FORMULAS[name] ?? 0, 0, 0, 0, 0]);
         expect(analysis.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
         expect({
           files: files.length,
