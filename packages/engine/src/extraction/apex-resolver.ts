@@ -1602,10 +1602,13 @@ class Resolver implements ApexResolver {
       return OTHER;
     }
     if (a.k === 'instance' || b.k === 'instance') return OTHER;
-    if (a.k === 'record' && b.k === 'record' && a.names !== undefined) {
-      // A record of a custom metadata type that is one of several named records, or any where the other is not named.
-      return b.names === undefined ? { k: 'record', object: a.object } : { ...a, names: [...a.names, ...b.names] };
+    // A record of a custom metadata type that is one of several named records, or any where the other way names none.
+    if (a.k === 'record' && a.names !== undefined) {
+      return b.k === 'record' && b.names !== undefined
+        ? { ...a, names: [...a.names, ...b.names] }
+        : { k: 'record', object: a.object };
     }
+    if (b.k === 'record' && b.names !== undefined) return a.k === 'record' ? a : { k: 'record', object: b.object };
     return says(a) ? a : b;
   }
 
@@ -2509,6 +2512,8 @@ class Resolver implements ApexResolver {
           return VALUE;
         }
         rest(0);
+        // Every field set of the object, whose fields the code can read: they are not followed.
+        if (method === 'values' && type.object !== undefined) this.possible(expr.name.at, 'reads', type.object);
         return VALUE;
       case 'objectToken':
         rest(0);
@@ -2899,6 +2904,12 @@ class Resolver implements ApexResolver {
       case 'describe':
         if (to.k === from.k) return 'exact';
         return to.k === 'other' || to.k === 'opaque' ? 'unknown' : 'no';
+      case 'records':
+        // The map of the records of a custom metadata type by their names.
+        return this.fits({ k: 'map', key: prim('string'), value: { k: 'record', object: from.object } }, to);
+      case 'fieldSetMap':
+        // The map of the field sets of an object by their names.
+        return this.fits({ k: 'map', key: prim('string'), value: { k: 'named', name: 'Schema.FieldSet' } }, to);
       default:
         return 'unknown';
     }
@@ -3185,8 +3196,8 @@ class Resolver implements ApexResolver {
 
   /**
    * A field of a record of a custom metadata type: the texts the records of the snapshot hold in it, which stand
-   * where the code reads it (decision record 0092). The field is a text by its file. Where the code writes the
-   * field, the value is not read. A record of another object has no record of the snapshot.
+   * where the code reads it (decision record 0092). The field is a text by its file. A record of another object has
+   * no record of the snapshot. Where the code writes the field, the value is not used.
    */
   private heldIn(record: RecordType, name: Name, value: Value): Value {
     const held = record.object === undefined ? undefined : this.schema.held(record.object, name.text, record.names);
@@ -3212,6 +3223,8 @@ class Resolver implements ApexResolver {
         const name = Resolver.named(one.name, sink);
         if (object === undefined) this.fieldSetNotKnown(name);
         else this.fieldSetOf(object, name, 'text');
+      } else if (known(text) !== undefined) {
+        // A text that is known and no name names no field set: the code gets none.
       } else if (object !== undefined) this.possible(one.unknown ?? sink.at, 'reads', object);
       else this.nameNotKnown(one.unknown, sink, 'field set');
     }
@@ -3471,7 +3484,9 @@ class Resolver implements ApexResolver {
       if (uses.length === 0) continue;
       const given = values.map((value, index) => {
         const arg = args[index];
-        return arg === undefined || strings[index] !== true ? undefined : this.textsOf(value, arg);
+        return arg === undefined || strings[index] !== true
+          ? undefined
+          : Resolver.handed(this.textsOf(value, arg), arg);
       });
       // Uses that differ in the method can be the same at the call, where all its characters stand.
       const read = new Set<string>();
@@ -3495,6 +3510,15 @@ class Resolver implements ApexResolver {
         }
       }
     }
+  }
+
+  /**
+   * The texts a call gives a parameter. An empty text keeps a mark where the call gives it, an empty piece of
+   * characters, so that a name the method makes of it is the caller's, as of any other text the call gives.
+   */
+  private static handed(texts: Texts, arg: Expr): Texts {
+    const at = Resolver.placeOf(arg);
+    return at === undefined ? texts : texts.map((text) => (text.length === 0 ? [{ k: 'chars', text: '', at }] : text));
   }
 
   /**

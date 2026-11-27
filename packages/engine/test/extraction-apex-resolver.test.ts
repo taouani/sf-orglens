@@ -3135,6 +3135,7 @@ describe('the resolver of Apex', () => {
     source.field('Rule__mdt', 'Field__c', '<type>Text</type>');
     source.field('Rule__mdt', 'Note__c', '<type>LongTextArea</type>');
     source.field('Rule__mdt', 'Label__c', '<type>TextArea</type>');
+    source.field('Rule__mdt', 'Kind__c', '<type>Picklist</type>');
     source.field('Rule__mdt', 'Count__c', '<type>Number</type>');
     source.field(
       'Rule__mdt',
@@ -3147,6 +3148,7 @@ describe('the resolver of Apex', () => {
       Count__c: '3',
       Object__c: 'Invoice__c',
       Note__c: 'Handler',
+      Kind__c: 'Status__c',
     });
     source.metadataRecord('Rule', 'Open', { Field__c: 'Status__c', Label__c: 'Status__c' });
     source.metadataRecord('Rule', 'Blank', {});
@@ -3416,6 +3418,119 @@ describe('the resolver of Apex', () => {
       'PATH_NOT_FOLLOWED 16:89 {"notFollowed":[],"origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 17:62 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 17:98 {"notFollowed":[],"origin":"parser:apex"}',
+    ]);
+  });
+
+  it('reads every record where a way of a branch is of no known type, and a map of records as a map', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.object('Other__mdt', '<label>Other</label>');
+      source.field('Other__mdt', 'Field__c', '<type>Text</type>');
+      source.apexClass(
+        'Branches',
+        code(
+          'public class Branches {',
+          '    static void process(Map<String, Rule__mdt> rules) {}',
+          '    static void process(List<String> names) {}',
+          '    void m(Invoice__c inv, Boolean flag, pkg.Provider p) {',
+          "        Rule__mdt a = flag ? Rule__mdt.getInstance('Open') : p.rule();",
+          '        inv.get(a.Field__c);',
+          "        Rule__mdt b = flag ? p.rule() : Rule__mdt.getInstance('Open');",
+          '        inv.get(b.Field__c);',
+          "        Rule__mdt c = Rule__mdt.getInstance('Open') ?? p.rule();",
+          '        inv.get(c.Field__c);',
+          "        Rule__mdt twice = Rule__mdt.getInstance('Open');",
+          "        twice = Rule__mdt.getInstance('Late');",
+          '        inv.get(twice.Field__c);',
+          '        inv.get(Rule__mdt.getInstance(null).Field__c);',
+          "        inv.get(Rule__mdt.getInstance('Late').Kind__c);",
+          "        inv.get(Other__mdt.getInstance('Any').Field__c);",
+          '        process(Rule__mdt.getAll());',
+          '        sets(Schema.SObjectType.Invoice__c.fieldSets.getMap());',
+          '    }',
+          '    static void sets(Map<String, Schema.FieldSet> sets) {}',
+          '    static void sets(List<String> names) {}',
+          '}',
+        ),
+      );
+    });
+    expect([...byMember(analysis), ...said(analysis, new Set(['call']))]).toEqual([
+      // A way of a branch that is of no known type can be any record, in either order and with `??`.
+      'branches#method:m(invoice__c,boolean,pkg.provider) 5:53 references CustomMetadata:rule.open probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 6:19 reads CustomField:invoice__c.amount__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 6:19 reads CustomField:invoice__c.status__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 7:64 references CustomMetadata:rule.open probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 8:19 reads CustomField:invoice__c.amount__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 8:19 reads CustomField:invoice__c.status__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 9:46 references CustomMetadata:rule.open probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 10:19 reads CustomField:invoice__c.amount__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 10:19 reads CustomField:invoice__c.status__c probable',
+      // A local assigned twice keeps its declared type: any record. `null` names none.
+      'branches#method:m(invoice__c,boolean,pkg.provider) 11:50 references CustomMetadata:rule.open probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 12:40 references CustomMetadata:rule.late probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 13:23 reads CustomField:invoice__c.amount__c probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 13:23 reads CustomField:invoice__c.status__c probable',
+      // A picklist holds no text that is read, and a type the snapshot holds no record of gives none.
+      'branches#method:m(invoice__c,boolean,pkg.provider) 15:40 references CustomMetadata:rule.late probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 15:47 reads CustomObject:invoice__c possible',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 16:41 references null probable',
+      'branches#method:m(invoice__c,boolean,pkg.provider) 16:47 reads CustomObject:invoice__c possible',
+      // The map of `getAll()` is a map of records by their names, and that of field sets a map of field sets.
+      '17:9 calls ApexClass:branches#method:process(map<string,rule__mdt>) [process] call confirmed resolved',
+      '18:9 calls ApexClass:branches#method:sets(map<string,schema.fieldset>) [sets] call confirmed resolved',
+    ]);
+  });
+
+  it('reads what a method makes of an empty text that a call hands it, and the field sets of a map', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.fieldSet('Invoice__c', 'Summary', ['Amount__c']);
+      source.apexClass(
+        'Empty',
+        code(
+          'public class Empty {',
+          "    static Object lit(Invoice__c inv, String prefix) { return inv.get(prefix + 'Amount__c'); }",
+          '    static Object held(Invoice__c inv, String prefix) {',
+          "        return inv.get(prefix + Rule__mdt.getInstance('Open').Field__c);",
+          '    }',
+          '    void sets() {',
+          '        Map<String, Schema.FieldSet> all = Schema.SObjectType.Invoice__c.fieldSets.getMap();',
+          '        for (Schema.FieldSet one : all.values()) one.getFields();',
+          "        all.get('');",
+          "        all.get('No such set');",
+          '        all.keySet();',
+          '        Schema.FieldSet gone = Schema.SObjectType.Invoice__c.fieldSets.Gone;',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'EmptyCaller',
+        code(
+          'public class EmptyCaller {',
+          '    void m(Invoice__c inv) {',
+          "        Empty.lit(inv, '');",
+          "        Empty.held(inv, '');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect([...byMember(analysis), ...said(analysis, new Set(['token']))]).toEqual([
+      // The method names the record itself.
+      'empty#method:held(invoice__c,string) 4:56 references CustomMetadata:rule.open probable',
+      // Every field set of a map can be read. A known text that is no name names none, and the names of the field
+      // sets are no field set.
+      'empty#method:sets() 8:40 reads CustomObject:invoice__c possible',
+      // A field set the snapshot does not hold, named by a token.
+      'empty#method:sets() 12:72 reads CustomObject:invoice__c possible',
+      // A name the method makes of an empty text that a call hands it is the caller's, where the call stands.
+      'emptycaller#method:m(invoice__c) 3:15 reads CustomField:invoice__c.amount__c probable',
+      'emptycaller#method:m(invoice__c) 4:15 reads CustomField:invoice__c.status__c probable',
+      '4:33 references CustomObject:rule__mdt [Rule__mdt] token confirmed resolved',
+      '7:63 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '12:51 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '12:72 references null [Gone] token probable unresolved of Invoice__c',
     ]);
   });
 

@@ -4,6 +4,7 @@
 - Date: 2026-11-27
 - Decisions: none (builds part B of work package 5 of the Phase 3 plan, with the choices the author made in it, which
   the maintainer can strike)
+- Changed by: [0092](0092-the-resolver-of-apex-reads-names-held-by-metadata.md), in one point of rule 3: a name that the characters of the method make with an empty text that a call hands is the caller's
 
 ## Context
 

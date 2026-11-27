@@ -358,7 +358,8 @@ const NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
  */
 export function nameIn(text: Text): { readonly name: NameInText } | { readonly unknown: Pos | undefined } {
   const whole = known(text);
-  const [first] = text;
+  // An empty piece of characters, which a call that gives an empty text leaves, stands nowhere in the name.
+  const first = text.find((piece) => piece.k !== 'chars' || piece.text !== '') ?? text[0];
   const start = first === undefined ? undefined : first.k === 'chars' ? placeIn(first, 0) : first.at;
   if (whole !== undefined && NAME.test(whole)) return { name: { text: whole, at: start } };
   const hole = text.find((piece) => piece.k === 'hole');

@@ -191,18 +191,21 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * references and warnings one by one in every codebase.
  *
  * Since 27 November 2026 the resolver also reads the names that records of custom metadata types and field sets hold
- * (decision record 0092). Where code reads a field of a text type of a record of such a type, the field holds the
- * texts that the records of the snapshot give it: of the record that `getInstance` or `getAll().get` names, or of
- * every record of the type. Where code reads a field set by its name, from the map of the field sets of a describe or
- * as `fieldSets.Name`, it refers to the field set and reads each field the field set holds, where it names the field
- * set. Apex Recipes has 2 more `text`, Nebula Logger 19, NPSP 68, PMM 24 and V4S 37, and NPSP has 16 more `token`, PMM
- * 5 and V4S 12. Of them, 11 are classes that records name for `Type.forName` (Apex Recipes 2, Nebula Logger 6, NPSP
- * 3), where a warning went (Apex Recipes 1, Nebula Logger 1, NPSP 3), 6 of Nebula Logger are `possible` references at
- * a field set whose name is not known, and the others are field sets and their fields, most of them in tests. 28
- * warnings came, each at a field set of which nothing says the object, which a parameter that is a describe or the
- * token of an object gives (EDA 2, Nebula Logger 4, NPSP 20, PMM 2). No codebase names a record of custom metadata by
- * a literal in the folders this test reads. A script compared the references and warnings one by one in every
- * codebase, and the code at each place where one changed was read by hand.
+ * (decision record 0092). Where code reads a field of a text type of a record of such a type, the field holds the texts
+ * that the records of the snapshot give it: of the record that `getInstance` or `getAll().get` names, or of every
+ * record of the type. Where code reads a field set by its name, from the map of the field sets of a describe or as
+ * `fieldSets.Name`, it refers to the field set and reads each field the field set holds, where it names the field set.
+ * Apex Recipes has 2 more `text`, Nebula Logger 18, NPSP 68, PMM 24 and V4S 37, and NPSP has 16 more `token`, PMM 5 and
+ * V4S 12. Of them, 11 are classes that records name for `Type.forName` (Apex Recipes 2, Nebula Logger 6, NPSP 3), where
+ * a warning went (Apex Recipes 1, Nebula Logger 1, NPSP 3), 5 of Nebula Logger are `possible` references at a field set
+ * whose name is not known, or at every field set of the map of an object, and the others are field sets and their
+ * fields, most of them in tests. 28 warnings came, each at a field set of which nothing says the object (EDA 2, Nebula
+ * Logger 4, NPSP 20, PMM 2). Those of NPSP are at calls of a helper that is handed the names of the object and of the
+ * field set as texts, `UTIL_Describe.listStrFromFieldSet`, which describes the object by its name. Those of EDA are in
+ * two such helpers that are `global`, which keep their warnings, and the others where a method is handed a describe, a
+ * token or the name of an object. No codebase names a record of custom metadata by a literal in the folders this test
+ * reads. A script compared the references and warnings one by one in every codebase, and the code at each place where
+ * one changed was read by hand.
  */
 interface Expected {
   readonly components: number;
@@ -257,7 +260,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 55,
       soql: 1417,
       summary: 16,
-      text: 107,
+      text: 106,
       token: 1006,
       type: 4022,
       value: 6,
