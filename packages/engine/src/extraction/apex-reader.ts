@@ -465,7 +465,12 @@ function statement(node: Node): Stmt {
       };
     case 'while_statement':
     case 'do_statement':
-      return { kind: 'while', cond: expression(field(node, 'condition')), body: optional(field(node, 'body')) };
+      return {
+        kind: 'while',
+        cond: expression(field(node, 'condition')),
+        body: optional(field(node, 'body')),
+        ...(node.type === 'do_statement' ? { bodyFirst: true as const } : {}),
+      };
     case 'try_statement': {
       const last = one(one(node, 'finally_clause'), 'block');
       return {

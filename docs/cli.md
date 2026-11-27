@@ -991,9 +991,9 @@ query, which read fields the query does not name (decision record 0088). The fie
 query are of objects that nothing says, and their warning ends at `field`. Apex writes one too where a text names
 something and a part of it is not known (decision record 0090): a field whose name is known, of a record of no known
 object, keeps the name and ends at `field`, an object that is not known keeps no name and ends at `object`, and the
-object of a query that is not known keeps the fields the query names and ends at `object`. A field and its object
-that are both not known, a class, and a query or a search of which nothing is known keep no name and no end, and
-count for every answer. Every other warning
+object of a query that is not known keeps the names the query holds, also in its subqueries, and ends at `object`. A
+field and its object that are both not known, a class, a query or a search of which nothing is known, and a text
+that could not be read as a query or a search keep no name and no end, and count for every answer. Every other warning
 counts for what refers to a component. A warning about a file as a whole, which names no component, counts for every
 answer. The count is of the warnings that bear on the answer directly: one whose names fit only a component that another
 missing reference would bring into the answer is not counted, and the answer is not complete all the same.

@@ -61,6 +61,7 @@ import {
   literalText,
   mapped,
   nameIn,
+  placed,
   trimmed,
   usedAt,
   withoutEnd,
@@ -200,6 +201,8 @@ type Type =
       readonly object: string | undefined;
       readonly field: string | undefined;
       readonly described?: boolean;
+      /** The name of the field in a text, where a text named it (`fields.getMap().get('Amount__c')`). */
+      readonly text?: Name;
     }
   | { readonly k: 'describe'; readonly object: string | undefined }
   /** `fields` of a describe: the next name is a field of the object. */
@@ -639,7 +642,13 @@ class Resolver implements ApexResolver {
         enter(property.accessors, property.type);
         // The setter of a property is given the new value under this name.
         this.bind({ text: 'value', at: property.name.at }, this.resolveType(property.type, holder));
-        for (const accessor of property.accessors) this.stmt(accessor);
+        const start = new Map(this.context.texts);
+        // Each accessor is a body of its own, which starts with nothing known of what the other did.
+        for (const accessor of property.accessors) {
+          this.context.texts = new Map(start);
+          this.context.ended = false;
+          this.stmt(accessor);
+        }
         break;
       }
       case 'var':
@@ -1044,7 +1053,10 @@ class Resolver implements ApexResolver {
     const ctx = this.context;
     if (ctx.quiet) return false;
     const id = `${code}\n${String(at.at.line)}:${String(at.at.column)}`;
-    if (this.issueIds.has(id)) return false;
+    if (this.issueIds.has(id)) {
+      if (code === 'PATH_NOT_FOLLOWED') this.widen(at, details);
+      return false;
+    }
     this.issueIds.add(id);
     const { file } = ctx.unit;
     this.issues.push({
@@ -1055,6 +1067,28 @@ class Resolver implements ApexResolver {
       details: { path: file, line: at.at.line, column: at.at.column, ...details },
     });
     return true;
+  }
+
+  /**
+   * Two paths that were not followed at one place, as the parts of a text that a method gives back, which all stand at
+   * the call: the warning bears where either does, with the names of both, and an end only where both have it.
+   */
+  private widen(at: Name, details: Readonly<Record<string, string | readonly string[]>>): void {
+    const { line, column } = at.at;
+    const index = this.issues.findIndex(
+      (one) => one.code === 'PATH_NOT_FOLLOWED' && one.details?.['line'] === line && one.details['column'] === column,
+    );
+    const before = this.issues[index];
+    if (before?.details === undefined || before.details === null) return;
+    const names = (value: unknown): readonly string[] =>
+      Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : [];
+    const had = names(before.details['notFollowed']);
+    const more = names(details['notFollowed']).filter((name) => !had.includes(name));
+    const { endsAt, ...rest } = before.details;
+    const ends = endsAt !== undefined && endsAt === details['endsAt'];
+    if (more.length === 0 && (ends || endsAt === undefined)) return;
+    const notFollowed = [...had, ...more].slice(0, MOST_NAMES_SHOWN);
+    this.issues[index] = { ...before, details: ends ? { ...before.details, notFollowed } : { ...rest, notFollowed } };
   }
 
   /**
@@ -1193,7 +1227,14 @@ class Resolver implements ApexResolver {
    * enters the text: at a name, at what a call gives, at the list that `String.join` is given.
    */
   private textsOf(value: Value, expr: Expr): Texts {
-    return value.texts ?? [holeText(Resolver.placeOf(expr), Resolver.holeOf(value.type))];
+    const at = Resolver.placeOf(expr);
+    return value.texts === undefined ? [holeText(at, Resolver.holeOf(value.type))] : placed(value.texts, at);
+  }
+
+  /** The texts of a value that `+` puts together with another: a value that is `null` adds nothing. */
+  private joinable(value: Value, expr: Expr): Texts {
+    const texts = this.textsOf(value, expr);
+    return texts.length === 0 ? [[]] : texts;
   }
 
   /** Where an expression stands for what a text is made of. */
@@ -1248,11 +1289,13 @@ class Resolver implements ApexResolver {
     const local = this.lookup(foldName(expr.left.name.text));
     if (local === undefined) return undefined;
     const op = expr.op.replace(/\s+/g, '');
+    // `+=` puts texts together only on a text: on a number it adds.
+    const onText = local.type.k === 'prim' ? local.type.name === 'string' : Resolver.isText(left);
     const texts =
       op === '='
         ? right.texts
-        : op === '+=' && Resolver.isText(left)
-          ? joined(this.textsOf(left, expr.left), this.textsOf(right, expr.right))
+        : op === '+=' && onText
+          ? joined(this.joinable(left, expr.left), this.joinable(right, expr.right))
           : undefined;
     this.context.texts.set(local, texts);
     return texts;
@@ -1278,13 +1321,17 @@ class Resolver implements ApexResolver {
     ctx.texts = after.length === 0 ? before : Resolver.merged(after);
   }
 
-  /** The texts of the variables after one of several ways: a variable not known after one is not known. */
+  /**
+   * The texts of the variables after one of several ways. A variable that a way does not know is a part that is not
+   * known after that way, which stands where the variable is used, and a variable that no way knows is not known.
+   */
   private static merged(ways: readonly Map<Local, Texts | undefined>[]): Map<Local, Texts | undefined> {
     const out = new Map<Local, Texts | undefined>();
     const locals = new Set(ways.flatMap((way) => [...way.keys()]));
     for (const local of locals) {
       const all = ways.filter((way) => way.has(local)).map((way) => way.get(local));
-      const texts = all.every((one) => one !== undefined) ? eitherText(all) : undefined;
+      const unknown = [holeText(undefined, Resolver.holeOf(local.type))];
+      const texts = all.every((one) => one === undefined) ? undefined : eitherText(all.map((one) => one ?? unknown));
       out.set(local, texts);
     }
     return out;
@@ -1302,8 +1349,15 @@ class Resolver implements ApexResolver {
         return;
       case 'local': {
         const declared = this.resolveType(stmt.type, this.context.cls);
-        for (const one of stmt.vars)
-          this.bind(one.name, declared, one.init === undefined ? undefined : this.given(this.ev(one.init), declared));
+        for (const one of stmt.vars) {
+          const local = this.bind(
+            one.name,
+            declared,
+            one.init === undefined ? undefined : this.given(this.ev(one.init), declared),
+          );
+          // A variable of a primitive type that is not given a value is `null`, which names nothing.
+          if (one.init === undefined && declared.k === 'prim') this.context.texts.set(local, []);
+        }
         return;
       }
       case 'expr':
@@ -1352,6 +1406,12 @@ class Resolver implements ApexResolver {
         return;
       }
       case 'while':
+        if (stmt.bodyFirst === true) {
+          // `do { ... } while (cond)` runs its body once at least, and is followed as if it ran it once.
+          this.stmt(stmt.body);
+          this.ev(stmt.cond);
+          return;
+        }
         this.ev(stmt.cond);
         this.branches([
           () => {
@@ -1380,13 +1440,20 @@ class Resolver implements ApexResolver {
         this.context.ended = true;
         return;
       case 'try': {
-        // A block can stop at any statement, and a clause runs from where it stopped.
+        // A block can stop at any statement, and a clause runs from where it stopped: from the texts before it, or
+        // after any statement of it that does not end it.
         const ctx = this.context;
-        const before = new Map(ctx.texts);
         const ended = ctx.ended === true;
-        this.stmt(stmt.block);
+        const stops = [new Map(ctx.texts)];
+        this.inScope(() => {
+          for (const inner of stmt.block.kind === 'block' ? stmt.block.stmts : [stmt.block]) {
+            this.stmt(inner);
+            if (ctx.ended === true) break;
+            stops.push(new Map(ctx.texts));
+          }
+        });
         const after = ctx.texts;
-        const caught = Resolver.merged([before, after]);
+        const caught = Resolver.merged(stops);
         const ends = ctx.ended === true ? [] : [after];
         for (const clause of stmt.catches) {
           ctx.texts = new Map(caught);
@@ -1473,10 +1540,9 @@ class Resolver implements ApexResolver {
       case 'string':
         return { type: prim('string'), texts: [literalText(expr.at, expr.raw)] };
       case 'literal': {
-        // A number, `true` or `false` is a text too where it is added to one. A variable that starts as `null` is
-        // given a value later, which is not known.
+        // A number, `true` or `false` is a text too where it is added to one. `null` is no text: it names nothing.
         const type = literalType(expr.text);
-        return isNull(type) ? { type } : { type, texts: [wordText(expr.at, expr.text)] };
+        return { type, texts: isNull(type) ? [] : [wordText(expr.at, expr.text)] };
       }
       case 'class':
         // `Invoice__c.class` is a `Type`.
@@ -1536,12 +1602,18 @@ class Resolver implements ApexResolver {
         const type = Resolver.operation(expr.op, left.type, right.type);
         // `'SELECT ' + fields + ' FROM Invoice__c'` puts texts together.
         if (expr.op.trim() !== '+' || type.k !== 'prim' || type.name !== 'string') return { type };
-        const texts = joined(this.textsOf(left, expr.left), this.textsOf(right, expr.right));
-        return texts === undefined ? { type } : { type, texts };
+        return { type, texts: joined(this.joinable(left, expr.left), this.joinable(right, expr.right)) };
       }
       case 'unary': {
-        const operand = this.ev(expr.operand, expr.op.includes('++') || expr.op.includes('--') ? 'both' : 'read');
-        return expr.op.trim() === '!' ? { type: BOOLEAN } : operand;
+        const steps = expr.op.includes('++') || expr.op.includes('--');
+        const operand = this.ev(expr.operand, steps ? 'both' : 'read');
+        // `-1` and `count++` are numbers that the code works out: no text the code shows. `+` changes nothing.
+        if (steps && expr.operand.kind === 'name') {
+          const local = this.lookup(foldName(expr.operand.name.text));
+          if (local !== undefined) this.context.texts.set(local, undefined);
+        }
+        const op = expr.op.trim();
+        return op === '!' ? { type: BOOLEAN } : op === '+' ? operand : { type: operand.type };
       }
       case 'ternary': {
         this.ev(expr.cond);
@@ -1692,7 +1764,13 @@ class Resolver implements ApexResolver {
     const checked = this.schema.field(object, name.text);
     const made = this.add(name, 'references', checked, via, { object });
     this.notDescribed(name, checked, object);
-    const type: Type = { k: 'fieldToken', object, field: name.text, ...(described === undefined ? {} : { described }) };
+    const type: Type = {
+      k: 'fieldToken',
+      object,
+      field: name.text,
+      ...(described === undefined ? {} : { described }),
+      ...(via === 'text' ? { text: name } : {}),
+    };
     return { type, made: made === undefined ? [] : [made] };
   }
 
@@ -1839,7 +1917,9 @@ class Resolver implements ApexResolver {
     const { type } = token;
     if (type.k !== 'fieldToken' || type.object === undefined || type.field === undefined) return;
     if (foldName(type.field) === 'id') return;
-    this.add(at, 'references', this.schema.field(type.object, type.field), 'token', { object: type.object });
+    // A token that a text named stays a name in a text.
+    const via = type.text === undefined ? 'token' : 'text';
+    this.add(at, 'references', this.schema.field(type.object, type.field), via, { object: type.object });
   }
 
   /**
@@ -1848,6 +1928,9 @@ class Resolver implements ApexResolver {
    */
   private textOrToken(arg: Expr): boolean {
     if (arg.kind === 'string') return true;
+    // `prefix + 'Amount__c'`: a text put together.
+    if (arg.kind === 'binary' && arg.op.trim() === '+')
+      return this.textOrToken(arg.left) || this.textOrToken(arg.right);
     let first: Expr = arg;
     while (first.kind === 'dot') first = first.target;
     if (first.kind !== 'name') return false;
@@ -2030,11 +2113,10 @@ class Resolver implements ApexResolver {
           // The items of a list the code writes out, with the text that stands between them.
           if (first.items === undefined) return undefined;
           const between = second !== undefined && args[1] !== undefined ? this.textsOf(second, args[1]) : [[]];
-          let all: Texts | undefined = [[]];
+          let all: Texts = [[]];
           for (const [index, item] of first.items.entries()) {
-            if (all === undefined || item === undefined) return undefined;
-            if (index > 0) all = joined(all, between);
-            if (all !== undefined) all = joined(all, item);
+            if (item === undefined) return undefined;
+            all = joined(index > 0 ? joined(all, between) : all, item);
           }
           return all;
         }
@@ -2043,7 +2125,7 @@ class Resolver implements ApexResolver {
           const formats = first.texts;
           if (formats === undefined) return undefined;
           const place = Resolver.placeOf(args[1]) ?? at.at;
-          return eitherText(formats.map((format) => formatted(format, items, place) ?? [holeText(place, 'text')]));
+          return eitherText(formats.map((format) => formatted(format, items, place)));
         }
         case 'escapesinglequotes':
           return first.texts?.map(escaped);
@@ -2245,12 +2327,10 @@ class Resolver implements ApexResolver {
     const texts: Texts[] = [];
     for (const one of run) {
       const template = this.template(one);
-      const used = template === undefined ? undefined : usedAt(template, at.at, given);
-      if (used === undefined) return { type };
-      texts.push(used);
+      if (template === undefined) return { type };
+      texts.push(usedAt(template, at.at, given));
     }
-    const all = eitherText(texts);
-    return all === undefined ? { type } : { type, texts: all };
+    return { type, texts: eitherText(texts) };
   }
 
   /**
@@ -2298,7 +2378,7 @@ class Resolver implements ApexResolver {
       this.met = outer.met;
       this.textBinds = outer.binds;
     }
-    const texts = gives.unknown || gives.texts.length === 0 ? null : (distinct(gives.texts) ?? null);
+    const texts = gives.unknown || gives.texts.length === 0 ? null : distinct(gives.texts);
     this.templates.set(method, texts);
     return texts ?? undefined;
   }
@@ -2419,9 +2499,17 @@ class Resolver implements ApexResolver {
     const { type } = value;
     const at = anchor(arg);
     if (type.k !== 'fieldToken' || type.object === undefined || type.field === undefined || at === undefined) return;
-    this.retract(value.made);
     const checked = this.schema.field(type.object, type.field);
-    this.add(at, kind, checked, 'token', { object: type.object });
+    if (type.text === undefined) {
+      this.retract(value.made);
+      this.add(at, kind, checked, 'token', { object: type.object });
+      return;
+    }
+    // A token that a text named stays a name in a text: read where the text stands when the code reads it right
+    // there (`record.get(fields.getMap().get('Amount__c'))`), and where the code uses the token otherwise.
+    const made = value.made ?? [];
+    this.retract(made);
+    this.add(made.length > 0 ? type.text : at, kind, checked, 'text', { object: type.object });
   }
 
   /** A method of `Database` or of `EventBus`. */
@@ -2759,9 +2847,8 @@ class Resolver implements ApexResolver {
       const covered =
         !whole && read !== undefined && put.filled.every((one) => one.at !== undefined && read.has(placeKey(one.at)));
       if (object !== undefined) this.possible(object.at, 'reads', object.name);
-      else if (!covered) {
-        this.nameNotKnown(whole ? first : (put.filled[0]?.at ?? first), sink, kind === 'soql' ? 'query' : 'search');
-      }
+      else if (whole) this.nameNotKnown(first, sink, kind === 'soql' ? 'query' : 'search');
+      else if (!covered) this.textNotRead(put.filled[0]?.at ?? first, sink, kind, put.filled.length > 0);
       return none;
     }
     const { read: query } = parsed;
@@ -2802,9 +2889,29 @@ class Resolver implements ApexResolver {
     }
   }
 
-  /** The object after `FROM` in the characters of a text that is not read as a query, at its place. */
+  /**
+   * The warning that a text the code shows, or a part of it, is not read as a query or a search: Salesforce would
+   * refuse it as it is written, or the reader does not know it.
+   */
+  private textNotRead(at: Pos | undefined, sink: Name, kind: 'soql' | 'sosl', partly: boolean): void {
+    const what = kind === 'soql' ? 'query' : 'search';
+    const message = partly
+      ? `the text of the ${what} is known only in part here, and it could not be read as a ${what} as far as it is known, so what it reads was not followed.`
+      : `the text of the ${what} could not be read as a ${what}, so what it reads was not followed.`;
+    this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
+      notFollowed: [],
+      origin: 'parser:apex',
+    });
+  }
+
+  /**
+   * The object after `FROM` in the characters of a text that is not read as a query, at its place: the `FROM` outside
+   * brackets, and not that of a subquery.
+   */
   private static objectAfterFrom(put: Composed): { name: string; at: Pos } | undefined {
     for (const match of put.source.matchAll(/\bfrom\s+([A-Za-z][A-Za-z0-9_]*)/gi)) {
+      const before = put.source.slice(0, match.index);
+      if (before.split('(').length !== before.split(')').length) continue;
       const start = match.index + match[0].length - (match[1]?.length ?? 0);
       const filled = put.filled.some((one) => start < one.end && start + (match[1]?.length ?? 0) > one.start);
       const at = put.places[start];
@@ -2845,7 +2952,7 @@ class Resolver implements ApexResolver {
         from,
         'PATH_NOT_FOLLOWED',
         'the object of the query is a text that is not known here, so the query was not followed.',
-        { notFollowed: this.namesOutside(query.fields), endsAt: 'object', origin: 'parser:apex' },
+        { notFollowed: this.namesOfQuery(query), endsAt: 'object', origin: 'parser:apex' },
       );
       this.queried(query, undefined);
       return { k: 'list', of: { k: 'record', object: undefined } };
@@ -2913,6 +3020,26 @@ class Resolver implements ApexResolver {
   }
 
   /**
+   * The names a query of an object that is not known holds beside its object: its fields, the child relationship of
+   * each subquery of its select list with what the subquery names, and each `TYPEOF` with what it names.
+   */
+  private namesOfQuery(query: Query): string[] {
+    const paths: FieldPath[] = [];
+    const visit = (one: Query): void => {
+      paths.push(...one.fields);
+      for (const child of one.children) {
+        paths.push(child.from.slice(-1));
+        visit(child);
+      }
+      for (const typeOf of one.typeOfs) {
+        paths.push(typeOf.relationship, ...typeOf.whens.flatMap((when) => when.fields), ...typeOf.otherwise);
+      }
+    };
+    visit(query);
+    return this.namesOutside(paths);
+  }
+
+  /**
    * A subquery of the select list, through a child relationship of `parent`: the relationship refers to the lookup
    * field of the child object that defines it, and the subquery reads that object. Of a relationship that nothing
    * defines the lookup field can have any name, so a warning stands for the subquery.
@@ -2927,6 +3054,7 @@ class Resolver implements ApexResolver {
         `the child relationship of a subquery of "${cut(parent, 80)}" is a text that is not known here, so the subquery was not followed.`,
         { notFollowed: this.namesOutside(child.fields), origin: 'parser:apex' },
       );
+      this.meet(child);
       this.queried(child, undefined);
       return;
     }
@@ -2943,10 +3071,18 @@ class Resolver implements ApexResolver {
         name,
         'PATH_NOT_FOLLOWED',
         `it is not known which object the child relationship "${cut(name.text, 80)}" of "${cut(parent, 80)}" leads to, so the subquery through it was not followed.`,
-        { relationship: name.text, notFollowed: namesOf(child.fields), origin: 'parser:apex' },
+        { relationship: name.text, notFollowed: this.namesOutside(child.fields), origin: 'parser:apex' },
       );
+      // A part of a text that is not known in the subquery is a field of the child: the warning stands for it.
+      this.meet(child);
     }
     this.queried(child, undefined);
+  }
+
+  /** Meets each part that is not known of a text among the fields of a query and of its subqueries. */
+  private meet(query: Query): void {
+    for (const name of query.fields.flat()) this.isHole(name);
+    for (const child of query.children) this.meet(child);
   }
 
   /**
@@ -2987,7 +3123,7 @@ class Resolver implements ApexResolver {
       return;
     }
     const relationship = path.at(-1);
-    const names = namesOf(typeOf.otherwise);
+    const names = this.namesOutside(typeOf.otherwise);
     if (relationship === undefined || names.length === 0) return;
     this.warn(
       relationship,

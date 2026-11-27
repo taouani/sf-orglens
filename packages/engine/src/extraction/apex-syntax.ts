@@ -145,7 +145,8 @@ export type Stmt =
       readonly iterable: Expr;
       readonly body: Stmt | undefined;
     }
-  | { readonly kind: 'while'; readonly cond: Expr; readonly body: Stmt | undefined }
+  /** `while`, and `do ... while`, which runs its body before the condition (`bodyFirst`). */
+  | { readonly kind: 'while'; readonly cond: Expr; readonly body: Stmt | undefined; readonly bodyFirst?: true }
   | { readonly kind: 'return'; readonly expr: Expr | undefined }
   | { readonly kind: 'throw'; readonly expr: Expr }
   | {

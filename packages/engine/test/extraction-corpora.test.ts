@@ -152,25 +152,29 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * asked for a field by its name (`get`, `put`, `getSObject`), where the fields of an object or the objects of the org
  * are asked for one by its name, and where `Type.forName` is given a text that is not a literal. The text can be a
  * literal, a constant, a join of texts, a local, what a method of `String` makes of a text or what a method of the
- * snapshot gives. Apex Recipes has 36 of these, Nebula Logger 52 more, NPSP 1,420 more, V4S 117, Outbound Funds 2,
- * Coral Cloud 8 and EDA 499 more. PMM has none: the object of every query it builds is a text that is not known
+ * snapshot gives. Apex Recipes has 36 of these, Nebula Logger 52 more, NPSP 1,444 more, V4S 141, Outbound Funds 2,
+ * Coral Cloud 8 and EDA 496 more. PMM has none: the object of every query it builds is a text that is not known
  * within the method. A bind in the text of a query is read as the code at the call reads it, with the `via` `text`. A
- * field that the fields of an object give by a known name is a token: NPSP has 5 more `token`, where such a field is
- * handed to `get` and `put`. Where a text is not known, the resolver warns with `PATH_NOT_FOLLOWED`: a field whose
- * object nothing says (Apex Recipes 1, Nebula Logger 13, NPSP 423, PMM 1, V4S 8, EDA 39), a field and an object that
- * are both not known (Apex Recipes 12, Nebula Logger 17, NPSP 228, PMM 8, V4S 23, Outbound Funds 3, EDA 73), a
- * class (Apex Recipes 11, Nebula Logger 8, NPSP 28, V4S 1, EDA 7), an object (Apex Recipes 1, NPSP 12, PMM 4, EDA
- * 6), the object of a query (Nebula Logger 7, NPSP 84, PMM 15, V4S 10, EDA 5), a whole query (Apex Recipes 2, NPSP
- * 133, PMM 1, V4S 5, EDA 2), a whole search (Nebula Logger 1, NPSP 4) and an object a search returns (PMM 1). The
- * names in the texts of queries add warnings at relationships (Apex Recipes 5, NPSP 4), at a child relationship the
- * code uses as a list (Apex Recipes 1, NPSP 1) and at a subquery through a child relationship nothing defines (NPSP
- * 9), and NPSP has 9 more `RELATIONSHIP_GUESSED`. A text whose parts can be put together in several ways is read in
- * each: of these, a few are no query, such as a `WHERE` that a loop that never runs leaves without a condition, or
- * a subquery that the code puts into a query elsewhere (NPSP 12, PMM 108, V4S 18, EDA 4, Nebula Logger 1). Such a
- * text gives a `possible` reference to the object after `FROM`, where that is known, and otherwise a warning only
- * where its unknown parts are not those of a text that was read. The `TYPEOF` of Nebula Logger that the paragraph of
- * decision record 0088 names stands in a plugin, outside the folder this test reads. These counts were not checked by
- * hand beyond 30 references of NPSP and 20 of EDA drawn at random: the fixture project and its key hold each case.
+ * token of a field that the fields of an object give by a known name stays a name in a text: where `get` or `put`
+ * takes it, the field is read or written with the `via` `text` (5 of the references of NPSP). A value that can be
+ * more than 16 texts keeps the first 15. Where a text is not known, the resolver warns with `PATH_NOT_FOLLOWED`: a
+ * field whose object nothing says (Apex Recipes 2, Nebula Logger 13, NPSP 423, PMM 1, V4S 8, EDA 39), a field and an
+ * object that are both not known (Apex Recipes 12, Nebula Logger 18, NPSP 241, PMM 8, V4S 28, Outbound Funds 3, EDA
+ * 73), a class (Apex Recipes 11, Nebula Logger 8, NPSP 30, V4S 1, EDA 8), an object (Apex Recipes 1, NPSP 12, PMM 4,
+ * EDA 6), the object of a query (Nebula Logger 7, NPSP 168, PMM 16, V4S 13, EDA 5), a whole query (Apex Recipes 2,
+ * NPSP 54, PMM 1, V4S 3, EDA 2), a whole search (NPSP 2), a search known in part that could not be read as far as it
+ * is known (NPSP 1) and an object a search returns (Nebula Logger 1, NPSP 1, PMM 1). Two such warnings at one place
+ * are one, which keeps the names of both. The names in the texts of queries add warnings at relationships (Apex
+ * Recipes 5, NPSP 4), at a child relationship the code uses as a list (Apex Recipes 1, NPSP 1) and at a subquery
+ * through a child relationship nothing defines (NPSP 10), and NPSP has 9 more `RELATIONSHIP_GUESSED`. A text whose
+ * parts can be put together in several ways is read in each: of these ways, some are no query, such as a `WHERE` that
+ * a loop that never runs leaves without a condition, a subquery that the code puts into a query elsewhere, or an
+ * `ORDER BY` that the code adds to the text of a builder, which on some of its ways ends with a `LIMIT` already (NPSP
+ * 284, PMM 115, V4S 25, EDA 4). Such a text gives a `possible` reference to the object after `FROM`, where that is
+ * known, and otherwise a warning only where its unknown parts are not those of a text that was read. The `TYPEOF` of
+ * Nebula Logger that the paragraph of decision record 0088 names stands in a plugin, outside the folder this test
+ * reads. These counts were not checked by hand beyond 30 references of NPSP and 20 of EDA drawn at random: the fixture
+ * project and its key hold each case.
  */
 interface Expected {
   readonly components: number;
@@ -202,7 +206,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       type: 1011,
       value: 12,
     },
-    issues: { PATH_NOT_FOLLOWED: 53 },
+    issues: { PATH_NOT_FOLLOWED: 54 },
   },
   'nebula-logger': {
     components: 3979,
@@ -231,7 +235,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 6,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 113 },
+    issues: { PATH_NOT_FOLLOWED: 114 },
   },
   npsp: {
     components: 29_761,
@@ -259,13 +263,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       sosl: 2,
       summary: 4,
       template: 2,
-      text: 1438,
-      token: 3816,
+      text: 1462,
+      token: 3811,
       type: 26_036,
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 1377, RELATIONSHIP_GUESSED: 290 },
+    issues: { PATH_NOT_FOLLOWED: 1398, RELATIONSHIP_GUESSED: 290 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -295,7 +299,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       type: 1816,
       value: 25,
     },
-    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 42 },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 43 },
   },
   // Added on 25 November 2026, with the codebases.
   'volunteers-for-salesforce': {
@@ -322,11 +326,11 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       soql: 1217,
       summary: 24,
       template: 13,
-      text: 117,
+      text: 141,
       token: 163,
       type: 973,
     },
-    issues: { PATH_NOT_FOLLOWED: 58 },
+    issues: { PATH_NOT_FOLLOWED: 64 },
   },
   'outbound-funds': {
     components: 841,
@@ -401,11 +405,11 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 4081,
       'record-of': 2,
       soql: 5678,
-      text: 502,
+      text: 499,
       token: 508,
       type: 12_910,
     },
-    issues: { PATH_NOT_FOLLOWED: 167 },
+    issues: { PATH_NOT_FOLLOWED: 168 },
   },
 };
 

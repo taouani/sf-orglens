@@ -2116,4 +2116,364 @@ describe('the resolver of Apex', () => {
     ]);
     expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 8:46 {"notFollowed":[],"origin":"parser:apex"}']);
   });
+
+  it('reads a search in braces, and a token that a text names as a name in a text, also in get, put and upsert', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Braces',
+        code(
+          'public class Braces {',
+          '    void m(Invoice__c inv, String term, List<Invoice__c> rows) {',
+          "        List<List<SObject>> a = Search.query('FIND {Acme} IN ALL FIELDS RETURNING Invoice__c(Amount__c)');",
+          "        List<List<SObject>> b = Search.query('FIND {' + term + '} RETURNING Invoice__c(Status__c)');",
+          "        Object c = inv.get(Schema.SObjectType.Invoice__c.fields.getMap().get('Amount__c'));",
+          "        Schema.SObjectField f = Schema.SObjectType.Invoice__c.fields.getMap().get('Status__c');",
+          "        inv.put(f, 'Paid');",
+          '        Database.upsert(rows, f);',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis, new Set([...VIAS, 'text']))).toEqual([
+      // The braces of a search hold its words, whether the code knows them or not.
+      '3:83 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '3:94 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '4:77 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '4:88 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      // A token that a text names is a name in a text where the code reads or writes it: where the text stands, or
+      // where the code uses the token.
+      '5:47 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '5:79 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '6:52 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '6:84 references CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '7:17 writes CustomField:invoice__c.status__c [f] text probable resolved',
+      '8:18 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
+      '8:31 references CustomField:invoice__c.status__c [f] text probable resolved',
+    ]);
+    expect(warned(analysis.issues)).toEqual([]);
+  });
+
+  it('keeps what a branch knows of a text where another way does not know it, and a null names nothing', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Nulls',
+        code(
+          'public class Nulls {',
+          "    static String pick(Boolean b) { if (b) return null; return 'Amount__c'; }",
+          '    void m(Invoice__c inv, Boolean b, String other) {',
+          "        String q = 'SELECT Id FROM Invoice__c';",
+          '        if (b) q = other;',
+          '        List<SObject> a = Database.query(q);',
+          '        String w;',
+          "        if (b) w = ' WHERE Amount__c > 0';",
+          "        List<SObject> c = Database.query('SELECT Id FROM Invoice__c' + w);",
+          '        String n = null;',
+          "        List<SObject> d = Database.query('SELECT Status__c FROM Invoice__c' + n);",
+          '        Object e = inv.get(pick(b));',
+          '        Object g = inv.get(null);',
+          '        Integer i = 5;',
+          '        i++;',
+          "        Object h = inv.get('Field' + i + '__c');",
+          '        Integer k = 1;',
+          '        k += 2;',
+          "        Object l = inv.get('Field' + k + '__c');",
+          "        Object o = inv.get(-k + '__c');",
+          '        Integer m = 3;',
+          "        Object p = inv.get('Field' + -m + '__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis, TEXT)).toEqual([
+      // The way that knows the text is read, and a warning stands for the other.
+      '4:36 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      // A variable that is null adds nothing, and a method that gives null gives its other text.
+      '8:28 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '9:58 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '11:50 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '11:65 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '12:28 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      // A number that the code works out with `++`, `+=` or `-` is not known.
+      '16:38 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '19:38 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '20:29 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '22:39 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+    ]);
+    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 6:42 {"notFollowed":[],"origin":"parser:apex"}']);
+  });
+
+  it('reads each body of a property, a clause of a try from where its block stops, and do once at least', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Bodies',
+        code(
+          'public class Bodies {',
+          '    Invoice__c inv;',
+          '    public Object v {',
+          '        get { return null; }',
+          "        set { String f = 'Amount__c'; if (value != null) { f = 'Status__c'; } Object x = inv.get(f); }",
+          '    }',
+          '    void m(Boolean b) {',
+          "        String f = 'Amount__c';",
+          '        try {',
+          "            f = 'Status__c';",
+          "            f = 'Name';",
+          '            m(b);',
+          '        } catch (Exception e) {',
+          '            Object x = inv.get(f);',
+          '        }',
+          "        String g = 'Amount__c';",
+          '        try {',
+          '            return;',
+          '        } catch (Exception e) {',
+          "            g = 'Status__c';",
+          '        }',
+          '        Object y = inv.get(g);',
+          '    }',
+          '    void n(Boolean b) {',
+          "        String f = 'Amount__c';",
+          "        do { f = 'Status__c'; } while (b);",
+          '        Object x = inv.get(f);',
+          "        String g = 'Amount__c';",
+          "        while (b) { g = 'Status__c'; }",
+          '        Object y = inv.get(g);',
+          "        String h = 'Amount__c';",
+          "        for (Integer i = 0; i < 2; i++) { h = 'Status__c'; }",
+          '        Object z = inv.get(h);',
+          "        String s = 'Amount__c';",
+          '        switch on s {',
+          "            when 'a' { s = 'Status__c'; }",
+          "            when else { s = 'Name'; }",
+          '        }',
+          '        Object w = inv.get(s);',
+          "        String t = 'Amount__c';",
+          "        if (b) { t = 'Status__c'; throw new IllegalArgumentException(); }",
+          '        Object u = inv.get(t);',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis, TEXT)).toEqual([
+      // A clause of a try starts from the texts before the block or after any statement of it: here each of three.
+      '8:21 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '10:18 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '11:18 reads CustomField:invoice__c.name [Name] text probable external',
+      // A block that returns goes on only in its clause.
+      '20:18 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      // `do` runs its body once at least, `while` and `for` once or not at all.
+      '26:19 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '28:21 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '29:26 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '31:21 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '32:48 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      // A switch with `when else` runs one of its ways, and a way that throws does not go on.
+      '36:29 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '37:30 reads CustomField:invoice__c.name [Name] text probable external',
+      '40:21 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      // The setter starts with nothing of the getter, which returns.
+      '5:27 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '5:65 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+    ]);
+    expect(warned(analysis.issues)).toEqual([]);
+  });
+
+  it('reads the methods of a text, a ternary, a cast, overrides that give a text, and more than a value can be', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Base', "public virtual class Base { public virtual String name() { return 'Amount__c'; } }\n");
+      source.apexClass(
+        'Child',
+        "public class Child extends Base { public override String name() { return 'Status__c'; } }\n",
+      );
+      source.apexClass(
+        'Methods',
+        code(
+          'public class Methods {',
+          '    void m(Invoice__c inv, Boolean a, Boolean b, Boolean c, Boolean d, Boolean e, String f, Base base) {',
+          "        Object o1 = inv.get(' Amount__c '.trim());",
+          "        Object o2 = inv.get('status__c'.toUpperCase());",
+          "        Object o3 = inv.get('Amount__cX'.removeEnd('X'));",
+          "        Object o4 = inv.get('XStatus__c'.removeStart('X'));",
+          "        Object o5 = inv.get(String.valueOf('Amount__c'));",
+          "        Object o6 = inv.get(String.escapeSingleQuotes('Status__c'));",
+          "        Object o7 = inv.get(a ? 'Amount__c' : 'Status__c');",
+          "        Object o8 = inv.get(f ?? 'Status__c');",
+          "        Object o9 = inv.get((String) 'Amount__c');",
+          '        Object o10 = inv.get(base.name());',
+          "        String many = 'SELECT Id FROM Invoice__c WHERE Id != null';",
+          "        if (a) many += ' AND Amount__c > 0';",
+          "        if (b) many += ' AND Status__c = null';",
+          "        if (c) many += ' AND Account__c = null';",
+          "        if (d) many += ' AND Name = null';",
+          "        if (e) many += ' AND Id = null';",
+          '        List<SObject> o11 = Database.query(many);',
+          "        Object o12 = inv.Account__r.get('Na' + f);",
+          "        Object o13 = inv.Thing__r.get('Na' + f);",
+          "        Object o14 = inv.get('' + + 'Amount__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis, TEXT)).toEqual([
+      '3:31 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '4:30 reads CustomField:invoice__c.status__c [STATUS__C] text probable resolved',
+      '5:30 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '6:31 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '7:45 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '8:56 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '9:34 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '9:48 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '10:29 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '10:35 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '11:39 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      // Each override that the value can run gives its text, at the call.
+      '12:35 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '12:35 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      // Of a value of more texts than are followed, the first are read, and a warning stands for the others.
+      '13:39 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '14:30 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '15:30 reads CustomField:invoice__c.status__c [Status__c] text probable resolved',
+      '16:30 reads CustomField:invoice__c.account__c [Account__c] text probable resolved',
+      '17:30 reads CustomField:invoice__c.name [Name] text probable external',
+      '20:48 reads CustomObject:account [Account] text possible external',
+      // `+` before a text changes nothing.
+      '22:38 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 19:44 {"notFollowed":[],"origin":"parser:apex"}',
+      // A text put together with `+` is a text that `get` of a record takes, so the relationship is a lookup.
+      'RELATIONSHIP_GUESSED 21:26 {"relationship":"Thing__r","object":"Invoice__c","field":"Thing__c"}',
+      'PATH_NOT_FOLLOWED 21:46 {"notFollowed":[],"origin":"parser:apex"}',
+    ]);
+  });
+
+  it('reads what a query of an object it does not know names, and a text it cannot read as a query', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Unread',
+        code(
+          'public class Unread {',
+          '    Decimal least;',
+          '    void m(String f, String rel, String obj, Boolean b) {',
+          "        List<SObject> a = Database.query('SELECT Amount__c, (SELECT Status__c FROM Lines__r) FROM ' + f);",
+          "        List<SObject> c = Database.query('SELECT Id, (SELECT Id FROM Account) FROM Invoice__c WHERE');",
+          "        List<SObject> d = Database.query('SELECT Id FROM');",
+          "        List<SObject> e = Database.query('SELECT Id FROM ' + f + ' WHERE');",
+          "        List<SObject> g = Database.query('SELECT Id FROM Nothing__c WHERE');",
+          "        String tail = b ? ' FROM Invoice__c' : ' FROM';",
+          "        List<SObject> h = Database.query('SELECT ' + f + tail);",
+          "        String w = b ? ' WHERE Amount__c > 0' : ' WHERE';",
+          "        List<SObject> i = Database.query('SELECT Id FROM Invoice__c' + w);",
+          "        List<SObject> j = Database.query('SELECT TYPEOF ' + rel + ' WHEN Account THEN Name END FROM Invoice__c');",
+          "        List<SObject> k = Database.query('SELECT Account__r.' + f + ' FROM Invoice__c');",
+          "        List<List<SObject>> l = Search.query('FIND \\'x\\' RETURNING ' + obj + '(Name)');",
+          "        List<List<SObject>> n = Search.query('FIND :f RETURNING Invoice__c(Id WHERE Amount__c > :least)');",
+          "        Object o = ((SObject) null).get('Id');",
+          "        List<SObject> p = Database.query('SELECT TYPEOF What WHEN Account THEN Name END FROM ' + obj);",
+          "        List<SObject> q = Database.query('SELECT Id, (SELECT ' + f + ', Name FROM Things__r) FROM Invoice__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis, TEXT)).toEqual([
+      // The object after the `FROM` outside brackets of a text that is no query.
+      '5:84 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      // A text that is no query, where another text of the same value is one with the same part that is not known.
+      '9:34 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '10:54 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      // The higher tier of two texts.
+      '11:32 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '12:58 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      // A part that is not known in a TYPEOF, and after a relationship, names a field of the object.
+      '13:61 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '13:101 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '14:50 reads CustomField:invoice__c.account__c [Account__r] text probable resolved',
+      '14:65 reads CustomObject:account [Account] text possible external',
+      '14:76 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      // What a search of a text binds is read as code.
+      '16:65 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+      '16:85 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '16:98 reads ApexClass:unread#var:least [least] text probable resolved',
+      '19:99 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
+    ]);
+    expect(warned(analysis.issues)).toEqual([
+      // What a query of an object that is not known names, also in a subquery and a TYPEOF.
+      'PATH_NOT_FOLLOWED 4:103 {"notFollowed":["Amount__c","Lines__r","Status__c"],"endsAt":"object","origin":"parser:apex"}',
+      // A text the code shows that is no query, and one that is known in part.
+      'PATH_NOT_FOLLOWED 6:43 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 7:62 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 15:72 {"notFollowed":["Name"],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 18:98 {"notFollowed":["What","Name"],"endsAt":"object","origin":"parser:apex"}',
+      // A subquery through a child relationship nothing defines keeps its names, and not what fills a part of it.
+      'PATH_NOT_FOLLOWED 19:83 {"relationship":"Things__r","notFollowed":["Name"],"origin":"parser:apex"}',
+    ]);
+    const message = (line: number): string | undefined =>
+      analysis.issues.find((one) => one.details?.['line'] === line)?.message;
+    expect(message(6)).toContain('the text of the query could not be read as a query');
+    expect(message(7)).toContain('the text of the query is known only in part here');
+    expect(message(11)).toBeUndefined();
+  });
+
+  it('widens a warning that meets another at one place, as the parts of a text a method gives back', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Builder',
+        code(
+          'public class Builder {',
+          '    static String fieldName;',
+          "    static String build() { return 'SELECT ' + fieldName + ' FROM ' + Builder.class.getName(); }",
+          '    void m() {',
+          '        List<SObject> rows = Database.query(build());',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    // The field and the object stand both at the call: what the query reads can be anything.
+    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 5:45 {"notFollowed":[],"origin":"parser:apex"}']);
+  });
+
+  it('takes back nothing of the member it reads where a method it works a text out of uses a child relationship', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'GuessA',
+        code(
+          'public class GuessA {',
+          '    void m(Invoice__c inv) {',
+          '        Object xxxxxxx = inv.Thing__r.Name; Object y = inv.get(GuessB.f(inv));',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'GuessB',
+        code(
+          'public class GuessB {',
+          '    public static String f(Invoice__c inv) {',
+          "        for (SObject x : inv.Thing__r) { } return 'Amount__c';",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(warned(analysis.issues)).toEqual([
+      'RELATIONSHIP_GUESSED 3:30 {"relationship":"Thing__r","object":"Invoice__c","field":"Thing__c"}',
+      'PATH_NOT_FOLLOWED 3:30 {"relationship":"Thing__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 3:30 {"relationship":"Thing__r","notFollowed":[],"origin":"parser:apex"}',
+    ]);
+    // The guess stays with the member that made it, and the warning about the list with the method that has it.
+    const of = (code: string, notFollowed: number): unknown =>
+      analysis.issues.find(
+        (one) =>
+          one.code === code &&
+          (code !== 'PATH_NOT_FOLLOWED' ||
+            (Array.isArray(one.details?.['notFollowed']) && one.details['notFollowed'].length === notFollowed)),
+      )?.details?.['path'];
+    expect(of('RELATIONSHIP_GUESSED', 0)).toMatch(/GuessA\.cls$/);
+    expect(of('PATH_NOT_FOLLOWED', 0)).toMatch(/GuessB\.cls$/);
+  });
 });

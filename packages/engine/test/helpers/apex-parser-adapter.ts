@@ -633,6 +633,7 @@ function statement(wrapper: StatementContext | undefined): Stmt {
       kind: 'while',
       cond: expression(one(one(ctx, ParExpressionContext), ExpressionContext)),
       body: body === undefined ? (doBody === undefined ? undefined : block(doBody)) : statement(body),
+      ...(ctx instanceof DoWhileStatementContext ? { bodyFirst: true as const } : {}),
     };
   }
   if (ctx instanceof TryStatementContext) {
