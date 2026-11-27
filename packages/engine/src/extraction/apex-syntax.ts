@@ -254,8 +254,8 @@ export interface Search {
 }
 
 /**
- * What a reader of Apex offers. Neither function throws because of the text it is given: an exception is a fault of
- * the reader. Neither keeps anything of the text.
+ * What a reader of Apex offers. No function throws because of the text it is given: an exception is a fault of the
+ * reader. None keeps anything of the text.
  */
 export interface ApexReader {
   /** The parser the reader is built on. */
@@ -270,4 +270,6 @@ export interface ApexReader {
    * parser cannot make one query of it.
    */
   parseQuery(text: string): Query | undefined;
+  /** Reads the text of a search that Apex builds at run time, as `parseQuery` reads one of a query. */
+  parseSearch(text: string): Search | undefined;
 }

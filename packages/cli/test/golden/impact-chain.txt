@@ -1,7 +1,7 @@
 What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture".
-The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.
 
-32 components refer to it, 18 of them directly.
+34 components refer to it, 18 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                          CONFIDENCE  KIND        REFERS TO                                                                    WHERE
@@ -36,6 +36,8 @@ DEPTH  COMPONENT                                                                
 4      ApexClass:invoicebatch#inner:result/method:add(invoice__c)                         confirmed   reads       CustomField:invoice__c.grand_total__c                                        force-app/main/default/classes/InvoiceBatch.cls:11
 4      ApexClass:invoicebatch#method:start(database.batchablecontext)                     confirmed   reads       CustomField:invoice__c.grand_total__c                                        force-app/main/default/classes/InvoiceBatch.cls:19
 4      ApexClass:invoicecalloutservice#method:send(invoice__c)                            confirmed   reads       CustomField:invoice__c.grand_total__c                                        force-app/main/default/classes/InvoiceCalloutService.cls:12
+4      ApexClass:invoicequeries#method:countabove(decimal)                                probable    reads       CustomField:invoice__c.grand_total__c                                        force-app/main/default/classes/InvoiceQueries.cls:38
+4      ApexClass:invoiceselector#method:aboveamount(decimal)                              probable    reads       CustomField:invoice__c.grand_total__c                                        force-app/main/default/classes/InvoiceSelector.cls:41
 5      ApexClass:invoicebatch#method:execute(database.batchablecontext,list<invoice__c>)  confirmed   calls       ApexClass:invoicebatch#inner:result/method:add(invoice__c)                   force-app/main/default/classes/InvoiceBatch.cls:31
 
 Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
@@ -47,3 +49,5 @@ AuraDefinitionBundle      1       1
 ExternalCredential        1       1
 LightningComponentBundle  2       2
 NamedCredential           1       1
+
+4 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

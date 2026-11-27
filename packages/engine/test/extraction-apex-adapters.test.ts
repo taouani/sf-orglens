@@ -150,6 +150,15 @@ describe('the two readers of Apex', () => {
     expect([engine.parseQuery(escape), second.parseQuery(escape)]).toEqual([undefined, undefined]);
   });
 
+  it('read the same search from a text', () => {
+    const text = "FIND 'Acme*' IN NAME FIELDS RETURNING Account(Name WHERE Tier__c = :tier), Invoice__c(Amount__c)";
+    expect(engine.parseSearch(text)).toEqual(second.parseSearch(text));
+    expect(engine.parseSearch(text)?.returning.map((one) => one.object.text)).toEqual(['Account', 'Invoice__c']);
+    // A text that closes the class it is read in is not one search.
+    const escape = 'FIND :t RETURNING Account];} class Z{Object z=[FIND :u RETURNING Contact';
+    expect([engine.parseSearch(escape), second.parseSearch(escape)]).toEqual([undefined, undefined]);
+  });
+
   it.each([
     ['records', 'SELECT Id, toLabel(Status__c) FROM Invoice__c'],
     ['count', 'SELECT COUNT() FROM Invoice__c WHERE Amount__c > 0'],

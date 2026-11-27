@@ -117,7 +117,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
     it('analyses the latest snapshot again, or the one that is named, and replaces only the analysis', async () => {
       const { root, database, workspace } = await setUp();
       const taken = await workspace.snapshot('fixture');
-      expect(taken.analysis).toMatchObject({ components: 345, references: 799, complete: true });
+      expect(taken.analysis).toMatchObject({ components: 345, references: 845, complete: true });
       const stored = analysisOf(database, 1);
       const rows = shared(database);
 
@@ -203,7 +203,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(analysed.analysis).toEqual({ ...fresh.analysis, analysedAt: expect.stringMatching(UTC) as string });
       expect(analysed.types).toEqual(fresh.types);
       expect(analysed.issues).toEqual(fresh.issues);
-      expect(analysed.analysis).toMatchObject({ components: 345, references: 799, complete: true });
+      expect(analysed.analysis).toMatchObject({ components: 345, references: 845, complete: true });
     });
 
     it('keeps a snapshot whose analysis fails as a whole, says how it is analysed, and keeps an analysis it had', async () => {
@@ -234,12 +234,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(unanalysed.types.map((type) => type.type)).toEqual(
         first.types.filter((type) => type.note !== PARTS_NOTE).map((type) => type.type),
       );
-      // What the reading said is still there. What the analysis said, a warning about a flow and one about DML of
-      // Apex, is not.
-      expect(first.issues.filter((issue) => issue.stage === 'analysis').map((issue) => issue.code)).toEqual([
-        'PATH_NOT_FOLLOWED',
-        'PATH_NOT_FOLLOWED',
-      ]);
+      // What the reading said is still there. What the analysis said, the warnings about a flow and about Apex, is
+      // not.
+      expect(besidesKnownGap(first.issues.filter((issue) => issue.stage === 'analysis'))).toEqual([]);
       expect(unanalysed.issues).toEqual(first.issues.filter((issue) => issue.stage !== 'analysis'));
       expect(analysisOf(database, 2)).toEqual({ components: [], references: [] });
       expect((await workspace.status()).sources[0]?.latestSnapshot).toMatchObject({ id: 2, analysis: null });
@@ -414,7 +411,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
 
       const report = await workspace.analyse('fixture');
       expect(report.snapshot.status).toBe('complete');
-      expect(report.analysis).toMatchObject({ components: 345, references: 799, complete: false });
+      expect(report.analysis).toMatchObject({ components: 345, references: 845, complete: false });
       expect(besidesKnownGap(report.issues.filter((issue) => issue.stage === 'analysis'))).toEqual([
         {
           stage: 'analysis',

@@ -166,6 +166,7 @@ describe('the analysis of Apex', () => {
         throw new Error('The reader has a bug.');
       },
       parseQuery: () => undefined,
+      parseSearch: () => undefined,
     };
     const analysis = analyseSource(source.tree, source.listed, { apex: faulty });
     expect(analysis.issues).toEqual([

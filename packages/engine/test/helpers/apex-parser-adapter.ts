@@ -223,8 +223,10 @@ const one = <T extends Ctx>(node: Tree | undefined, type: CtxClass<T>): T | unde
 const words = (node: Tree | undefined): string[] => terminals(node).map((token) => token.symbol.text.toLowerCase());
 
 const START: Pos = { line: 1, column: 1 };
+/** The lines a text of a search was put after, as `[` is: the places of the text stay as they are. */
+let linesBefore = 0;
 const posOf = (token: ApexTerminalNode): Pos => ({
-  line: token.symbol.line,
+  line: token.symbol.line - linesBefore,
   column: unitColumn(token.symbol.line, token.symbol.column) + 1,
 });
 /** The place of the first token of a node. */
@@ -235,7 +237,7 @@ function startOf(node: Tree | undefined): Pos {
   const start = (node as { start?: { line: number; column: number } | null }).start;
   return start === undefined || start === null
     ? START
-    : { line: start.line, column: unitColumn(start.line, start.column) + 1 };
+    : { line: start.line - linesBefore, column: unitColumn(start.line, start.column) + 1 };
 }
 /** The place just after the last token of a node. */
 function endOf(node: Tree | undefined): Pos {
@@ -244,7 +246,7 @@ function endOf(node: Tree | undefined): Pos {
     ? node.symbol
     : (node as { stop?: { line: number; column: number; text?: string } | null }).stop;
   if (stop === undefined || stop === null) return startOf(node);
-  return { line: stop.line, column: unitColumn(stop.line, stop.column) + (stop.text ?? '').length + 1 };
+  return { line: stop.line - linesBefore, column: unitColumn(stop.line, stop.column) + (stop.text ?? '').length + 1 };
 }
 const spanOf = (node: Tree | undefined): Span => ({ start: startOf(node), end: endOf(node) });
 /** The one word a node such as `Id` or `AnyId` stands for. */
@@ -481,7 +483,10 @@ function query(ctx: QueryContext | SubQueryContext | undefined): Query {
 }
 
 function search(primary: SoslPrimaryContext): Search {
-  const literalCtx = one(primary, SoslLiteralContext) ?? one(primary, SoslLiteralAltContext);
+  return searchOf(one(primary, SoslLiteralContext) ?? one(primary, SoslLiteralAltContext));
+}
+
+function searchOf(literalCtx: SoslLiteralContext | SoslLiteralAltContext | undefined): Search {
   const binds: Expr[] = [];
   const returning: { object: Name; fields: FieldPath[] }[] = [];
   const walk = (node: Tree): void => {
@@ -904,6 +909,22 @@ export function createApexParserAdapter(): ApexReader {
         return undefined;
       } finally {
         wideLines = undefined;
+      }
+    },
+    parseSearch(text): Search | undefined {
+      // The rule of a search takes it in brackets, which are put on lines of their own.
+      const problems = new Problems();
+      linesBefore = 1;
+      try {
+        const { parser } = ApexParserFactory.createLexerAndParser(reading(`[\n${text}\n]`), problems);
+        const tree = parser.soslLiteral();
+        if (problems.found.length > 0 || parser.getCurrentToken().type !== -1) return undefined;
+        return searchOf(tree);
+      } catch {
+        return undefined;
+      } finally {
+        wideLines = undefined;
+        linesBefore = 0;
       }
     },
   };

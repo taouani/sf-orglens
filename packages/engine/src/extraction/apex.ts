@@ -122,7 +122,7 @@ function typeUses(type: TypeRef, via: ApexVia, into: TypeUse[], head?: Pick<Type
 }
 
 /** The text of a literal that `Type.forName` is given, at the place of its first character. */
-function forName(expr: Extract<Expr, { kind: 'call' }>): { name: string; at: Pos } | undefined {
+export function forName(expr: Extract<Expr, { kind: 'call' }>): { name: string; at: Pos } | undefined {
   const target = expr.target;
   const onType =
     (target?.kind === 'name' && foldName(target.name.text) === 'type') ||

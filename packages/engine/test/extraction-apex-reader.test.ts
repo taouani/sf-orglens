@@ -216,6 +216,25 @@ describe('the reader of Apex', () => {
     expect(onlyType(reader.parseUnit('public class After { }', 'class')).name.at).toEqual({ line: 1, column: 14 });
   });
 
+  it('reads a search that is built as text, and refuses text that is not one search', () => {
+    const search = reader.parseSearch(
+      'FIND :term IN NAME FIELDS RETURNING Account(Name, Owner.Name WHERE Tier__c = :tier), Invoice__c LIMIT 10',
+    );
+    expect(search?.returning.map((one) => one.object.text)).toEqual(['Account', 'Invoice__c']);
+    expect(search?.returning.map((one) => one.fields.map((path) => path.map((part) => part.text).join('.')))).toEqual([
+      ['Name', 'Owner.Name', 'Tier__c'],
+      [],
+    ]);
+    expect(search?.binds.map(shown)).toEqual(['term', 'tier']);
+    // The places are places in the text.
+    expect(search?.returning[0]?.object.at).toEqual({ line: 1, column: 37 });
+    expect(reader.parseSearch('FIND :term IN ALL FIELDS RETURNING')).toBeUndefined();
+    expect(reader.parseSearch('SELECT Id FROM Account')).toBeUndefined();
+    expect(
+      reader.parseSearch('FIND :t RETURNING Account];} class Z{Object z=[FIND :u RETURNING Contact'),
+    ).toBeUndefined();
+  });
+
   it('says whether a query gives records, rows of aggregates or a number, and that an alias is no field', () => {
     const read = (text: string): unknown => {
       const query = reader.parseQuery(text);

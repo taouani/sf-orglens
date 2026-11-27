@@ -739,7 +739,12 @@ export function analyseSource(
     ),
     inner: innerTypes,
   });
-  const apexResolver = buildApexResolver(apexUnits, buildApexSchema(model, options.descriptions), apexTypes);
+  const apexResolver = buildApexResolver(
+    apexUnits,
+    buildApexSchema(model, options.descriptions),
+    apexTypes,
+    options.apex,
+  );
 
   const analysed = new Map<ReferenceOrigin, number>();
   let withFormula = 0;

@@ -223,6 +223,46 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoiceselector#method:aboveamount(decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceSelector.aboveAmount(Decimal)",
+      "file": "force-app/main/default/classes/InvoiceSelector.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceselector#method:aboveamount(decimal)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceSelector.cls",
+        "line": 41,
+        "column": 62
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceselector#method:bystatus(string)",
+      "type": "ApexClass",
+      "name": "InvoiceSelector.byStatus(String)",
+      "file": "force-app/main/default/classes/InvoiceSelector.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceselector#method:bystatus(string)",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceSelector.cls",
+        "line": 6,
+        "column": 35
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
       "type": "ApexClass",
       "name": "InvoiceService.createDraft(Account, Decimal)",
@@ -1003,6 +1043,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicequeries#method:duebefore(date,boolean)",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.dueBefore(Date, Boolean)",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 2,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:duebefore(date,boolean)",
+        "to": "CustomField:invoice__c.late_fee__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 7,
+        "column": 20
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
       "type": "ApexClass",
       "name": "InvoiceService.totalDue(List<Invoice__c>)",
@@ -1203,6 +1263,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicequeries#method:countabove(decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.countAbove(Decimal)",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 3,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:countabove(decimal)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 38,
+        "column": 51
+      },
+      "package": null
+    },
+    {
       "key": "ApexTrigger:invoicetrigger",
       "type": "ApexTrigger",
       "name": "InvoiceTrigger",
@@ -1335,7 +1415,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 1,
+    "analysisWarnings": 5,
     "notHeld": 0
   },
   "mayMiss": false

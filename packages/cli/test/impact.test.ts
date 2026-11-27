@@ -184,17 +184,22 @@ describe('orglens impact', () => {
     const lines = (await orglens(dir, ['impact', 'Account.Tier__c'])).stdout.split('\n');
     expect(lines.slice(0, 6)).toEqual([
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
-      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.',
       '',
       '24 components refer to it, 16 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
-    // The two warnings of the analysis are about a path that ends in a field named Amount__c and about the write of
-    // records of an object nothing says, and the answer holds no such field and no object (decision record 0074).
-    expect(lines.slice(-(NOT_ANALYSED.length + 2))).toEqual([
+    // Of the warnings of the analysis, a path that ends in a field named Amount__c, the write of records of an object
+    // nothing says, a field named Risk_Score__c of a record of no known object and two objects whose names a method is
+    // handed do not bear on it: the answer holds no such field and no object (decision record 0074). Four names in
+    // texts of Apex do: two fields and a class whose names a method is handed, and a field of a query whose object it
+    // is handed too.
+    expect(lines.slice(-(NOT_ANALYSED.length + 4))).toEqual([
       'Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:',
       ...NOT_ANALYSED,
+      '',
+      '4 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
   });
@@ -344,13 +349,16 @@ describe('orglens impact', () => {
     });
     // The path that was not followed ends in a field named Size__c, so what refers to Amount__c lacks nothing for
     // it. Nor does what refers to the object Invoice_Line__c, which has no field of that name: the path of a
-    // formula ends at a field, never at an object (decision record 0074). What the object lacks is for the write of
-    // records of an object nothing says, a warning of the code of Apex.
+    // formula ends at a field, never at an object (decision record 0074). Both answers can lack what four names in
+    // texts of Apex name, of which nothing says what they are. What the object lacks besides is for the write of
+    // records of an object nothing says and for two objects whose names a method is handed, warnings of the code of
+    // Apex.
     expect((await orglens(dir, ['impact', 'Invoice__c.Amount__c'])).stdout.split('\n')[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.',
     );
-    expect((await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n')).toContain(
-      'The answer is not complete: 7 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.',
+    const object = (await orglens(dir, ['impact', 'CustomObject:Invoice_Line__c'])).stdout.split('\n');
+    expect(object.find((line) => line.startsWith('The answer is not complete'))).toBe(
+      'The answer is not complete: 7 types are not analysed yet, and 7 warnings of the analysis bear on the answer. The details are below the answer.',
     );
   });
 
@@ -365,16 +373,16 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 5 of its warnings bear on the answer. The details are below the answer.',
     );
-    // The 63 of the project without the field that could not be read, without the one that reads it, without the 4
+    // The 67 of the project without the field that could not be read, without the one that reads it, without the 5
     // methods that read only those and without the 3 that reach them only through calls of those methods.
-    expect(lines).toContain('54 components refer to it, 46 of them directly.');
+    expect(lines).toContain('57 components refer to it, 48 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
       '',
-      '1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
+      '5 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
     expect(await orglensJson(dir, ['impact', 'Invoice__c.Amount__c'])).toMatchObject({
@@ -391,11 +399,13 @@ describe('orglens impact', () => {
     expect(shown).toMatchObject({ code: 5, stderr: '' });
     const lines = shown.stdout.split('\n');
     expect(lines[1]).toBe(
-      'The answer is not complete: 7 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type. The details are below the answer.',
+      'The answer is not complete: 7 types are not analysed yet, and 1 error of the reading names no type, so what is missing may be of an analysed type, and 4 warnings of the analysis bear on the answer. The details are below the answer.',
     );
-    expect(lines.slice(-3)).toEqual([
+    expect(lines.slice(-5)).toEqual([
       '',
       '1 error of the reading names no type: a file or a folder could not be read. See: orglens coverage fixture --snapshot 1',
+      '',
+      '4 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1',
       '',
     ]);
   });

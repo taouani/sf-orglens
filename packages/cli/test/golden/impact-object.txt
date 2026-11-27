@@ -1,9 +1,9 @@
 What refers to CustomObject:invoice__c (Invoice__c), in snapshot #1 of "fixture".
 The name also fits Workflow:invoice__c. The answer is about the object. To ask about the other, name it by its key.
 It contains 44 components of the snapshot. The answer is about them too.
-The answer is not complete: 7 types are not analysed yet, and 2 warnings of the analysis bear on the answer. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet, and 8 warnings of the analysis bear on the answer. The details are below the answer.
 
-132 components refer to it, 121 of them directly.
+137 components refer to it, 126 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                           CONFIDENCE  KIND         REFERS TO                                                                          WHERE
@@ -14,6 +14,7 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:dynamicaccess#method:legacycode(invoice__c)                               confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/DynamicAccess.cls:17
 1      ApexClass:dynamicaccess#method:setamountbytoken(invoice__c,decimal)                 confirmed   writes       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/DynamicAccess.cls:53
 1      ApexClass:dynamicaccess#method:setlegacycode(invoice__c,string)                     confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/DynamicAccess.cls:13
+1      ApexClass:dynamicaccess#method:statusdescribe()                                     probable    references   CustomField:invoice__c.status__c                                                   force-app/main/default/classes/DynamicAccess.cls:45
 1      ApexClass:dynamicaccess#method:tokenbyname(string)                                  confirmed   references   CustomObject:invoice__c                                                            force-app/main/default/classes/DynamicAccess.cls:39
 1      ApexClass:dynamicaccess#method:valueof(invoice__c,string)                           confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/DynamicAccess.cls:21
 1      ApexClass:emailnotifier#method:send(invoice__c)                                     confirmed   reads        CustomField:invoice__c.billing_contact__c                                          force-app/main/default/classes/EmailNotifier.cls:7
@@ -26,6 +27,7 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:invoiceconstants#var:invoice_type                                         confirmed   references   CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceConstants.cls:13
 1      ApexClass:invoicecontroller#method:recentinvoices(id)                               confirmed   reads        CustomField:invoice__c.account__c                                                  force-app/main/default/classes/InvoiceController.cls:10
 1      ApexClass:invoicecontroller#method:saveamount(id,decimal)                           confirmed   writes       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceController.cls:28
+1      ApexClass:invoiceevents#method:invoicelabel()                                       probable    references   CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceEvents.cls:36
 1      ApexClass:invoiceevents#method:latefee(invoice__c)                                  confirmed   reads        CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceEvents.cls:28
 1      ApexClass:invoiceevents#method:stage(invoice__c)                                    confirmed   reads        CustomField:invoice__c.status__c                                                   force-app/main/default/classes/InvoiceEvents.cls:44
 1      ApexClass:invoicelineservice#method:addline(invoice__c,decimal,decimal)             confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceLineService.cls:32
@@ -39,6 +41,7 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:invoicepageextension#method:getsummary()                                  confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoicePageExtension.cls:21
 1      ApexClass:invoicepricing#method:price(invoice__c)                                   confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoicePricing.cls:5
 1      ApexClass:invoicepricingtest#method:invoicewithlines()                              confirmed   writes       CustomField:invoice__c.account__c                                                  force-app/main/default/classes/InvoicePricingTest.cls:6
+1      ApexClass:invoicequeries#method:countabove(decimal)                                 probable    reads        CustomField:invoice__c.grand_total__c                                              force-app/main/default/classes/InvoiceQueries.cls:38
 1      ApexClass:invoicequeries#method:duebefore(date,boolean)                             confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceQueries.cls:5
 1      ApexClass:invoicequeries#method:latefees()                                          confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceQueries.cls:48
 1      ApexClass:invoicequeries#method:matching(string,string)                             confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceQueries.cls:15
@@ -49,6 +52,8 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:invoicereminderschedule#method:execute(schedulablecontext)                confirmed   reads        CustomField:invoice__c.days_overdue__c                                             force-app/main/default/classes/InvoiceReminderSchedule.cls:6
 1      ApexClass:invoiceselector#method:aboveamount(decimal)                               confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceSelector.cls:38
 1      ApexClass:invoiceselector#method:bystatus(string)                                   confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceSelector.cls:5
+1      ApexClass:invoiceselector#method:overdue()                                          probable    reads        CustomField:invoice__c.days_overdue__c                                             force-app/main/default/classes/InvoiceSelector.cls:33
+1      ApexClass:invoiceselector#method:sortedby(string)                                   probable    reads        CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceSelector.cls:23
 1      ApexClass:invoiceselector#method:summaries()                                        confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceSelector.cls:17
 1      ApexClass:invoiceselector#method:withlegacycode()                                   confirmed   uses-type    CustomObject:invoice__c                                                            force-app/main/default/classes/InvoiceSelector.cls:10
 1      ApexClass:invoiceservice#method:countbytier(string)                                 confirmed   reads        CustomField:invoice__c.account__c                                                  force-app/main/default/classes/InvoiceService.cls:61
@@ -150,4 +155,4 @@ ExternalCredential        1       1
 LightningComponentBundle  2       2
 NamedCredential           1       1
 
-2 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1
+8 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

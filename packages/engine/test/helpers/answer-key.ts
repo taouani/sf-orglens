@@ -107,7 +107,7 @@ interface KeyComponent {
   readonly fullName: string;
 }
 
-interface KeyReference extends KeyPlace {
+export interface KeyReference extends KeyPlace {
   /** File, line, column, kind and target. No two references share it. */
   readonly id: string;
   readonly from: ComponentKey;
@@ -404,3 +404,13 @@ export function tierInRepository(
       ? 'probable'
       : reference.tier;
 }
+
+/**
+ * Whether a reference of the key is a name that a record of custom metadata or a field set holds, which the code of
+ * Apex reads by the name of the record or of the field set (step 2 of decision record 0012). A later part of work
+ * package 5 reads them.
+ */
+export const ofMetadata = (reference: Pick<KeyReference, 'file' | 'via' | 'match'>): boolean =>
+  /\.(?:cls|trigger)$/.test(reference.file) &&
+  reference.via === 'text' &&
+  ['Invoice_Late_Fee', 'Field_Name__c', 'Invoice_Summary'].includes(reference.match);

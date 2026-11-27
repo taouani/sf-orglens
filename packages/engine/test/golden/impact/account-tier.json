@@ -555,7 +555,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 4,
     "notHeld": 0
   },
   "mayMiss": false
