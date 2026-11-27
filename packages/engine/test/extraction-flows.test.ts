@@ -329,7 +329,12 @@ describe('the flows that cannot be deployed', () => {
       xml,
       formula,
       { origin: 'parser:flow', components: (flow?.components ?? 0) + 10, failedFiles: 1 },
-      { origin: 'parser:apex', components: 0, failedFiles: 0 },
+      {
+        origin: 'parser:apex',
+        components: 0,
+        failedFiles: 0,
+        texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
+      },
     ]);
   });
 });

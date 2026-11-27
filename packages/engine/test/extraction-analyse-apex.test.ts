@@ -74,6 +74,7 @@ describe('the analysis of Apex', () => {
       origin: 'parser:apex',
       components: 1,
       failedFiles: 1,
+      texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
     });
   });
 

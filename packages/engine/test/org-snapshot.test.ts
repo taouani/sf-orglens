@@ -703,16 +703,25 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The 12 components of the two files of workflow rules are read as XML too, with 21 references, and so are
       // the 2 record types, the field set and the 5 records of custom metadata, with 33, and the email template,
       // the report type and the quick action, with 26.
-      const xml = { failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 0 };
+      const xml = { failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 0, texts: null };
       // The formulas of 35 fields and rules, of 7 elements of flows, of 2 workflow rules and 2 field updates and of
       // the quick action: 82 names, 19, 12 and 1. Of the 129 references of flows, the other 110 are of the reader
       // of flows. One path of a flow is not followed.
-      const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
-      const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
+      const formula = {
+        components: 47,
+        failedFiles: 0,
+        references: 114,
+        unresolved: 0,
+        pathsNotFollowed: 0,
+        texts: null,
+      };
+      const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1, texts: null };
       // Of Apex, 136 references of declarations and types, 289 of fields, tokens, DML, queries and searches, 39 of
       // calls and 53 of names in texts. The 8 places that the key calls unknown are not followed: a write by DML of a
-      // list of `SObject`, and texts the code does not know.
-      const apex = { components: 168, failedFiles: 0, references: 517, unresolved: 0, pathsNotFollowed: 8 };
+      // list of `SObject`, and 7 texts the code does not know. Of the names in texts, 15 stand in a literal, 5 are held
+      // by metadata, 26 stand in a text the code builds, and 7 are `possible` (decision record 0093).
+      const texts = { written: 15, metadata: 5, built: 26, possible: 7, pathsNotFollowed: 7 };
+      const apex = { components: 168, failedFiles: 0, references: 517, unresolved: 0, pathsNotFollowed: 8, texts };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,

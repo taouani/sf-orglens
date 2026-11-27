@@ -84,6 +84,13 @@ export const holeText = (at: Pos | undefined, of: HoleOf, param?: number): Text 
  */
 export const heldText = (text: string, at: Pos): Text => [{ k: 'chars', text, at }];
 
+/**
+ * Whether a text is one literal of the code of the member that is read, as the code writes it, each character at its
+ * own column (decision record 0093).
+ */
+export const isLiteral = (text: Text): boolean =>
+  text.length === 1 && text[0]?.k === 'chars' && text[0].columns !== undefined;
+
 /** The text of a parameter of the member that is read, which its calls may give: a part not known yet. */
 export const argText = (of: HoleOf, arg: number): Text => [{ k: 'hole', at: undefined, of, arg }];
 

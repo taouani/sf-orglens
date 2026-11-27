@@ -179,7 +179,13 @@ CREATE TABLE snapshot_origin_coverage (
   failed_files INTEGER NOT NULL CHECK (failed_files >= 0),
   -- References it found, and how many of them name a target that was not found.
   refs         INTEGER NOT NULL CHECK (refs >= 0),
-  unresolved   INTEGER NOT NULL CHECK (unresolved >= 0 AND unresolved <= refs),
+  unresolved   INTEGER NOT NULL CHECK (unresolved >= 0 AND unresolved <= refs), texts_written INTEGER CHECK (texts_written >= 0), texts_metadata INTEGER CHECK (texts_metadata >= 0), texts_built INTEGER CHECK (texts_built >= 0), texts_possible INTEGER CHECK (texts_possible >= 0), texts_not_followed INTEGER CHECK (
+  (texts_not_followed IS NULL OR texts_not_followed >= 0)
+  AND (texts_not_followed IS NULL) = (texts_written IS NULL)
+  AND (texts_not_followed IS NULL) = (texts_metadata IS NULL)
+  AND (texts_not_followed IS NULL) = (texts_built IS NULL)
+  AND (texts_not_followed IS NULL) = (texts_possible IS NULL)
+),
   PRIMARY KEY (snapshot_id, origin)
 ) STRICT, WITHOUT ROWID;
 

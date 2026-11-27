@@ -42,6 +42,25 @@ export interface OriginReport {
   readonly unresolved: number;
   /** Paths of names it could not walk to their end. What stands behind the point where it stopped has no reference. */
   readonly pathsNotFollowed: number;
+  /**
+   * What its names in texts came to, for `parser:apex` (decision record 0093). `null` for an origin that reads no
+   * names in texts, and for an analysis that a version before this one wrote.
+   */
+  readonly texts: TextsReport | null;
+}
+
+/** The names that an analyser read in texts, by the step of decision record 0012 that found them. */
+export interface TextsReport {
+  /** References to names in a text that is one literal of the code, as the code writes it (step 1). */
+  readonly written: number;
+  /** References to names that metadata holds: a field of a record of custom metadata, or a field set (step 2). */
+  readonly metadata: number;
+  /** References to names in a text that the code builds, or that a method gives back or is handed (step 3). */
+  readonly built: number;
+  /** `possible` references to an object, where a part of a text is not known. */
+  readonly possible: number;
+  /** Paths not followed that a text leads to, where what a text names is not known. */
+  readonly pathsNotFollowed: number;
 }
 
 /** The analysis a snapshot has. */
@@ -328,6 +347,7 @@ export function analysisReport(
       references: one.references,
       unresolved: one.unresolved,
       pathsNotFollowed: notFollowed.get(one.origin) ?? 0,
+      texts: one.texts ?? null,
     })),
   };
 }

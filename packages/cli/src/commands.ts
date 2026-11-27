@@ -355,6 +355,13 @@ function analysisLines(report: CoverageReport): string[] {
     if (analysis.origins.some((origin) => origin.origin === 'parser:formula' && origin.failedFiles > 0)) {
       lines.push('For parser:formula, FILES NOT READ counts the files with a formula that was not read as a whole.');
     }
+    for (const { origin, texts } of analysis.origins) {
+      if (texts === null || Object.values(texts).every((one) => one === 0)) continue;
+      // The names in texts by the step of decision record 0012 that found them (decision record 0093).
+      lines.push(
+        `Names in texts of ${origin}: ${String(texts.written)} written as one literal, ${String(texts.metadata)} held by metadata, ${String(texts.built)} in a text the code builds. Where a part of a text is not known: ${count(texts.possible, 'possible reference', 'possible references')}, ${count(texts.pathsNotFollowed, 'path not followed', 'paths not followed')}.`,
+      );
+    }
   }
   const byCode = new Map<string, { severity: string; code: string; count: number; first: string }>();
   for (const issue of report.issues) {

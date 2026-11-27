@@ -19,7 +19,7 @@ import {
   type Reference,
   type ReferenceOrigin,
 } from '../core/references.ts';
-import type { AnalysedComponent, OriginWork } from '../extraction/analysed.ts';
+import type { AnalysedComponent, OriginWork, TextWork } from '../extraction/analysed.ts';
 import type { Store } from './open.ts';
 import type { SnapshotIssue } from './snapshots.ts';
 
@@ -367,15 +367,22 @@ export function writeAnalysis(store: Store, snapshotId: number, analysis: Analys
     }
     for (const one of analysis.work) {
       const count = found.get(one.origin) ?? { references: 0, unresolved: 0 };
+      const { texts } = one;
       store.run(
-        `INSERT INTO snapshot_origin_coverage (snapshot_id, origin, components, failed_files, refs, unresolved)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO snapshot_origin_coverage (snapshot_id, origin, components, failed_files, refs, unresolved,
+           texts_written, texts_metadata, texts_built, texts_possible, texts_not_followed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         snapshotId,
         REFERENCE_CODES.origin[one.origin],
         one.components,
         one.failedFiles,
         count.references,
         count.unresolved,
+        texts?.written ?? null,
+        texts?.metadata ?? null,
+        texts?.built ?? null,
+        texts?.possible ?? null,
+        texts?.pathsNotFollowed ?? null,
       );
     }
     // The coverage per type says how many components of the type were analysed. A type of which the source
@@ -468,20 +475,33 @@ export interface OriginCoverage extends OriginWork {
 export function readOriginCoverage(store: Store, snapshotId: number): OriginCoverage[] {
   return store
     .all(
-      `SELECT origin, components, failed_files, refs, unresolved FROM snapshot_origin_coverage
-        WHERE snapshot_id = ? ORDER BY origin`,
+      `SELECT origin, components, failed_files, refs, unresolved,
+              texts_written, texts_metadata, texts_built, texts_possible, texts_not_followed
+         FROM snapshot_origin_coverage WHERE snapshot_id = ? ORDER BY origin`,
       snapshotId,
     )
     .map((row) => {
       const origin = REFERENCE_NAMES.origin[Number(row['origin'])];
       if (origin === undefined)
         throw new EngineError('INTERNAL', 'The database holds an origin this version does not know.');
+      const texts = [
+        row['texts_written'],
+        row['texts_metadata'],
+        row['texts_built'],
+        row['texts_possible'],
+        row['texts_not_followed'],
+      ];
+      // The five are written together, or none of them (decision record 0093).
+      const [written, metadata, built, possible, pathsNotFollowed] = texts.map(Number);
       return {
         origin,
         components: Number(row['components']),
         failedFiles: Number(row['failed_files']),
         references: Number(row['refs']),
         unresolved: Number(row['unresolved']),
+        ...(texts.some((one) => one === null || one === undefined)
+          ? {}
+          : { texts: { written, metadata, built, possible, pathsNotFollowed } as TextWork }),
       };
     });
 }

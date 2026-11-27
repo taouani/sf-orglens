@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
+import type { TextWork } from '../src/extraction/analysed.ts';
 import { analyseSource } from '../src/extraction/analyse.ts';
 import { loadApexReader } from '../src/extraction/apex-reader.ts';
 import { namesOfTree, parseFormula } from '../src/extraction/formula.ts';
@@ -626,6 +627,32 @@ const APEX_FILES: Readonly<Record<string, { readonly classes: number; readonly t
   'volunteers-for-salesforce': { classes: 71, triggers: 7 },
 };
 
+/**
+ * The names in the texts of Apex by the step of decision record 0012 that found them, and the places where a part of a
+ * text is not known (decision record 0093), measured on 27 November 2026. `written` is a name of a text that is one
+ * literal of the member, also through a local, `metadata` a name that a field of a record of custom metadata or a field
+ * set holds, and `built` any other: a text the code joins, a constant, what a method gives back or a text a call hands
+ * a method. A `possible` reference stands where a part of a text is not known, and is counted apart. The four add up to
+ * the `text` of `EXPECTED`. `pathsNotFollowed` counts the warnings `PATH_NOT_FOLLOWED` of Apex that a text leads to:
+ * Apex Recipes 32 of 52, Nebula Logger 59 of 126, NPSP 969 of 1,416, PMM 71 of 83, V4S 57 of 68, Outbound Funds 3 of 13
+ * and EDA 154 of 189. The others are relationships of the code and of queries in brackets that lead to no known object,
+ * child relationships the code uses as a list, subqueries of queries in brackets, `FIELDS()` in a query in brackets and
+ * DML on records of no known object: a script grouped every warning by its message. PMM, Outbound Funds and Coral
+ * Cloud write no name of a text as one literal. EDA holds no field set in the folders this test reads, and none of its
+ * code reads a name that its records of custom metadata hold. These counts were not checked by hand: the fixture
+ * project and its key hold each case.
+ */
+const TEXTS: Readonly<Record<string, TextWork>> = {
+  'apex-recipes': { written: 11, metadata: 2, built: 35, possible: 1, pathsNotFollowed: 32 },
+  'coral-cloud': { written: 0, metadata: 0, built: 8, possible: 0, pathsNotFollowed: 0 },
+  eda: { written: 175, metadata: 0, built: 305, possible: 60, pathsNotFollowed: 154 },
+  'nebula-logger': { written: 39, metadata: 12, built: 45, possible: 10, pathsNotFollowed: 59 },
+  npsp: { written: 488, metadata: 67, built: 931, possible: 269, pathsNotFollowed: 969 },
+  'outbound-funds': { written: 0, metadata: 0, built: 0, possible: 2, pathsNotFollowed: 3 },
+  pmm: { written: 0, metadata: 24, built: 16, possible: 0, pathsNotFollowed: 71 },
+  'volunteers-for-salesforce': { written: 11, metadata: 37, built: 85, possible: 45, pathsNotFollowed: 57 },
+};
+
 describe('the analysis of the public codebases', () => {
   for (const { name, paths } of manifest.corpus) {
     // A codebase that is not there shows in the report of the run as skipped, not as passed.
@@ -661,6 +688,7 @@ describe('the analysis of the public codebases', () => {
         const apex = analysis.components.filter((one) => /^Apex(?:Class|Trigger):/.test(one.key));
         expect(apex.filter((one) => one.attrs === null).map((one) => one.key)).toEqual([]);
         expect(analysis.work[3]?.components).toBe(apex.length);
+        expect(analysis.work[3]?.texts).toEqual(TEXTS[name]);
         // Every name of a formula was found or has a key: none is unresolved, and none is less than confirmed.
         const inFormulas = references.filter((one) => one.origin === 'parser:formula');
         expect(counted(inFormulas.map((one) => one.confidence))).toEqual(

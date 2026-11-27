@@ -24,6 +24,24 @@ export interface AnalysedComponent {
   readonly references: readonly Reference[];
 }
 
+/**
+ * What the names in texts of an analyser came to (decision record 0093): the references to names each step of decision
+ * record 0012 found, those that are `possible` because a part of a text is not known, and the paths not followed that
+ * a text leads to.
+ */
+export interface TextWork {
+  /** In a text that is one literal of the code, as the code writes it (step 1). */
+  readonly written: number;
+  /** Held by metadata: a field of a record of custom metadata, or a field set (step 2). */
+  readonly metadata: number;
+  /** In a text that the code builds, or that a method gives back or is handed (step 3). */
+  readonly built: number;
+  /** `possible` references to an object, where a part of a text is not known. They are not counted by step. */
+  readonly possible: number;
+  /** Warnings `PATH_NOT_FOLLOWED` that a text leads to, which say so in `details.via`. */
+  readonly pathsNotFollowed: number;
+}
+
 /** What the analyser of one origin looked at. The store counts the references itself. */
 export interface OriginWork {
   readonly origin: ReferenceOrigin;
@@ -36,6 +54,8 @@ export interface OriginWork {
    * was not read as a whole. The names of such a formula are recorded all the same.
    */
   readonly failedFiles: number;
+  /** What its names in texts came to, for an analyser that reads them: that of `parser:apex`. */
+  readonly texts?: TextWork;
 }
 
 /**

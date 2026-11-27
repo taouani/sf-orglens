@@ -123,18 +123,24 @@ describe('the code of the Apex of the fixture project', () => {
       [
         'ApexClass:dynamicaccess#method:fieldof(sobject)',
         'PATH_NOT_FOLLOWED',
-        { ...at('DynamicAccess.cls', 10, 28), notFollowed: ['Risk_Score__c'], endsAt: 'field', origin: 'parser:apex' },
+        {
+          ...at('DynamicAccess.cls', 10, 28),
+          notFollowed: ['Risk_Score__c'],
+          endsAt: 'field',
+          origin: 'parser:apex',
+          via: 'text',
+        },
       ],
       // A field the caller names, of a record of no known object: it can be any field.
       [
         'ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('DynamicAccess.cls', 26, 35), notFollowed: [], origin: 'parser:apex' },
+        { ...at('DynamicAccess.cls', 26, 35), notFollowed: [], origin: 'parser:apex', via: 'text' },
       ],
       [
         'ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('DynamicAccess.cls', 27, 20), notFollowed: [], origin: 'parser:apex' },
+        { ...at('DynamicAccess.cls', 27, 20), notFollowed: [], origin: 'parser:apex', via: 'text' },
       ],
       // DML on a list of `SObject`.
       [
@@ -146,24 +152,24 @@ describe('the code of the Apex of the fixture project', () => {
       [
         'ApexClass:invoiceevents#method:describebyname(string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('InvoiceEvents.cls', 40, 47), notFollowed: [], endsAt: 'object', origin: 'parser:apex' },
+        { ...at('InvoiceEvents.cls', 40, 47), notFollowed: [], endsAt: 'object', origin: 'parser:apex', via: 'text' },
       ],
       // A class the caller names.
       [
         'ApexClass:invoicenotifications#method:byname(string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('InvoiceNotifications.cls', 27, 47), notFollowed: [], origin: 'parser:apex' },
+        { ...at('InvoiceNotifications.cls', 27, 47), notFollowed: [], origin: 'parser:apex', via: 'text' },
       ],
       // A query of an object and a field that the caller names: each where it enters the text.
       [
         'ApexClass:invoiceselector#method:anyobject(string,string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('InvoiceSelector.cls', 28, 66), notFollowed: [], endsAt: 'object', origin: 'parser:apex' },
+        { ...at('InvoiceSelector.cls', 28, 66), notFollowed: [], endsAt: 'object', origin: 'parser:apex', via: 'text' },
       ],
       [
         'ApexClass:invoiceselector#method:anyobject(string,string)',
         'PATH_NOT_FOLLOWED',
-        { ...at('InvoiceSelector.cls', 28, 43), notFollowed: [], origin: 'parser:apex' },
+        { ...at('InvoiceSelector.cls', 28, 43), notFollowed: [], origin: 'parser:apex', via: 'text' },
       ],
     ]);
   });
@@ -351,7 +357,7 @@ describe('the resolver of Apex', () => {
       'PATH_NOT_FOLLOWED 21:13 {"relationship":"Agent__r","notFollowed":["Owner","Name"],"endsAt":"field","origin":"parser:apex"}',
       'RELATIONSHIP_GUESSED 22:24 {"relationship":"Guessed__r","object":"Account","field":"Guessed__c"}',
       // The field that `get` names in a text is read after the relationship, as one after a dot.
-      'PATH_NOT_FOLLOWED 22:24 {"relationship":"Guessed__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 22:24 {"relationship":"Guessed__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex","via":"text"}',
       'RELATIONSHIP_GUESSED 23:13 {"relationship":"Cleared__r","object":"Account","field":"Cleared__c"}',
       child(25, 50, 'Returned__r'),
     ]);
@@ -1978,13 +1984,13 @@ describe('the resolver of Apex', () => {
     ]);
     expect(warned(analysis.issues)).toEqual([
       // A child relationship nothing defines, of a record of no known object, and of a name of no known field.
-      'PATH_NOT_FOLLOWED 8:48 {"relationship":"Lines__r","notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 10:29 {"notFollowed":["Amount__c"],"endsAt":"field","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 11:28 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 8:48 {"relationship":"Lines__r","notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 10:29 {"notFollowed":["Amount__c"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 11:28 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
       // An object of no known name, also in a list that the code does not write out.
-      'PATH_NOT_FOLLOWED 15:63 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 16:101 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 17:76 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 15:63 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 16:101 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 17:76 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
     ]);
   });
 
@@ -2031,7 +2037,9 @@ describe('the resolver of Apex', () => {
       '12:90 reads CustomField:invoice__c.name [Name] text probable external',
       '13:33 uses-type ApexClass:handler [Handler] text probable resolved',
     ]);
-    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 14:33 {"notFollowed":[],"origin":"parser:apex"}']);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 14:33 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+    ]);
   });
 
   it('fills what is not known of a query by what stands around it, and says where it cannot follow one', () => {
@@ -2074,9 +2082,9 @@ describe('the resolver of Apex', () => {
     ]);
     expect(warned(analysis.issues)).toEqual([
       // The object of a query, the child relationship of a subquery and a whole query that are not known.
-      'PATH_NOT_FOLLOWED 8:69 {"notFollowed":["Amount__c","Status__c"],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 9:74 {"notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 11:42 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 8:69 {"notFollowed":["Amount__c","Status__c"],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 9:74 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 11:42 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
     ]);
   });
 
@@ -2111,7 +2119,9 @@ describe('the resolver of Apex', () => {
       '7:67 reads CustomObject:invoice__c [Invoice__c] text probable resolved',
       '7:84 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
     ]);
-    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 8:46 {"notFollowed":[],"origin":"parser:apex"}']);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 8:46 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+    ]);
   });
 
   it('reads a search in braces, and a token that a text names as a name in a text, also in get, put and upsert', () => {
@@ -2198,7 +2208,9 @@ describe('the resolver of Apex', () => {
       '20:29 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
       '22:39 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
     ]);
-    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 6:42 {"notFollowed":[],"origin":"parser:apex"}']);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 6:42 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+    ]);
   });
 
   it('reads each body of a property, a clause of a try from where its block stops, and do once at least', () => {
@@ -2340,10 +2352,10 @@ describe('the resolver of Apex', () => {
       '22:38 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
     ]);
     expect(warned(analysis.issues)).toEqual([
-      'PATH_NOT_FOLLOWED 19:44 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 19:44 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
       // A text put together with `+` is a text that `get` of a record takes, so the relationship is a lookup.
       'RELATIONSHIP_GUESSED 21:26 {"relationship":"Thing__r","object":"Invoice__c","field":"Thing__c"}',
-      'PATH_NOT_FOLLOWED 21:46 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 21:46 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
     ]);
   });
 
@@ -2399,14 +2411,14 @@ describe('the resolver of Apex', () => {
     ]);
     expect(warned(analysis.issues)).toEqual([
       // What a query of an object that is not known names, also in a subquery and a TYPEOF.
-      'PATH_NOT_FOLLOWED 4:103 {"notFollowed":["Amount__c","Lines__r","Status__c"],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 4:103 {"notFollowed":["Amount__c","Lines__r","Status__c"],"endsAt":"object","origin":"parser:apex","via":"text"}',
       // A text the code shows that is no query, and one that is known in part.
-      'PATH_NOT_FOLLOWED 6:43 {"notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 7:62 {"notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 15:72 {"notFollowed":["Name"],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 18:98 {"notFollowed":["What","Name"],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 6:43 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 7:62 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 15:72 {"notFollowed":["Name"],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 18:98 {"notFollowed":["What","Name"],"endsAt":"object","origin":"parser:apex","via":"text"}',
       // A subquery through a child relationship nothing defines keeps its names, and not what fills a part of it.
-      'PATH_NOT_FOLLOWED 19:83 {"relationship":"Things__r","notFollowed":["Name"],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 19:83 {"relationship":"Things__r","notFollowed":["Name"],"origin":"parser:apex","via":"text"}',
     ]);
     const message = (line: number): string | undefined =>
       analysis.issues.find((one) => one.details?.['line'] === line)?.message;
@@ -2431,7 +2443,9 @@ describe('the resolver of Apex', () => {
       );
     });
     // The field and the object stand both at the call: what the query reads can be anything.
-    expect(warned(analysis.issues)).toEqual(['PATH_NOT_FOLLOWED 5:45 {"notFollowed":[],"origin":"parser:apex"}']);
+    expect(warned(analysis.issues)).toEqual([
+      'PATH_NOT_FOLLOWED 5:45 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+    ]);
   });
 
   it('takes back nothing of the member it reads where a method it works a text out of uses a child relationship', () => {
@@ -3412,12 +3426,12 @@ describe('the resolver of Apex', () => {
       '12:19 references null [Gone] text probable unresolved of Invoice__c',
       // Of an object nothing says, a field set is not followed: by a name in a text, by one that is not known, and by
       // a token.
-      'PATH_NOT_FOLLOWED 15:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 15:90 {"notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 16:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 16:89 {"notFollowed":[],"origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 17:62 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
-      'PATH_NOT_FOLLOWED 17:98 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 15:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 15:90 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 16:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 16:89 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 17:62 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 17:98 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
     ]);
   });
 
@@ -3532,6 +3546,161 @@ describe('the resolver of Apex', () => {
       '12:51 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
       '12:72 references null [Gone] token probable unresolved of Invoice__c',
     ]);
+  });
+
+  it('says which step found each name of a text, and which warnings a text leads to', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.fieldSet('Invoice__c', 'Summary', ['Amount__c']);
+      source.apexClass(
+        'Steps',
+        code(
+          'public class Steps {',
+          "    static final String FIELD = 'Amount__c';",
+          "    static String given() { return 'Status__c'; }",
+          '    static Object take(Invoice__c inv, String f) { return inv.get(f); }',
+          '    void written(Invoice__c inv) {',
+          "        inv.get('Amount__c');",
+          "        String local = 'Status__c';",
+          '        inv.get(local);',
+          "        Database.query('SELECT Amount__c FROM Invoice__c');",
+          "        Type.forName('Steps');",
+          '    }',
+          '    void built(Invoice__c inv, Boolean flag) {',
+          "        inv.get('Amount' + '__c');",
+          '        inv.get(FIELD);',
+          '        inv.get(given());',
+          "        take(inv, 'Amount__c');",
+          "        inv.get(flag ? 'Amount__c' : 'Status__c');",
+          '    }',
+          '    void held(Invoice__c inv) {',
+          "        inv.get(Rule__mdt.getInstance('Late').Field__c);",
+          "        Database.query('SELECT ' + Rule__mdt.getInstance('Open').Field__c + ' FROM Invoice__c');",
+          "        take(inv, Rule__mdt.getInstance('Late').Field__c);",
+          "        Schema.SObjectType.Invoice__c.fieldSets.getMap().get('Summary');",
+          '        Schema.SObjectType.Invoice__c.FieldSets.Summary.getFields();',
+          '        inv.get(rule());',
+          '    }',
+          "    static String rule() { return Rule__mdt.getInstance('Late').Field__c; }",
+          '    void unknown(Invoice__c inv, String any, List<SObject> rows, Task t) {',
+          "        Database.query('SELECT ' + any + ' FROM Invoice__c');",
+          '        Database.query(any);',
+          "        Schema.getGlobalDescribe().get(any).getDescribe().fieldSets.getMap().get('Summary');",
+          '        insert rows;',
+          '        SObject what = t.What;',
+          '        Object name = what.Name;',
+          "        Object subject = what.get('Subject');",
+          '        SObject who = t.Who;',
+          "        Object title = who.get('Title');",
+          '        Object called = who.Name;',
+          '        SObject same = t.What;',
+          '        Object one = same.Name;',
+          "        Object two = same.get('Name');",
+          "        Database.query('SELECT Guess__r.Name FROM Account');",
+          '    }',
+          '    void mixed(Invoice__c inv) {',
+          "        inv.getSObject('Account' + '__r');",
+          "        inv.getSObject('Account__r');",
+          "        Schema.SObjectType.Invoice__c.fields.getMap().get('Amount' + '__c');",
+          "        Schema.SObjectType.Invoice__c.fields.getMap().get('Amount__c');",
+          "        Schema.getGlobalDescribe().get('Invoice' + '__c');",
+          "        Schema.getGlobalDescribe().get('Invoice__c');",
+          "        Type.forName('Ste' + 'ps');",
+          "        String cls = 'Steps';",
+          '        Type.forName(cls);',
+          "        Type.forName('Ste' + 'ps');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    const stepped = [
+      ...analysis.components
+        .filter((one) => isApex(one.key))
+        .flatMap((one) => one.references)
+        .filter((one) => viaOf(one) === 'text')
+        .map(
+          (one) =>
+            `${String(one.location?.line)}:${String(one.location?.column)} ${one.kind} ${String(one.to)} ${one.confidence} ${JSON.stringify(one.attrs?.['step'])}`,
+        ),
+      ...warned(analysis.issues),
+    ];
+    expect(stepped).toEqual([
+      // A text the code builds of more than one literal, a constant, a text a method gives back and a text a call
+      // hands a method are built, also where the parts are literals.
+      '13:18 reads CustomField:invoice__c.amount__c probable "built"',
+      '14:17 reads CustomField:invoice__c.amount__c probable "built"',
+      '15:17 reads CustomField:invoice__c.status__c probable "built"',
+      '16:20 reads CustomField:invoice__c.amount__c probable "built"',
+      // Each way of a branch that is one literal is written.
+      '17:25 reads CustomField:invoice__c.amount__c probable "written"',
+      '17:39 reads CustomField:invoice__c.status__c probable "written"',
+      // A name that a field of a record of custom metadata holds is of metadata where the code reads the field, also
+      // in a query and in a text a call hands a method. The name of the record is written.
+      '20:40 references CustomMetadata:rule.late probable "written"',
+      '20:47 reads CustomField:invoice__c.amount__c probable "metadata"',
+      '21:59 references CustomMetadata:rule.open probable "written"',
+      '21:66 reads CustomField:invoice__c.status__c probable "metadata"',
+      '21:84 reads CustomObject:invoice__c probable "built"',
+      '22:42 references CustomMetadata:rule.late probable "written"',
+      '22:49 reads CustomField:invoice__c.amount__c probable "metadata"',
+      // The fields a field set shows are of metadata, whether a text or a token names the field set.
+      '23:63 reads CustomField:invoice__c.amount__c probable "metadata"',
+      '23:63 references FieldSet:invoice__c.summary probable "written"',
+      '24:49 reads CustomField:invoice__c.amount__c probable "metadata"',
+      // A text of metadata that a method gives back stands where the code uses it, and is built there.
+      '25:17 reads CustomField:invoice__c.amount__c probable "built"',
+      // Each text has its own step, also one after another of the other step: a relationship, a field of a describe,
+      // an object of the org and a class.
+      '45:25 reads CustomField:invoice__c.account__c probable "built"',
+      '46:25 reads CustomField:invoice__c.account__c probable "written"',
+      '47:60 references CustomField:invoice__c.amount__c probable "built"',
+      '48:60 references CustomField:invoice__c.amount__c probable "written"',
+      '49:41 references CustomObject:invoice__c probable "built"',
+      '50:41 references CustomObject:invoice__c probable "written"',
+      '51:23 uses-type ApexClass:steps probable "built"',
+      '52:23 uses-type ApexClass:steps probable "written"',
+      '54:23 uses-type ApexClass:steps probable "built"',
+      '27:58 references CustomMetadata:rule.late probable "written"',
+      // A part that is not known is a possible reference, which the analysis counts apart.
+      '29:36 reads CustomObject:invoice__c possible "built"',
+      '29:49 reads CustomObject:invoice__c probable "built"',
+      '42:32 reads null probable "written"',
+      '42:51 reads CustomObject:account probable "written"',
+      // A class that `Type.forName` is given as a literal is written, and so is a literal of a variable or a query.
+      '10:23 uses-type ApexClass:steps probable "written"',
+      '6:18 reads CustomField:invoice__c.amount__c probable "written"',
+      '7:25 reads CustomField:invoice__c.status__c probable "written"',
+      '9:32 reads CustomField:invoice__c.amount__c probable "written"',
+      '9:47 reads CustomObject:invoice__c probable "written"',
+      // A path that a text leads to and is not followed says so, and DML on records of no known object does not.
+      'PATH_NOT_FOLLOWED 30:24 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 31:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 31:83 {"notFollowed":[],"origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 32:9 {"op":"insert","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      // A warning that a name of a text and a name of the code meet at says so, whichever comes first, also where the
+      // text adds no name to it.
+      'PATH_NOT_FOLLOWED 33:26 {"relationship":"What","notFollowed":["Name","Subject"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 36:25 {"relationship":"Who","notFollowed":["Title","Name"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+      'PATH_NOT_FOLLOWED 39:26 {"relationship":"What","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+      // Another warning of a text does not.
+      'RELATIONSHIP_GUESSED 42:32 {"relationship":"Guess__r","object":"Account","field":"Guess__c"}',
+      'PATH_NOT_FOLLOWED 42:32 {"relationship":"Guess__r","notFollowed":["Name"],"endsAt":"field","origin":"parser:apex","via":"text"}',
+    ]);
+    // A reference of another way has no step.
+    expect(
+      analysis.components
+        .flatMap((one) => one.references)
+        .filter((one) => viaOf(one) !== 'text' && one.attrs?.['step'] !== undefined),
+    ).toEqual([]);
+    // The analysis counts them: a name of each step, and the possible references and the paths of texts apart.
+    expect(analysis.work.find((row) => row.origin === 'parser:apex')?.texts).toEqual({
+      written: 18,
+      metadata: 5,
+      built: 12,
+      possible: 1,
+      pathsNotFollowed: 7,
+    });
   });
 
   it('keeps each use of a text once, so that a chain of calls is read in time', () => {

@@ -15,7 +15,7 @@
  * in. Decision records 0041 and 0042 list what it does not read.
  */
 import { hash } from 'node:crypto';
-import type { JsonValue } from '../core/errors.ts';
+import { EngineError, type JsonValue } from '../core/errors.ts';
 import {
   buildKey,
   foldName,
@@ -29,7 +29,7 @@ import type { Reference, ReferenceOrigin } from '../core/references.ts';
 import type { ObjectDescription } from '../sources/describe.ts';
 import type { ResolvedComponent } from '../sources/resolve.ts';
 import { byCodeUnit, type SourceTree } from '../sources/tree.ts';
-import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork } from './analysed.ts';
+import { cut, type AnalysedComponent, type AnalysisIssue, type OriginWork, type TextWork } from './analysed.ts';
 import {
   buildApexTypes,
   readApexUnit,
@@ -938,8 +938,37 @@ export function analyseSource(
       // Flows and their elements, and files of flows that could not be read.
       { origin: 'parser:flow', components: analysed.get('parser:flow') ?? 0, failedFiles: ofFlows },
       // Classes and triggers with their members, and their files that do not parse or could not be read.
-      { origin: 'parser:apex', components: analysed.get('parser:apex') ?? 0, failedFiles: ofApex },
+      {
+        origin: 'parser:apex',
+        components: analysed.get('parser:apex') ?? 0,
+        failedFiles: ofApex,
+        texts: textsOfApex(components, issues),
+      },
     ],
     issues,
   };
+}
+
+/**
+ * What the names in texts of Apex came to (decision record 0093): the references of the `via` `text` by the step
+ * that found them, those that are `possible`, and the paths not followed that a text leads to.
+ */
+function textsOfApex(components: readonly AnalysedComponent[], issues: readonly AnalysisIssue[]): TextWork {
+  const counts = { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 };
+  for (const component of components) {
+    for (const reference of component.references) {
+      if (reference.origin !== 'parser:apex' || reference.attrs?.['via'] !== 'text') continue;
+      const step = reference.attrs['step'];
+      if (reference.confidence === 'possible') counts.possible += 1;
+      else if (step === 'written' || step === 'metadata' || step === 'built') counts[step] += 1;
+      else throw new EngineError('INTERNAL', 'A name of a text of Apex does not say which step found it.');
+    }
+  }
+  for (const issue of issues) {
+    const details = issue.details ?? {};
+    if (issue.code === 'PATH_NOT_FOLLOWED' && details['origin'] === 'parser:apex' && details['via'] === 'text') {
+      counts.pathsNotFollowed += 1;
+    }
+  }
+  return counts;
 }

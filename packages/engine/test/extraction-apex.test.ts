@@ -130,6 +130,9 @@ describe('the Apex of the fixture project', () => {
       origin: 'parser:apex',
       components: apex.length,
       failedFiles: 0,
+      // The names in texts of each step and the unknown places of texts (decision record 0093): 7 of the 8 unknown
+      // places of the key are of texts, and the DML on a list of `SObject` is not.
+      texts: { written: 15, metadata: 5, built: 26, possible: 7, pathsNotFollowed: 7 },
     });
     // The issues of the code are those of the resolver (`extraction-apex-resolver.test.ts`): DML on a list of
     // `SObject`, and names in texts that the code does not know, the 8 unknown places of the key.

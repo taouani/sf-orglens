@@ -280,7 +280,7 @@ describe('orglens status', () => {
       [
         `Workspace  test (${dir})`,
         'Config     orglens.toml',
-        'Database   .orglens/orglens.db, schema version 12, N KiB, node:sqlite',
+        'Database   .orglens/orglens.db, schema version 13, N KiB, node:sqlite',
         '',
         'SOURCE  KIND  SNAPSHOTS  LATEST SNAPSHOT  ANALYSED',
         'prod    org   0          none',
@@ -297,7 +297,7 @@ describe('orglens status', () => {
         root: dir,
         name: 'test',
         configFiles: ['orglens.toml'],
-        store: { state: 'ready', schemaVersion: 12, driver: 'node:sqlite' },
+        store: { state: 'ready', schemaVersion: 13, driver: 'node:sqlite' },
         sources: [{ name: 'prod', kind: 'org', snapshots: 0, latestSnapshot: null }],
       },
     });
@@ -378,6 +378,9 @@ function projectWorkspace(extra: Readonly<Record<string, string>> = {}): string 
 const commitAll = (dir: string): string => commitAllIn(dir, dirs.next());
 
 const NO_COMMIT = 'info      COMMIT_UNKNOWN  The snapshot names no commit: the folder is not in a Git repository.';
+
+/** A row of the analysis of an origin that found nothing in the project of these tests. */
+const NONE_FOUND = { components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 };
 
 /** What the analysis says about the project of these tests: one class, which has no member and uses no type. */
 const ONE_CLASS_ANALYSED = [
@@ -507,17 +510,16 @@ describe('orglens snapshot and coverage', () => {
         references: 0,
         complete: true,
         origins: [
-          { origin: 'parser:xml', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
+          { ...NONE_FOUND, origin: 'parser:xml', texts: null },
+          { ...NONE_FOUND, origin: 'parser:formula', texts: null },
+          { ...NONE_FOUND, origin: 'parser:flow', texts: null },
+          // The reader of Apex counts the names in texts, of which the class has none.
           {
-            origin: 'parser:formula',
-            components: 0,
-            failedFiles: 0,
-            references: 0,
-            unresolved: 0,
-            pathsNotFollowed: 0,
+            ...NONE_FOUND,
+            origin: 'parser:apex',
+            components: 1,
+            texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
           },
-          { origin: 'parser:flow', components: 0, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
-          { origin: 'parser:apex', components: 1, failedFiles: 0, references: 0, unresolved: 0, pathsNotFollowed: 0 },
         ],
       },
       crossCheck: null,
@@ -781,6 +783,43 @@ describe('orglens analyse', () => {
     const shown = await orglensJson(dir, ['coverage', 'work']);
     expect(shown).toMatchObject({ code: 0, ok: true });
     expect(shown.data).toEqual(again.data);
+  });
+
+  it('says how the names in the texts of Apex were found, and where a part of a text is not known', async () => {
+    const greeter = [
+      'public class Greeter {',
+      '    Object m(Parcel__c p, String any) {',
+      "        p.get('Weight__c');",
+      '        Database.query(any);',
+      "        return Database.query('SELECT ' + any + ' FROM Parcel__c');",
+      '    }',
+      '}',
+      '',
+    ].join('\n');
+    const dir = projectWorkspace({ ...PARCEL, 'force-app/main/default/classes/Greeter.cls': greeter });
+    const taken = await orglens(dir, ['snapshot', 'work']);
+    expect(taken.stdout.split('\n').slice(9)).toEqual([
+      '',
+      `Analysed by engine ${engineVersion()}: 5 components, 6 references.`,
+      '',
+      'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+      'parser:xml      3           0           0             0                   0',
+      'parser:formula  1           2           1             1                   0',
+      'parser:flow     0           0           0             0                   0',
+      'parser:apex     2           4           0             1                   0',
+      // The field of `get` is written as one literal, and the object of the query is in a text the code builds. The
+      // field of the query is a possible reference, and the text of the other query is not known at all.
+      'Names in texts of parser:apex: 1 written as one literal, 0 held by metadata, 1 in a text the code builds. Where a part of a text is not known: 1 possible reference, 1 path not followed.',
+      '',
+      'SEVERITY  CODE               COUNT  THE FIRST',
+      'warning   PATH_NOT_FOLLOWED  2      force-app/main/default/classes/Greeter.cls, line 4: the text of the query is not known here, so what it reads was not followed.',
+      '',
+    ]);
+    expect(taken).toMatchObject({ code: 0, stderr: '' });
+    const json = await orglensJson(dir, ['coverage', 'work']);
+    expect(
+      (json.data as { analysis: { origins: { texts: unknown }[] } }).analysis.origins.map((one) => one.texts),
+    ).toEqual([null, null, null, { written: 1, metadata: 0, built: 1, possible: 1, pathsNotFollowed: 1 }]);
   });
 
   it('says what stands in the way: no such source, no snapshot, no such number', async () => {

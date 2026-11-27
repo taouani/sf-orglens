@@ -914,7 +914,15 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["origin", "components", "failedFiles", "references", "unresolved", "pathsNotFollowed"],
+            "required": [
+              "origin",
+              "components",
+              "failedFiles",
+              "references",
+              "unresolved",
+              "pathsNotFollowed",
+              "texts"
+            ],
             "additionalProperties": false,
             "properties": {
               "origin": {
@@ -941,6 +949,44 @@
                 "description": "The paths of names it could not walk to their end. What stands behind the point where it stopped has no reference.",
                 "type": "integer",
                 "minimum": 0
+              },
+              "texts": {
+                "description": "What its names in texts came to, for `parser:apex` (decision record 0093): the references to names that each step of decision record 0012 found, the `possible` references and the paths not followed where a part of a text is not known. Null for an origin that reads no names in texts, and for an analysis that an older version wrote.",
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "required": ["written", "metadata", "built", "possible", "pathsNotFollowed"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "written": {
+                        "description": "References to names in a text that is one literal of the code, as the code writes it (step 1).",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "metadata": {
+                        "description": "References to names that metadata holds: a field of a record of custom metadata, or a field set (step 2).",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "built": {
+                        "description": "References to names in a text that the code builds, or that a method gives back or is handed (step 3).",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "possible": {
+                        "description": "`possible` references to an object, where a part of a text is not known.",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "pathsNotFollowed": {
+                        "description": "The paths not followed that a text leads to: the warnings `PATH_NOT_FOLLOWED` with `details.via` `text`.",
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
