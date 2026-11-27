@@ -37,6 +37,11 @@ const NO_APEX = {
   failedFiles: 0,
   texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
 };
+/** The work of the readers of the JavaScript and the markup of Lightning components on a source without one. */
+const NO_LIGHTNING = [
+  { origin: 'parser:javascript', components: 0, failedFiles: 0 },
+  { origin: 'parser:markup', components: 0, failedFiles: 0 },
+];
 
 const hex = (bytes: Uint8Array | undefined): string => Buffer.from(bytes ?? []).toString('hex');
 const sha = (content: Uint8Array | string): string => createHash('sha256').update(content).digest('hex');
@@ -67,12 +72,12 @@ describe('the analysis of the fixture project', () => {
     listed = (await resolveComponents(tree, ['force-app'])).components;
     analysis = analyseSource(tree, listed);
     // What the objects, fields and rules say. What the flows, the workflow rules, the record types, the field sets,
-    // the records of custom metadata, the email templates, the report types and the quick actions say is measured
-    // in their files.
+    // the records of custom metadata, the email templates, the report types, the quick actions and the Lightning web
+    // components say is measured in their files.
     references = analysis.components
       .filter(
         (one) =>
-          !/^(?:Flow|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction):/.test(
+          !/^(?:Flow|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction|LightningComponentBundle):/.test(
             one.key,
           ),
       )
@@ -197,12 +202,15 @@ describe('the analysis of the fixture project', () => {
     // 6 objects, 59 fields and 11 rules, 2 files of workflow rules with 4 rules and 6 actions, 2 record types, a
     // field set, 5 records of custom metadata, an email template, a report type and a quick action. The two objects
     // without a file were not looked at. 35 of the fields and rules hold a formula or a default value, and so do 7
-    // elements of flows, 2 workflow rules, 2 field updates and the quick action. The 7 flows have 57 elements.
+    // elements of flows, 2 workflow rules, 2 field updates and the quick action. The 7 flows have 57 elements. Both
+    // Lightning web components have JavaScript and a template.
     expect(analysis.work).toEqual([
       { origin: 'parser:xml', components: 99, failedFiles: 0 },
       { origin: 'parser:formula', components: 47, failedFiles: 0 },
       { origin: 'parser:flow', components: 64, failedFiles: 0 },
       NO_APEX,
+      { origin: 'parser:javascript', components: 2, failedFiles: 0 },
+      { origin: 'parser:markup', components: 2, failedFiles: 0 },
     ]);
     const withFormula = analysis.components.filter((one) =>
       one.references.some((reference) => reference.origin === 'parser:formula'),
@@ -252,11 +260,11 @@ describe('the analysis of the fixture project', () => {
   it('leaves the components of every other type without attributes and without references', () => {
     const others = analysis.components.filter(
       (one) =>
-        !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction):/.test(
+        !/^(?:CustomObject|CustomField|Flow|ValidationRule|Workflow[A-Za-z]*|RecordType|FieldSet|CustomMetadata|EmailTemplate|ReportType|QuickAction|LightningComponentBundle):/.test(
           one.key,
         ),
     );
-    expect(others).toHaveLength(42);
+    expect(others).toHaveLength(40);
     for (const one of others) expect(one).toMatchObject({ attrs: null, references: [] });
   });
 
@@ -322,8 +330,9 @@ describe('the analysis of the fixture project', () => {
         issues: analysis.issues,
       });
       // 112 references of fields and rules, 129 of flows, 33 of workflow rules, 33 of record types, a field set
-      // and records of custom metadata, and 27 of an email template, a report type and a quick action.
-      expect(written).toMatchObject({ components: 207, references: 334 });
+      // and records of custom metadata, 27 of an email template, a report type and a quick action, and 12 of a
+      // Lightning web component.
+      expect(written).toMatchObject({ components: 207, references: 346 });
 
       const graph = sqlGraph(store, snapshot);
       const status = graph.find(key('CustomField', 'Invoice__c.Status__c'));
@@ -344,6 +353,8 @@ describe('the analysis of the fixture project', () => {
         'Flow:invoice_before_save#element:flow-start reads formula parser:formula',
         'Flow:invoice_purge_void#element:flow-start reads filter parser:flow',
         'Flow:invoice_sent_process#element:formula_myrule_1 reads formula parser:formula',
+        // A Lightning web component, whose template shows the field in a form.
+        'LightningComponentBundle:invoicesummary references attribute parser:markup',
         // The two record types, which limit the values of the field.
         'RecordType:invoice__c.credit_note references listed-field parser:xml',
         'RecordType:invoice__c.standard_invoice references listed-field parser:xml',
@@ -564,6 +575,7 @@ describe('the overrides of the actions of an object', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -939,6 +951,7 @@ describe('fields and rules inside the file of their object', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
 
     // The element without a name is not dropped in silence.
@@ -987,6 +1000,7 @@ describe('a component that is an element of the file of its parent', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1022,6 +1036,7 @@ describe('a component that is an element of the file of its parent', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1056,6 +1071,7 @@ describe('a component that is an element of the file of its parent', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1196,6 +1212,7 @@ describe('what goes wrong in one component', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1236,6 +1253,7 @@ describe('what goes wrong in one component', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1282,6 +1300,7 @@ describe('what goes wrong in one component', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1366,6 +1385,7 @@ describe('what goes wrong in one component', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1398,6 +1418,7 @@ describe('what goes wrong in one component', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 
@@ -1580,6 +1601,7 @@ describe('an object that lies in two package folders', () => {
       NO_FORMULA,
       NO_FLOW,
       NO_APEX,
+      ...NO_LIGHTNING,
     ]);
   });
 

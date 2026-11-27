@@ -34,9 +34,26 @@ describe('the analysis of Apex', () => {
     expect(withApex.issues.filter((one) => one.componentKey === null || !isApex(one.componentKey))).toEqual(
       without.issues,
     );
-    expect(withApex.components.filter((one) => !isApex(one.key))).toEqual(
-      without.components.filter((one) => !isApex(one.key)),
+    // A Lightning web component calls the methods it imports where the code of their class is read, and the class,
+    // with the name of the method, where it is not.
+    const isBundle = (key: string): boolean => key.startsWith('LightningComponentBundle:');
+    expect(withApex.components.filter((one) => !isApex(one.key) && !isBundle(one.key))).toEqual(
+      without.components.filter((one) => !isApex(one.key) && !isBundle(one.key)),
     );
+    const calls = (analysis: typeof withApex): string[] =>
+      analysis.components
+        .filter((one) => isBundle(one.key))
+        .flatMap((one) => one.references)
+        .filter((one) => one.kind === 'calls')
+        .map((one) => `${String(one.to)} ${JSON.stringify(one.attrs)}`);
+    expect(calls(withApex)).toEqual([
+      'ApexClass:invoicecontroller#method:recentinvoices(id) {"via":"import"}',
+      'ApexClass:invoicecontroller#method:pay(id) {"via":"import"}',
+    ]);
+    expect(calls(without)).toEqual([
+      'ApexClass:invoicecontroller {"via":"import","method":"recentInvoices"}',
+      'ApexClass:invoicecontroller {"via":"import","method":"pay"}',
+    ]);
     // Without the reader, a class and a trigger are components that are not analysed, and have no members.
     expect(without.components.filter((one) => isApex(one.key)).map((one) => one.attrs)).toEqual(
       Array.from({ length: 30 }, () => null),
@@ -194,6 +211,8 @@ describe('the analysis of Apex', () => {
       ['parser:formula', 0],
       ['parser:flow', 0],
       ['parser:apex', 1],
+      ['parser:javascript', 0],
+      ['parser:markup', 0],
     ]);
   });
 });

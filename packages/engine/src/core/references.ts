@@ -38,6 +38,8 @@ export const REFERENCE_ORIGINS = [
   'parser:formula',
   'parser:flow',
   'parser:apex',
+  'parser:javascript',
+  'parser:markup',
   'symboltable',
   'dependency-api',
 ] as const;

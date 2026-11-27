@@ -3,7 +3,7 @@ The name also fits Workflow:invoice__c. The answer is about the object. To ask a
 It contains 44 components of the snapshot. The answer is about them too.
 The answer is not complete: 7 types are not analysed yet, and 8 warnings of the analysis bear on the answer. The details are below the answer.
 
-137 components refer to it, 126 of them directly.
+138 components refer to it, 127 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                           CONFIDENCE  KIND         REFERS TO                                                                          WHERE
@@ -121,6 +121,7 @@ DEPTH  COMPONENT                                                                
 1      Flow:invoice_sent_process                                                           confirmed   triggers-on  CustomObject:invoice__c                                                            force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:49
 1      Flow:invoice_sent_process#element:formula_myrule_1                                  confirmed   reads        CustomField:invoice__c.account__c                                                  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
 1      Flow:invoice_sent_process#element:myrule_1_a1                                       confirmed   writes       CustomField:invoice__c.sub_status__c                                               force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:144
+1      LightningComponentBundle:invoicesummary                                             confirmed   references   CustomField:invoice__c.account__c                                                  force-app/main/default/lwc/invoiceSummary/invoiceSummary.js:7
 1      QuickAction:invoice__c.new_line                                                     confirmed   reads        CustomField:invoice__c.amount__c                                                   force-app/main/default/quickActions/Invoice__c.New_Line.quickAction-meta.xml:14
 1      ReportType:invoices_with_lines                                                      confirmed   reads        CustomField:invoice__c.account__c                                                  force-app/main/default/reportTypes/Invoices_with_Lines.reportType-meta.xml:25
 1      WorkflowAlert:invoice__c.invoice_overdue_alert                                      confirmed   reads        CustomField:invoice__c.approver__c                                                 force-app/main/default/workflows/Invoice__c.workflow-meta.xml:8

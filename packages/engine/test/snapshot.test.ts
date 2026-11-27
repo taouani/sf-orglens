@@ -169,6 +169,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
             pathsNotFollowed: 0,
             texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
           },
+          ...(['parser:javascript', 'parser:markup'] as const).map((origin) => ({
+            origin,
+            components: 0,
+            failedFiles: 0,
+            references: 0,
+            unresolved: 0,
+            pathsNotFollowed: 0,
+            texts: null,
+          })),
         ],
       },
       // The Dependency API and the descriptions of objects are of an org. A repository has neither.

@@ -9,7 +9,9 @@
  *
  * The code of an Apex class and of a trigger is parsed, where a reader of Apex is given, and a file that does not
  * parse is an error of its component (decision record 0083). A class or a trigger that parses is a component with
- * a component for each of its members, which refer to the types they use (`apex.ts`, decision record 0084).
+ * a component for each of its members, which refer to the types they use (`apex.ts`, decision record 0084). The
+ * JavaScript and the templates of a Lightning web component are read for what they import and hold
+ * (`lightning.ts`, decision record 0094).
  *
  * A component it is handed is never dropped without an issue, and a failure costs the one component it happens
  * in. Decision records 0041 and 0042 list what it does not read.
@@ -44,6 +46,13 @@ import type { ApexReader, Problem, Span, Unit } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
 import { readFlow, type FlowReading } from './flows.ts';
+import {
+  apexMethodsOf,
+  readLightningScript,
+  readLightningTemplate,
+  resolveApexImports,
+  type BundleFileReading,
+} from './lightning.ts';
 import { buildModel, type FieldFacts } from './model.ts';
 import { readField, readFieldSet, readObject, readRecordType, readRule, type ElementReading } from './objects.ts';
 import { readQuickAction } from './quick-actions.ts';
@@ -169,6 +178,12 @@ interface Entry {
     readonly attrs: Readonly<Record<string, JsonValue>>;
     readonly uses: readonly TypeUse[];
   };
+  /** Of a Lightning web component: what each file of its JavaScript and its templates names. */
+  readonly bundle?: readonly {
+    readonly file: string;
+    readonly origin: 'parser:javascript' | 'parser:markup';
+    readonly reading: BundleFileReading;
+  }[];
 }
 
 /**
@@ -200,6 +215,13 @@ export function analyseSource(
   /** The files of classes and triggers, and those of them that do not parse, which are counted for Apex. */
   const apexFiles = new Set<string>();
   const malformed = new Set<string>();
+  /**
+   * The files of JavaScript and of markup of Lightning components, and those of them that were not read as a whole,
+   * which are counted for their reader.
+   */
+  const scriptFiles = new Set<string>();
+  const markupFiles = new Set<string>();
+  const notWhole = new Set<string>();
   /** The inner types of each class or trigger that parsed. */
   const innerTypes = new Map<ComponentKey, ApexUnitReading['inner']>();
   /** Each class and trigger that parsed, with the parts of it that are components, for the resolver of Apex. */
@@ -612,6 +634,37 @@ export function analyseSource(
     }
   };
 
+  /**
+   * What the JavaScript and the templates of a Lightning web component name. A file of its tests, below a folder
+   * `__tests__` of the bundle, is not part of the component in the org, and is not read.
+   */
+  const bundleReadings = (
+    key: ComponentKey,
+    contents: readonly { readonly file: string; readonly bytes: Uint8Array | null }[],
+  ): NonNullable<Entry['bundle']> => {
+    // The folder of the bundle is that of its file of metadata.
+    const meta = contents.find(({ file }) => file.endsWith('.js-meta.xml'))?.file ?? '';
+    const folder = meta.slice(0, meta.lastIndexOf('/') + 1);
+    return contents.flatMap(({ file, bytes }) => {
+      const script = file.endsWith('.js');
+      const within = file.startsWith(folder) ? file.slice(folder.length) : file;
+      if ((!script && !file.endsWith('.html')) || within.split('/').includes('__tests__')) return [];
+      (script ? scriptFiles : markupFiles).add(file);
+      if (bytes === null) return [];
+      const { document, issue } = readText(bytes);
+      if (issue !== null) refuse(file, issue);
+      if (document === null) return [];
+      try {
+        const reading = script ? readLightningScript(key, file, document) : readLightningTemplate(key, file, document);
+        if (!reading.whole) notWhole.add(file);
+        return [{ file, origin: script ? 'parser:javascript' : 'parser:markup', reading }];
+      } catch (error) {
+        failed(key, 'LightningComponentBundle', file, error);
+        return [];
+      }
+    });
+  };
+
   const add = (component: ResolvedComponent, key: ComponentKey): void => {
     const { type, fullName: name, files, within } = component;
 
@@ -644,6 +697,10 @@ export function analyseSource(
 
     const contents = files.map((file) => ({ file, bytes: bytesOf(file) }));
     const definition = definitionOf(component, contents);
+    if (type === 'LightningComponentBundle') {
+      entries.push({ key, type, name, definition, readings: [], bundle: bundleReadings(key, contents) });
+      return;
+    }
     if (APEX_KINDS.has(type) && apex !== undefined) {
       const parsed = parseApex(apex, key, type, contents);
       if (parsed === null) entries.push({ key, type, name, definition, readings: [] });
@@ -760,6 +817,17 @@ export function analyseSource(
     options.apex,
   );
 
+  // The methods of the classes of the snapshot, which a Lightning component imports by their names.
+  const apexMethods = apexMethodsOf(
+    apexUnits.flatMap((unit) =>
+      unit.parts.flatMap(({ key, part }) =>
+        part.syntax.kind === 'method'
+          ? [{ key, auraEnabled: part.syntax.member.annotations.includes('auraenabled') }]
+          : [],
+      ),
+    ),
+  );
+
   const analysed = new Map<ReferenceOrigin, number>();
   let withFormula = 0;
   const formulasNotRead = new Set<string>();
@@ -838,6 +906,29 @@ export function analyseSource(
         return { key, name, definition, attrs, references: [...types, ...code.references] };
       } catch (error) {
         failed(key, entry.type, file, error);
+        return bare;
+      }
+    }
+    if (entry.bundle !== undefined) {
+      try {
+        const references: Reference[] = [];
+        const found: AnalysisIssue[] = [];
+        for (const { file, origin, reading } of entry.bundle) {
+          for (const issue of reading.issues) found.push(issue);
+          const resolved = resolveReferences(model, { key, file, object: '' }, reading.references, origin);
+          for (const issue of resolved.issues) found.push(issue);
+          for (const reference of resolved.references) references.push(reference);
+          for (const reference of resolveApexImports(model, apexMethods, { key, file }, reading.apex)) {
+            references.push(reference);
+          }
+        }
+        for (const issue of found) issues.push(issue);
+        for (const origin of new Set(entry.bundle.map((one) => one.origin))) {
+          analysed.set(origin, (analysed.get(origin) ?? 0) + 1);
+        }
+        return { key, name, definition, attrs: null, references };
+      } catch (error) {
+        failed(key, entry.type, entry.bundle[0]?.file ?? null, error);
         return bare;
       }
     }
@@ -924,7 +1015,11 @@ export function analyseSource(
   const failedFiles = [...new Set([...refused, ...unreadable])];
   const ofFlows = failedFiles.filter((file) => flowFiles.has(file)).length;
   const ofApex = new Set([...malformed, ...failedFiles.filter((file) => apexFiles.has(file))]).size;
-  const ofXml = failedFiles.filter((file) => !flowFiles.has(file) && !apexFiles.has(file)).length;
+  const ofScripts = new Set([...notWhole, ...failedFiles].filter((file) => scriptFiles.has(file))).size;
+  const ofMarkup = new Set([...notWhole, ...failedFiles].filter((file) => markupFiles.has(file))).size;
+  const ofXml = failedFiles.filter(
+    (file) => !flowFiles.has(file) && !apexFiles.has(file) && !scriptFiles.has(file) && !markupFiles.has(file),
+  ).length;
   return {
     // Classes and triggers are read in part: what their members use as a type, and not yet what their code refers
     // to. An answer counts them as not analysed, and the cross-check does not compare their rows (decision record
@@ -944,6 +1039,10 @@ export function analyseSource(
         failedFiles: ofApex,
         texts: textsOfApex(components, issues),
       },
+      // Lightning web components whose JavaScript and whose markup were read, and their files that were not read as
+      // a whole.
+      { origin: 'parser:javascript', components: analysed.get('parser:javascript') ?? 0, failedFiles: ofScripts },
+      { origin: 'parser:markup', components: analysed.get('parser:markup') ?? 0, failedFiles: ofMarkup },
     ],
     issues,
   };

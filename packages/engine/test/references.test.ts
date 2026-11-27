@@ -63,6 +63,8 @@ describe('the reference vocabulary', () => {
       'parser:formula',
       'parser:flow',
       'parser:apex',
+      'parser:javascript',
+      'parser:markup',
       'symboltable',
       'dependency-api',
     ]);

@@ -89,11 +89,13 @@ const TIME = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g;
 const classesAnalysed = (components: number): string[] => [
   `Analysed by engine ${engineVersion()}: ${String(components)} components, 0 references.`,
   '',
-  'ORIGIN          COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
-  'parser:xml      0           0           0             0                   0',
-  'parser:formula  0           0           0             0                   0',
-  'parser:flow     0           0           0             0                   0',
-  `parser:apex     ${String(components)}           0           0             0                   0`,
+  'ORIGIN             COMPONENTS  REFERENCES  NOT RESOLVED  PATHS NOT FOLLOWED  FILES NOT READ',
+  'parser:xml         0           0           0             0                   0',
+  'parser:formula     0           0           0             0                   0',
+  'parser:flow        0           0           0             0                   0',
+  `parser:apex        ${String(components)}           0           0             0                   0`,
+  'parser:javascript  0           0           0             0                   0',
+  'parser:markup      0           0           0             0                   0',
   '',
 ];
 

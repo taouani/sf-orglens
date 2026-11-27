@@ -335,6 +335,8 @@ describe('the flows that cannot be deployed', () => {
         failedFiles: 0,
         texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
       },
+      // The Lightning web components of the project.
+      ...alone.work.slice(4),
     ]);
   });
 });
@@ -1176,6 +1178,8 @@ describe('small flows that are written here', () => {
       'parser:formula 1',
       'parser:flow 3',
       'parser:apex 0',
+      'parser:javascript 0',
+      'parser:markup 0',
     ]);
     // A process another process starts is set off by no record.
     const invoked = analysed([
