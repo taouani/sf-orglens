@@ -50,7 +50,7 @@ describe('the reader of JavaScript', () => {
     expect(reading.stop).toBeNull();
   });
 
-  it('reads no import where the module exports what it declares, or names import as a property', () => {
+  it('reads no import where the module exports what it declares, or names import as a property or a method', () => {
     const text = [
       'const a = 1, b = 2;',
       'export { a, b };',
@@ -60,11 +60,15 @@ describe('the reader of JavaScript', () => {
       '    get export() { return this.import; }',
       "    method() { return { import: 'x', export: 'y' }; }",
       "    load() { return this.import('lazy'); }",
+      '    static import() { return 1; }',
+      '    import(rows = { a: (1) }) { return rows; }',
+      '    get import() { return 1; }',
       '    url() { return import.meta.url; }',
       '}',
       'export const d = 4;',
       'export function e() {}',
       'export { f }',
+      'const o = { import() { return 1; }, async export() {} };',
     ].join('\n');
     const reading = readModule(text);
     expect(reading.imports).toEqual([]);
@@ -84,6 +88,8 @@ describe('the reader of JavaScript', () => {
       "const k = /[/']/u.test(s) && /\\/'/.test(s);",
       "const e = `\\` import 'escaped' ${'`'}`;",
       "const n = {} / 2; const m = '/';",
+      "export default /'/.source;",
+      "const p = a.return / 2; const l = '/';",
       "const w = 10 / 2 / 1; const x = '/';",
       "const g = (1) / 2; const h = '/';",
       "let y = 1; y++ / 2; import 'one';",
@@ -102,6 +108,7 @@ describe('the reader of JavaScript', () => {
   it('says where a module is imported while the code runs, and where a clause is of no known form', () => {
     const text = [
       "const m = import('lazy');",
+      "const n = import(path('x')).then((one) => one);",
       "import a + b from 'one';",
       'export { c } from d;',
       "import { e, f from 'two';",
@@ -110,6 +117,7 @@ describe('the reader of JavaScript', () => {
     const reading = readModule(text);
     expect(reading.unread).toEqual([
       { what: 'dynamic', start: text.indexOf('import(') },
+      { what: 'dynamic', start: text.indexOf('import(path') },
       { what: 'clause', start: text.indexOf('import a + b') },
       { what: 'clause', start: text.indexOf('export { c }') },
       { what: 'clause', start: text.indexOf('import { e, f') },
@@ -124,6 +132,12 @@ describe('the reader of JavaScript', () => {
     expect(readModule('export { a, b }').unread).toEqual([]);
     expect(readModule('export *').unread).toEqual([{ what: 'clause', start: 0 }]);
     expect(readModule('import { a }').unread).toEqual([{ what: 'clause', start: 0 }]);
+    expect(readModule("import('a'").unread).toEqual([{ what: 'dynamic', start: 0 }]);
+    // A string goes on after a backslash at the end of a line, and may hold U+2028.
+    expect(readModule("const s = 'a\\\r\nb\u2028c';\r\nimport 'one';\r\n")).toMatchObject({
+      imports: [{ specifier: 'one' }],
+      stop: null,
+    });
     expect(readModule('export * ;').unread).toEqual([{ what: 'clause', start: 0 }]);
     // Without a semicolon, the clause ends at its braces, and what follows is read.
     expect(readModule("export { a }\nimport 'one'").imports.map((one) => one.specifier)).toEqual(['one']);
@@ -143,6 +157,7 @@ describe('the reader of JavaScript', () => {
       ["import 'one';\nconst s = 'open\nimport 'two';", "'open", 'string'],
       ["import 'one';\n/* open\nimport 'two';", '/*', 'comment'],
       ["import 'one';\nconst t = `open\nimport 'two';", '`open', 'template'],
+      ["import 'one';\nconst t = `open ${ `in ${ a } b` + c", '`open', 'template'],
       ["import 'one';\nconst r = /open\nimport 'two';", '/open', 'expression'],
     ];
     for (const [text, at, what] of cases) {

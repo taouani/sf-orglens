@@ -1,7 +1,7 @@
 /**
  * The reader of the markup of a Lightning component (decision record 0094): the elements of a template, their
- * attributes and the element around each, and how it steps over what holds no element. That it reads every template,
- * Aura component and page of the public codebases without stopping is held by `extraction-corpora.test.ts`.
+ * attributes and the element around each, and how it steps over what holds no element. That it reads every template
+ * of the public codebases without stopping is held by `extraction-corpora.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import { readMarkup, type MarkupReading } from '../src/extraction/markup.ts';

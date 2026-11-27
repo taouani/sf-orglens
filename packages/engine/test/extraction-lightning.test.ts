@@ -221,6 +221,14 @@ describe('the analysis of a Lightning web component', () => {
         "import LOGO from '@salesforce/resourceUrl/logo';",
         "import CHANNEL from '@salesforce/messageChannel/Invoices__c';",
         "import LOCALE from '@salesforce/i18n/locale';",
+        "import ID from '@salesforce/schema/Invoice__c.Id';",
+        "import BASE from '@salesforce/community/basePath';",
+        "import ASSET from '@salesforce/contentAssetUrl/logo';",
+        "import SITE from '@salesforce/site/Id';",
+        "import { getRecord } from 'lightning/uiRecordApi';",
+        "import CLIENT from '@salesforce/client/formFactor';",
+        "import ALLOWED from '@salesforce/userPermission/ViewSetup';",
+        "import { refreshApex } from '@salesforce/apex';",
         '',
       ].join('\n'),
       'local.js': "export const local = 1; // import X from '@salesforce/schema/Invoice__c.Status__c';\n",
@@ -238,6 +246,8 @@ describe('the analysis of a Lightning web component', () => {
       '7:44 references CustomLabel:ns__hello [Hello] confirmed external import',
       '8:51 references CustomPermission:approve [Approve] confirmed resolved import',
       '9:27 references LightningComponentBundle:other [other] confirmed resolved import',
+      // The field `Id` is no component, and its import names the object.
+      '17:36 references CustomObject:invoice__c [Invoice__c] confirmed resolved import',
     ]);
     expect(analysis.issues).toEqual([]);
   });
@@ -319,6 +329,8 @@ describe('the analysis of a Lightning web component', () => {
         '    <c-missing></c-missing>',
         '    <ns-thing></ns-thing>',
         '    <p>{invoice.Status__c}</p>',
+        '    <C-Invoice-Badge></C-Invoice-Badge>',
+        '    <lightning-record-view-form object-api-name="Invoice c"></lightning-record-view-form>',
         '</template>',
         '',
       ].join('\n'),
@@ -338,17 +350,21 @@ describe('the analysis of a Lightning web component', () => {
       // A tag is a component by its name in camel case, whether the snapshot holds it or not.
       '13:45 references CustomObject:account [Account] probable external attribute',
       '16:8 references null [missing] confirmed unresolved tag',
+      // A tag is read in lower case.
+      '19:8 references LightningComponentBundle:invoicebadge [Invoice-Badge] confirmed resolved tag',
     ]);
     // A field of a form whose object is in braces, and of no form, is of no known object. A base component that is
     // no field, an expression and the content of a comment give nothing.
     const file = `${folder}/card.html`;
     expect(placed(analysis)).toEqual([
       `NAME_NOT_READ ${file}:17:6`,
+      `NAME_NOT_READ ${file}:20:50`,
       `PATH_NOT_FOLLOWED ${file}:10:45`,
       `PATH_NOT_FOLLOWED ${file}:14:41`,
     ]);
     expect(analysis.issues.map((one) => one.message)).toEqual([
       `${file}, line 17: the tag "ns-thing" is of a namespace that is not known here, so the component it names is not known.`,
+      `${file}, line 20: the object "Invoice c" is not built like the name of one.`,
       `${file}, line 10: nothing says which object "Status__c" is a field of, so it was not followed.`,
       `${file}, line 14: nothing says which object "Status__c" is a field of, so it was not followed.`,
     ]);
@@ -370,6 +386,7 @@ describe('the analysis of a Lightning web component', () => {
       'card.html': '<template>\n    <c-card></c-card>\n    <!-- open\n',
       'helper.js': new Uint8Array([0x61, 0xc3, 0x28, 0x0a]),
       'utils.js': 'export const one = 1;\n',
+      'other.html': new Uint8Array([0x61, 0xc3, 0x28, 0x0a]),
       '__tests__/card.test.js': "import moment from 'moment';\n",
       '__tests__/data/view.html': '<c-unknown-thing></c-unknown-thing>\n',
     });
@@ -379,20 +396,28 @@ describe('the analysis of a Lightning web component', () => {
       '2:8 references LightningComponentBundle:card [card] confirmed resolved tag',
       '1:51 references CustomField:invoice__c.amount__c [Amount__c] confirmed resolved import',
     ]);
-    expect(codes(analysis.issues)).toEqual(['error XML_NOT_UTF8', 'warning FILE_NOT_READ', 'warning FILE_NOT_READ']);
-    expect(placed(analysis).slice(1)).toEqual([
+    expect(codes(analysis.issues)).toEqual([
+      'error XML_NOT_UTF8',
+      'error XML_NOT_UTF8',
+      'warning FILE_NOT_READ',
+      'warning FILE_NOT_READ',
+    ]);
+    expect(placed(analysis).slice(2)).toEqual([
       `FILE_NOT_READ ${folder}/card.html:3:5`,
       `FILE_NOT_READ ${folder}/card.js:2:17`,
     ]);
-    expect(analysis.issues.slice(1).map((one) => one.message)).toEqual([
+    expect(analysis.issues.slice(2).map((one) => one.message)).toEqual([
       `${folder}/card.html, line 3: a comment is not closed, so the file was not read beyond it. What it names after that is not known.`,
       `${folder}/card.js, line 2: a regular expression is not closed, so the file was not read beyond it. What it names after that is not known.`,
     ]);
-    expect(analysis.issues[0]?.details).toMatchObject({ path: `${folder}/helper.js` });
+    expect(analysis.issues.slice(0, 2).map((one) => one.details?.['path'])).toEqual([
+      `${folder}/helper.js`,
+      `${folder}/other.html`,
+    ]);
     // The component is read, and each file that was not read to its end counts for the reader of its language.
     expect(analysis.work.slice(4)).toEqual([
       { origin: 'parser:javascript', components: 1, failedFiles: 2 },
-      { origin: 'parser:markup', components: 1, failedFiles: 1 },
+      { origin: 'parser:markup', components: 1, failedFiles: 2 },
     ]);
     expect(analysis.work[0]?.failedFiles).toBe(0);
   });

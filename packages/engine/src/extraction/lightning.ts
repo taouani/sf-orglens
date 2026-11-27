@@ -147,7 +147,8 @@ export function readLightningScript(key: ComponentKey, file: string, document: T
       const [object, ...path] = named;
       if (wrong(named) || object === undefined) {
         issues.push(notRead(key, file, at, `${shown} names no object or field in a form that is known here.`));
-      } else if (path.length === 0) {
+      } else if (path.length === 0 || (path.length === 1 && foldName(path[0]?.name ?? '') === 'id')) {
+        // The field `Id` is no component: an import of it names the object.
         references.push({ form: 'object', at: nameAt(object.name, object.start), via: 'import' });
       } else {
         // An import serves to read and to write a field, and the JavaScript is not followed.
@@ -237,7 +238,8 @@ export function readLightningTemplate(key: ComponentKey, file: string, document:
     let object: string | null | undefined = outer;
     if (tag.startsWith('c-')) {
       const tail = element.name.slice(2);
-      const name = componentOfTag(tail);
+      // A tag is read in lower case, as HTML reads it.
+      const name = componentOfTag(tag.slice(2));
       if (ONE_NAME.test(name)) {
         references.push({
           form: 'component',
@@ -280,6 +282,15 @@ export function readLightningTemplate(key: ComponentKey, file: string, document:
               via: 'attribute',
               tier: 'probable',
             });
+          } else if (literal) {
+            issues.push(
+              notRead(
+                key,
+                file,
+                nameAt(value, attribute.valueStart),
+                `the object "${cut(value, LONGEST_TEXT_SHOWN)}" is not built like the name of one.`,
+              ),
+            );
           }
         } else if (FIELDS_OF_FORM.has(tag) && literal) {
           const named = partsOf(value, attribute.valueStart).map((part) => nameAt(part.name, part.start));

@@ -630,7 +630,7 @@ and of a custom permission refers to it, and an import of another component of t
 component, each with the `via` `import`. A tag of a component of the project (`<c-name>`) refers to it, with the `via`
 `tag`. The literal object of a base component (`object-api-name`) and the literal field of an input or an output
 field (`field-name`) refer to the object and to the field of the object of the form around it, `probable`, with the
-`via` `attribute`. An expression in braces is not read. A file below a folder `__tests__` is not read. A module or a
+`via` `attribute`. An expression in braces is not read. A file below a folder `__tests__` of the bundle is not read. A module or a
 tag of a form that is not known here is the warning `NAME_NOT_READ`. Lightning web components are not yet taken into
 the answers either, so an answer names `LightningComponentBundle` among the types that are not analysed.
 

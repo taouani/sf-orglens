@@ -51,11 +51,12 @@ interface Token {
 
 /**
  * The names after which a slash starts a regular expression and not a division: they end no value. Any other name
- * ends one, as a variable or `this` does.
+ * ends one, as a variable or `this` does, and so does any name after a `.`, which is a property, as `a.return`.
  */
 const BEFORE_EXPRESSION: ReadonlySet<string> = new Set([
   'await',
   'case',
+  'default',
   'delete',
   'do',
   'else',
@@ -95,13 +96,21 @@ class Stop extends Error {
 /** The tokens of a text, one at a time. A template stands for its text up to the next `${` or its end. */
 function tokens(text: string): () => Token | null {
   let index = 0;
-  /** For each brace that is open: whether it opens the code of a template (`${`), and not a block or an object. */
-  const braces: boolean[] = [];
+  /**
+   * For each brace that is open: the index of the template whose code it opens (`${`), or `null` for a block or an
+   * object.
+   */
+  const braces: (number | null)[] = [];
   /** Whether a slash here starts a regular expression. */
   let expressionNext = true;
+  /** Whether the token before is a `.`. */
+  let afterDot = false;
 
-  /** Steps over the text of a template from `from`, after a backtick or a `}` that closes `${`. */
-  const templateText = (from: number, start: number): Token => {
+  /**
+   * Steps over the text of a template from `from`, after a backtick or a `}` that closes `${`. `origin` is the index
+   * of the backtick that opens the template.
+   */
+  const templateText = (from: number, start: number, origin: number): Token => {
     let at = from;
     while (at < text.length) {
       const code = text.charCodeAt(at);
@@ -111,13 +120,13 @@ function tokens(text: string): () => Token | null {
         expressionNext = false;
         return { kind: 'template', text: '', start };
       } else if (code === 0x24 && text.charCodeAt(at + 1) === 0x7b) {
-        braces.push(true);
+        braces.push(origin);
         index = at + 2;
         expressionNext = true;
         return { kind: 'template', text: '', start };
       } else at += 1;
     }
-    throw new Stop(start, 'template');
+    throw new Stop(origin, 'template');
   };
 
   const string = (quote: number, start: number): Token => {
@@ -131,9 +140,15 @@ function tokens(text: string): () => Token | null {
         expressionNext = false;
         return { kind: 'string', text: value, start, end: index, escaped };
       }
-      if (isLineEnd(code)) break;
+      // A string may hold U+2028 and U+2029, and no other end of a line.
+      if (code === 0x0a || code === 0x0d) break;
       if (code === 0x5c) {
         escaped = true;
+        if (text.startsWith('\r\n', at + 1)) {
+          // A line that goes on after a backslash, with the two characters that end a line on Windows.
+          at += 3;
+          continue;
+        }
         // The character after the backslash, as itself. A name of a module holds no escape that means more.
         value += text.charAt(at + 1);
         at += 2;
@@ -168,9 +183,14 @@ function tokens(text: string): () => Token | null {
     throw new Stop(start, 'expression');
   };
 
-  return () => {
+  const read = (): Token | null => {
     for (;;) {
-      if (index >= text.length) return null;
+      if (index >= text.length) {
+        // The file ends in the code of a template.
+        const open = braces.find((one) => one !== null);
+        if (open !== undefined) throw new Stop(open, 'template');
+        return null;
+      }
       const start = index;
       const code = text.charCodeAt(index);
       const after = text.charCodeAt(index + 1);
@@ -190,7 +210,7 @@ function tokens(text: string): () => Token | null {
       } else if (code === 0x27 || code === 0x22) {
         return string(code, start);
       } else if (code === 0x60) {
-        return templateText(index + 1, start);
+        return templateText(index + 1, start, start);
       } else if (isNameStart(code) || code === 0x23 || code === 0x5c) {
         // A private name starts with `#`, and a name can start with an escape of a character.
         index += 1;
@@ -201,7 +221,7 @@ function tokens(text: string): () => Token | null {
           else break;
         }
         const name = text.slice(start, index);
-        expressionNext = BEFORE_EXPRESSION.has(name);
+        expressionNext = !afterDot && BEFORE_EXPRESSION.has(name);
         return { kind: 'name', text: name, start };
       } else if (isDigit(code) || (code === 0x2e && isDigit(after))) {
         index += 1;
@@ -218,9 +238,9 @@ function tokens(text: string): () => Token | null {
         index += 1;
         expressionNext = true;
         return { kind: 'punctuator', text: '/', start };
-      } else if (code === 0x7d && braces.at(-1) === true) {
-        braces.pop();
-        return templateText(index + 1, start);
+      } else if (code === 0x7d && typeof braces.at(-1) === 'number') {
+        const origin = braces.pop() ?? start;
+        return templateText(index + 1, start, origin);
       } else {
         const char = text.charAt(index);
         if ((code === 0x2b || code === 0x2d) && after === code) {
@@ -229,25 +249,36 @@ function tokens(text: string): () => Token | null {
           return { kind: 'punctuator', text: char + char, start };
         }
         index += 1;
-        if (code === 0x7b) braces.push(false);
+        if (code === 0x7b) braces.push(null);
         else if (code === 0x7d) braces.pop();
         expressionNext = !END_A_VALUE.has(char);
         return { kind: 'punctuator', text: char, start };
       }
     }
   };
+
+  return () => {
+    const token = read();
+    afterDot = token !== null && token.kind === 'punctuator' && token.text === '.';
+    return token;
+  };
 }
 
 /**
  * Reads what a module imports. An import is `import ... from 'name'` or `import 'name'`, and an export from another
- * module is `export ... from 'name'`. A name that is a property, as in `this.import` or `{ import: 1 }`, starts none.
+ * module is `export ... from 'name'`. A name that is a property, as in `this.import` or `{ import: 1 }`, starts none,
+ * and neither does a method named `import`, as `import(rows) { ... }` in a class.
  */
 export function readModule(text: string): ModuleReading {
   const imports: ModuleImport[] = [];
   const unread: { what: 'dynamic' | 'clause'; start: number }[] = [];
   const next = tokens(text);
-  /** What is read: code, the start of an import or an export, its clause, or the name after `from`. */
-  let state: 'code' | 'import' | 'export' | 'clause' | 'from' = 'code';
+  /**
+   * What is read: code, the start of an import or an export, its clause, the name after `from`, or what `import(`
+   * holds, with the depth of its parentheses.
+   */
+  let state: 'code' | 'import' | 'export' | 'clause' | 'from' | 'call' = 'code';
+  let parentheses = 0;
   let clauseOf: 'import' | 'export' = 'import';
   let statement = 0;
   let depth = 0;
@@ -268,14 +299,27 @@ export function readModule(text: string): ModuleReading {
       if (state === 'import') {
         state = 'code';
         if (kind === 'string') add(token);
-        else if (kind === 'punctuator' && value === '(') unread.push({ what: 'dynamic', start: statement });
-        else if (kind === 'name' || (kind === 'punctuator' && (value === '*' || value === '{'))) {
+        else if (kind === 'punctuator' && value === '(') {
+          state = 'call';
+          parentheses = 1;
+        } else if (kind === 'name' || (kind === 'punctuator' && (value === '*' || value === '{'))) {
           state = 'clause';
           depth = value === '{' ? 1 : 0;
           closed = false;
         }
         // `import.meta`, and `import` as the name of a property: no import.
         continue;
+      }
+      if (state === 'call') {
+        if (parentheses > 0) {
+          if (kind === 'punctuator' && value === '(') parentheses += 1;
+          else if (kind === 'punctuator' && value === ')') parentheses -= 1;
+          continue;
+        }
+        // `import(...)` imports a module while the code runs, unless a block follows it: then it declares a method
+        // named `import`. The token is code again.
+        if (!(kind === 'punctuator' && value === '{')) unread.push({ what: 'dynamic', start: statement });
+        state = 'code';
       }
       if (state === 'export') {
         state = 'code';
@@ -333,6 +377,7 @@ export function readModule(text: string): ModuleReading {
     if ((state === 'clause' && !(closed && clauseOf === 'export')) || state === 'from') {
       unread.push({ what: 'clause', start: statement });
     }
+    if (state === 'call') unread.push({ what: 'dynamic', start: statement });
     return { imports, unread, stop: null };
   } catch (thrown) {
     if (!(thrown instanceof Stop)) throw thrown;
