@@ -2163,7 +2163,7 @@ describe('the resolver of Apex', () => {
           "    static String pick(Boolean b) { if (b) return null; return 'Amount__c'; }",
           '    void m(Invoice__c inv, Boolean b, String other) {',
           "        String q = 'SELECT Id FROM Invoice__c';",
-          '        if (b) q = other;',
+          '        if (b) q = inv.Account__r.Name;',
           '        List<SObject> a = Database.query(q);',
           '        String w;',
           "        if (b) w = ' WHERE Amount__c > 0';",
@@ -2475,5 +2475,674 @@ describe('the resolver of Apex', () => {
       )?.details?.['path'];
     expect(of('RELATIONSHIP_GUESSED', 0)).toMatch(/GuessA\.cls$/);
     expect(of('PATH_NOT_FOLLOWED', 0)).toMatch(/GuessB\.cls$/);
+  });
+
+  /** What each member names in a text, and what each warns about: `member line:column ...` (decision record 0091). */
+  const byMember = (analysis: SourceAnalysis): string[] => [
+    ...analysis.components
+      .filter((one) => isApex(one.key))
+      .flatMap((one) =>
+        one.references
+          .filter((reference) => viaOf(reference) === 'text')
+          .map(
+            (reference) =>
+              `${one.key.replace(/^ApexClass:/, '')} ${String(reference.location?.line)}:${String(reference.location?.column)} ${reference.kind} ${String(reference.to)} ${reference.confidence}`,
+          ),
+      ),
+    ...analysis.issues.map((one) => {
+      const { line, column, notFollowed } = one.details ?? {};
+      return `${String(one.componentKey).replace(/^ApexClass:/, '')} ${one.code} ${JSON.stringify(line)}:${JSON.stringify(column)} ${JSON.stringify(notFollowed)}`;
+    }),
+  ];
+
+  it('reads at each call what a method does with a text it is given, and reports it where the call gives the text', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Reader',
+        code(
+          'public class Reader {',
+          '    public static Object read(Invoice__c inv, String field) {',
+          '        return inv.get(field);',
+          '    }',
+          '    public static Object any(SObject record, String field) {',
+          '        return record.get(field);',
+          '    }',
+          '    public static List<SObject> rows(String fields) {',
+          "        return Database.query('SELECT ' + fields + ' FROM Invoice__c');",
+          '    }',
+          '    public static List<SObject> of(String objectName) {',
+          "        return Database.query('SELECT Amount__c FROM ' + objectName);",
+          '    }',
+          '    public static Object twice(Invoice__c inv, String field) {',
+          '        return read(inv, field);',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Caller',
+        code(
+          'public class Caller {',
+          '    void m(Invoice__c inv, String unknown) {',
+          "        Reader.read(inv, 'Amount__c');",
+          "        Reader.any(inv, 'Status__c');",
+          "        Reader.rows('Amount__c, Status__c');",
+          "        Reader.of('Invoice__c');",
+          "        Reader.twice(inv, 'Status__c');",
+          '        Reader.read(inv, unknown);',
+          '        Reader.read(inv, null);',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // The names a call gives are the caller's, where their characters stand.
+      'caller#method:m(invoice__c,string) 3:27 reads CustomField:invoice__c.amount__c probable',
+      'caller#method:m(invoice__c,string) 5:22 reads CustomField:invoice__c.amount__c probable',
+      'caller#method:m(invoice__c,string) 5:33 reads CustomField:invoice__c.status__c probable',
+      // Of an object the call names, what the method writes is the caller's too, and stands at the call.
+      'caller#method:m(invoice__c,string) 6:16 reads CustomField:invoice__c.amount__c probable',
+      'caller#method:m(invoice__c,string) 6:20 reads CustomObject:invoice__c probable',
+      // Also through a method that hands the text on.
+      'caller#method:m(invoice__c,string) 7:28 reads CustomField:invoice__c.status__c probable',
+      // A text the caller does not know is a part not known where it enters: of the object of the record.
+      'caller#method:m(invoice__c,string) 8:26 reads CustomObject:invoice__c possible',
+      // A method keeps the names it writes itself, and says nothing of a text every call gives it.
+      'reader#method:rows(string) 9:59 reads CustomObject:invoice__c probable',
+      // The record is of the object the method declares, which says nothing here.
+      'caller#method:m(invoice__c,string) PATH_NOT_FOLLOWED 4:26 ["Status__c"]',
+    ]);
+  });
+
+  it('keeps the warnings of a method that code outside the snapshot can call, or that no call is known of', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Open',
+        code(
+          'public class Open {',
+          '    @AuraEnabled public static Object lightning(Invoice__c inv, String field) { return inv.get(field); }',
+          '    public static Object alone(Invoice__c inv, String field) { return inv.get(field); }',
+          '    public static Object hidden(Invoice__c inv, String field) { return inv.get(field); }',
+          '    public static Object typed(Invoice__c inv, Object field, String o) { return inv.get((String) field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Job',
+        code(
+          'public class Job implements Schedulable {',
+          '    public void execute(SchedulableContext context) { }',
+          '    public Object run(Invoice__c inv, String field) { return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'World',
+        code(
+          'global class World {',
+          '    public static Object read(Invoice__c inv, String field) { return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'OpenCaller',
+        code(
+          'public class OpenCaller {',
+          '    void m(Invoice__c inv, Handler handler) {',
+          "        Open.lightning(inv, 'Amount__c');",
+          "        Open.hidden(inv, 'Amount__c');",
+          "        handler.hidden(inv, 'Status__c');",
+          "        Open.typed(inv, 'Amount__c', null);",
+          "        new Job().run(inv, 'Status__c');",
+          "        World.read(inv, 'Status__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // A method of Lightning, one no call is known of, one that may be called on a value of no known class, one
+      // that takes the text as an object, one of a class Salesforce runs and one of a global class keep theirs.
+      'job#method:run(invoice__c,string) 3:70 reads CustomObject:invoice__c possible',
+      'open#method:alone(invoice__c,string) 3:79 reads CustomObject:invoice__c possible',
+      'open#method:hidden(invoice__c,string) 4:80 reads CustomObject:invoice__c possible',
+      'open#method:lightning(invoice__c,string) 2:96 reads CustomObject:invoice__c possible',
+      'open#method:typed(invoice__c,object,string) 5:98 reads CustomObject:invoice__c possible',
+      // Each call of the snapshot still reports what it gives, but a text given as an object.
+      'opencaller#method:m(invoice__c,handler) 3:30 reads CustomField:invoice__c.amount__c probable',
+      'opencaller#method:m(invoice__c,handler) 4:27 reads CustomField:invoice__c.amount__c probable',
+      'opencaller#method:m(invoice__c,handler) 7:29 reads CustomField:invoice__c.status__c probable',
+      'opencaller#method:m(invoice__c,handler) 8:26 reads CustomField:invoice__c.status__c probable',
+      'world#method:read(invoice__c,string) 2:78 reads CustomObject:invoice__c possible',
+    ]);
+  });
+
+  it('reads what a constructor, an override and a method that calls itself do with a text, and a class a text names', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Base',
+        code(
+          'public virtual class Base {',
+          '    public Base(Invoice__c inv, String field) { inv.put(field, 1); }',
+          '    public virtual Object read(Invoice__c inv, String field) { return null; }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Child',
+        code(
+          'public class Child extends Base {',
+          "    public Child() { super(null, 'Status__c'); }",
+          '    public override Object read(Invoice__c inv, String field) { return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Again',
+        code(
+          'public class Again {',
+          '    static Object walk(Invoice__c inv, String field, Integer depth) {',
+          "        if (depth > 0) return walk(inv, 'Amount__c', depth - 1);",
+          '        return inv.get(field);',
+          '    }',
+          '    public static Object make(String name) { return Type.forName(name).newInstance(); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Uses',
+        code(
+          'public class Uses {',
+          '    void m(Invoice__c inv, Base base) {',
+          "        new Base(inv, 'Amount__c');",
+          "        base.read(inv, 'Status__c');",
+          "        Again.make('Child');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // A method that calls itself reports what it gives itself, and keeps its own warning: no other call is known.
+      'again#method:walk(invoice__c,string,integer) 3:42 reads CustomField:invoice__c.amount__c probable',
+      'again#method:walk(invoice__c,string,integer) 4:24 reads CustomObject:invoice__c possible',
+      // A constructor that calls the one of the class it extends.
+      'child#ctor:() 2:35 writes CustomField:invoice__c.status__c probable',
+      'uses#method:m(invoice__c,base) 3:24 writes CustomField:invoice__c.amount__c probable',
+      // The override that the value can run reads the text too.
+      'uses#method:m(invoice__c,base) 4:25 reads CustomField:invoice__c.status__c probable',
+      'uses#method:m(invoice__c,base) 5:21 uses-type ApexClass:child probable',
+    ]);
+  });
+
+  it('reads again what a relationship, a token, an object, a search and a query of a text are given', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Sinks',
+        code(
+          'public class Sinks {',
+          '    public static Object rel(Invoice__c inv, String name) { return inv.getSObject(name); }',
+          '    public static Object token(String name) { return Schema.SObjectType.Invoice__c.fields.getMap().get(name); }',
+          '    public static Object type(String name) { return Schema.getGlobalDescribe().get(name); }',
+          "    public static Object found(String obj) { return Search.query('FIND {x} RETURNING ' + obj + '(Amount__c)'); }",
+          "    public static Object what(String field) { return Database.query('SELECT What.' + field + ' FROM Task'); }",
+          '    public static Object items(String name) { return Schema.describeSObjects(new List<String>{ name }); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'SinkCaller',
+        code(
+          'public class SinkCaller {',
+          '    void m(Invoice__c inv) {',
+          "        Sinks.rel(inv, 'Account__r');",
+          "        Sinks.token('Status__c');",
+          "        Sinks.type('Invoice__c');",
+          "        Sinks.found('Invoice__c');",
+          "        Sinks.what('Name');",
+          "        Sinks.items('Invoice__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      'sinkcaller#method:m(invoice__c) 3:25 reads CustomField:invoice__c.account__c probable',
+      'sinkcaller#method:m(invoice__c) 4:22 references CustomField:invoice__c.status__c probable',
+      'sinkcaller#method:m(invoice__c) 5:21 references CustomObject:invoice__c probable',
+      // The object of the search is the caller's, so the field the method names after it is too, at the call.
+      'sinkcaller#method:m(invoice__c) 6:15 reads CustomField:invoice__c.amount__c probable',
+      'sinkcaller#method:m(invoice__c) 6:22 reads CustomObject:invoice__c probable',
+      'sinkcaller#method:m(invoice__c) 8:22 references CustomObject:invoice__c probable',
+      'sinks#method:what(string) 6:77 reads CustomField:task.whatid probable',
+      'sinks#method:what(string) 6:101 reads CustomObject:task probable',
+      // A name the caller gives after a relationship of the method that leads to no known object.
+      'sinkcaller#method:m(invoice__c) PATH_NOT_FOLLOWED 7:15 ["Name"]',
+    ]);
+  });
+
+  it('leaves to a method what it names and warns about itself, and gives the caller what its text makes of it', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Own',
+        code(
+          'public class Own {',
+          "    public static Object pre(Invoice__c inv, String rest) { return inv.get('Status' + rest); }",
+          "    public static Object either(Invoice__c inv, String field, Boolean flag) { return inv.get(flag ? 'Amount__c' : field); }",
+          '    public static Object of(Task t, String field) { return t.What.get(field); }',
+          "    public static Object guessed(String cond) { return Database.query('SELECT What.Name FROM Task WHERE ' + cond); }",
+          "    public static Object bound(String obj, String term) { return Database.query('SELECT Id FROM ' + obj + ' WHERE Name = :term'); }",
+          "    public static Object rest(String clause) { return Database.query('SELECT Id FROM Invoice__c ' + clause); }",
+          '}',
+        ),
+      );
+      source.apexClass(
+        'OwnCaller',
+        code(
+          'public class OwnCaller {',
+          '    static String term;',
+          '    void m(Invoice__c inv, Task t) {',
+          "        Own.pre(inv, '__c');",
+          "        Own.either(inv, 'Status__c', true);",
+          "        Own.of(t, 'Name');",
+          "        Own.guessed('Subject = null');",
+          "        Own.bound('Invoice__c', 'x');",
+          "        Own.rest('WHERE');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      'own#method:either(invoice__c,string,boolean) 3:102 reads CustomField:invoice__c.amount__c probable',
+      'own#method:guessed(string) 5:79 reads CustomField:task.whatid probable',
+      'own#method:guessed(string) 5:94 reads CustomObject:task probable',
+      'own#method:rest(string) 7:86 reads CustomObject:invoice__c probable',
+      // A name that the method starts and the call ends is the caller's, at the call.
+      'owncaller#method:m(invoice__c,task) 4:13 reads CustomField:invoice__c.status__c probable',
+      // Of the texts a value can be, the caller reports the one it gives.
+      'owncaller#method:m(invoice__c,task) 5:26 reads CustomField:invoice__c.status__c probable',
+      'owncaller#method:m(invoice__c,task) 7:22 reads CustomField:task.subject probable',
+      // Of an object the caller names, the field the method names is the caller's too. What the query binds is code
+      // of the method: the caller reads none of it.
+      'owncaller#method:m(invoice__c,task) 8:13 reads CustomField:invoice__c.name probable',
+      'owncaller#method:m(invoice__c,task) 8:20 reads CustomObject:invoice__c probable',
+      // A text the call makes into one that is no query: the object after FROM, with what is not known of it.
+      'owncaller#method:m(invoice__c,task) 9:13 reads CustomObject:invoice__c possible',
+      // The method keeps its own warning, which the caller does not repeat.
+      'own#method:guessed(string) PATH_NOT_FOLLOWED 5:79 ["Name"]',
+      // The relationship of the method stands at the call, with the name the caller gives after it.
+      'owncaller#method:m(invoice__c,task) PATH_NOT_FOLLOWED 6:13 ["Name"]',
+    ]);
+  });
+
+  it('keeps what a method does not know itself, also where a parameter stands at the same place', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Dflt',
+        code(
+          'public class Dflt {',
+          '    public static Object read(Invoice__c inv, String field) {',
+          '        if (field == null) field = inv.Status__c;',
+          '        return inv.get(field);',
+          '    }',
+          '    public static Object any(SObject rec, String field) {',
+          '        String f = field;',
+          "        if (f == null) f = String.valueOf(rec.get('Name'));",
+          '        return rec.get(f);',
+          '    }',
+          '    public static Object suffix(Invoice__c inv, String field) {',
+          '        return inv.get(field + inv.Status__c);',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'DfltCaller',
+        code(
+          'public class DfltCaller {',
+          '    void m(Invoice__c inv, SObject rec) {',
+          "        Dflt.read(inv, 'Amount__c');",
+          "        Dflt.any(rec, 'Amount__c');",
+          "        Dflt.suffix(inv, 'Amount');",
+          "        DfltMid.pass(inv, 'Amount');",
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'DfltMid',
+        code(
+          'public class DfltMid {',
+          '    public static Object pass(Invoice__c inv, String g) { return Dflt.suffix(inv, g); }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // On one way the method knows nothing of the field, whatever a call gives: it says so itself.
+      'dflt#method:read(invoice__c,string) 4:24 reads CustomObject:invoice__c possible',
+      // A name that holds a parameter and a part of the method that is not known: the method says it, the call not.
+      'dflt#method:suffix(invoice__c,string) 12:24 reads CustomObject:invoice__c possible',
+      'dfltcaller#method:m(invoice__c,sobject) 3:25 reads CustomField:invoice__c.amount__c probable',
+      'dflt#method:any(sobject,string) PATH_NOT_FOLLOWED 8:52 ["Name"]',
+      'dflt#method:any(sobject,string) PATH_NOT_FOLLOWED 9:24 []',
+      'dfltcaller#method:m(invoice__c,sobject) PATH_NOT_FOLLOWED 4:24 ["Amount__c"]',
+    ]);
+  });
+
+  it('reads a method that calls itself, or that methods call each other, without what they do again', () => {
+    const write =
+      (first: string, second: string) =>
+      (source: ApexSource): void => {
+        source.apexClass(
+          'Rec',
+          code(
+            'public class Rec {',
+            '    public static Object read(Invoice__c inv, String f) {',
+            "        if (!f.endsWith('__c')) return read(inv, f + '__c');",
+            '        return inv.get(f);',
+            '    }',
+            '}',
+          ),
+        );
+        source.apexClass(
+          'Mut',
+          code(
+            'public class Mut {',
+            '    public static Object a(Invoice__c inv, String f, Boolean again) {',
+            '        if (again) return b(inv, f);',
+            '        return inv.get(f);',
+            '    }',
+            '    public static Object b(Invoice__c inv, String f) { return a(inv, f, false); }',
+            '}',
+          ),
+        );
+        // Which of the two methods is worked out first changes nothing.
+        source.apexClass(
+          first,
+          code(`public class ${first} {`, "    void m(Invoice__c inv) { Mut.a(inv, 'Amount__c', true); }", '}'),
+        );
+        source.apexClass(
+          second,
+          code(`public class ${second} {`, "    void m(Invoice__c inv) { Mut.b(inv, 'Status__c'); }", '}'),
+        );
+        source.apexClass(
+          'RecCaller',
+          code('public class RecCaller {', "    void m(Invoice__c inv) { Rec.read(inv, 'Amount'); }", '}'),
+        );
+        source.apexClass(
+          'Tri',
+          code(
+            'public class Tri {',
+            '    public static Object a(Invoice__c inv, String f, Integer n) {',
+            '        if (n > 0) return b(inv, f, n);',
+            '        return inv.get(f);',
+            '    }',
+            '    public static Object b(Invoice__c inv, String f, Integer n) { inv.get(f); return c(inv, f, n); }',
+            '    public static Object c(Invoice__c inv, String f, Integer n) { return a(inv, f, n - 1); }',
+            '}',
+          ),
+        );
+        source.apexClass(
+          'TriCaller',
+          code('public class TriCaller {', "    void m(Invoice__c inv) { Tri.a(inv, 'Amount__c', 1); }", '}'),
+        );
+      };
+    const one = byMember(analysed(write('ACaller', 'BCaller')));
+    const other = byMember(analysed(write('BCaller', 'ACaller')));
+    expect(one).toEqual([
+      // The call of a, as a reads the text without b.
+      'acaller#method:m(invoice__c) 2:42 reads CustomField:invoice__c.amount__c probable',
+      // a and b call each other: each says what it does not know, and b hands its text to a, which the call of b
+      // does not follow.
+      'mut#method:a(invoice__c,string,boolean) 4:24 reads CustomObject:invoice__c possible',
+      'mut#method:b(invoice__c,string) 6:70 reads CustomObject:invoice__c possible',
+      // A method that calls itself reads again what it does at its own call, and says what it does not know there.
+      'rec#method:read(invoice__c,string) 3:50 reads CustomObject:invoice__c possible',
+      'rec#method:read(invoice__c,string) 4:24 reads CustomObject:invoice__c possible',
+      'reccaller#method:m(invoice__c) 2:45 reads CustomField:invoice__c.amount probable',
+      // Three methods in a ring are one group, whichever of them closes it.
+      'tri#method:a(invoice__c,string,integer) 3:34 reads CustomObject:invoice__c possible',
+      'tri#method:a(invoice__c,string,integer) 4:24 reads CustomObject:invoice__c possible',
+      'tri#method:b(invoice__c,string,integer) 6:75 reads CustomObject:invoice__c possible',
+      'tri#method:c(invoice__c,string,integer) 7:81 reads CustomObject:invoice__c possible',
+      'tricaller#method:m(invoice__c) 2:42 reads CustomField:invoice__c.amount__c probable',
+    ]);
+    expect(
+      other
+        .map((line) =>
+          line
+            .replace(/^acaller/, 'X')
+            .replace(/^bcaller/, 'acaller')
+            .replace(/^X/, 'bcaller'),
+        )
+        .sort(),
+    ).toEqual([...one].sort());
+  });
+
+  it('keeps the warnings of a method that code outside the snapshot can reach in every way the record names', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'More',
+        code(
+          'public class More {',
+          '    @RemoteAction public static Object remote(Invoice__c inv, String field) { return inv.get(field); }',
+          '    @HttpPost public static Object posted(Invoice__c inv, String field) { return inv.get(field); }',
+          '    @NamespaceAccessible public static Object shared(Invoice__c inv, String field) { return inv.get(field); }',
+          '    @InvocableMethod public static Object flow(Invoice__c inv, String field) { return inv.get(field); }',
+          '    webservice static Object soap(Invoice__c inv, String field) { return inv.get(field); }',
+          '    global static Object everywhere(Invoice__c inv, String field) { return inv.get(field); }',
+          '    public void setField(String value) { Invoice__c inv; inv.get(value); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Outer',
+        code(
+          'global class Outer {',
+          '    public class Inner {',
+          '        public Object read(Invoice__c inv, String field) { return inv.get(field); }',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'JobBase',
+        code(
+          'public virtual class JobBase implements Schedulable {',
+          '    public void execute(SchedulableContext c) { }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'JobChild',
+        code(
+          'public class JobChild extends JobBase {',
+          '    public Object run(Invoice__c inv, String field) { return inv.get(field); }',
+          '    Object hidden(Invoice__c inv, String field) { return inv.get(field); }',
+          "    public Object go(Invoice__c inv) { return hidden(inv, 'Status__c'); }",
+          '    public static Object stat(Invoice__c inv, String field) { return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'SvcBase',
+        code(
+          'public virtual class SvcBase {',
+          '    public virtual Object call(String action, Map<String, Object> args) {',
+          '        return Schema.getGlobalDescribe().get(action);',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass('Svc', code('public class Svc extends SvcBase implements Callable {', '}'));
+      source.apexClass(
+        'Plugin',
+        code('global interface Plugin {', '    Object run(Invoice__c inv, String field);', '}'),
+      );
+      source.apexClass(
+        'Impl',
+        code(
+          'public class Impl implements Plugin {',
+          '    public Object run(Invoice__c inv, String field) { return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'MoreCaller',
+        code(
+          'public class MoreCaller {',
+          '    void m(Invoice__c inv, SvcBase base, Plugin plugin) {',
+          "        More.remote(inv, 'Amount__c');",
+          "        More.posted(inv, 'Amount__c');",
+          "        More.shared(inv, 'Amount__c');",
+          "        More.flow(inv, 'Amount__c');",
+          "        More.soap(inv, 'Amount__c');",
+          "        More.everywhere(inv, 'Amount__c');",
+          "        new More().setField('Amount__c');",
+          "        new Outer.Inner().read(inv, 'Amount__c');",
+          "        new JobChild().run(inv, 'Amount__c');",
+          "        base.call('Invoice__c', null);",
+          "        plugin.run(inv, 'Amount__c');",
+          '    }',
+          '    void n(Invoice__c inv, SvcBase2 base) {',
+          "        JobChild.stat(inv, 'Amount__c');",
+          "        base.call('Invoice__c', null);",
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'SvcBase2',
+        code(
+          'public virtual class SvcBase2 {',
+          '    public virtual Object call(String action, Map<String, Object> args) {',
+          '        return Schema.getGlobalDescribe().get(action);',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Svc2',
+        code(
+          'public class Svc2 extends SvcBase2 implements Callable {',
+          '    public override Object call(String action, Map<String, Object> args) { return null; }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // A method of a class that implements a global interface, of a class that extends one Salesforce runs, a
+      // method of each annotation, of `webservice` and `global`, a public setter, a method of an inner class of a
+      // global class and a method that a class offers to code outside, which extends its class and implements
+      // Callable: each keeps what it says.
+      'impl#method:run(invoice__c,string) 2:70 reads CustomObject:invoice__c possible',
+      // A private method only its class calls.
+      'jobchild#method:go(invoice__c) 4:60 reads CustomField:invoice__c.status__c probable',
+      'jobchild#method:run(invoice__c,string) 2:70 reads CustomObject:invoice__c possible',
+      'more#method:everywhere(invoice__c,string) 7:84 reads CustomObject:invoice__c possible',
+      'more#method:flow(invoice__c,string) 5:95 reads CustomObject:invoice__c possible',
+      'more#method:posted(invoice__c,string) 3:90 reads CustomObject:invoice__c possible',
+      'more#method:remote(invoice__c,string) 2:94 reads CustomObject:invoice__c possible',
+      'more#method:setfield(string) 8:66 reads CustomObject:invoice__c possible',
+      'more#method:shared(invoice__c,string) 4:101 reads CustomObject:invoice__c possible',
+      'more#method:soap(invoice__c,string) 6:82 reads CustomObject:invoice__c possible',
+      // Each call of the snapshot still reports what it gives, also through an interface.
+      'morecaller#method:m(invoice__c,svcbase,plugin) 3:27 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 4:27 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 5:27 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 6:25 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 7:25 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 8:31 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 9:30 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 10:38 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 11:34 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 12:20 references CustomObject:invoice__c probable',
+      'morecaller#method:m(invoice__c,svcbase,plugin) 13:26 reads CustomField:invoice__c.amount__c probable',
+      // A static method of a class that Salesforce runs, and a method that the class which offers it declares again:
+      // only the snapshot calls them.
+      'morecaller#method:n(invoice__c,svcbase2) 16:29 reads CustomField:invoice__c.amount__c probable',
+      'morecaller#method:n(invoice__c,svcbase2) 17:20 references CustomObject:invoice__c probable',
+      'outer#inner:inner/method:read(invoice__c,string) 3:75 reads CustomObject:invoice__c possible',
+      'svcbase#method:call(string,map<string,object>) PATH_NOT_FOLLOWED 3:47 []',
+    ]);
+  });
+
+  it('says nothing of a parameter that every call gives, also through this(...), a bind and a call of another number', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Ctor',
+        code(
+          'public class Ctor {',
+          "    public Ctor(Invoice__c inv) { this(inv, 'Amount__c'); }",
+          '    public Ctor(Invoice__c inv, String field) { inv.put(field, 1); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Bound',
+        code(
+          'public class Bound {',
+          '    static Integer depth(Invoice__c inv, String field) { inv.get(field); return 1; }',
+          "    void m(Invoice__c inv) { List<Invoice__c> rows = [SELECT Id FROM Invoice__c LIMIT :depth(inv, 'Status__c')]; }",
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Other',
+        code(
+          'public class Other {',
+          '    public static Object shown(Invoice__c inv, String field) { return inv.get(field); }',
+          '    public static Object make(String space, String name) { return Type.forName(space, name).newInstance(); }',
+          '    public static Object twice(Invoice__c inv, String field) { inv.get(field); return inv.get(field); }',
+          '}',
+        ),
+      );
+      source.apexClass('Child2', code('public class Child2 {', '}'));
+      source.apexClass(
+        'OtherCaller',
+        code(
+          'public class OtherCaller {',
+          '    void m(Invoice__c inv, Handler handler) {',
+          '        new Ctor(inv);',
+          "        Other.shown(inv, 'Amount__c');",
+          '        handler.shown(inv);',
+          "        Other.make('', 'Child2');",
+          "        Other.twice(inv, 'Status__c');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // A method called only in a bind of a query, a constructor called only through this(...), a method of which
+      // a call of another number of arguments is made on a value of no known class, and a namespace and a class
+      // that a call gives: each method says nothing, and the calls say what they give.
+      'bound#method:m(invoice__c) 3:100 reads CustomField:invoice__c.status__c probable',
+      'ctor#ctor:(invoice__c) 2:46 writes CustomField:invoice__c.amount__c probable',
+      'othercaller#method:m(invoice__c,handler) 4:27 reads CustomField:invoice__c.amount__c probable',
+      'othercaller#method:m(invoice__c,handler) 6:25 uses-type ApexClass:child2 probable',
+      // Two uses of the method that are one at the call.
+      'othercaller#method:m(invoice__c,handler) 7:27 reads CustomField:invoice__c.status__c probable',
+    ]);
+  });
+
+  it('keeps each use of a text once, so that a chain of calls is read in time', () => {
+    const lines = ['public class Chain {', '    static Object c0(Invoice__c inv, String f) { return inv.get(f); }'];
+    for (let depth = 1; depth <= 24; depth += 1) {
+      lines.push(
+        `    static void c${String(depth)}(Invoice__c inv, String f) { c${String(depth - 1)}(inv, f); c${String(depth - 1)}(inv, f); }`,
+      );
+    }
+    lines.push("    void m(Invoice__c inv) { c24(inv, 'Amount__c'); }", '}');
+    const analysis = analysed((source) => {
+      source.apexClass('Chain', code(...lines));
+    });
+    expect(byMember(analysis)).toEqual([
+      // 24 methods, each of which calls the next twice: what the first does is read once at the call.
+      'chain#method:m(invoice__c) 27:40 reads CustomField:invoice__c.amount__c probable',
+    ]);
   });
 });

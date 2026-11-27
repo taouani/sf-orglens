@@ -175,6 +175,20 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * Nebula Logger that the paragraph of decision record 0088 names stands in a plugin, outside the folder this test
  * reads. These counts were not checked by hand beyond 30 references of NPSP and 20 of EDA drawn at random: the fixture
  * project and its key hold each case.
+ *
+ * Since 27 November 2026 the resolver also reads a text that a method of the snapshot is handed as a parameter
+ * (decision record 0091): at each call, what the method does with the text is done again with the text of the
+ * argument, and a name that the text of the call makes stands at the call. Apex Recipes has 11 more `text`, Nebula
+ * Logger 4, NPSP 225, PMM 16 and EDA 41. Where a call names the field, the `possible` reference to the object that the
+ * method gave went (Apex Recipes 1, Nebula Logger 1, NPSP 94, EDA 6); some came at calls that hand over a text known
+ * only in part (Nebula Logger 2, NPSP 46, EDA 21). A method that only code of the snapshot calls, and only from calls
+ * the resolver can tell apart, no longer warns about a text it is handed: the warning stands where a text that is not
+ * known enters, at each call that hands it over. So warnings went and came: Apex Recipes 12 went and 11 came, Nebula
+ * Logger 2 and 11, NPSP 102 and 107, PMM 6 and 44, V4S 21 and 25, EDA 60 and 79. Many of those that came are at a call
+ * that hands over the name of a field with a record of which nothing says the object (Apex Recipes 3, NPSP 45, PMM 6,
+ * V4S 24, EDA 61), and 24 of PMM at a name of an object that the code takes from its token or its describe, which is
+ * not read. V4S, Outbound Funds and Coral Cloud have as many references as before. A script compared the
+ * references and warnings one by one in every codebase.
  */
 interface Expected {
   readonly components: number;
@@ -201,12 +215,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 11,
       soql: 414,
       sosl: 16,
-      text: 36,
+      text: 47,
       token: 20,
       type: 1011,
       value: 12,
     },
-    issues: { PATH_NOT_FOLLOWED: 54 },
+    issues: { PATH_NOT_FOLLOWED: 53 },
   },
   'nebula-logger': {
     components: 3979,
@@ -229,13 +243,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 55,
       soql: 1417,
       summary: 16,
-      text: 84,
+      text: 88,
       token: 1006,
       type: 4022,
       value: 6,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 114 },
+    issues: { PATH_NOT_FOLLOWED: 123 },
   },
   npsp: {
     components: 29_761,
@@ -263,13 +277,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       sosl: 2,
       summary: 4,
       template: 2,
-      text: 1462,
+      text: 1687,
       token: 3811,
       type: 26_036,
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 1398, RELATIONSHIP_GUESSED: 290 },
+    issues: { PATH_NOT_FOLLOWED: 1403, RELATIONSHIP_GUESSED: 290 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -295,11 +309,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'record-of': 27,
       soql: 752,
       sosl: 4,
+      text: 16,
       token: 873,
       type: 1816,
       value: 25,
     },
-    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 43 },
+    issues: { FORMULA_NOT_READ: 1, NAME_NOT_READ: 4, PATH_NOT_FOLLOWED: 81 },
   },
   // Added on 25 November 2026, with the codebases.
   'volunteers-for-salesforce': {
@@ -330,7 +345,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       token: 163,
       type: 973,
     },
-    issues: { PATH_NOT_FOLLOWED: 64 },
+    issues: { PATH_NOT_FOLLOWED: 68 },
   },
   'outbound-funds': {
     components: 841,
@@ -405,11 +420,11 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       new: 4081,
       'record-of': 2,
       soql: 5678,
-      text: 499,
+      text: 540,
       token: 508,
       type: 12_910,
     },
-    issues: { PATH_NOT_FOLLOWED: 168 },
+    issues: { PATH_NOT_FOLLOWED: 187 },
   },
 };
 
