@@ -63,6 +63,54 @@ export class Source {
     return path;
   }
 
+  /**
+   * A record of a custom metadata type, `type` without its suffix, with the value of each field as a text, as
+   * Salesforce writes a value of a field of the type `Text`.
+   */
+  metadataRecord(type: string, name: string, values: Readonly<Record<string, string>>): string {
+    const lines = [
+      HEAD,
+      `<CustomMetadata xmlns="${XMLNS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`,
+      `    <label>${name}</label>`,
+      '    <protected>false</protected>',
+      ...Object.entries(values).flatMap(([field, value]) => [
+        '    <values>',
+        `        <field>${field}</field>`,
+        `        <value xsi:type="xsd:string">${value}</value>`,
+        '    </values>',
+      ]),
+      '</CustomMetadata>',
+      '',
+    ];
+    const path = this.file(`customMetadata/${type}.${name}.md-meta.xml`, lines.join('\n'));
+    this.listed.push({ type: 'CustomMetadata', fullName: `${type}.${name}`, files: [path] });
+    return path;
+  }
+
+  /** A field set of `object` that holds the fields `shown` and offers the fields `offered`. */
+  fieldSet(object: string, name: string, shown: readonly string[], offered: readonly string[] = []): string {
+    const field = (group: string, path: string): string[] => [
+      `<${group}>`,
+      `    <field>${path}</field>`,
+      '    <isFieldManaged>false</isFieldManaged>',
+      '    <isRequired>false</isRequired>',
+      `</${group}>`,
+    ];
+    const path = this.file(
+      `objects/${object}/fieldSets/${name}.fieldSet-meta.xml`,
+      xml(
+        'FieldSet',
+        `<fullName>${name}</fullName>`,
+        ...offered.flatMap((one) => field('availableFields', one)),
+        '<description>A field set of a test.</description>',
+        ...shown.flatMap((one) => field('displayedFields', one)),
+        `<label>${name}</label>`,
+      ),
+    );
+    this.listed.push({ type: 'FieldSet', fullName: `${object}.${name}`, files: [path] });
+    return path;
+  }
+
   flow(name: string, ...lines: string[]): string {
     const path = this.file(`flows/${name}.flow-meta.xml`, xml('Flow', ...lines));
     this.listed.push({ type: 'Flow', fullName: name, files: [path] });

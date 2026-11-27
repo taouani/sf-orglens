@@ -170,6 +170,15 @@ const LISTED_FIELDS: ReadonlySet<string> = new Set(
   [...STANDARD_CHILD_RELATIONSHIPS.values()].map(({ object, field }) => `${foldName(object)}\n${foldName(field)}`),
 );
 
+/** The types of a field whose value is a text, by their folded names. */
+const TEXT_TYPES: ReadonlySet<string> = new Set(['text', 'textarea', 'longtextarea']);
+
+/**
+ * Whether the file of a field says that its value is a text: of the type `Text`, `TextArea` or `LongTextArea`. Only
+ * such a value of a record of a custom metadata type can hold a name (decision records 0065 and 0092).
+ */
+export const holdsText = (facts: FieldFacts | undefined): boolean => TEXT_TYPES.has(foldName(facts?.type ?? ''));
+
 /**
  * Whether the short lists of this file name the field `field` of the standard object `object`, which every org has.
  * Only the lookup fields behind its child relationships are named there (decision record 0087).

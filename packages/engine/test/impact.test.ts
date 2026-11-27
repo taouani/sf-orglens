@@ -15,7 +15,7 @@ import { CONFIDENCE_TIERS, type ConfidenceTier } from '../src/core/references.ts
 import { engineVersion } from '../src/core/version.ts';
 import { openStore, type Store } from '../src/store/open.ts';
 import { addCoverage, addIssue, ensureSource, insertSnapshot, readCoverage } from '../src/store/snapshots.ts';
-import { FIXTURES_DIR, loadAnswerKey, ofMetadata, tierInRepository, type KeyReference } from './helpers/answer-key.ts';
+import { FIXTURES_DIR, loadAnswerKey, tierInRepository, type KeyReference } from './helpers/answer-key.ts';
 import { chainOf } from './helpers/impact-chain.ts';
 import { DRIVERS, tempDirs } from './helpers/store.ts';
 
@@ -154,9 +154,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // template, of the report type and of the quick action. An entry of Phase 3 in a file of flows is not. Of
       // classes and triggers, the declarations and the types their members use (decision record 0084), the fields,
       // variables, tokens and DML of their code (decision record 0087), their queries and searches (decision record
-      // 0088), their calls (decision record 0089) and the names in their texts (decision record 0090), with the tier
-      // a repository gives. Of the names in texts, those that metadata holds are not read yet, and of what the key
-      // calls a stretch, the three that the analysis finds count (`extraction-apex-resolver.test.ts`).
+      // 0088), their calls (decision record 0089) and the names in their texts (decision records 0090 and 0092),
+      // with the tier a repository gives. Of what the key calls a stretch, the three that the analysis finds count
+      // (`extraction-apex-resolver.test.ts`).
       const stretchFound = new Set([
         'ApexClass:dynamicaccess#method:statusdescribe() CustomField:invoice__c.status__c 45',
         'ApexClass:invoicequeries#method:matching(string,string) CustomObject:invoice__c 20',
@@ -164,7 +164,6 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       const ofText = (reference: KeyReference): boolean =>
         reference.via === 'text' &&
-        !ofMetadata(reference) &&
         (!reference.stretch || stretchFound.has(`${reference.from} ${reference.to} ${String(reference.line)}`));
       const ofApexSoFar = (reference: KeyReference): boolean =>
         /\.(?:cls|trigger)$/.test(reference.file) &&
@@ -273,12 +272,12 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The numbers say that the loop asked what it was meant to ask. They move with the fixture. The classes and
       // triggers, the members the key names and the inner classes they are in added 109 and 101, what their code
       // reads, writes and names 29 and 198, what their queries and searches read 6 and 90, their calls 12 and 177,
-      // and the names in their texts 5 and 51.
+      // the names in their texts 5 and 51, and the names that a record of custom metadata and a field set hold 0 and
+      // 18.
       expect(asked.size).toBe(342);
-      expect(results).toBe(1288);
+      expect(results).toBe(1306);
 
-      // The fields the key lists as referred to by nothing have an empty answer. What the code of Apex reads of the
-      // names that records of custom metadata and field sets hold is not read yet, so other fields can have one too.
+      // The fields the key lists as referred to by nothing have an empty answer.
       for (const component of answers.unreferenced) {
         expect((await workspace.impact('fixture', component)).results).toEqual([]);
       }
@@ -570,12 +569,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // 8 fields and validation rules, 10 elements of flows and the 4 flows they are of, an element that calls one
       // of those flows, 2 workflow rules and an outbound message, a field set, 2 records of custom metadata, the
       // email template with the alert that sends it and the element of a flow that starts the alert, the report type
-      // and the quick action. And 27 members of classes: 20 that read, write or name the field, among them a
-      // constant that holds its token and 9 that query it, 2 of them in a text, one that reads the formula field
-      // `Total__c`, one that queries the formula field `Summary__c`, one that queries the formula field
-      // `Late_Fee__c` in a text and 4 that read or query `Grand_Total__c`. And 5 members that call one of those, and
-      // a trigger that calls one of them.
-      expect(report.results).toHaveLength(67);
+      // and the quick action. And 29 members of classes: 21 that read, write or name the field, among them a
+      // constant that holds its token, 9 that query it, 2 of them in a text, and one that reads the field set that
+      // holds it, one that reads the formula field `Total__c`, one that queries the formula field `Summary__c`, 2 that
+      // query the formula field `Late_Fee__c` in a text, one of them where a record of custom metadata holds its
+      // name, and 4 that read or query `Grand_Total__c`. And 5 members that call one of those, and a trigger that
+      // calls one of them.
+      expect(report.results).toHaveLength(69);
       // The error names no type, so nothing says that what is missing is of a type the answer does not cover.
       expect(report).toMatchObject({ complete: false, mayMiss: true, notCovered: { partial: [], readErrors: 1 } });
     });
@@ -592,7 +592,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // The field that could not be read, and the one that is reached through it, are not in the answer, and neither
       // are the 5 methods that read only those fields, and the 3 that reach the field only through calls of them.
       expect(report.results.map((result) => result.key)).not.toContain('CustomField:invoice__c.total__c');
-      expect(report.results).toHaveLength(57);
+      expect(report.results).toHaveLength(59);
       expect(report).toMatchObject({
         complete: false,
         mayMiss: true,
@@ -934,8 +934,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       await workspace.snapshot('fixture');
       const latest = await workspace.impact('fixture', AMOUNT);
       const first = await workspace.impact('fixture', AMOUNT, { snapshot: 1 });
-      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 64]);
-      expect([first.snapshot.id, first.results.length]).toEqual([1, 67]);
+      expect([latest.snapshot.id, latest.results.length]).toEqual([2, 65]);
+      expect([first.snapshot.id, first.results.length]).toEqual([1, 69]);
       // The field is known to the first snapshot only.
       expect((await workspace.impact('fixture', 'Invoice__c.Late_Fee__c', { snapshot: 1 })).component.key).toBe(
         'CustomField:invoice__c.late_fee__c',
@@ -1066,7 +1066,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // It is the latest snapshot of the source, and the one that is named.
       expect(await failure(() => workspace.impact('fixture', AMOUNT))).toEqual(expected);
       expect(await failure(() => workspace.impact('fixture', AMOUNT, { snapshot: old }))).toEqual(expected);
-      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(67);
+      expect((await workspace.impact('fixture', AMOUNT, { snapshot: 1 })).results).toHaveLength(69);
     });
 
     it('refuses a source without a snapshot, and a snapshot that has not ended or was given up', async () => {

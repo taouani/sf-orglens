@@ -627,7 +627,8 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // account names the field `AccountId` of the contact behind its child relationship `Contacts`. The code of Apex
       // names them 20 times, 9 of them in queries and a search. The org checks them, so they keep the tier of their
       // syntax there, and in the folder they are `probable` (decision record 0087). The contact is not described:
-      // where Apex names its field `AccountId` itself, it is `probable` in both.
+      // where Apex names its field `AccountId` itself, it is `probable` in both. A name in a text is `probable` in
+      // both, as the field `Name` of the invoice that the field set holds (decision record 0092).
       const DESCRIBED = new Set([
         'CustomField:account.name',
         'CustomField:invoice__c.createddate',
@@ -637,19 +638,20 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const checked = (one: StoredReference): StoredReference =>
         one.origin === 'parser:apex' &&
         one.confidence === 'probable' &&
+        one.attrs?.['via'] !== 'text' &&
         (DESCRIBED.has(String(one.to)) || (one.to === 'CustomField:contact.accountid' && one.raw === 'Contacts'))
           ? { ...one, confidence: 'confirmed' }
           : one;
       expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(20);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(checked).map(withoutPlace).sort());
-      expect(org.references).toHaveLength(845);
-      // The classes and triggers among them: 30 with 138 members, and 511 references of them: 510 the answer key
-      // holds, three of them a stretch, and one to the object of a query whose field a record of custom metadata
-      // names, which is not read yet (`extraction-apex-resolver.test.ts`). Six are tests, and the store keeps the mark: two test classes and their four methods.
+      expect(org.references).toHaveLength(851);
+      // The classes and triggers among them: 30 with 138 members, and 517 references of them, which the answer key
+      // holds, three of them a stretch (`extraction-apex-resolver.test.ts`). Six are tests, and the store keeps the
+      // mark: two test classes and their four methods.
       const ofApex = (one: { key?: string; from?: string }): boolean =>
         /^Apex(?:Class|Trigger):/.test(one.key ?? one.from ?? '');
       expect(org.components.filter(ofApex)).toHaveLength(168);
-      expect(org.references.filter(ofApex)).toHaveLength(511);
+      expect(org.references.filter(ofApex)).toHaveLength(517);
       const tests = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.attrs?.['test'] === true).map((one) => one.key);
       expect(tests(org.components)).toEqual([
@@ -708,15 +710,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
       // Of Apex, 136 references of declarations and types, 289 of fields, tokens, DML, queries and searches, 39 of
-      // calls and 47 of names in texts. The 8 places that the key calls unknown are not followed: a write by DML of a
+      // calls and 53 of names in texts. The 8 places that the key calls unknown are not followed: a write by DML of a
       // list of `SObject`, and texts the code does not know.
-      const apex = { components: 168, failedFiles: 0, references: 511, unresolved: 0, pathsNotFollowed: 8 };
+      const apex = { components: 168, failedFiles: 0, references: 517, unresolved: 0, pathsNotFollowed: 8 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 352,
-        references: 845,
+        references: 851,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
@@ -727,7 +729,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 345,
-        references: 845,
+        references: 851,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },

@@ -12,10 +12,13 @@
  * `external` and `probable`, as in a repository, also of an object the org did not describe: the short lists say
  * only that such a name is a field and not a child relationship. A name that an object the org described lacks, and
  * that no file defines, is `unresolved`: the org does not know it, or the user who took the snapshot cannot see it.
+ *
+ * The schema also holds what records of custom metadata types and field sets of the snapshot say (decision record
+ * 0092): the texts of each record, and the fields of each field set, which the code can read as names.
  */
 import { buildKey, foldName } from '../core/keys.ts';
 import type { ObjectDescription } from '../sources/describe.ts';
-import { isListedField, standardLookupField, type ObjectModel, type Target } from './model.ts';
+import { holdsText, isListedField, standardLookupField, type ObjectModel, type Target } from './model.ts';
 
 /** A name as the check found it. */
 export interface Checked {
@@ -43,6 +46,33 @@ interface ChildRelationship {
   readonly object: string;
 }
 
+/** A record of a custom metadata type that a file of the snapshot holds. */
+export interface MetadataRecord {
+  /** Its name without its type: `Invoice_Late_Fee` of `Billing_Rule.Invoice_Late_Fee`. */
+  readonly name: string;
+  /** The value of each field it gives one, by the folded name of the field. */
+  readonly values: ReadonlyMap<string, string>;
+}
+
+/** What records of custom metadata types and field sets hold, by the files of the snapshot. */
+export interface HeldNames {
+  /** The records of each custom metadata type, by the folded name of the type with its suffix. */
+  readonly records: ReadonlyMap<string, readonly MetadataRecord[]>;
+  /**
+   * The path of each field a field set holds, as its file writes it, by the folded name of the field set after the
+   * name of its object: `invoice__c.invoice_summary`.
+   */
+  readonly fieldSets: ReadonlyMap<string, readonly string[]>;
+}
+
+/** The texts the field of records of a custom metadata type holds, where the snapshot says something of them. */
+interface HeldTexts {
+  /** Each text once, in the order of the records. */
+  readonly texts: readonly string[];
+  /** A record that can be read is not in the snapshot, or no record that can be read gives the field a value. */
+  readonly unknown: boolean;
+}
+
 export interface ApexSchema {
   /** Whether a name is that of an object (`ObjectModel.isObject`), or of one the org described. */
   isObject(name: string): boolean;
@@ -63,6 +93,20 @@ export interface ApexSchema {
   child(object: string, name: string): ChildRelationship | null;
   /** Whether the org described the object. */
   described(object: string): boolean;
+  /** The record `name` of the custom metadata type `type`, which has its suffix: `Billing_Rule__mdt`. */
+  record(type: string, name: string): Checked;
+  /**
+   * The texts that the field `field` of records of the custom metadata type `type` holds: of the records named
+   * `names`, which can be none, or of every record of the type that the snapshot holds. `null` among the names is a
+   * record that is none of the snapshot. `undefined` where the field holds no text by its file, or the snapshot holds
+   * no record of the type.
+   */
+  held(type: string, field: string, names?: readonly (string | null)[]): HeldTexts | undefined;
+  /**
+   * The field set `name` of the object `object`, and the path of each field it holds, which is `undefined` where the
+   * snapshot does not hold the field set.
+   */
+  fieldSet(object: string, name: string): { readonly checked: Checked; readonly members?: readonly string[] };
 }
 
 interface Described {
@@ -84,7 +128,20 @@ function keyOf(type: 'CustomObject' | 'CustomField', fullName: string): Target['
   }
 }
 
-export function buildApexSchema(model: ObjectModel, descriptions: readonly ObjectDescription[] = []): ApexSchema {
+const NOTHING_HELD: HeldNames = { records: new Map(), fieldSets: new Map() };
+
+/** A component that a reference names by a name with its parent, which a file of the snapshot may define. */
+const componentOf = (model: ObjectModel, type: string, name: string): Checked => {
+  const target = model.component(type, name);
+  const resolved = target.resolution === 'resolved';
+  return { target, checked: resolved, known: resolved, notDescribed: false };
+};
+
+export function buildApexSchema(
+  model: ObjectModel,
+  descriptions: readonly ObjectDescription[] = [],
+  held: HeldNames = NOTHING_HELD,
+): ApexSchema {
   const byObject = new Map<string, Described>();
   for (const description of descriptions) {
     const fields = new Map<string, ObjectDescription['fields'][number]>();
@@ -213,6 +270,35 @@ export function buildApexSchema(model: ObjectModel, descriptions: readonly Objec
     isRelationship,
     child,
     described: (name) => describedOf(name) !== undefined,
+    record: (type, name) => {
+      // A record is named after its type without the suffix, and in a few sources with it (`analyse.ts`).
+      const plain = componentOf(model, 'CustomMetadata', `${type.replace(/__mdt$/i, '')}.${name}`);
+      const suffixed = plain.checked ? plain : componentOf(model, 'CustomMetadata', `${type}.${name}`);
+      return suffixed.checked ? suffixed : plain;
+    },
+    held: (type, field, names) => {
+      const records = held.records.get(foldName(type));
+      if (records === undefined || !holdsText(model.facts(type, field))) return undefined;
+      // The code names no record that can be: it gets none, whose field names nothing.
+      if (names?.length === 0) return { texts: [], unknown: false };
+      const folded = foldName(field);
+      // A record the code makes is named so that no record of the snapshot is it.
+      const wanted = names === undefined ? undefined : new Set(names.map((name) => foldName(name ?? '')));
+      const read = wanted === undefined ? records : records.filter((one) => wanted.has(foldName(one.name)));
+      const texts = new Set<string>();
+      for (const one of read) {
+        const value = one.values.get(folded);
+        if (value !== undefined) texts.add(value);
+      }
+      // A record the code names that the snapshot does not hold, or makes, can hold any text.
+      const missing = wanted !== undefined && wanted.size > new Set(read.map((one) => foldName(one.name))).size;
+      return { texts: [...texts], unknown: missing || texts.size === 0 };
+    },
+    fieldSet: (object, name) => {
+      const checked = componentOf(model, 'FieldSet', `${object}.${name}`);
+      const members = held.fieldSets.get(`${foldName(object)}.${foldName(name)}`);
+      return members === undefined ? { checked } : { checked, members };
+    },
   };
 }
 

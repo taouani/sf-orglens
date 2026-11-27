@@ -1,7 +1,7 @@
 What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.
 
-24 components refer to it, 16 of them directly.
+25 components refer to it, 17 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                            CONFIDENCE  KIND        REFERS TO                                               WHERE
@@ -9,6 +9,7 @@ DEPTH  COMPONENT                                                            CONF
 1      ApexClass:invoicelineservice#method:billlines(id)                    confirmed   reads       CustomField:account.tier__c                             force-app/main/default/classes/InvoiceLineService.cls:9
 1      ApexClass:invoicepricing#method:discount(account)                    confirmed   reads       CustomField:account.tier__c                             force-app/main/default/classes/InvoicePricing.cls:12
 1      ApexClass:invoicepricingtest#method:invoicewithlines()               confirmed   writes      CustomField:account.tier__c                             force-app/main/default/classes/InvoicePricingTest.cls:4
+1      ApexClass:invoicequeries#method:summaries()                          probable    reads       CustomField:account.tier__c                             force-app/main/default/classes/InvoiceQueries.cls:55
 1      ApexClass:invoiceservice#method:countbytier(string)                  confirmed   reads       CustomField:account.tier__c                             force-app/main/default/classes/InvoiceService.cls:61
 1      ApexClass:invoiceservice#method:openinvoices(id)                     confirmed   reads       CustomField:account.tier__c                             force-app/main/default/classes/InvoiceService.cls:10
 1      ApexClass:invoiceservicetest#method:setup()                          confirmed   writes      CustomField:account.tier__c                             force-app/main/default/classes/InvoiceServiceTest.cls:5
