@@ -1,7 +1,7 @@
 What refers to CustomField:invoice__c.amount__c (Invoice__c.Amount__c), in snapshot #1 of "fixture".
-The answer is not complete: 7 types are not analysed yet, and 1 warning of the analysis bears on the answer. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet, and 5 warnings of the analysis bear on the answer. The details are below the answer.
 
-63 components refer to it, 47 of them directly.
+67 components refer to it, 49 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
 DEPTH  COMPONENT                                                                          CONFIDENCE  KIND        REFERS TO                                                                          WHERE
@@ -15,6 +15,8 @@ DEPTH  COMPONENT                                                                
 1      ApexClass:invoiceevents#method:latefee(invoice__c)                                 confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceEvents.cls:28
 1      ApexClass:invoicepagecontroller#ctor:()                                            confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoicePageController.cls:8
 1      ApexClass:invoicepricingtest#method:invoicewithlines()                             confirmed   writes      CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoicePricingTest.cls:6
+1      ApexClass:invoiceselector#method:aboveamount(decimal)                              probable    reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceSelector.cls:41
+1      ApexClass:invoiceselector#method:bystatus(string)                                  probable    reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceSelector.cls:6
 1      ApexClass:invoiceservice#method:createdraft(account,decimal)                       confirmed   writes      CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceService.cls:33
 1      ApexClass:invoiceservice#method:openinvoices(id)                                   confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceService.cls:9
 1      ApexClass:invoiceservicetest#method:setup()                                        confirmed   writes      CustomField:invoice__c.amount__c                                                   force-app/main/default/classes/InvoiceServiceTest.cls:7
@@ -54,6 +56,7 @@ DEPTH  COMPONENT                                                                
 1      WorkflowRule:invoice_line__c.stamp_when_billed                                     confirmed   reads       CustomField:invoice__c.amount__c                                                   force-app/main/default/workflows/Invoice_Line__c.workflow-meta.xml:21
 2      ApexClass:invoicecontroller#method:recentinvoices(id)                              confirmed   reads       CustomField:invoice__c.summary__c                                                  force-app/main/default/classes/InvoiceController.cls:8
 2      ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()                confirmed   calls       ApexClass:invoicepricingtest#method:invoicewithlines()                             force-app/main/default/classes/InvoicePricingTest.cls:20
+2      ApexClass:invoicequeries#method:duebefore(date,boolean)                            probable    reads       CustomField:invoice__c.late_fee__c                                                 force-app/main/default/classes/InvoiceQueries.cls:7
 2      ApexClass:invoiceservice#method:totaldue(list<invoice__c>)                         confirmed   reads       CustomField:invoice__c.total__c                                                    force-app/main/default/classes/InvoiceService.cls:47
 2      ApexClass:triggerhandler#method:run()                                              probable    calls       ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)  force-app/main/default/classes/TriggerHandler.cls:11
 2      CustomField:invoice__c.grand_total__c                                              confirmed   reads       CustomField:invoice__c.total__c                                                    force-app/main/default/objects/Invoice__c/fields/Grand_Total__c.field-meta.xml:4
@@ -64,6 +67,7 @@ DEPTH  COMPONENT                                                                
 3      ApexClass:invoicebatch#method:start(database.batchablecontext)                     confirmed   reads       CustomField:invoice__c.grand_total__c                                              force-app/main/default/classes/InvoiceBatch.cls:19
 3      ApexClass:invoicecalloutservice#method:send(invoice__c)                            confirmed   reads       CustomField:invoice__c.grand_total__c                                              force-app/main/default/classes/InvoiceCalloutService.cls:12
 3      ApexClass:invoicepagecontroller#method:total()                                     confirmed   calls       ApexClass:invoiceservice#method:totaldue(list<invoice__c>)                         force-app/main/default/classes/InvoicePageController.cls:12
+3      ApexClass:invoicequeries#method:countabove(decimal)                                probable    reads       CustomField:invoice__c.grand_total__c                                              force-app/main/default/classes/InvoiceQueries.cls:38
 3      ApexTrigger:invoicetrigger                                                         probable    calls       ApexClass:triggerhandler#method:run()                                              force-app/main/default/triggers/InvoiceTrigger.trigger:2
 3      Flow:invoice_after_save#element:send_overdue_alert                                 confirmed   references  WorkflowAlert:invoice__c.invoice_overdue_alert                                     force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:8
 4      ApexClass:invoicebatch#method:execute(database.batchablecontext,list<invoice__c>)  confirmed   calls       ApexClass:invoicebatch#inner:result/method:add(invoice__c)                         force-app/main/default/classes/InvoiceBatch.cls:31
@@ -79,4 +83,4 @@ ExternalCredential        1       1
 LightningComponentBundle  2       2
 NamedCredential           1       1
 
-1 warning of the analysis bears on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1
+5 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

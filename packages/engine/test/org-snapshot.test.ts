@@ -642,13 +642,14 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           : one;
       expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(20);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(checked).map(withoutPlace).sort());
-      expect(org.references).toHaveLength(799);
-      // The classes and triggers among them: 30 with 138 members, and the 465 references of them the answer key
-      // holds. Six are tests, and the store keeps the mark: two test classes and their four methods.
+      expect(org.references).toHaveLength(845);
+      // The classes and triggers among them: 30 with 138 members, and 511 references of them: 510 the answer key
+      // holds, three of them a stretch, and one to the object of a query whose field a record of custom metadata
+      // names, which is not read yet (`extraction-apex-resolver.test.ts`). Six are tests, and the store keeps the mark: two test classes and their four methods.
       const ofApex = (one: { key?: string; from?: string }): boolean =>
         /^Apex(?:Class|Trigger):/.test(one.key ?? one.from ?? '');
       expect(org.components.filter(ofApex)).toHaveLength(168);
-      expect(org.references.filter(ofApex)).toHaveLength(465);
+      expect(org.references.filter(ofApex)).toHaveLength(511);
       const tests = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.attrs?.['test'] === true).map((one) => one.key);
       expect(tests(org.components)).toEqual([
@@ -706,15 +707,16 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // of flows. One path of a flow is not followed.
       const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
-      // Of Apex, 137 references of declarations and types, 289 of fields, tokens, DML, queries and searches, and 39 of
-      // calls. One write by DML is not followed: its records are a list of `SObject`.
-      const apex = { components: 168, failedFiles: 0, references: 465, unresolved: 0, pathsNotFollowed: 1 };
+      // Of Apex, 136 references of declarations and types, 289 of fields, tokens, DML, queries and searches, 39 of
+      // calls and 47 of names in texts. The 8 places that the key calls unknown are not followed: a write by DML of a
+      // list of `SObject`, and texts the code does not know.
+      const apex = { components: 168, failedFiles: 0, references: 511, unresolved: 0, pathsNotFollowed: 8 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 352,
-        references: 799,
+        references: 845,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
@@ -725,7 +727,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 345,
-        references: 799,
+        references: 845,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },
@@ -1398,9 +1400,18 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(events.at(-1)).toEqual({ step: 'analysing', snapshot: 1 });
       expect(report.analysis).toMatchObject({ complete: true });
       expect(report.analysis?.components).toBeGreaterThan(0);
-      // It was analysed once, when it had ended: the one warning of the part is there once.
-      expect(report.issues.filter((issue) => issue.stage === 'analysis').map((issue) => issue.code)).toEqual([
-        'PATH_NOT_FOLLOWED',
+      // It was analysed once, when it had ended: each warning of the part is there once.
+      expect(
+        report.issues
+          .filter((issue) => issue.stage === 'analysis')
+          .map((issue) => `${issue.code} ${String(issue.component)}`),
+      ).toEqual([
+        'PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:fieldof(sobject)',
+        'PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
+        'PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
+        'PATH_NOT_FOLLOWED ApexClass:invoiceselector#method:anyobject(string,string)',
+        'PATH_NOT_FOLLOWED ApexClass:invoiceselector#method:anyobject(string,string)',
+        'PATH_NOT_FOLLOWED CustomField:invoice__c.approver_backup_email__c',
       ]);
     });
 

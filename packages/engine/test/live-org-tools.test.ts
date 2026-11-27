@@ -1334,8 +1334,9 @@ describe('reading the test org', () => {
     expect(output).toMatch(/^CustomField +59 +59 +ok$/m);
     expect(output).toMatch(/^CustomLabel +1 +1 +ok$/m);
     expect(output).toMatch(/^GlobalValueSet +1 +1 +ok$/m);
-    // The path of a flow and the write of a list of `SObject` that the answer key calls unknown.
-    expect(output).toContain('Observations: 2.\n- warning PATH_NOT_FOLLOWED: 2 observations\n');
+    // The path of a flow, the write of a list of `SObject` and the 7 names in texts of Apex that are not known, which
+    // the answer key calls unknown (`helpers/known-gap.ts`).
+    expect(output).toContain('Observations: 9.\n- warning PATH_NOT_FOLLOWED: 9 observations\n');
     const components = fixtureComponents().length;
     expect(output).toContain(
       `Fixture project: ${String(components)} components. Listed by the org: ${String(components)}. Retrieved: ${String(components)}.`,

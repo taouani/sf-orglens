@@ -465,7 +465,12 @@ function statement(node: Node): Stmt {
       };
     case 'while_statement':
     case 'do_statement':
-      return { kind: 'while', cond: expression(field(node, 'condition')), body: optional(field(node, 'body')) };
+      return {
+        kind: 'while',
+        cond: expression(field(node, 'condition')),
+        body: optional(field(node, 'body')),
+        ...(node.type === 'do_statement' ? { bodyFirst: true as const } : {}),
+      };
     case 'try_statement': {
       const last = one(one(node, 'finally_clause'), 'block');
       return {
@@ -741,15 +746,34 @@ function unit(root: Node | undefined, kind: 'class' | 'trigger'): Unit {
   return { types, trigger: undefined, problems: inOrder(problems) };
 }
 
-/** The query of a text that was wrapped as `class Q{Object q=[ ... ];}`, or `undefined` when it is not one query. */
-function wrappedQuery(root: Node | undefined): Query | undefined {
+/**
+ * The body of the one query or search of a text that was wrapped as `class Q{Object q=[ ... ];}`, of the type that is
+ * asked for, or `undefined` when the text is not one of that type.
+ */
+function wrapped(root: Node | undefined, type: 'soql_query_body' | 'sosl_query_body'): Node | undefined {
   // A text that closes the wrapper can open a class of its own after it.
   const [wrapper, ...more] = kids(root);
   if (root === undefined || root.hasError || wrapper?.type !== 'class_declaration' || more.length > 0) return undefined;
   const declared = kids(field(wrapper, 'body'));
   const value = declared.length === 1 ? field(field(declared[0], 'declarator'), 'value') : undefined;
   const bodies = value?.type === 'query_expression' ? kids(value) : [];
-  return bodies.length === 1 && bodies[0]?.type === 'soql_query_body' ? query(bodies[0]) : undefined;
+  return bodies.length === 1 && bodies[0]?.type === type ? bodies[0] : undefined;
+}
+
+/**
+ * Reads a text of a query or a search that Apex builds at run time. The grammar for SOQL alone does not read a bind
+ * variable (`:name`), which is an expression of Apex. So the text is read inside a class, on a line of its own, and
+ * the columns stay as they are.
+ */
+function readText<T>(apex: Parser, text: string, read: (root: Node | undefined) => T | undefined): T | undefined {
+  linesBefore = 1;
+  try {
+    return withTree(apex, `class Q{Object q=[\n${text}\n];}`, read);
+  } catch {
+    return undefined;
+  } finally {
+    linesBefore = 0;
+  }
 }
 
 /** The reader on a parser with the grammar of Apex. */
@@ -762,16 +786,16 @@ function readerOn(apex: Parser): ApexReader {
       return withTree(apex, source.startsWith('\uFEFF') ? source.slice(1) : source, (root) => unit(root, kind));
     },
     parseQuery(text): Query | undefined {
-      // The grammar for SOQL alone does not read a bind variable (`:name`), which is an expression of Apex. So
-      // the text is read as a query inside a class, on a line of its own, and the columns stay as they are.
-      linesBefore = 1;
-      try {
-        return withTree(apex, `class Q{Object q=[\n${text}\n];}`, wrappedQuery);
-      } catch {
-        return undefined;
-      } finally {
-        linesBefore = 0;
-      }
+      return readText(apex, text, (root) => {
+        const body = wrapped(root, 'soql_query_body');
+        return body === undefined ? undefined : query(body);
+      });
+    },
+    parseSearch(text): Search | undefined {
+      return readText(apex, text, (root) => {
+        const body = wrapped(root, 'sosl_query_body');
+        return body === undefined ? undefined : search(body);
+      });
     },
   };
 }

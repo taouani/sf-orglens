@@ -1,5 +1,5 @@
 What refers to CustomField:user.department, in snapshot #1 of "fixture".
-The answer is not complete: 7 types are not analysed yet. The details are below the answer.
+The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.
 
 10 components refer to it, 5 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
@@ -25,3 +25,5 @@ AuraDefinitionBundle      1       1
 ExternalCredential        1       1
 LightningComponentBundle  2       2
 NamedCredential           1       1
+
+4 warnings of the analysis bear on the answer: a name was not read, a path was not followed, or a part of a file was not found. A reference may be missing for each. See: orglens coverage fixture --snapshot 1

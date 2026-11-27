@@ -131,13 +131,13 @@ describe('the Apex of the fixture project', () => {
       components: apex.length,
       failedFiles: 0,
     });
-    // The one issue of the code is that of the resolver (`extraction-apex-resolver.test.ts`): DML on a list of
-    // `SObject`, an unknown place of the key.
+    // The issues of the code are those of the resolver (`extraction-apex-resolver.test.ts`): DML on a list of
+    // `SObject`, and names in texts that the code does not know, the 8 unknown places of the key.
     expect(
       analysis.issues
         .filter((issue) => issue.componentKey !== null && isApex(issue.componentKey))
         .map((one) => one.code),
-    ).toEqual(['PATH_NOT_FOLLOWED']);
+    ).toEqual(Array<string>(8).fill('PATH_NOT_FOLLOWED'));
   });
 });
 

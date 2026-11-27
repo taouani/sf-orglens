@@ -165,6 +165,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:dynamicaccess#method:statusdescribe()",
+      "type": "ApexClass",
+      "name": "DynamicAccess.statusDescribe()",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:statusdescribe()",
+        "to": "CustomField:invoice__c.status__c",
+        "kind": "references",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 45,
+        "column": 44
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:dynamicaccess#method:tokenbyname(string)",
       "type": "ApexClass",
       "name": "DynamicAccess.tokenByName(String)",
@@ -401,6 +421,26 @@
         "file": "force-app/main/default/classes/InvoiceController.cls",
         "line": 28,
         "column": 61
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceevents#method:invoicelabel()",
+      "type": "ApexClass",
+      "name": "InvoiceEvents.invoiceLabel()",
+      "file": "force-app/main/default/classes/InvoiceEvents.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceevents#method:invoicelabel()",
+        "to": "CustomObject:invoice__c",
+        "kind": "references",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceEvents.cls",
+        "line": 36,
+        "column": 59
       },
       "package": null
     },
@@ -665,6 +705,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicequeries#method:countabove(decimal)",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.countAbove(Decimal)",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:countabove(decimal)",
+        "to": "CustomField:invoice__c.grand_total__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 38,
+        "column": 51
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoicequeries#method:duebefore(date,boolean)",
       "type": "ApexClass",
       "name": "InvoiceQueries.dueBefore(Date, Boolean)",
@@ -861,6 +921,46 @@
         "file": "force-app/main/default/classes/InvoiceSelector.cls",
         "line": 5,
         "column": 24
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceselector#method:overdue()",
+      "type": "ApexClass",
+      "name": "InvoiceSelector.overdue()",
+      "file": "force-app/main/default/classes/InvoiceSelector.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceselector#method:overdue()",
+        "to": "CustomField:invoice__c.days_overdue__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceSelector.cls",
+        "line": 33,
+        "column": 25
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceselector#method:sortedby(string)",
+      "type": "ApexClass",
+      "name": "InvoiceSelector.sortedBy(String)",
+      "file": "force-app/main/default/classes/InvoiceSelector.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceselector#method:sortedby(string)",
+        "to": "CustomObject:invoice__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceSelector.cls",
+        "line": 23,
+        "column": 39
       },
       "package": null
     },
@@ -2717,7 +2817,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 2,
+    "analysisWarnings": 8,
     "notHeld": 0
   },
   "mayMiss": false

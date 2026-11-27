@@ -31,12 +31,47 @@
  * `probable`. Names in texts, such as a query in a string, are read by work package 5.
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
-import { validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
+import { CONFIDENCE_TIERS, validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
 import { MOST_NAMES_SHOWN } from './raw-references.ts';
-import type { ApexPart, ApexTypes } from './apex.ts';
+import { forName, type ApexPart, type ApexTypes } from './apex.ts';
 import type { ApexSchema, Checked } from './apex-schema.ts';
-import type { Expr, FieldPath, Name, Param, Pos, Query, Search, Stmt, TypeOf, TypeRef } from './apex-syntax.ts';
+import type {
+  ApexReader,
+  Expr,
+  FieldPath,
+  Name,
+  Param,
+  Pos,
+  Query,
+  Search,
+  Stmt,
+  TypeOf,
+  TypeRef,
+} from './apex-syntax.ts';
+import {
+  composed,
+  distinct,
+  either as eitherText,
+  escaped,
+  formatted,
+  holeText,
+  joined,
+  known,
+  literalText,
+  mapped,
+  nameIn,
+  placed,
+  trimmed,
+  usedAt,
+  withoutEnd,
+  withoutStart,
+  wordText,
+  type Composed,
+  type HoleOf,
+  type Text,
+  type Texts,
+} from './apex-texts.ts';
 import type { Target } from './model.ts';
 
 /** A class or a trigger of the snapshot, with the parts of it that are components. */
@@ -100,6 +135,8 @@ interface VarInfo {
   readonly init: Expr | undefined;
   /** The type of the value of a constant, once it was worked out. */
   value: Type | 'working' | undefined;
+  /** The texts of the value of a constant, without places, once it was worked out. `null`: it is no text known. */
+  texts: Texts | null | undefined;
 }
 
 /** A method or a constructor of a class or a trigger. */
@@ -164,10 +201,16 @@ type Type =
       readonly object: string | undefined;
       readonly field: string | undefined;
       readonly described?: boolean;
+      /** The name of the field in a text, where a text named it (`fields.getMap().get('Amount__c')`). */
+      readonly text?: Name;
     }
   | { readonly k: 'describe'; readonly object: string | undefined }
   /** `fields` of a describe: the next name is a field of the object. */
   | { readonly k: 'fields'; readonly object: string | undefined }
+  /** The map of the fields of an object, by their names, which `getMap()` of `fields` gives. */
+  | { readonly k: 'fieldMap'; readonly object: string | undefined }
+  /** The map of the objects of the org, by their names, which `Schema.getGlobalDescribe()` gives. */
+  | { readonly k: 'describes' }
   /**
    * A type of Salesforce or of a package that is no class of the snapshot, no object the analysis knows and no
    * primitive type (`Id`, `String`). Only an object can be written by DML or made with the values of its fields, so
@@ -187,7 +230,8 @@ interface Through {
   readonly object: string;
 }
 
-type Namespace = 'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus' | 'label' | 'system';
+type Namespace =
+  'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus' | 'label' | 'system' | 'search' | 'type';
 const NAMESPACES: ReadonlySet<string> = new Set<Namespace>([
   'schema',
   'trigger',
@@ -195,6 +239,8 @@ const NAMESPACES: ReadonlySet<string> = new Set<Namespace>([
   'eventbus',
   'label',
   'system',
+  'search',
+  'type',
 ]);
 
 interface Value {
@@ -211,6 +257,10 @@ interface Value {
    * relationship, whose object is not known.
    */
   readonly maybeChild?: { readonly object: string; readonly name: Name; readonly made: readonly string[] };
+  /** The texts the value can be, where it is a text and the code shows what of it (decision record 0090). */
+  readonly texts?: Texts;
+  /** The texts of the items of a list that the code writes out, as `new List<String>{ 'Invoice__c' }`. */
+  readonly items?: readonly (Texts | undefined)[];
 }
 
 const OTHER: Type = { k: 'other' };
@@ -328,6 +378,20 @@ const DATABASE_DML: ReadonlyMap<string, string> = new Map(
 /** The methods of `Database` that run a query, whose records are of no object known here. */
 const DATABASE_QUERIES: ReadonlySet<string> = new Set(['query', 'querywithbinds', 'getcursor', 'getcursorwithbinds']);
 
+/**
+ * The methods of `Database` that are given the text of a query, with whether what the query binds is a variable of
+ * the code (`true`), or a key of the map the method is given beside it.
+ */
+const TEXT_QUERIES: ReadonlyMap<string, boolean> = new Map(
+  ['query', 'countquery', 'getquerylocator', 'getcursor', 'getpaginationcursor'].flatMap((method) => [
+    [method, true],
+    [`${method}withbinds`, false],
+  ]),
+);
+
+/** The methods of a record that name a relationship in a text. */
+const RELATIONSHIP_METHODS: ReadonlySet<string> = new Set(['getsobject', 'getsobjects', 'putsobject']);
+
 /** The methods of a custom setting and of a custom metadata type that give a record, and one that gives a map. */
 const RECORD_METHODS: ReadonlySet<string> = new Set(['getinstance', 'getorgdefaults', 'getvalues']);
 
@@ -393,7 +457,28 @@ interface Context {
   /** The type of what the body gives back: of a method, of the getter of a property, of a variable it sets. */
   readonly returns: Type;
   scope: Scope;
+  /**
+   * The texts each local variable can be at the place that is read, where the code shows them. A branch reads its
+   * statements with a copy, and the copies are put together after it.
+   */
+  texts: Map<Local, Texts | undefined>;
+  /** Whether the statements that are read cannot go on after the place that is read: after `return` or `throw`. */
+  ended?: boolean;
+  /** What the body gives back is gathered here, where the texts a method gives back are worked out. */
+  readonly gives?: { texts: Text[]; unknown: boolean };
 }
+
+/** A text of a query or a search, put together to be read, and what was read of it. */
+interface ParsedText {
+  readonly text: Text;
+  readonly put: Composed;
+  /** Whether nothing of the text is known. */
+  readonly whole: boolean;
+  readonly read: Query | Search | undefined;
+}
+
+/** What the resolver needs of a reader of Apex: to read a query or a search that is a text. */
+export type TextReader = Pick<ApexReader, 'parseQuery' | 'parseSearch'>;
 
 class Resolver implements ApexResolver {
   private readonly members = new Map<ComponentKey, MemberInfo>();
@@ -412,11 +497,23 @@ class Resolver implements ApexResolver {
    * How the code names the fields and the variables it reads and writes: `field` in code, `soql` in a query and
    * `sosl` in a search, also in an expression that one binds.
    */
-  private named: 'field' | 'soql' | 'sosl' = 'field';
+  private named: 'field' | 'soql' | 'sosl' | 'text' = 'field';
+  private readonly reader: TextReader | undefined;
+  /**
+   * While a text of a query or a search is read: the places of the names that stand for parts of the text that are
+   * not known, and those of them that were met as names.
+   */
+  private holes: ReadonlySet<Pos> = new Set();
+  private met = new Set<Pos>();
+  /** While a text of a query is read: whether what it binds is read as code, which a map gives otherwise. */
+  private textBinds = true;
+  /** The texts each method gives back, with a part for each parameter. `null`: no text known. */
+  private readonly templates = new Map<MethodInfo, Texts | null | 'working'>();
 
-  constructor(units: readonly ApexUnitInput[], schema: ApexSchema, types: ApexTypes) {
+  constructor(units: readonly ApexUnitInput[], schema: ApexSchema, types: ApexTypes, reader?: TextReader) {
     this.schema = schema;
     this.types = types;
+    this.reader = reader;
     for (const unit of units) this.index(unit);
   }
 
@@ -470,6 +567,7 @@ class Resolver implements ApexResolver {
           constant: member.static && member.final,
           init: declarator.init,
           value: undefined,
+          texts: undefined,
         });
       } else if (syntax.kind === 'property') {
         const { member } = syntax;
@@ -480,6 +578,7 @@ class Resolver implements ApexResolver {
           constant: false,
           init: undefined,
           value: undefined,
+          texts: undefined,
         });
       } else if (syntax.kind === 'method') {
         const { member } = syntax;
@@ -521,6 +620,7 @@ class Resolver implements ApexResolver {
         quiet: false,
         returns: this.resolveType(returns, holder),
         scope: { vars: new Map(), parent: undefined },
+        texts: new Map(),
       };
     };
     switch (syntax.kind) {
@@ -542,7 +642,13 @@ class Resolver implements ApexResolver {
         enter(property.accessors, property.type);
         // The setter of a property is given the new value under this name.
         this.bind({ text: 'value', at: property.name.at }, this.resolveType(property.type, holder));
-        for (const accessor of property.accessors) this.stmt(accessor);
+        const start = new Map(this.context.texts);
+        // Each accessor is a body of its own, which starts with nothing known of what the other did.
+        for (const accessor of property.accessors) {
+          this.context.texts = new Map(start);
+          this.context.ended = false;
+          this.stmt(accessor);
+        }
         break;
       }
       case 'var':
@@ -733,6 +839,7 @@ class Resolver implements ApexResolver {
     if (declared.k === 'map' && actual.k === 'map') {
       return { k: 'map', key: declared.key, value: this.refine(declared.value, actual.value) };
     }
+    if (declared.k === 'map' && (actual.k === 'fieldMap' || actual.k === 'describes')) return actual;
     if ((declared.k === 'objectToken' || declared.k === 'describe') && actual.k === declared.k) {
       return declared.object === undefined ? actual : declared;
     }
@@ -803,13 +910,14 @@ class Resolver implements ApexResolver {
    * Declares a local variable. One that is never assigned again keeps the type of the value it starts with, and the
    * variable of a loop (`loop`) that its body does not assign that of the items it goes through.
    */
-  private bind(name: Name, declared: Type, init?: Value, loop = false): void {
+  private bind(name: Name, declared: Type, init?: Value, loop = false): Local {
     const folded = foldName(name.text);
     const once = loop || (this.context.assigned.get(folded) ?? 0) === 0;
-    this.context.scope.vars.set(
-      folded,
-      init !== undefined && once ? { type: this.refine(declared, init.type), declared } : { type: declared },
-    );
+    const local: Local =
+      init !== undefined && once ? { type: this.refine(declared, init.type), declared } : { type: declared };
+    this.context.scope.vars.set(folded, local);
+    this.context.texts.set(local, init?.texts);
+    return local;
   }
 
   private inScope(run: () => void): void {
@@ -853,7 +961,15 @@ class Resolver implements ApexResolver {
     if (ctx.quiet) return undefined;
     const { target } = checked;
     const id = `${kind}\n${target.to ?? `${more.object ?? ''}.${at.text}`}\n${String(at.at.line)}:${String(at.at.column)}`;
-    if (this.found.has(id)) return id;
+    // A name in a text is `probable` at most (decision record 0012).
+    const confidence = Resolver.tierOf(
+      checked,
+      via === 'text' && (more.tier ?? 'confirmed') === 'confirmed' ? 'probable' : (more.tier ?? 'confirmed'),
+    );
+    // The same reference twice, as from two texts a query can be, keeps the higher tier.
+    const before = this.found.get(id);
+    if (before !== undefined && CONFIDENCE_TIERS.indexOf(before.confidence) <= CONFIDENCE_TIERS.indexOf(confidence))
+      return id;
     this.found.set(
       id,
       validateReference({
@@ -863,7 +979,7 @@ class Resolver implements ApexResolver {
         toNameRaw: more.raw ?? at.text,
         kind,
         origin: 'parser:apex',
-        confidence: Resolver.tierOf(checked, more.tier ?? 'confirmed'),
+        confidence,
         resolution: target.resolution,
         location: { file: ctx.unit.file, line: at.at.line, column: at.at.column },
         attrs: {
@@ -937,7 +1053,10 @@ class Resolver implements ApexResolver {
     const ctx = this.context;
     if (ctx.quiet) return false;
     const id = `${code}\n${String(at.at.line)}:${String(at.at.column)}`;
-    if (this.issueIds.has(id)) return false;
+    if (this.issueIds.has(id)) {
+      if (code === 'PATH_NOT_FOLLOWED') this.widen(at, details);
+      return false;
+    }
     this.issueIds.add(id);
     const { file } = ctx.unit;
     this.issues.push({
@@ -948,6 +1067,28 @@ class Resolver implements ApexResolver {
       details: { path: file, line: at.at.line, column: at.at.column, ...details },
     });
     return true;
+  }
+
+  /**
+   * Two paths that were not followed at one place, as the parts of a text that a method gives back, which all stand at
+   * the call: the warning bears where either does, with the names of both, and an end only where both have it.
+   */
+  private widen(at: Name, details: Readonly<Record<string, string | readonly string[]>>): void {
+    const { line, column } = at.at;
+    const index = this.issues.findIndex(
+      (one) => one.code === 'PATH_NOT_FOLLOWED' && one.details?.['line'] === line && one.details['column'] === column,
+    );
+    const before = this.issues[index];
+    if (before?.details === undefined || before.details === null) return;
+    const names = (value: unknown): readonly string[] =>
+      Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : [];
+    const had = names(before.details['notFollowed']);
+    const more = names(details['notFollowed']).filter((name) => !had.includes(name));
+    const { endsAt, ...rest } = before.details;
+    const ends = endsAt !== undefined && endsAt === details['endsAt'];
+    if (more.length === 0 && (ends || endsAt === undefined)) return;
+    const notFollowed = [...had, ...more].slice(0, MOST_NAMES_SHOWN);
+    this.issues[index] = { ...before, details: ends ? { ...before.details, notFollowed } : { ...rest, notFollowed } };
   }
 
   /**
@@ -990,6 +1131,8 @@ class Resolver implements ApexResolver {
 
   /** A name of a relationship whose child object is not known: the code uses it as a list. */
   private childNotKnown(child: NonNullable<Value['maybeChild']>): void {
+    // A value worked out for a use somewhere else takes back nothing of the member that is read.
+    if (this.context.quiet) return;
     this.retract(child.made);
     // It is no lookup, so it was not guessed as one.
     const guessed = `RELATIONSHIP_GUESSED\n${String(child.name.at.line)}:${String(child.name.at.column)}`;
@@ -1033,10 +1176,16 @@ class Resolver implements ApexResolver {
   }
 
   /** The value of a conditional or of `??`, which is one of two values, with the type the code declares of it. */
-  private either(a: Value, b: Value): Value {
+  private either(a: Value, b: Value, at?: { readonly a: Expr; readonly b: Expr }): Value {
     const type = this.eitherType(a.type, b.type);
-    if (a.declared === undefined && b.declared === undefined) return { type };
-    return { type, declared: this.eitherType(a.declared ?? a.type, b.declared ?? b.type) };
+    // A text where either is one: what the other is not known of stands where it is.
+    const texts =
+      at === undefined || (a.texts === undefined && b.texts === undefined)
+        ? undefined
+        : eitherText([this.textsOf(a, at.a), this.textsOf(b, at.b)]);
+    const withTexts = texts === undefined ? {} : { texts };
+    if (a.declared === undefined && b.declared === undefined) return { type, ...withTexts };
+    return { type, declared: this.eitherType(a.declared ?? a.type, b.declared ?? b.type), ...withTexts };
   }
 
   /**
@@ -1057,6 +1206,137 @@ class Resolver implements ApexResolver {
     return says(a) ? a : b;
   }
 
+  // -------------------------------------------------------------- texts
+
+  /** Whether a value can be a text: one the code shows, one of the type `String`, or one of a type not known. */
+  private static isText(value: Value): boolean {
+    const { type } = value;
+    return value.texts !== undefined || type.k === 'other' || (type.k === 'prim' && type.name === 'string');
+  }
+
+  /** What a part of a text that is not known is, by the type of the value. */
+  private static holeOf(type: Type): HoleOf {
+    if (type.k !== 'prim') return 'text';
+    if (NUMBERS.includes(type.name)) return 'number';
+    if (type.name === 'boolean' || type.name === 'date' || type.name === 'datetime') return type.name;
+    return 'text';
+  }
+
+  /**
+   * The texts of a value of `expr`: those the code shows, or one that is not known, which stands where the value
+   * enters the text: at a name, at what a call gives, at the list that `String.join` is given.
+   */
+  private textsOf(value: Value, expr: Expr): Texts {
+    const at = Resolver.placeOf(expr);
+    return value.texts === undefined ? [holeText(at, Resolver.holeOf(value.type))] : placed(value.texts, at);
+  }
+
+  /** The texts of a value that `+` puts together with another: a value that is `null` adds nothing. */
+  private joinable(value: Value, expr: Expr): Texts {
+    const texts = this.textsOf(value, expr);
+    return texts.length === 0 ? [[]] : texts;
+  }
+
+  /** Where an expression stands for what a text is made of. */
+  private static placeOf(expr: Expr | undefined): Pos | undefined {
+    if (expr === undefined) return undefined;
+    switch (expr.kind) {
+      case 'name':
+        return expr.name.at;
+      case 'dot':
+        return expr.name.at;
+      case 'call': {
+        // `String.join(names, ', ')`: what is not known is the list.
+        const method = foldName(expr.name.text);
+        const onString = expr.target?.kind === 'name' && foldName(expr.target.name.text) === 'string';
+        if (onString && ['join', 'escapesinglequotes', 'valueof'].includes(method) && expr.args[0] !== undefined) {
+          return Resolver.placeOf(expr.args[0]);
+        }
+        return expr.name.at;
+      }
+      case 'string':
+      case 'literal':
+        return expr.at;
+      case 'cast':
+        return Resolver.placeOf(expr.expr);
+      case 'new':
+      case 'collection':
+        return expr.type.at;
+      case 'index':
+        return Resolver.placeOf(expr.target);
+      case 'ternary':
+        return Resolver.placeOf(expr.then);
+      case 'assign':
+      case 'binary':
+        return Resolver.placeOf(expr.left);
+      case 'unary':
+        return Resolver.placeOf(expr.operand);
+      case 'instanceof':
+        return Resolver.placeOf(expr.expr);
+      case 'unknown':
+        return Resolver.placeOf(expr.parts[0]);
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * What an assignment to a local variable makes of its text: `=` gives it the text of the value, and `+=` adds the
+   * text of the value to its own. Gives the new texts of `+=`.
+   */
+  private assignText(expr: Extract<Expr, { kind: 'assign' }>, left: Value, right: Value): Texts | undefined {
+    if (expr.left.kind !== 'name') return undefined;
+    const local = this.lookup(foldName(expr.left.name.text));
+    if (local === undefined) return undefined;
+    const op = expr.op.replace(/\s+/g, '');
+    // `+=` puts texts together only on a text: on a number it adds.
+    const onText = local.type.k === 'prim' ? local.type.name === 'string' : Resolver.isText(left);
+    const texts =
+      op === '='
+        ? right.texts
+        : op === '+=' && onText
+          ? joined(this.joinable(left, expr.left), this.joinable(right, expr.right))
+          : undefined;
+    this.context.texts.set(local, texts);
+    return texts;
+  }
+
+  /**
+   * Reads statements that run one of several ways, as the branches of an `if`: each from the texts of the variables
+   * before them. After them, a variable can be any text it is after one of them.
+   */
+  private branches(runs: readonly (() => void)[]): void {
+    const ctx = this.context;
+    const before = ctx.texts;
+    const ended = ctx.ended === true;
+    const after: Map<Local, Texts | undefined>[] = [];
+    for (const run of runs) {
+      ctx.texts = new Map(before);
+      ctx.ended = ended;
+      run();
+      // A way that returns or throws does not go on after the statement.
+      if (!ctx.ended) after.push(ctx.texts);
+    }
+    ctx.ended = ended || after.length === 0;
+    ctx.texts = after.length === 0 ? before : Resolver.merged(after);
+  }
+
+  /**
+   * The texts of the variables after one of several ways. A variable that a way does not know is a part that is not
+   * known after that way, which stands where the variable is used, and a variable that no way knows is not known.
+   */
+  private static merged(ways: readonly Map<Local, Texts | undefined>[]): Map<Local, Texts | undefined> {
+    const out = new Map<Local, Texts | undefined>();
+    const locals = new Set(ways.flatMap((way) => [...way.keys()]));
+    for (const local of locals) {
+      const all = ways.filter((way) => way.has(local)).map((way) => way.get(local));
+      const unknown = [holeText(undefined, Resolver.holeOf(local.type))];
+      const texts = all.every((one) => one === undefined) ? undefined : eitherText(all.map((one) => one ?? unknown));
+      out.set(local, texts);
+    }
+    return out;
+  }
+
   // -------------------------------------------------------------- statements
 
   private stmt(stmt: Stmt | undefined): void {
@@ -1069,8 +1349,15 @@ class Resolver implements ApexResolver {
         return;
       case 'local': {
         const declared = this.resolveType(stmt.type, this.context.cls);
-        for (const one of stmt.vars)
-          this.bind(one.name, declared, one.init === undefined ? undefined : this.given(this.ev(one.init), declared));
+        for (const one of stmt.vars) {
+          const local = this.bind(
+            one.name,
+            declared,
+            one.init === undefined ? undefined : this.given(this.ev(one.init), declared),
+          );
+          // A variable of a primitive type that is not given a value is `null`, which names nothing.
+          if (one.init === undefined && declared.k === 'prim') this.context.texts.set(local, []);
+        }
         return;
       }
       case 'expr':
@@ -1078,15 +1365,27 @@ class Resolver implements ApexResolver {
         return;
       case 'if':
         this.ev(stmt.cond);
-        this.stmt(stmt.then);
-        this.stmt(stmt.else);
+        this.branches([
+          () => {
+            this.stmt(stmt.then);
+          },
+          () => {
+            this.stmt(stmt.else);
+          },
+        ]);
         return;
       case 'for':
         this.inScope(() => {
           for (const init of stmt.init) this.stmt(init);
           if (stmt.cond !== undefined) this.ev(stmt.cond);
-          for (const update of stmt.update) this.ev(update);
-          this.stmt(stmt.body);
+          // A loop runs its body any number of times. A text it changes is followed as if it ran it once or not.
+          this.branches([
+            () => {
+              this.stmt(stmt.body);
+              for (const update of stmt.update) this.ev(update);
+            },
+            () => undefined,
+          ]);
         });
         return;
       case 'foreach': {
@@ -1097,36 +1396,85 @@ class Resolver implements ApexResolver {
           // assign it.
           const again = assignments([stmt.body]).has(foldName(stmt.name.text));
           this.bind(stmt.name, declared, items.k === 'list' ? { type: items.of } : undefined, !again);
-          this.stmt(stmt.body);
+          this.branches([
+            () => {
+              this.stmt(stmt.body);
+            },
+            () => undefined,
+          ]);
         });
         return;
       }
       case 'while':
+        if (stmt.bodyFirst === true) {
+          // `do { ... } while (cond)` runs its body once at least, and is followed as if it ran it once.
+          this.stmt(stmt.body);
+          this.ev(stmt.cond);
+          return;
+        }
         this.ev(stmt.cond);
-        this.stmt(stmt.body);
+        this.branches([
+          () => {
+            this.stmt(stmt.body);
+          },
+          () => undefined,
+        ]);
         return;
-      case 'return':
-        if (stmt.expr !== undefined) this.given(this.ev(stmt.expr), this.context.returns);
+      case 'return': {
+        if (stmt.expr === undefined) {
+          this.context.ended = true;
+          return;
+        }
+        const value = this.given(this.ev(stmt.expr), this.context.returns);
+        const { gives } = this.context;
+        if (gives !== undefined) {
+          const texts = Resolver.isText(value) ? this.textsOf(value, stmt.expr) : undefined;
+          if (texts === undefined) gives.unknown = true;
+          else gives.texts.push(...texts);
+        }
+        this.context.ended = true;
         return;
+      }
       case 'throw':
         this.ev(stmt.expr);
+        this.context.ended = true;
         return;
-      case 'try':
-        this.stmt(stmt.block);
+      case 'try': {
+        // A block can stop at any statement, and a clause runs from where it stopped: from the texts before it, or
+        // after any statement of it that does not end it.
+        const ctx = this.context;
+        const ended = ctx.ended === true;
+        const stops = [new Map(ctx.texts)];
+        this.inScope(() => {
+          for (const inner of stmt.block.kind === 'block' ? stmt.block.stmts : [stmt.block]) {
+            this.stmt(inner);
+            if (ctx.ended === true) break;
+            stops.push(new Map(ctx.texts));
+          }
+        });
+        const after = ctx.texts;
+        const caught = Resolver.merged(stops);
+        const ends = ctx.ended === true ? [] : [after];
         for (const clause of stmt.catches) {
+          ctx.texts = new Map(caught);
+          ctx.ended = ended;
           this.inScope(() => {
             this.bind(clause.name, this.resolveType(clause.type, this.context.cls));
             this.stmt(clause.block);
           });
+          if (!ctx.ended) ends.push(ctx.texts);
         }
+        ctx.ended = ended || ends.length === 0;
+        ctx.texts = ends.length === 0 ? caught : Resolver.merged(ends);
         this.stmt(stmt.finally);
         return;
+      }
       case 'switch': {
         // A value of a `when` is a literal, which names nothing, also where it is a value of a picklist, or a value
         // of the enum that the switch is on, which is written alone.
         const on = this.ev(stmt.on).type;
         const enumeration = on.k === 'instance' && on.cls.kind === 'enum' ? on.cls : undefined;
-        for (const when of stmt.whens) {
+        const runs = stmt.whens.map((when) => (): void => {
           for (const value of when.values) {
             if (value.kind !== 'name') this.ev(value);
             else if (enumeration?.values.has(foldName(value.name.text)) === true) this.addEnum(value.name, enumeration);
@@ -1137,7 +1485,10 @@ class Resolver implements ApexResolver {
             }
             this.stmt(when.block);
           });
-        }
+        });
+        // Without `when else`, none of them can run.
+        const otherwise = stmt.whens.some((when) => when.binding === undefined && when.values.length === 0);
+        this.branches(otherwise ? runs : [...runs, () => undefined]);
         return;
       }
       case 'dml': {
@@ -1187,9 +1538,12 @@ class Resolver implements ApexResolver {
       case 'name':
         return this.name(expr.name, access);
       case 'string':
-        return { type: prim('string') };
-      case 'literal':
-        return { type: literalType(expr.text) };
+        return { type: prim('string'), texts: [literalText(expr.at, expr.raw)] };
+      case 'literal': {
+        // A number, `true` or `false` is a text too where it is added to one. `null` is no text: it names nothing.
+        const type = literalType(expr.text);
+        return { type, texts: isNull(type) ? [] : [wordText(expr.at, expr.text)] };
+      }
       case 'class':
         // `Invoice__c.class` is a `Type`.
         return { type: { k: 'named', name: 'Type' } };
@@ -1218,37 +1572,53 @@ class Resolver implements ApexResolver {
         // `new List<List<SObject>>{ account.Things__r }`: a value given to a list of lists is a list.
         const type = this.resolveType(expr.type, this.context.cls);
         const item = type.k === 'list' ? type.of : OTHER;
-        for (const element of expr.elements) this.given(this.ev(element), item);
+        const items = expr.elements.map((element) => {
+          const value = this.given(this.ev(element), item);
+          return Resolver.isText(value) ? this.textsOf(value, element) : undefined;
+        });
         for (const pair of expr.pairs) {
           this.given(this.ev(pair.key), type.k === 'map' ? type.key : OTHER);
           this.given(this.ev(pair.value), type.k === 'map' ? type.value : OTHER);
         }
-        return { type };
+        return items.length > 0 && type.k === 'list' ? { type, items } : { type };
       }
       case 'cast': {
         const declared = this.resolveType(expr.type, this.context.cls);
-        return { type: this.refine(declared, this.ev(expr.expr).type), declared };
+        const inner = this.ev(expr.expr);
+        const type = this.refine(declared, inner.type);
+        return inner.texts === undefined ? { type, declared } : { type, declared, texts: inner.texts };
       }
       case 'assign': {
         const right = this.ev(expr.right);
         const left = this.ev(expr.left, expr.op === '=' ? 'write' : 'both');
-        return expr.op === '=' ? this.given(right, left.type) : right;
+        const texts = this.assignText(expr, left, right);
+        if (expr.op !== '=') return texts === undefined ? right : { type: prim('string'), texts };
+        return this.given(right, left.type);
       }
       case 'binary': {
         const left = this.ev(expr.left);
         const right = this.ev(expr.right);
-        return expr.op === '??'
-          ? this.either(left, right)
-          : { type: Resolver.operation(expr.op, left.type, right.type) };
+        if (expr.op === '??') return this.either(left, right, { a: expr.left, b: expr.right });
+        const type = Resolver.operation(expr.op, left.type, right.type);
+        // `'SELECT ' + fields + ' FROM Invoice__c'` puts texts together.
+        if (expr.op.trim() !== '+' || type.k !== 'prim' || type.name !== 'string') return { type };
+        return { type, texts: joined(this.joinable(left, expr.left), this.joinable(right, expr.right)) };
       }
       case 'unary': {
-        const operand = this.ev(expr.operand, expr.op.includes('++') || expr.op.includes('--') ? 'both' : 'read');
-        return expr.op.trim() === '!' ? { type: BOOLEAN } : operand;
+        const steps = expr.op.includes('++') || expr.op.includes('--');
+        const operand = this.ev(expr.operand, steps ? 'both' : 'read');
+        // `-1` and `count++` are numbers that the code works out: no text the code shows. `+` changes nothing.
+        if (steps && expr.operand.kind === 'name') {
+          const local = this.lookup(foldName(expr.operand.name.text));
+          if (local !== undefined) this.context.texts.set(local, undefined);
+        }
+        const op = expr.op.trim();
+        return op === '!' ? { type: BOOLEAN } : op === '+' ? operand : { type: operand.type };
       }
       case 'ternary': {
         this.ev(expr.cond);
         const then = this.ev(expr.then);
-        return this.either(then, this.ev(expr.else));
+        return this.either(then, this.ev(expr.else), { a: expr.then, b: expr.else });
       }
       case 'index': {
         const target = this.asList(this.ev(expr.target));
@@ -1271,7 +1641,10 @@ class Resolver implements ApexResolver {
   private name(name: Name, access: Access): Value {
     const folded = foldName(name.text);
     const local = this.lookup(folded);
-    if (local !== undefined) return local;
+    if (local !== undefined) {
+      const texts = this.context.texts.get(local);
+      return texts === undefined ? local : { ...local, texts };
+    }
     const { cls } = this.context;
     const member = this.findVar(cls, folded);
     if (member !== undefined) return this.member(member, name, access);
@@ -1319,15 +1692,21 @@ class Resolver implements ApexResolver {
         quiet: true,
         returns: declared,
         scope: { vars: new Map(), parent: undefined },
+        texts: new Map(),
       };
       try {
-        member.value = this.refine(declared, this.ev(member.init).type);
+        const value = this.ev(member.init);
+        member.value = this.refine(declared, value.type);
+        member.texts = value.texts ?? null;
       } finally {
         this.ctx = outer;
       }
     }
     // A constant that is set from itself has no value that can be followed.
-    return member.value === 'working' ? { type: declared } : { type: member.value, declared };
+    if (member.value === 'working') return { type: declared };
+    // The names in the text of a constant stand where the constant is used.
+    const texts = member.texts === null || member.texts === undefined ? undefined : usedAt(member.texts, name.at);
+    return texts === undefined ? { type: member.value, declared } : { type: member.value, declared, texts };
   }
 
   private dot(target: Value, name: Name, access: Access, step: boolean): Value {
@@ -1381,11 +1760,17 @@ class Resolver implements ApexResolver {
   }
 
   /** The token of a field, or its describe where `described` says which, which refers to the field. */
-  private fieldToken(object: string, name: Name, described?: boolean): Value {
+  private fieldToken(object: string, name: Name, described?: boolean, via = 'token'): Value {
     const checked = this.schema.field(object, name.text);
-    const made = this.add(name, 'references', checked, 'token', { object });
+    const made = this.add(name, 'references', checked, via, { object });
     this.notDescribed(name, checked, object);
-    const type: Type = { k: 'fieldToken', object, field: name.text, ...(described === undefined ? {} : { described }) };
+    const type: Type = {
+      k: 'fieldToken',
+      object,
+      field: name.text,
+      ...(described === undefined ? {} : { described }),
+      ...(via === 'text' ? { text: name } : {}),
+    };
     return { type, made: made === undefined ? [] : [made] };
   }
 
@@ -1532,7 +1917,9 @@ class Resolver implements ApexResolver {
     const { type } = token;
     if (type.k !== 'fieldToken' || type.object === undefined || type.field === undefined) return;
     if (foldName(type.field) === 'id') return;
-    this.add(at, 'references', this.schema.field(type.object, type.field), 'token', { object: type.object });
+    // A token that a text named stays a name in a text.
+    const via = type.text === undefined ? 'token' : 'text';
+    this.add(at, 'references', this.schema.field(type.object, type.field), via, { object: type.object });
   }
 
   /**
@@ -1541,15 +1928,27 @@ class Resolver implements ApexResolver {
    */
   private textOrToken(arg: Expr): boolean {
     if (arg.kind === 'string') return true;
+    // `prefix + 'Amount__c'`: a text put together.
+    if (arg.kind === 'binary' && arg.op.trim() === '+')
+      return this.textOrToken(arg.left) || this.textOrToken(arg.right);
     let first: Expr = arg;
     while (first.kind === 'dot') first = first.target;
     if (first.kind !== 'name') return false;
     const folded = foldName(first.name.text);
     const local = this.lookup(folded);
     const member = local === undefined ? this.findVar(this.context.cls, folded) : undefined;
+    const isTextOrToken = (type: Type): boolean =>
+      type.k === 'fieldToken' || (type.k === 'prim' && type.name === 'string');
     if (arg.kind === 'name') {
-      if (local !== undefined) return local.type.k === 'fieldToken';
-      return member !== undefined && this.resolveType(member.type, member.owner).k === 'fieldToken';
+      if (local !== undefined) return isTextOrToken(local.type);
+      return member !== undefined && isTextOrToken(this.resolveType(member.type, member.owner));
+    }
+    // `InvoiceConstants.FIELD_LEGACY`: a constant of a class that is a text or a token.
+    const found =
+      local === undefined && member === undefined ? this.findClass([first.name.text], this.context.cls) : undefined;
+    if (arg.kind === 'dot' && found !== undefined && !isOpaque(found)) {
+      const constant = this.findVar(found, foldName(arg.name.text), false);
+      return constant !== undefined && isTextOrToken(this.resolveType(constant.type, constant.owner));
     }
     // `Invoice__c.Status__c`, `Schema.Invoice__c.Status__c`: a token, unless a variable has that name.
     return (
@@ -1580,10 +1979,15 @@ class Resolver implements ApexResolver {
     switch (type.k) {
       case 'record':
         if ((method === 'get' || method === 'put') && args[0] !== undefined) {
-          this.byToken(args[0], method === 'get' ? 'reads' : 'writes');
+          this.byName(args[0], method === 'get' ? 'reads' : 'writes', type, expr.name);
           rest(1);
           // `get` gives an `Object`, whichever field it reads.
           return method === 'get' ? { type: prim('object') } : VALUE;
+        }
+        if (RELATIONSHIP_METHODS.has(method) && args[0] !== undefined) {
+          const value = this.byRelationship(args[0], method, type, expr.name);
+          rest(1);
+          return value;
         }
         rest(0);
         if (method === 'getsobjecttype') return { type: { k: 'objectToken', object: type.object } };
@@ -1611,6 +2015,25 @@ class Resolver implements ApexResolver {
         }
         if (method === 'keyset') return { type: { k: 'list', of: type.key, coll: 'set' } };
         return method === 'clone' || method === 'deepclone' ? { type } : VALUE;
+      case 'fieldMap':
+      case 'describes': {
+        // `fields.getMap().get(name)` names a field of the object, `Schema.getGlobalDescribe().get(name)` an object.
+        if (method === 'get' && args[0] !== undefined) {
+          const value =
+            type.k === 'fieldMap'
+              ? this.fieldByName(args[0], type.object, expr.name)
+              : this.objectByName(args[0], expr.name);
+          rest(1);
+          return value;
+        }
+        rest(0);
+        const item: Type =
+          type.k === 'fieldMap'
+            ? { k: 'fieldToken', object: type.object, field: undefined, described: false }
+            : { k: 'objectToken', object: undefined };
+        if (method === 'values') return { type: { k: 'list', of: item, coll: 'list' } };
+        return method === 'keyset' ? { type: { k: 'list', of: prim('string'), coll: 'set' } } : VALUE;
+      }
       case 'instance':
       case 'static': {
         // A method of a value can be overridden in a class that extends its class, unless `super` calls it.
@@ -1621,7 +2044,7 @@ class Resolver implements ApexResolver {
         const methods = this.methodsOf(declared, method);
         if (methods.length === 0 && type.cls.kind === 'enum') return Resolver.ofEnum(type, method);
         const on = type.k === 'instance' && expr.target.kind !== 'super' ? type.cls : undefined;
-        return this.choose(expr.name, methods, values, on, 'call');
+        return this.choose(expr.name, methods, values, on, 'call', args);
       }
       case 'opaque':
         // A class whose code is not read: the call refers to the class, and names the method.
@@ -1648,28 +2071,97 @@ class Resolver implements ApexResolver {
       case 'fieldToken':
         rest(0);
         return method === 'getdescribe' ? { type: { ...type, described: true } } : VALUE;
+      case 'fields':
+        rest(0);
+        return method === 'getmap' ? { type: { k: 'fieldMap', object: type.object } } : VALUE;
       case 'ns':
         return this.system(type.name, expr);
-      default:
+      default: {
         // Only a record has `get` and `put` with a field token, also one whose type is not known here.
         if (
           (method === 'get' || method === 'put') &&
           args[0] !== undefined &&
           (type.k === 'other' || type.k === 'named')
         ) {
-          this.byToken(args[0], method === 'get' ? 'reads' : 'writes');
+          this.byToken(this.ev(args[0]), args[0], method === 'get' ? 'reads' : 'writes');
           rest(1);
           return VALUE;
         }
-        rest(0);
+        const values = args.map((arg) => this.ev(arg));
         // `String.valueOf(flag)`, `Decimal.valueOf(text)`: a value of the primitive type named in front.
         if (type.k === 'other' && expr.target.kind === 'name') {
           const named = foldName(expr.target.name.text);
+          if (named === 'string' && (TEXT_METHODS.has(method) || method === 'valueof')) {
+            return this.ofString(method, args, values, expr.name);
+          }
           if (method === 'valueof' && PRIMITIVES.has(named) && named !== 'object') return { type: prim(named) };
-          if (named === 'string' && TEXT_METHODS.has(method)) return { type: prim('string') };
         }
+        if (type.k === 'prim' && type.name === 'string') return Resolver.ofText(target, method, values);
         return VALUE;
+      }
     }
+  }
+
+  /** What a method of `String` gives that makes a text: `join`, `format`, `escapeSingleQuotes` and `valueOf`. */
+  private ofString(method: string, args: readonly Expr[], values: readonly Value[], at: Name): Value {
+    const type = prim('string');
+    const [first, second] = values;
+    const texts = ((): Texts | undefined => {
+      if (first === undefined) return undefined;
+      switch (method) {
+        case 'join': {
+          // The items of a list the code writes out, with the text that stands between them.
+          if (first.items === undefined) return undefined;
+          const between = second !== undefined && args[1] !== undefined ? this.textsOf(second, args[1]) : [[]];
+          let all: Texts = [[]];
+          for (const [index, item] of first.items.entries()) {
+            if (item === undefined) return undefined;
+            all = joined(index > 0 ? joined(all, between) : all, item);
+          }
+          return all;
+        }
+        case 'format': {
+          const items = second?.items;
+          const formats = first.texts;
+          if (formats === undefined) return undefined;
+          const place = Resolver.placeOf(args[1]) ?? at.at;
+          return eitherText(formats.map((format) => formatted(format, items, place)));
+        }
+        case 'escapesinglequotes':
+          return first.texts?.map(escaped);
+        default:
+          // `String.valueOf(x)`: the text of a text, or of a number the code writes.
+          return first.texts;
+      }
+    })();
+    return texts === undefined ? { type } : { type, texts };
+  }
+
+  /** What a method of a text gives that is the text changed in a way that keeps its names. */
+  private static ofText(target: Value, method: string, values: readonly Value[]): Value {
+    const type = prim('string');
+    const { texts } = target;
+    const [first] = values;
+    const only = first?.texts?.length === 1 && first.texts[0] !== undefined ? known(first.texts[0]) : undefined;
+    const changed = ((): Texts | undefined => {
+      switch (method) {
+        case 'tolowercase':
+          return texts?.map((text) => mapped(text, (chars) => chars.toLowerCase()));
+        case 'touppercase':
+          return texts?.map((text) => mapped(text, (chars) => chars.toUpperCase()));
+        case 'trim':
+          return texts?.map(trimmed);
+        case 'removeend':
+          return only === undefined ? undefined : texts?.map((text) => withoutEnd(text, only));
+        case 'removestart':
+          return only === undefined ? undefined : texts?.map((text) => withoutStart(text, only));
+        default:
+          return undefined;
+      }
+    })();
+    if (!['tolowercase', 'touppercase', 'trim', 'removeend', 'removestart'].includes(method)) return VALUE;
+    const all = changed === undefined ? undefined : distinct(changed);
+    return all === undefined ? { type } : { type, texts: all };
   }
 
   // -------------------------------------------------------------- calls
@@ -1698,7 +2190,7 @@ class Resolver implements ApexResolver {
     }
     for (let at: ClassInfo | undefined = cls; at !== undefined; at = at.outer) {
       const methods = this.methodsOf(at, method).filter((one) => one.params.length === values.length);
-      if (methods.length > 0) return this.choose(expr.name, methods, values, at, 'call');
+      if (methods.length > 0) return this.choose(expr.name, methods, values, at, 'call', expr.args);
     }
     return VALUE;
   }
@@ -1788,6 +2280,7 @@ class Resolver implements ApexResolver {
     values: readonly Value[],
     on: ClassInfo | undefined,
     via: 'call' | 'new',
+    args?: readonly Expr[],
   ): Value {
     const { chosen, sure } = this.overload(
       methods.filter((one) => one.params.length === values.length),
@@ -1795,15 +2288,21 @@ class Resolver implements ApexResolver {
     );
     // The constructors every exception has are of the class, which each of them calls.
     const builtin = chosen.every((one) => one.builtin === true);
+    /** The methods that can run for the call. */
+    const run = new Set<MethodInfo>(chosen);
     for (const one of chosen) {
       // `this(message)` of an exception calls a constructor of Salesforce.
       if (one.builtin === true && via === 'call' && one.owner === this.context.cls) continue;
       this.addCall(at, Resolver.targetOf(one), sure || builtin ? 'confirmed' : 'probable', via);
       if (on === undefined || !one.open) continue;
       const runs = this.methodsOf(on, one.name).find((each) => each.sub === one.sub);
-      if (runs !== undefined && runs !== one) this.addCall(at, Resolver.targetOf(runs), 'probable', via);
+      if (runs !== undefined && runs !== one) {
+        this.addCall(at, Resolver.targetOf(runs), 'probable', via);
+        run.add(runs);
+      }
       for (const override of this.overrides(on, runs ?? one)) {
         this.addCall(at, Resolver.targetOf(override), 'probable', via);
+        run.add(override);
       }
     }
     values.forEach((value, index) => {
@@ -1817,9 +2316,71 @@ class Resolver implements ApexResolver {
     const [first] = chosen;
     if (first === undefined) return VALUE;
     const spelled = (one: MethodInfo): string => (one.returns === undefined ? '' : typeText(one.returns));
-    return chosen.every((one) => spelled(one) === spelled(first))
-      ? { type: this.resolveType(first.returns, first.owner) }
-      : VALUE;
+    if (!chosen.every((one) => spelled(one) === spelled(first))) return VALUE;
+    const type = this.resolveType(first.returns, first.owner);
+    if (type.k !== 'prim' || type.name !== 'string' || args === undefined) return { type };
+    // A text that a method of the snapshot gives back, with what the call gives its parameters.
+    const given = values.map((value, index) => {
+      const arg = args[index];
+      return arg === undefined ? undefined : this.textsOf(value, arg);
+    });
+    const texts: Texts[] = [];
+    for (const one of run) {
+      const template = this.template(one);
+      if (template === undefined) return { type };
+      texts.push(usedAt(template, at.at, given));
+    }
+    return { type, texts: eitherText(texts) };
+  }
+
+  /**
+   * The texts a method gives back, worked out once, with a part for each parameter that stands where the method
+   * puts the parameter. `undefined` where the method gives back a text that is not known, or calls itself on the
+   * way.
+   */
+  private template(method: MethodInfo): Texts | undefined {
+    const known = this.templates.get(method);
+    if (known !== undefined) return known === 'working' || known === null ? undefined : known;
+    const member = this.members.get(method.key);
+    const syntax = member?.part.syntax;
+    if (member === undefined || syntax?.kind !== 'method' || syntax.member.body === undefined) {
+      this.templates.set(method, null);
+      return undefined;
+    }
+    this.templates.set(method, 'working');
+    const { holder } = member;
+    const { body, params, returns } = syntax.member;
+    const gives = { texts: [] as Text[], unknown: false };
+    const outer = { ctx: this.ctx, named: this.named, holes: this.holes, met: this.met, binds: this.textBinds };
+    this.ctx = {
+      from: method.key,
+      unit: holder.unit,
+      cls: holder,
+      assigned: assignments([body]),
+      quiet: true,
+      returns: this.resolveType(returns, holder),
+      scope: { vars: new Map(), parent: undefined },
+      texts: new Map(),
+      gives,
+    };
+    this.holes = new Set();
+    try {
+      params.forEach((param, index) => {
+        const type = this.resolveType(param.type, holder);
+        const local = this.bind(param.name, type);
+        this.context.texts.set(local, [holeText(undefined, Resolver.holeOf(type), index)]);
+      });
+      this.stmt(body);
+    } finally {
+      this.ctx = outer.ctx;
+      this.named = outer.named;
+      this.holes = outer.holes;
+      this.met = outer.met;
+      this.textBinds = outer.binds;
+    }
+    const texts = gives.unknown || gives.texts.length === 0 ? null : distinct(gives.texts);
+    this.templates.set(method, texts);
+    return texts ?? undefined;
   }
 
   /**
@@ -1934,15 +2495,21 @@ class Resolver implements ApexResolver {
   }
 
   /** `record.get(token)` and `record.put(token, value)`: the token names the field it reads or writes. */
-  private byToken(arg: Expr, kind: 'reads' | 'writes'): void {
-    const value = this.ev(arg);
+  private byToken(value: Value, arg: Expr, kind: 'reads' | 'writes'): void {
     const { type } = value;
     const at = anchor(arg);
-    // A name in a text is read with the names in texts (work package 5).
     if (type.k !== 'fieldToken' || type.object === undefined || type.field === undefined || at === undefined) return;
-    this.retract(value.made);
     const checked = this.schema.field(type.object, type.field);
-    this.add(at, kind, checked, 'token', { object: type.object });
+    if (type.text === undefined) {
+      this.retract(value.made);
+      this.add(at, kind, checked, 'token', { object: type.object });
+      return;
+    }
+    // A token that a text named stays a name in a text: read where the text stands when the code reads it right
+    // there (`record.get(fields.getMap().get('Amount__c'))`), and where the code uses the token otherwise.
+    const made = value.made ?? [];
+    this.retract(made);
+    this.add(made.length > 0 ? type.text : at, kind, checked, 'text', { object: type.object });
   }
 
   /** A method of `Database` or of `EventBus`. */
@@ -1970,17 +2537,400 @@ class Resolver implements ApexResolver {
       } else for (const arg of args.slice(1)) this.ev(arg);
       return VALUE;
     }
-    for (const arg of args) this.ev(arg);
+    const rest = (from: number): void => {
+      for (const arg of args.slice(from)) this.ev(arg);
+    };
+    const binds = TEXT_QUERIES.get(method);
+    if (first !== undefined && namespace === 'database' && binds !== undefined) {
+      // `Database.query(soql)`: the text of a query.
+      const read = this.textQuery(first, this.ev(first), 'soql', binds, expr.name);
+      rest(1);
+      if (!DATABASE_QUERIES.has(method)) return VALUE;
+      return { type: read?.k === 'list' ? read : { k: 'list', of: { k: 'record', object: undefined } } };
+    }
+    if (first !== undefined && namespace === 'search' && (method === 'query' || method === 'find')) {
+      const read = this.textQuery(first, this.ev(first), 'sosl', true, expr.name);
+      rest(1);
+      return method === 'query' && read !== undefined ? { type: read } : VALUE;
+    }
+    if (namespace === 'schema' && method === 'getglobaldescribe') {
+      rest(0);
+      return { type: { k: 'describes' } };
+    }
+    if (first !== undefined && namespace === 'schema' && method === 'describesobjects') {
+      const value = this.describeObjects(first, this.ev(first), expr.name);
+      rest(1);
+      return value;
+    }
+    if (namespace === 'type' && method === 'forname') return this.forNameText(expr);
+    rest(0);
     if (namespace === 'database' && DATABASE_QUERIES.has(method)) {
       return { type: { k: 'list', of: { k: 'record', object: undefined } } };
     }
     return VALUE;
   }
 
+  // -------------------------------------------------------------- names in texts
+
+  /** A reference to an object of which a text names something that is not known: `possible` (decision record 0012). */
+  private possible(at: Pos, kind: 'reads' | 'writes' | 'references', object: string): void {
+    const checked = this.schema.object(object);
+    // An object that nothing defines has no field that the snapshot holds, and a name of it says that it is not
+    // found.
+    if (checked.target.to === null) return;
+    this.add({ text: object, at }, kind, checked, 'text', { tier: 'possible' });
+  }
+
+  /**
+   * The warning that nothing says which object the field a text names is of, or which object the relationship the
+   * record was reached through leads to.
+   */
+  private fieldNotKnown(name: Name, record?: Extract<Type, { k: 'record' }>): void {
+    if (foldName(name.text) === 'id') return;
+    if (record?.through !== undefined) {
+      this.notFollowed(record.through, [name.text]);
+      return;
+    }
+    this.warn(
+      name,
+      'PATH_NOT_FOLLOWED',
+      `nothing says which object "${cut(name.text, 80)}" is a field of, so it was not followed.`,
+      { notFollowed: [name.text], endsAt: 'field', origin: 'parser:apex' },
+    );
+  }
+
+  /**
+   * The warning that a name the code holds in a text is not known here: of a field of an object nothing says, of an
+   * object, of a class, or the text of a query or a search as a whole. It stands where the text is not known, or at
+   * `sink` where nothing says where that is.
+   */
+  private nameNotKnown(at: Pos | undefined, sink: Name, what: 'field' | 'object' | 'class' | 'query' | 'search'): void {
+    const message =
+      what === 'field'
+        ? 'the name of the field is a text that is not known here, and nothing says which object it is a field of, so it was not followed.'
+        : what === 'object'
+          ? 'the name of the object is a text that is not known here, so it was not followed.'
+          : what === 'class'
+            ? 'the name of the class is a text that is not known here, so it was not followed.'
+            : `the text of the ${what} is not known here, so what it reads was not followed.`;
+    // Only an object can be named by a name of an object, and a field by any other.
+    const ends = what === 'object' ? { endsAt: 'object' } : {};
+    this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
+      notFollowed: [],
+      ...ends,
+      origin: 'parser:apex',
+    });
+  }
+
+  /** The name of a whole text, at the place of its first character, or at `sink`. */
+  private static named(name: { readonly text: string; readonly at: Pos | undefined }, sink: Name): Name {
+    return { text: name.text, at: name.at ?? sink.at };
+  }
+
+  /** `record.get(name)` and `record.put(name, value)`: a token or a text names the field that is read or written. */
+  private byName(arg: Expr, kind: 'reads' | 'writes', record: Extract<Type, { k: 'record' }>, sink: Name): void {
+    const { object } = record;
+    const value = this.ev(arg);
+    if (value.type.k === 'fieldToken') {
+      this.byToken(value, arg, kind);
+      return;
+    }
+    if (!Resolver.isText(value)) return;
+    for (const text of this.textsOf(value, arg)) {
+      const found = nameIn(text);
+      if ('name' in found) {
+        const name = Resolver.named(found.name, sink);
+        if (object === undefined) this.fieldNotKnown(name, record);
+        else this.naming('text', () => this.field(object, name, kind === 'reads' ? 'read' : 'write', false));
+      } else if (object !== undefined) this.possible(found.unknown ?? sink.at, kind, object);
+      else this.nameNotKnown(found.unknown, sink, 'field');
+    }
+  }
+
+  /**
+   * `record.getSObject(name)`, `record.getSObjects(name)` and `record.putSObject(name, value)`: a text names a
+   * relationship, or a child relationship, which is read as the code reads one after a dot.
+   */
+  private byRelationship(arg: Expr, method: string, record: Extract<Type, { k: 'record' }>, sink: Name): Value {
+    const { object } = record;
+    const value = this.ev(arg);
+    const children = method === 'getsobjects';
+    const write = method === 'putsobject';
+    const none: Value = {
+      type: children ? { k: 'list', of: { k: 'record', object: undefined } } : { k: 'record', object: undefined },
+    };
+    if (!Resolver.isText(value)) return write ? VALUE : none;
+    const found: Value[] = [];
+    for (const text of this.textsOf(value, arg)) {
+      const one = nameIn(text);
+      if ('name' in one) {
+        const name = Resolver.named(one.name, sink);
+        if (object === undefined) this.fieldNotKnown(name, record);
+        else {
+          found.push(
+            this.naming('text', () =>
+              children
+                ? this.asList(this.field(object, name, 'read', false))
+                : this.field(object, name, write ? 'write' : 'read', true),
+            ),
+          );
+        }
+      } else if (object !== undefined) this.possible(one.unknown ?? sink.at, write ? 'writes' : 'reads', object);
+      else this.nameNotKnown(one.unknown, sink, 'field');
+    }
+    const [only] = found;
+    return write ? VALUE : found.length === 1 && only !== undefined ? { type: only.type } : none;
+  }
+
+  /** `fields.getMap().get(name)`: a text names a field of the object, which gives its token. */
+  private fieldByName(arg: Expr, object: string | undefined, sink: Name): Value {
+    const value = this.ev(arg);
+    const none: Value = { type: { k: 'fieldToken', object, field: undefined, described: false } };
+    if (!Resolver.isText(value)) return none;
+    const found: Value[] = [];
+    for (const text of this.textsOf(value, arg)) {
+      const one = nameIn(text);
+      if ('name' in one) {
+        const name = Resolver.named(one.name, sink);
+        if (object === undefined) this.fieldNotKnown(name);
+        else found.push(this.fieldToken(object, name, false, 'text'));
+      } else if (object !== undefined) this.possible(one.unknown ?? sink.at, 'references', object);
+      else this.nameNotKnown(one.unknown, sink, 'field');
+    }
+    const [only] = found;
+    return found.length === 1 && only !== undefined ? only : none;
+  }
+
+  /** `Schema.getGlobalDescribe().get(name)`: a text names an object, which gives its token. */
+  private objectByName(arg: Expr, sink: Name): Value {
+    const objects = this.objectsNamed(this.textsOrNone(this.ev(arg), arg), sink);
+    const [only] = objects;
+    return { type: { k: 'objectToken', object: objects.length === 1 ? only : undefined } };
+  }
+
+  /** `Schema.describeSObjects(names)`: each text of the list the code writes out names an object. */
+  private describeObjects(arg: Expr, value: Value, sink: Name): Value {
+    const objects: string[] = [];
+    if (value.items === undefined) this.nameNotKnown(Resolver.placeOf(arg), sink, 'object');
+    for (const item of value.items ?? []) objects.push(...this.objectsNamed(item ?? [holeText(sink.at, 'text')], sink));
+    const [only] = objects;
+    const object = objects.length === 1 ? only : undefined;
+    return { type: { k: 'list', of: { k: 'describe', object }, coll: 'list' } };
+  }
+
+  /** The texts of a value that can be a text, and none of one that cannot. */
+  private textsOrNone(value: Value, arg: Expr): Texts {
+    return Resolver.isText(value) ? this.textsOf(value, arg) : [];
+  }
+
+  /** Each object the texts name, with a reference to it, and the warning where a text is not known. */
+  private objectsNamed(texts: Texts, sink: Name): string[] {
+    const objects: string[] = [];
+    for (const text of texts) {
+      const one = nameIn(text);
+      if ('name' in one) {
+        const name = Resolver.named(one.name, sink);
+        this.add(name, 'references', this.schema.object(name.text), 'text');
+        if (!objects.includes(name.text)) objects.push(name.text);
+      } else this.nameNotKnown(one.unknown, sink, 'object');
+    }
+    return objects;
+  }
+
+  /**
+   * `Type.forName(name)` and `Type.forName(namespace, name)` with a text that is no literal: the class it names, as
+   * a literal names one (`apex.ts`), which the call uses as a type.
+   */
+  private forNameText(expr: Extract<Expr, { kind: 'call' }>): Value {
+    const values = expr.args.map((arg) => this.ev(arg));
+    const type: Value = { type: { k: 'named', name: 'Type' } };
+    if (forName(expr) !== undefined || values.length === 0 || values.length > 2) return type;
+    const at = values.length - 1;
+    const [value, arg] = [values[at], expr.args[at]];
+    if (value === undefined || arg === undefined || !Resolver.isText(value)) return type;
+    // The namespace: none where it is an empty text or `null`.
+    const [space, spaceArg] = [
+      values.length === 2 ? values[0] : undefined,
+      expr.args.length === 2 ? expr.args[0] : undefined,
+    ];
+    const spaces: (string | undefined)[] = [];
+    if (
+      space === undefined ||
+      spaceArg === undefined ||
+      (spaceArg.kind === 'literal' && foldName(spaceArg.text) === 'null')
+    ) {
+      spaces.push(undefined);
+    } else {
+      for (const text of this.textsOf(space, spaceArg)) {
+        const whole = known(text);
+        if (whole === undefined) {
+          this.nameNotKnown(text.find((piece) => piece.k === 'hole')?.at, expr.name, 'class');
+          return type;
+        }
+        spaces.push(whole === '' ? undefined : whole);
+      }
+    }
+    for (const text of this.textsOf(value, arg)) {
+      const whole = known(text);
+      const start = text[0]?.at;
+      if (whole === undefined || !/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)?$/.test(whole)) {
+        const unknown = nameIn(text);
+        this.nameNotKnown('unknown' in unknown ? unknown.unknown : start, expr.name, 'class');
+        continue;
+      }
+      for (const prefix of spaces) {
+        const target = this.types.find(prefix === undefined ? whole : `${prefix}.${whole}`, this.context.unit.key);
+        if (target === undefined || target.to === this.context.from) continue;
+        const checked: Checked = { target, checked: true, known: true, notDescribed: false };
+        this.add({ text: whole, at: start ?? expr.name.at }, 'uses-type', checked, 'text');
+      }
+    }
+    return type;
+  }
+
+  /**
+   * The text of a query or a search (`kind`) that a method of `Database` or `Search` runs: each text it can be is
+   * read as a query, and the names in it are reported where they stand in the code, at `probable`. Gives the type
+   * of what the query gives, or `undefined` where the value is no text.
+   */
+  private textQuery(arg: Expr, value: Value, kind: 'soql' | 'sosl', binds: boolean, sink: Name): Type | undefined {
+    if (!Resolver.isText(value)) return undefined;
+    const texts = this.textsOf(value, arg).map((text) => this.parsedText(text, kind));
+    // The parts that are not known of the texts that are read as a query.
+    const read = texts.some((one) => one.read !== undefined) ? new Set<string>() : undefined;
+    for (const one of texts) {
+      if (one.read !== undefined)
+        for (const filled of one.put.filled) if (filled.at !== undefined) read?.add(placeKey(filled.at));
+    }
+    let type: Type | undefined;
+    for (const one of texts) {
+      const found = this.readText(one, kind, binds, sink, read);
+      type = type === undefined ? found : this.eitherType(type, found);
+    }
+    return type;
+  }
+
+  /** A text of a query or a search, put together and read, where it can be read. */
+  private parsedText(text: Text, kind: 'soql' | 'sosl'): ParsedText {
+    const put = composed(text);
+    const whole = text.every((piece) => piece.k === 'hole');
+    const read =
+      whole || this.reader === undefined
+        ? undefined
+        : kind === 'soql'
+          ? this.reader.parseQuery(put.source)
+          : this.reader.parseSearch(put.source);
+    return { text, put, whole, read };
+  }
+
+  /**
+   * The names of a text of a query or a search. `read` holds the places of the parts that are not known of each text
+   * of the same value that was read, and is `undefined` where none was.
+   */
+  private readText(
+    parsed: ParsedText,
+    kind: 'soql' | 'sosl',
+    binds: boolean,
+    sink: Name,
+    read: ReadonlySet<string> | undefined,
+  ): Type {
+    const { text, put, whole } = parsed;
+    const records: Type = { k: 'record', object: undefined };
+    const none: Type = kind === 'soql' ? { k: 'list', of: records } : { k: 'list', of: { k: 'list', of: records } };
+    const first = text.find((piece) => piece.at !== undefined)?.at;
+    if (parsed.read === undefined) {
+      // A text that is not read as a query: the object after `FROM`, where it is known, is read with what is not
+      // known of it (decision record 0012). A text that the code can only put together where it holds no query,
+      // such as `WHERE` without a condition, where it holds a query as each other text does, adds nothing: what is
+      // not known of it is not known of a text that was read.
+      const object = kind === 'soql' && !whole ? Resolver.objectAfterFrom(put) : undefined;
+      const covered =
+        !whole && read !== undefined && put.filled.every((one) => one.at !== undefined && read.has(placeKey(one.at)));
+      if (object !== undefined) this.possible(object.at, 'reads', object.name);
+      else if (whole) this.nameNotKnown(first, sink, kind === 'soql' ? 'query' : 'search');
+      else if (!covered) this.textNotRead(put.filled[0]?.at ?? first, sink, kind, put.filled.length > 0);
+      return none;
+    }
+    const { read: query } = parsed;
+    // Each name stands where its first character stands in the code. A name for a part that is not known stands
+    // where that part enters the text.
+    const holes = put.filled.map((one) => (one.named ? { ...(one.at ?? sink.at) } : undefined));
+    // A name that a part that is not known stands in, as `ns + '__Field__c'`, stands for that part.
+    const place = (at: Pos, length: number): Pos => {
+      const offset = at.column - 1;
+      const hole = put.filled.findIndex(
+        (one, index) => holes[index] !== undefined && offset < one.end && offset + length > one.start,
+      );
+      return holes[hole] ?? put.places[offset] ?? sink.at;
+    };
+    const outer = { holes: this.holes, met: this.met, binds: this.textBinds };
+    this.holes = new Set(holes.filter((one) => one !== undefined));
+    this.met = new Set();
+    this.textBinds = binds;
+    try {
+      const moved = relocated(query, place);
+      const type = this.naming('text', () =>
+        kind === 'soql' ? this.soql(moved as Query) : this.sosl(moved as Search),
+      );
+      // A part that is not known and that no name of the text stands for can name fields of the object.
+      const from = kind === 'soql' ? (moved as Query).from : [];
+      const [object, ...more] = from;
+      const known = object !== undefined && more.length === 0 && !this.holes.has(object.at) ? object.text : undefined;
+      for (const at of holes) {
+        if (at === undefined || this.met.has(at)) continue;
+        if (known !== undefined) this.possible(at, 'reads', known);
+        else this.nameNotKnown(at, sink, 'field');
+      }
+      return type;
+    } finally {
+      this.holes = outer.holes;
+      this.met = outer.met;
+      this.textBinds = outer.binds;
+    }
+  }
+
+  /**
+   * The warning that a text the code shows, or a part of it, is not read as a query or a search: Salesforce would
+   * refuse it as it is written, or the reader does not know it.
+   */
+  private textNotRead(at: Pos | undefined, sink: Name, kind: 'soql' | 'sosl', partly: boolean): void {
+    const what = kind === 'soql' ? 'query' : 'search';
+    const message = partly
+      ? `the text of the ${what} is known only in part here, and it could not be read as a ${what} as far as it is known, so what it reads was not followed.`
+      : `the text of the ${what} could not be read as a ${what}, so what it reads was not followed.`;
+    this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
+      notFollowed: [],
+      origin: 'parser:apex',
+    });
+  }
+
+  /**
+   * The object after `FROM` in the characters of a text that is not read as a query, at its place: the `FROM` outside
+   * brackets, and not that of a subquery.
+   */
+  private static objectAfterFrom(put: Composed): { name: string; at: Pos } | undefined {
+    for (const match of put.source.matchAll(/\bfrom\s+([A-Za-z][A-Za-z0-9_]*)/gi)) {
+      const before = put.source.slice(0, match.index);
+      if (before.split('(').length !== before.split(')').length) continue;
+      const start = match.index + match[0].length - (match[1]?.length ?? 0);
+      const filled = put.filled.some((one) => start < one.end && start + (match[1]?.length ?? 0) > one.start);
+      const at = put.places[start];
+      if (!filled && at !== undefined && match[1] !== undefined) return { name: match[1], at };
+    }
+    return undefined;
+  }
+
+  /** Whether a name of a text that is read stands for a part of it that is not known. It is met then. */
+  private isHole(name: Name): boolean {
+    if (this.holes.size === 0 || !this.holes.has(name.at)) return false;
+    this.met.add(name.at);
+    return true;
+  }
+
   // -------------------------------------------------------------- queries and searches
 
   /** Runs `run` with the fields and variables it names named as `via`. */
-  private naming<T>(via: 'soql' | 'sosl', run: () => T): T {
+  private naming<T>(via: 'soql' | 'sosl' | 'text', run: () => T): T {
     const outer = this.named;
     this.named = via;
     try {
@@ -1996,6 +2946,17 @@ class Resolver implements ApexResolver {
    */
   private soql(query: Query): Type {
     const [from, ...more] = query.from;
+    if (from !== undefined && this.isHole(from)) {
+      // `'SELECT Name FROM ' + objectName`: the names of the query are of an object nothing says.
+      this.warn(
+        from,
+        'PATH_NOT_FOLLOWED',
+        'the object of the query is a text that is not known here, so the query was not followed.',
+        { notFollowed: this.namesOfQuery(query), endsAt: 'object', origin: 'parser:apex' },
+      );
+      this.queried(query, undefined);
+      return { k: 'list', of: { k: 'record', object: undefined } };
+    }
     const object = more.length === 0 ? from : undefined;
     if (object !== undefined) this.add(object, 'reads', this.schema.object(object.text), this.named);
     this.queried(query, object?.text);
@@ -2015,7 +2976,7 @@ class Resolver implements ApexResolver {
    * filter are read: the warning about its child relationship stands for the rest.
    */
   private queried(query: Query, object: string | undefined): void {
-    for (const bind of query.binds) this.ev(bind);
+    if (this.textBinds) for (const bind of query.binds) this.ev(bind);
     for (const nested of query.nested) this.soql(nested);
     if (object === undefined) {
       for (const child of query.children) this.queried(child, undefined);
@@ -2040,10 +3001,42 @@ class Resolver implements ApexResolver {
   /** A path from a record of `object`, as `Account__r.Tier__c`: each name but the last is a relationship. */
   private fieldPath(object: string, path: FieldPath): Value {
     let value: Value = { type: { k: 'record', object } };
-    path.forEach((name, index) => {
+    for (const [index, name] of path.entries()) {
+      if (this.isHole(name)) {
+        // `'SELECT Account__r.' + field + ' FROM Invoice__c'`: a field of the object the path leads to.
+        const { type } = value;
+        if (type.k === 'record' && type.object !== undefined) this.possible(name.at, 'reads', type.object);
+        else this.nameNotKnown(name.at, name, 'field');
+        return VALUE;
+      }
       value = this.dot(value, name, 'read', index < path.length - 1);
-    });
+    }
     return value;
+  }
+
+  /** The names of paths of a text that was read, without the parts of it that are not known. */
+  private namesOutside(paths: readonly FieldPath[]): string[] {
+    return namesOf(paths.filter((path) => !path.some((name) => this.holes.has(name.at))));
+  }
+
+  /**
+   * The names a query of an object that is not known holds beside its object: its fields, the child relationship of
+   * each subquery of its select list with what the subquery names, and each `TYPEOF` with what it names.
+   */
+  private namesOfQuery(query: Query): string[] {
+    const paths: FieldPath[] = [];
+    const visit = (one: Query): void => {
+      paths.push(...one.fields);
+      for (const child of one.children) {
+        paths.push(child.from.slice(-1));
+        visit(child);
+      }
+      for (const typeOf of one.typeOfs) {
+        paths.push(typeOf.relationship, ...typeOf.whens.flatMap((when) => when.fields), ...typeOf.otherwise);
+      }
+    };
+    visit(query);
+    return this.namesOutside(paths);
   }
 
   /**
@@ -2054,6 +3047,17 @@ class Resolver implements ApexResolver {
   private childQuery(parent: string, child: Query, prefixes: readonly (string | undefined)[]): void {
     const from = Resolver.unprefixed(child.from, prefixes);
     const name = from.at(-1);
+    if (from.some((one) => this.isHole(one)) && name !== undefined) {
+      this.warn(
+        name,
+        'PATH_NOT_FOLLOWED',
+        `the child relationship of a subquery of "${cut(parent, 80)}" is a text that is not known here, so the subquery was not followed.`,
+        { notFollowed: this.namesOutside(child.fields), origin: 'parser:apex' },
+      );
+      this.meet(child);
+      this.queried(child, undefined);
+      return;
+    }
     const found = name === undefined || from.length > 1 ? null : this.schema.child(parent, name.text);
     if (name !== undefined && found !== null) {
       this.add(name, 'references', found.field, this.named, { object: found.object });
@@ -2067,10 +3071,18 @@ class Resolver implements ApexResolver {
         name,
         'PATH_NOT_FOLLOWED',
         `it is not known which object the child relationship "${cut(name.text, 80)}" of "${cut(parent, 80)}" leads to, so the subquery through it was not followed.`,
-        { relationship: name.text, notFollowed: namesOf(child.fields), origin: 'parser:apex' },
+        { relationship: name.text, notFollowed: this.namesOutside(child.fields), origin: 'parser:apex' },
       );
+      // A part of a text that is not known in the subquery is a field of the child: the warning stands for it.
+      this.meet(child);
     }
     this.queried(child, undefined);
+  }
+
+  /** Meets each part that is not known of a text among the fields of a query and of its subqueries. */
+  private meet(query: Query): void {
+    for (const name of query.fields.flat()) this.isHole(name);
+    for (const child of query.children) this.meet(child);
   }
 
   /**
@@ -2093,6 +3105,10 @@ class Resolver implements ApexResolver {
    * `WHEN` names the one object the analysis knows, the code says that the relationship leads to others too.
    */
   private typeOf(object: string, typeOf: TypeOf, prefixes: readonly (string | undefined)[]): void {
+    // A part of a text that is not known stands for the relationship or an object: what is not known of the query
+    // names fields of its object.
+    const named = [...typeOf.relationship, ...typeOf.whens.map((when) => when.object)];
+    if (this.holes.size > 0 && named.some((name) => this.holes.has(name.at))) return;
     const path = Resolver.unprefixed(typeOf.relationship, prefixes);
     let value: Value = { type: { k: 'record', object } };
     for (const name of path) value = this.dot(value, name, 'read', true);
@@ -2107,7 +3123,7 @@ class Resolver implements ApexResolver {
       return;
     }
     const relationship = path.at(-1);
-    const names = namesOf(typeOf.otherwise);
+    const names = this.namesOutside(typeOf.otherwise);
     if (relationship === undefined || names.length === 0) return;
     this.warn(
       relationship,
@@ -2119,8 +3135,18 @@ class Resolver implements ApexResolver {
 
   /** A search reads each object it returns, with its fields. Gives lists of records of objects not known here. */
   private sosl(search: Search): Type {
-    for (const bind of search.binds) this.ev(bind);
+    if (this.textBinds) for (const bind of search.binds) this.ev(bind);
     for (const { object, fields } of search.returning) {
+      if (this.isHole(object)) {
+        this.warn(
+          object,
+          'PATH_NOT_FOLLOWED',
+          'an object the search returns is a text that is not known here, so what it reads of it was not followed.',
+          { notFollowed: this.namesOutside(fields), endsAt: 'object', origin: 'parser:apex' },
+        );
+        for (const name of fields.flat()) this.isHole(name);
+        continue;
+      }
       this.add(object, 'reads', this.schema.object(object.text), this.named);
       for (const path of fields) this.fieldPath(object.text, Resolver.unprefixed(path, [foldName(object.text)]));
     }
@@ -2289,6 +3315,36 @@ const isExpr = (node: Stmt | Expr): node is Expr => !STATEMENTS.has(node.kind);
  * Builds the resolver of the members of the classes and triggers of a snapshot. `types` knows every class of the
  * snapshot by name, also one whose code is not read.
  */
-export function buildApexResolver(units: readonly ApexUnitInput[], schema: ApexSchema, types: ApexTypes): ApexResolver {
-  return new Resolver(units, schema, types);
+export function buildApexResolver(
+  units: readonly ApexUnitInput[],
+  schema: ApexSchema,
+  types: ApexTypes,
+  reader?: TextReader,
+): ApexResolver {
+  return new Resolver(units, schema, types, reader);
+}
+
+/** A place as a key of a set. */
+const placeKey = (at: Pos): string => `${String(at.line)}:${String(at.column)}`;
+
+const isPos = (value: unknown): value is Pos =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { line?: unknown }).line === 'number' &&
+  typeof (value as { column?: unknown }).column === 'number';
+
+/**
+ * A query or a search that was read from a text, with each place of it moved to where it stands in the code. The
+ * place of a name is moved with the number of its characters.
+ */
+function relocated(node: unknown, place: (at: Pos, length: number) => Pos): unknown {
+  if (Array.isArray(node)) return node.map((one: unknown) => relocated(one, place));
+  if (typeof node !== 'object' || node === null) return node;
+  const { text } = node as { text?: unknown };
+  const length = typeof text === 'string' ? Math.max(text.length, 1) : 1;
+  const moved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    moved[key] = key === 'at' && isPos(value) ? place(value, length) : relocated(value, place);
+  }
+  return moved;
 }

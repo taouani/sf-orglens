@@ -129,8 +129,9 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       ]);
       expect(answer.packagesLeftOut).toBe(ofPackage.length);
       expect(answer.results.map((result) => result.key)).not.toContain('Flow:invoice_after_save');
-      // The analysis did not follow a path of an element of the flow, which can lead to the field.
-      expect(answer.notCovered.analysisWarnings).toBe(1);
+      // The analysis did not follow a path of an element of the flow, which can lead to the field, and four places of
+      // Apex where a text the code does not know names a field or a class of any object.
+      expect(answer.notCovered.analysisWarnings).toBe(5);
       expect(answer.complete).toBe(false);
       expect(answer.notCovered).toEqual(all.notCovered);
     });

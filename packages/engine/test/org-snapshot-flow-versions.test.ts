@@ -433,15 +433,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       expect(fromFlow.length).toBeGreaterThan(0);
 
       // An impact answer covers flows: it counts the warning with those of the analysis, and is not complete. The
-      // warning says nothing that is missed for certain, so it does not make the answer one that may miss. The two
-      // warnings of the analysis are about an element of another flow and a method of a class, which the answer
+      // warning says nothing that is missed for certain, so it does not make the answer one that may miss. The
+      // warnings of the analysis are about an element of another flow and methods of classes, which the answer
       // does not walk from, so they do not count (decision record 0074).
       expect(reading(dir, (store) => countIssues(store, 1, []).readWarnings)).toBe(0);
       expect(reading(dir, (store) => countIssues(store, 1, ['Flow']).readWarnings)).toBe(1);
-      expect(reading(dir, (store) => readAnalysisWarnings(store, 1).map((one) => one.componentKey))).toEqual([
-        'ApexClass:invoiceevents#method:saveall(list<sobject>)',
-        'Flow:invoice_after_save#element:check_result',
-      ]);
+      const warnings = reading(dir, (store) => readAnalysisWarnings(store, 1));
+      expect(
+        besidesKnownGap(warnings.map((one) => ({ severity: 'warning', code: one.code, component: one.componentKey }))),
+      ).toEqual([]);
       const answer = await (await openWorkspace({ root: dir, env })).impact('prod', KEY, { outgoing: true });
       expect(answer.results.some((one) => one.key.startsWith('Flow:invoice_after_save'))).toBe(false);
       expect(answer.notCovered.analysisWarnings).toBe(1);

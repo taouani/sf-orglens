@@ -607,11 +607,15 @@ it implements, the object of a trigger, and a class or an object that a member n
 variables and properties of classes, the tokens of objects and fields, and the objects that DML writes (decision
 record 0087), and the object and the fields of every query and search in brackets, also in its subqueries, and what
 it binds (decision record 0088), and the methods and constructors it calls, with the overrides a call can reach,
-and the values of enums it names (decision record 0089). A name that no file of the snapshot and no description of
-the org defines, and an object that not every org has, are `probable`. Names in texts, such as a query in a string,
-are read in a later version. So an answer
-still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components of
-them.
+and the values of enums it names (decision record 0089). It reads the names in the texts a member builds itself, with
+its constants and the texts that methods of the project give back, where a query or a search of `Database` or
+`Search`, `get`, `put` or `getSObject` of a record, the map of fields of a describe, `Schema.getGlobalDescribe()` or
+`Type.forName` takes them, with the `via` `text` (decision record 0090). Such a name is `probable` at most, and a part
+of a text that is not known is a `possible` reference to its object. A name that no file of the snapshot and no
+description of the org defines, and an object that not every org has, are `probable`. A text that a member is handed
+as a parameter, and the names that records of custom metadata and field sets hold, are read in a later version. So an
+answer still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components
+of them.
 
 The issues of the analysis follow, one line per code with their number and the first of them: an org can have
 hundreds. `--json` has every issue. A snapshot without an analysis says so, and names the command that analyses
@@ -802,7 +806,7 @@ The issue codes of the analysis (`stage` is `analysis`), for every kind of sourc
 | `error`   | `APEX_MALFORMED`                                   | The parser of Apex cannot read a class or a trigger, or the file holds more than the one it declares (`details.line` and `details.column` of the first place), or is not text in UTF-8 (both null). Nothing of its Apex is analysed.                                                                                                                                                 |
 | `warning` | `NAME_NOT_READ`                                    | A value that should be a name is not built like one, an action of a workflow rule or an override of an action of an object has a type that is not known here, or none, or a merge field of an email template or a name in a formula of a quick action starts with a name that is not known there. No reference is made for it.                                                       |
 | `warning` | `RESOURCE_NOT_FOUND`                               | A flow names a resource it does not hold. Nothing is read of that name.                                                                                                                                                                                                                                                                                                              |
-| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`), which object the records that DML of Apex writes are of (`details.op`), which fields `FIELDS()` of a query reads (`details.object`) or, with none, what a name is a field of. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`. |
+| `warning` | `PATH_NOT_FOLLOWED`                                | Nothing says where a relationship leads (`details.relationship`), what a resource of a flow holds (`details.resource`), the object of the records DML of Apex writes (`details.op`), the fields `FIELDS()` reads (`details.object`) or, with none, what a name is a field of or a text of Apex names. Names: `details.notFollowed`, end: `details.endsAt`, reader: `details.origin`. |
 | `warning` | `ELEMENT_NOT_FOUND`                                | A component that the Salesforce library finds inside a file, such as one custom label, is not found there by its name.                                                                                                                                                                                                                                                               |
 | `warning` | `FORMULA_NOT_READ`                                 | A formula was not read as a whole. The names among its tokens are recorded as `probable`.                                                                                                                                                                                                                                                                                            |
 | `warning` | `FLOW_ELEMENT_UNKNOWN`                             | A flow holds an element of a kind that is not known here. The names in it are read as in the kinds that are known, and recorded as `probable`.                                                                                                                                                                                                                                       |
@@ -984,7 +988,12 @@ relationship that no file of the snapshot defines and that is not one of the few
 child relationship that nothing defines and that the code uses as a list (decision record 0087) or that a subquery goes
 through, which keeps the names of the subquery, and for `FIELDS(ALL)`, `FIELDS(CUSTOM)` and `FIELDS(STANDARD)` of a
 query, which read fields the query does not name (decision record 0088). The fields after `ELSE` of a `TYPEOF` of a
-query are of objects that nothing says, and their warning ends at `field`. Every other warning
+query are of objects that nothing says, and their warning ends at `field`. Apex writes one too where a text names
+something and a part of it is not known (decision record 0090): a field whose name is known, of a record of no known
+object, keeps the name and ends at `field`, an object that is not known keeps no name and ends at `object`, and the
+object of a query that is not known keeps the names the query holds, also in its subqueries, and ends at `object`. A
+field and its object that are both not known, a class, a query or a search of which nothing is known, and a text
+that could not be read as a query or a search keep no name and no end, and count for every answer. Every other warning
 counts for what refers to a component. A warning about a file as a whole, which names no component, counts for every
 answer. The count is of the warnings that bear on the answer directly: one whose names fit only a component that another
 missing reference would bring into the answer is not counted, and the answer is not complete all the same.

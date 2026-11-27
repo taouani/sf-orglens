@@ -23,6 +23,66 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:dynamicaccess#method:legacycode(invoice__c)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.legacyCode(Invoice__c)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:legacycode(invoice__c)",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 18,
+        "column": 54
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:dynamicaccess#method:setlegacycode(invoice__c,string)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.setLegacyCode(Invoice__c, String)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:setlegacycode(invoice__c,string)",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 14,
+        "column": 38
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoiceselector#method:withlegacycode()",
+      "type": "ApexClass",
+      "name": "InvoiceSelector.withLegacyCode()",
+      "file": "force-app/main/default/classes/InvoiceSelector.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoiceselector#method:withlegacycode()",
+        "to": "CustomField:invoice__c.legacy_code__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceSelector.cls",
+        "line": 11,
+        "column": 56
+      },
+      "package": null
+    },
+    {
       "key": "Flow:invoice_before_save",
       "type": "Flow",
       "name": "Invoice_Before_Save",
@@ -155,7 +215,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 4,
     "notHeld": 0
   },
   "mayMiss": false

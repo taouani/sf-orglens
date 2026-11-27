@@ -139,9 +139,15 @@ packages/cli   the `orglens` binary                            imports only `@sf
   and is `probable` to each override that the class of the value can reach and wherever the types do not tell the
   methods apart. A `new` of a class calls the constructor its arguments choose, or the class where it declares none,
   a call into a class whose code is not read refers to the class with `attrs.method`, and a value of an enum that the
-  code names reads the enum (decision record 0089). Names in texts are not read yet: the analysis does not
-  list `ApexClass` and `ApexTrigger` among the types it read, so an answer names them as not analysed, and their rows
-  of the Dependency API are not compared.
+  code names reads the enum (decision record 0089). A text that a query or a search of `Database` or `Search` runs,
+  that `get`, `put` or `getSObject` of a record, the map of fields of a describe, `Schema.getGlobalDescribe()` or
+  `Type.forName` is given, names what it holds, with the `via` `text`, at `probable` at most (decision record 0090).
+  The resolver follows how a member builds the text, with its constants and the texts that methods of the snapshot
+  give back, and puts each name where its characters stand in the code. A part that is not known is a `possible`
+  reference to its object, or a `PATH_NOT_FOLLOWED` that says what is not known. A text a member is handed as a
+  parameter, and the names that records of custom metadata and field sets hold, are not read yet. The analysis does
+  not list `ApexClass` and `ApexTrigger` among the types it read until the answers take Apex in (work package 7 of
+  the Phase 3 plan), so an answer names them as not analysed, and their rows of the Dependency API are not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the

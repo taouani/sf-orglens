@@ -441,14 +441,21 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))('snapshot
     const workspace = await openWorkspace({ root, env });
     const report = await workspace.snapshot('fixture');
     expect(report.snapshot.status).toBe('complete');
-    // One path of a flow is not followed, and the write of a list of `SObject`, as the answer key says. Nothing else
-    // is said.
+    // One path of a flow is not followed, the write of a list of `SObject` and the names in texts the code does not
+    // know, as the answer key says. Nothing else is said.
     expect(
       report.issues
         .filter((issue) => issue.severity !== 'info')
         .map((issue) => `${issue.severity} ${issue.code} ${String(issue.component)}`),
     ).toEqual([
+      'warning PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:fieldof(sobject)',
+      'warning PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
+      'warning PATH_NOT_FOLLOWED ApexClass:dynamicaccess#method:copyfield(sobject,sobject,string)',
       'warning PATH_NOT_FOLLOWED ApexClass:invoiceevents#method:saveall(list<sobject>)',
+      'warning PATH_NOT_FOLLOWED ApexClass:invoiceevents#method:describebyname(string)',
+      'warning PATH_NOT_FOLLOWED ApexClass:invoicenotifications#method:byname(string)',
+      'warning PATH_NOT_FOLLOWED ApexClass:invoiceselector#method:anyobject(string,string)',
+      'warning PATH_NOT_FOLLOWED ApexClass:invoiceselector#method:anyobject(string,string)',
       'warning PATH_NOT_FOLLOWED Flow:invoice_after_save#element:check_result',
     ]);
 

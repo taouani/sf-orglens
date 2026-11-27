@@ -23,6 +23,46 @@
   "minConfidence": "possible",
   "results": [
     {
+      "key": "ApexClass:dynamicaccess#method:riskscore(account)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.riskScore(Account)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:riskscore(account)",
+        "to": "CustomField:account.risk_score__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 6,
+        "column": 29
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:dynamicaccess#method:setriskscore(account,decimal)",
+      "type": "ApexClass",
+      "name": "DynamicAccess.setRiskScore(Account, Decimal)",
+      "file": "force-app/main/default/classes/DynamicAccess.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:dynamicaccess#method:setriskscore(account,decimal)",
+        "to": "CustomField:account.risk_score__c",
+        "kind": "writes",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/DynamicAccess.cls",
+        "line": 49,
+        "column": 22
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:createdraft(account,decimal)",
       "type": "ApexClass",
       "name": "InvoiceService.createDraft(Account, Decimal)",
@@ -215,7 +255,7 @@
     "partial": [],
     "readErrors": 0,
     "analysisErrors": 0,
-    "analysisWarnings": 0,
+    "analysisWarnings": 5,
     "notHeld": 0
   },
   "mayMiss": false
