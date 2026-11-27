@@ -41,5 +41,5 @@ export function readRecord(document: XmlDocument, element: XmlElement, type: str
       reader.references.push({ form: 'record-value', start: type, field: field.name, names, record, via: 'value' });
     }
   }
-  return { attrs: {}, facts: null, references: reader.references, unread: reader.unread, formulas: [] };
+  return { attrs: {}, facts: null, references: reader.references, unread: reader.unread, formulas: [], values: record };
 }

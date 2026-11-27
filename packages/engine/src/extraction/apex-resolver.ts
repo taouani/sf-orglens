@@ -61,6 +61,7 @@ import {
   either as eitherText,
   escaped,
   formatted,
+  heldText,
   argBesideOther,
   argText,
   charsBeside,
@@ -188,6 +189,12 @@ type Type =
       readonly object: string | undefined;
       /** The relationship the record was reached through, where it leads to no known object. */
       readonly through?: Through;
+      /**
+       * Of a custom metadata type: the names of the records it can be, where the code names them, as
+       * `Billing_Rule__mdt.getInstance('Invoice_Late_Fee')` does, and `null` for a record the code makes with `new`,
+       * whose fields hold what the code puts in them (decision record 0092).
+       */
+      readonly names?: readonly (string | null)[];
     }
   /** A list, a set or an iterable. `coll` says which of a list and a set it is, where the code says so. */
   | { readonly k: 'list'; readonly of: Type; readonly coll?: 'list' | 'set' }
@@ -227,6 +234,12 @@ type Type =
   | { readonly k: 'fieldMap'; readonly object: string | undefined }
   /** The map of the objects of the org, by their names, which `Schema.getGlobalDescribe()` gives. */
   | { readonly k: 'describes' }
+  /** The map of the records of a custom metadata type by their names, which `getAll()` of the type gives. */
+  | { readonly k: 'records'; readonly object: string }
+  /** `fieldSets` of a describe: the next name is a field set of the object. */
+  | { readonly k: 'fieldSets'; readonly object: string | undefined }
+  /** The map of the field sets of an object, by their names, which `getMap()` of `fieldSets` gives. */
+  | { readonly k: 'fieldSetMap'; readonly object: string | undefined }
   /**
    * A type of Salesforce or of a package that is no class of the snapshot, no object the analysis knows and no
    * primitive type (`Id`, `String`). Only an object can be written by DML or made with the values of its fields, so
@@ -278,6 +291,9 @@ interface Value {
   /** The texts of the items of a list that the code writes out, as `new List<String>{ 'Invoice__c' }`. */
   readonly items?: readonly (Texts | undefined)[];
 }
+
+/** The maps of what Salesforce knows by name, which a variable of a type `Map` holds as they are. */
+const MAPS_OF_NAMES: ReadonlySet<Type['k']> = new Set(['fieldMap', 'describes', 'records', 'fieldSetMap']);
 
 const OTHER: Type = { k: 'other' };
 const VALUE: Value = { type: OTHER };
@@ -515,6 +531,9 @@ type Sink =
   | { readonly k: 'relationship'; readonly method: string; readonly record: RecordType }
   | { readonly k: 'fieldMap'; readonly object: string | undefined }
   | { readonly k: 'object' }
+  /** A record of a custom metadata type, and a field set of an object (decision record 0092). */
+  | { readonly k: 'record'; readonly object: string }
+  | { readonly k: 'fieldSet'; readonly object: string | undefined }
   /** `Type.forName`, with the namespace in front of the name where `space` says so. */
   | { readonly k: 'class'; readonly space: boolean }
   | { readonly k: 'text'; readonly kind: 'soql' | 'sosl' };
@@ -1192,7 +1211,10 @@ class Resolver implements ApexResolver {
 
   /** The more exact of the declared type of a variable and the type of the value it is given. */
   private refine(declared: Type, actual: Type): Type {
-    if (declared.k === 'record' && actual.k === 'record') return declared.object === undefined ? actual : declared;
+    if (declared.k === 'record' && actual.k === 'record') {
+      // A record of a custom metadata type that the code names keeps its names.
+      return declared.object === undefined || actual.names !== undefined ? actual : declared;
+    }
     // Only a query gives a list where one record is declared (`SObject one = [SELECT ...]`), and only the loop over
     // a query gives one record where a list is declared, a list for each batch (`for (List<SObject> batch : ...)`).
     if (declared.k === 'record' && actual.k === 'list' && actual.of.k === 'record') {
@@ -1203,7 +1225,7 @@ class Resolver implements ApexResolver {
     if (declared.k === 'map' && actual.k === 'map') {
       return { k: 'map', key: declared.key, value: this.refine(declared.value, actual.value) };
     }
-    if (declared.k === 'map' && (actual.k === 'fieldMap' || actual.k === 'describes')) return actual;
+    if (declared.k === 'map' && MAPS_OF_NAMES.has(actual.k)) return actual;
     if ((declared.k === 'objectToken' || declared.k === 'describe') && actual.k === declared.k) {
       return declared.object === undefined ? actual : declared;
     }
@@ -1580,6 +1602,10 @@ class Resolver implements ApexResolver {
       return OTHER;
     }
     if (a.k === 'instance' || b.k === 'instance') return OTHER;
+    if (a.k === 'record' && b.k === 'record' && a.names !== undefined) {
+      // A record of a custom metadata type that is one of several named records, or any where the other is not named.
+      return b.names === undefined ? { k: 'record', object: a.object } : { ...a, names: [...a.names, ...b.names] };
+    }
     return says(a) ? a : b;
   }
 
@@ -2101,7 +2127,7 @@ class Resolver implements ApexResolver {
     const { type } = target;
     switch (type.k) {
       case 'record':
-        if (type.object !== undefined) return this.field(type.object, name, access, step);
+        if (type.object !== undefined) return this.heldIn(type, name, this.field(type.object, name, access, step));
         // `task.What.Name`: the relationship can lead to records of several objects, or to one not known here.
         if (type.through !== undefined && folded !== 'id')
           return { type: this.notFollowed(type.through, [name.text], name.at) };
@@ -2137,7 +2163,13 @@ class Resolver implements ApexResolver {
       case 'describe':
       case 'objectToken':
         // `Invoice__c.SObjectType.getDescribe().fields.Amount__c` names the field as `Schema.SObjectType.Invoice__c.fields` does.
+        if (folded === 'fieldsets') return { type: { k: 'fieldSets', object: type.object } };
         return folded === 'fields' ? { type: { k: 'fields', object: type.object } } : VALUE;
+      case 'fieldSets':
+        // `Schema.SObjectType.Invoice__c.fieldSets.Invoice_Summary` names the field set.
+        if (type.object === undefined) this.fieldSetNotKnown(name);
+        else this.fieldSetOf(type.object, name, 'token');
+        return VALUE;
       case 'fields':
         if (type.object === undefined) return { type: { k: 'fieldToken', object: undefined, field: name.text } };
         if (folded === 'id') return { type: { k: 'fieldToken', object: type.object, field: name.text } };
@@ -2255,7 +2287,8 @@ class Resolver implements ApexResolver {
           this.ev(arg.right);
         } else this.ev(arg);
       }
-      return { type };
+      // A record of a custom metadata type that the code makes is none of the snapshot.
+      return { type: type.k === 'record' && /__mdt$/i.test(object) ? { ...type, names: [null] } : type };
     }
     // `new Map<Id, Contact>(account.Contacts)`: what a list, a set or a map is made of is a list.
     const ofList = type.k === 'list' || type.k === 'map';
@@ -2441,14 +2474,42 @@ class Resolver implements ApexResolver {
         return VALUE;
       case 'object': {
         // A method of a custom setting or of a custom metadata type: `Billing_Settings__c.getInstance()`.
-        rest(0);
         const object = type.name.text;
+        const metadata = /__mdt$/i.test(object);
+        const [first] = args;
+        if (metadata && method === 'getinstance' && args.length === 1 && first !== undefined) {
+          // `Billing_Rule__mdt.getInstance('Invoice_Late_Fee')`: a text names a record of the type.
+          this.add(type.name, 'references', this.schema.object(object), 'token');
+          return this.recordByName(first, object, expr.name);
+        }
+        rest(0);
         this.add(type.name, 'references', this.schema.object(object), 'token');
         const record: Type = { k: 'record', object };
         if (RECORD_METHODS.has(method)) return { type: record };
         if (method === 'getsobjecttype') return { type: { k: 'objectToken', object } };
-        return method === 'getall' ? { type: { k: 'map', key: OTHER, value: record } } : VALUE;
+        if (method !== 'getall') return VALUE;
+        return { type: metadata ? { k: 'records', object } : { k: 'map', key: OTHER, value: record } };
       }
+      case 'records':
+        // `Billing_Rule__mdt.getAll().get(name)`: a text names a record of the type.
+        if (method === 'get' && args.length === 1 && args[0] !== undefined) {
+          return this.recordByName(args[0], type.object, expr.name);
+        }
+        rest(0);
+        return method === 'values'
+          ? { type: { k: 'list', of: { k: 'record', object: type.object }, coll: 'list' } }
+          : VALUE;
+      case 'fieldSets':
+        rest(0);
+        return method === 'getmap' ? { type: { k: 'fieldSetMap', object: type.object } } : VALUE;
+      case 'fieldSetMap':
+        // `fieldSets.getMap().get(name)`: a text names a field set of the object.
+        if (method === 'get' && args.length === 1 && args[0] !== undefined) {
+          this.fieldSetByName(args[0], type.object, expr.name);
+          return VALUE;
+        }
+        rest(0);
+        return VALUE;
       case 'objectToken':
         rest(0);
         if (method === 'getdescribe') return { type: { k: 'describe', object: type.object } };
@@ -2960,15 +3021,21 @@ class Resolver implements ApexResolver {
    * object, of a class, or the text of a query or a search as a whole. It stands where the text is not known, or at
    * `sink` where nothing says where that is.
    */
-  private nameNotKnown(at: Pos | undefined, sink: Name, what: 'field' | 'object' | 'class' | 'query' | 'search'): void {
+  private nameNotKnown(
+    at: Pos | undefined,
+    sink: Name,
+    what: 'field' | 'field set' | 'object' | 'class' | 'query' | 'search',
+  ): void {
     const message =
       what === 'field'
         ? 'the name of the field is a text that is not known here, and nothing says which object it is a field of, so it was not followed.'
-        : what === 'object'
-          ? 'the name of the object is a text that is not known here, so it was not followed.'
-          : what === 'class'
-            ? 'the name of the class is a text that is not known here, so it was not followed.'
-            : `the text of the ${what} is not known here, so what it reads was not followed.`;
+        : what === 'field set'
+          ? 'the name of the field set is a text that is not known here, and nothing says which object it is of, so the fields it holds were not followed.'
+          : what === 'object'
+            ? 'the name of the object is a text that is not known here, so it was not followed.'
+            : what === 'class'
+              ? 'the name of the class is a text that is not known here, so it was not followed.'
+              : `the text of the ${what} is not known here, so what it reads was not followed.`;
     // Only an object can be named by a name of an object, and a field by any other.
     const ends = what === 'object' ? { endsAt: 'object' } : {};
     this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
@@ -3082,6 +3149,104 @@ class Resolver implements ApexResolver {
     }
     const [only] = found;
     return found.length === 1 && only !== undefined ? only : none;
+  }
+
+  /**
+   * `getInstance(name)` and `getAll().get(name)` of a custom metadata type: a text names a record of the type
+   * (decision record 0092), which gives a record of the type, of the names where they are known.
+   */
+  private recordByName(arg: Expr, object: string, sink: Name): Value {
+    // An id names a record too, which is not known here.
+    const texts = this.textsOf(this.ev(arg), arg);
+    this.atSink({ k: 'record', object }, sink, [texts]);
+    const names = this.namedRecords(texts, object, sink);
+    return { type: names === undefined ? { k: 'record', object } : { k: 'record', object, names } };
+  }
+
+  /**
+   * The record of the custom metadata type `type` each text names, with a reference to it. `undefined` where a text
+   * is not known, so that the record can be any. A text that is known and no name names no record, and neither does
+   * `null`: the code gets no record then.
+   */
+  private namedRecords(texts: Texts, type: string, sink: Name): string[] | undefined {
+    const names: string[] = [];
+    let any = false;
+    for (const text of texts) {
+      this.own(text);
+      const one = nameIn(text);
+      if ('name' in one) {
+        const name = Resolver.named(one.name, sink);
+        this.add(name, 'references', this.schema.record(type, name.text), 'text', { object: type });
+        names.push(name.text);
+      } else if (known(text) === undefined) any = true;
+    }
+    return any ? undefined : names;
+  }
+
+  /**
+   * A field of a record of a custom metadata type: the texts the records of the snapshot hold in it, which stand
+   * where the code reads it (decision record 0092). The field is a text by its file. Where the code writes the
+   * field, the value is not read. A record of another object has no record of the snapshot.
+   */
+  private heldIn(record: RecordType, name: Name, value: Value): Value {
+    const held = record.object === undefined ? undefined : this.schema.held(record.object, name.text, record.names);
+    if (held === undefined) return value;
+    const texts = held.texts.map((text) => heldText(text, name.at));
+    return { type: prim('string'), texts: distinct(held.unknown ? [...texts, holeText(name.at, 'text')] : texts) };
+  }
+
+  /** `fieldSets.getMap().get(name)` of a describe: a text names a field set of the object (decision record 0092). */
+  private fieldSetByName(arg: Expr, object: string | undefined, sink: Name): void {
+    const texts = this.textsOf(this.ev(arg), arg);
+    this.atSink({ k: 'fieldSet', object }, sink, [texts]);
+    this.namedFieldSet(texts, object, sink);
+  }
+
+  /** The field set of `object` each text names. */
+  private namedFieldSet(texts: Texts, object: string | undefined, sink: Name): void {
+    for (const text of texts) {
+      this.own(text);
+      const one = nameIn(text);
+      if ('unknown' in one && this.methodSays(one.unknown)) continue;
+      if ('name' in one) {
+        const name = Resolver.named(one.name, sink);
+        if (object === undefined) this.fieldSetNotKnown(name);
+        else this.fieldSetOf(object, name, 'text');
+      } else if (object !== undefined) this.possible(one.unknown ?? sink.at, 'reads', object);
+      else this.nameNotKnown(one.unknown, sink, 'field set');
+    }
+  }
+
+  /**
+   * The field set `name` of `object`, which the code refers to, and the fields it holds, which the code reads by it:
+   * each is a text of the field set, read where the code names the field set, also through relationships. Where the
+   * snapshot does not hold the field set, they are fields of the object or of what its relationships lead to.
+   */
+  private fieldSetOf(object: string, name: Name, via: 'text' | 'token'): void {
+    const { checked, members } = this.schema.fieldSet(object, name.text);
+    this.add(name, 'references', checked, via, { object });
+    if (members === undefined) {
+      this.possible(name.at, 'reads', object);
+      return;
+    }
+    this.naming('text', () => {
+      for (const path of members) {
+        this.fieldPath(
+          object,
+          path.split('.').map((text) => ({ text, at: { ...name.at } })),
+        );
+      }
+    });
+  }
+
+  /** The warning that nothing says which object the field set a name names is of. */
+  private fieldSetNotKnown(name: Name): void {
+    this.warn(
+      name,
+      'PATH_NOT_FOLLOWED',
+      `nothing says which object the field set "${cut(name.text, 80)}" is of, so the fields it holds were not followed.`,
+      { notFollowed: [], origin: 'parser:apex' },
+    );
   }
 
   /** `Schema.getGlobalDescribe().get(name)`: a text names an object, which gives its token. */
@@ -3256,6 +3421,12 @@ class Resolver implements ApexResolver {
         return;
       case 'object':
         this.objectsNamed(first, name);
+        return;
+      case 'record':
+        this.namedRecords(first, sink.object, name);
+        return;
+      case 'fieldSet':
+        this.namedFieldSet(first, sink.object, name);
         return;
       case 'class':
         if (sink.space) this.namedClass(first, second, name);

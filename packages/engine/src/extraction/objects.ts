@@ -35,6 +35,13 @@ export interface ElementReading {
   readonly texts?: readonly MergeFieldsReading[];
   /** Of an element of a flow: the elements in it, or itself, that are of a kind the reader does not know. */
   readonly unknown?: readonly { readonly element: string; readonly line: number; readonly column: number }[];
+  /**
+   * Of a record of a custom metadata type: the value of each field it gives one, by the folded name of the field,
+   * which the resolver of Apex reads where code reads the field of the record (decision record 0092).
+   */
+  readonly values?: ReadonlyMap<string, string>;
+  /** Of a field set: the path of each field it holds, as the file writes it, as `Account__r.Tier__c`. */
+  readonly members?: readonly string[];
 }
 
 /** A name of an object, a field or a relationship, or a global variable. */
@@ -311,11 +318,23 @@ export function readRecordType(document: XmlDocument, element: XmlElement, objec
  */
 export function readFieldSet(document: XmlDocument, element: XmlElement, object: string): ElementReading {
   const reader = new Reader(document);
+  // The fields the field set holds are those it shows. The others are those a user may add to it.
+  const members: string[] = [];
   for (const group of element.children) {
     if (group.local !== 'availableFields' && group.local !== 'displayedFields') continue;
-    reader.fieldPath(childOf(group, 'field'), object, 'reads', 'listed-field');
+    const field = childOf(group, 'field');
+    reader.fieldPath(field, object, 'reads', 'listed-field');
+    const path = textOf(field);
+    if (group.local === 'displayedFields' && path !== null) members.push(path);
   }
-  return { attrs: {}, facts: null, references: reader.references, unread: reader.unread, formulas: reader.formulas };
+  return {
+    attrs: {},
+    facts: null,
+    references: reader.references,
+    unread: reader.unread,
+    formulas: reader.formulas,
+    members,
+  };
 }
 
 /**

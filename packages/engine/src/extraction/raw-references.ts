@@ -13,7 +13,7 @@ import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type Reference, type ReferenceOrigin } from '../core/references.ts';
 import { cut, type AnalysisIssue } from './analysed.ts';
 import { namesTakenFor } from './formula-names.ts';
-import { walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
+import { holdsText, walkPath, type FieldFacts, type ObjectModel, type PathHint, type Target } from './model.ts';
 import { geolocationField } from './names.ts';
 import type { NameAt } from './values.ts';
 
@@ -232,8 +232,6 @@ export interface Unread {
 export const LONGEST_TEXT_SHOWN = 60;
 /** The name of an object or of a field, as a value of a record of a custom metadata type holds it. */
 const ONE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
-/** The types of a field of a custom metadata type whose value is a text, by their folded names. */
-const TEXT_TYPES: ReadonlySet<string> = new Set(['text', 'textarea', 'longtextarea']);
 
 /**
  * What a field of a custom metadata type is a relationship to, by its folded name: `entitydefinition`,
@@ -439,7 +437,7 @@ export function resolveReferences(
       }
       return;
     }
-    if (!TEXT_TYPES.has(foldName(facts.type ?? ''))) return;
+    if (!holdsText(facts)) return;
     const text: Raw = { via: 'text', tier: 'probable' };
     if (second !== undefined) {
       const field = model.field(first.name, second.name);

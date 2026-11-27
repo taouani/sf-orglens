@@ -148,10 +148,13 @@ packages/cli   the `orglens` binary                            imports only `@sf
   with a text it is handed as a `String` is read again at each call of it, with the text the call gives, and the
   call reports the names its own characters make (decision record 0091). A method that only calls of the snapshot
   reach, and no call on a value of no known class can reach, says nothing of such a parameter, but still of what it
-  does not know itself; a method that calls itself, also through others, keeps what it says. The names that
-  records of custom metadata and field sets hold are not read yet. The analysis does not list `ApexClass` and
-  `ApexTrigger` among the types it read until the answers take Apex in (work package 7 of the Phase 3 plan), so an
-  answer names them as not analysed, and their rows of the Dependency API are not compared.
+  does not know itself; a method that calls itself, also through others, keeps what it says. A field of a record of a
+  custom metadata type that holds a text by its file gives the texts the records of the snapshot hold, of the records
+  the code names with `getInstance` or `getAll().get` or of every one, at the place where the code reads the field,
+  and a field set the code names, by a text or a token, reads the fields it shows there (decision record 0092). The
+  analysis does not list `ApexClass` and `ApexTrigger` among the types it read until the answers take Apex in (work
+  package 7 of the Phase 3 plan), so an answer names them as not analysed, and their rows of the Dependency API are
+  not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula
   of a field, its default value and the condition of a validation rule. It knows no function, so a call is any
   name before a bracket. A formula it cannot read as a whole is kept: a warning says where it stopped, and the

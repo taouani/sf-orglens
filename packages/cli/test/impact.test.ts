@@ -186,7 +186,7 @@ describe('orglens impact', () => {
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 7 types are not analysed yet, and 4 warnings of the analysis bear on the answer. The details are below the answer.',
       '',
-      '24 components refer to it, 16 of them directly.',
+      '25 components refer to it, 17 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
@@ -375,9 +375,11 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 5 of its warnings bear on the answer. The details are below the answer.',
     );
-    // The 67 of the project without the field that could not be read, without the one that reads it, without the 5
+    // The 69 of the project without the field that could not be read, without the one that reads it, without the 5
     // methods that read only those and without the 3 that reach them only through calls of those methods.
-    expect(lines).toContain('57 components refer to it, 48 of them directly.');
+    expect(lines.find((line) => line.endsWith('of them directly.'))).toBe(
+      '59 components refer to it, 49 of them directly.',
+    );
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',

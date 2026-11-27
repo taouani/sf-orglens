@@ -78,6 +78,12 @@ export const holeText = (at: Pos | undefined, of: HoleOf, param?: number): Text 
   param === undefined ? { k: 'hole', at, of } : { k: 'hole', at, of, param },
 ];
 
+/**
+ * A text that metadata of the snapshot holds, such as the value of a field of a record of a custom metadata type: all
+ * its characters stand at `at`, where the code reads it (decision record 0092).
+ */
+export const heldText = (text: string, at: Pos): Text => [{ k: 'chars', text, at }];
+
 /** The text of a parameter of the member that is read, which its calls may give: a part not known yet. */
 export const argText = (of: HoleOf, arg: number): Text => [{ k: 'hole', at: undefined, of, arg }];
 

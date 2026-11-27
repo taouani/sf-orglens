@@ -601,21 +601,23 @@ was not read as a whole, whose names are recorded as `probable`, for `parser:flo
 `parser:apex`, the files of classes and triggers that do not parse or could not be read. The number of components
 includes the parts found inside files, and the objects that are only named.
 
-Of a class or a trigger, this version reads its members and the types they use: a class it extends, an interface
-it implements, the object of a trigger, and a class or an object that a member names as a type (decision record
-0084). It reads what the code of a member reads and writes: the fields of records, also through relationships, the
+Of a class or a trigger, this version reads its members and the types they use: a class it extends, an interface it
+implements, the object of a trigger, and a class or an object that a member names as a type (decision record 0084).
+It reads what the code of a member reads and writes: the fields of records, also through relationships, the
 variables and properties of classes, the tokens of objects and fields, and the objects that DML writes (decision
 record 0087), and the object and the fields of every query and search in brackets, also in its subqueries, and what
-it binds (decision record 0088), and the methods and constructors it calls, with the overrides a call can reach,
-and the values of enums it names (decision record 0089). It reads the names in the texts a member builds itself, with
+it binds (decision record 0088), and the methods and constructors it calls, with the overrides a call can reach, and
+the values of enums it names (decision record 0089). It reads the names in the texts a member builds itself, with
 its constants and the texts that methods of the project give back, where a query or a search of `Database` or
 `Search`, `get`, `put` or `getSObject` of a record, the map of fields of a describe, `Schema.getGlobalDescribe()` or
-`Type.forName` takes them, with the `via` `text` (decision record 0090). Such a name is `probable` at most, and a part
-of a text that is not known is a `possible` reference to its object. A name that no file of the snapshot and no
-description of the org defines, and an object that not every org has, are `probable`. A text that a member is handed
-as a parameter, and the names that records of custom metadata and field sets hold, are read in a later version. So an
-answer still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components
-of them.
+`Type.forName` takes them, with the `via` `text` (decision record 0090). It reads again, at each call of a method of
+the project, what the method does with a text it is handed as a `String`, and the call reports the names its text
+makes (decision record 0091). A field of a record of a custom metadata type that holds a text gives the texts that
+the records of the snapshot hold, and a field set that the code names reads the fields it shows (decision record
+0092). Such a name is `probable` at most, and a part of a text that is not known is a `possible` reference to its
+object. A name that no file of the snapshot and no description of the org defines, and an object that not every org
+has, are `probable`. Classes and triggers are not yet taken into the answers, so an answer still names `ApexClass`
+and `ApexTrigger` among the types that are not analysed, also where it holds components of them.
 
 The issues of the analysis follow, one line per code with their number and the first of them: an org can have
 hundreds. `--json` has every issue. A snapshot without an analysis says so, and names the command that analyses

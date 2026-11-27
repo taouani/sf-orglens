@@ -73,16 +73,13 @@ describe('the code of the Apex of the fixture project', () => {
       .filter((one) => viaOf(one) === 'text')
       .map(idOf)
       .sort();
-    expect(texts.filter((one) => !one.stretch)).toHaveLength(50);
-    const wanted = texts.filter((one) => !one.stretch && !ofMetadata(one)).map(idOfKeyed);
-    expect(wanted).toHaveLength(43);
+    const wanted = texts.filter((one) => !one.stretch).map(idOfKeyed);
+    expect(wanted).toHaveLength(50);
+    // Of them, the names that a record of custom metadata and a field set hold (decision record 0092).
+    expect(texts.filter((one) => !one.stretch && ofMetadata(one))).toHaveLength(7);
     expect(wanted.filter((id) => !found.includes(id))).toEqual([]);
     const all = new Set(texts.map(idOfKeyed));
-    expect(found.filter((id) => !all.has(id))).toEqual([
-      // `rule.Field_Name__c` is a text read from a record of custom metadata, which is not read yet: what it names is
-      // a field of the object of the query.
-      'ApexClass:invoicequeries#method:latefees() force-app/main/default/classes/InvoiceQueries.cls:50:52:reads:CustomObject:invoice__c text possible',
-    ]);
+    expect(found.filter((id) => !all.has(id))).toEqual([]);
     // Of what the key calls a stretch, the analysis finds the object of a query whose fields are a list, which it does
     // not follow, a list constant of another class and a list that the code fills in, and a field of the map of fields
     // of an object that reaches the line through two variables.
@@ -3126,6 +3123,299 @@ describe('the resolver of Apex', () => {
       'othercaller#method:m(invoice__c,handler) 6:25 uses-type ApexClass:child2 probable',
       // Two uses of the method that are one at the call.
       'othercaller#method:m(invoice__c,handler) 7:27 reads CustomField:invoice__c.status__c probable',
+    ]);
+  });
+
+  /**
+   * The custom metadata type `Rule__mdt`, with fields of a text, a long text, a number and a relationship to an object,
+   * and three records: `Late`, `Open`, and `Blank`, which gives its field of a text no value.
+   */
+  const rules = (source: ApexSource): void => {
+    source.object('Rule__mdt', '<label>Rule</label>');
+    source.field('Rule__mdt', 'Field__c', '<type>Text</type>');
+    source.field('Rule__mdt', 'Note__c', '<type>LongTextArea</type>');
+    source.field('Rule__mdt', 'Label__c', '<type>TextArea</type>');
+    source.field('Rule__mdt', 'Count__c', '<type>Number</type>');
+    source.field(
+      'Rule__mdt',
+      'Object__c',
+      '<referenceTo>EntityDefinition</referenceTo>',
+      '<type>MetadataRelationship</type>',
+    );
+    source.metadataRecord('Rule', 'Late', {
+      Field__c: 'Amount__c',
+      Count__c: '3',
+      Object__c: 'Invoice__c',
+      Note__c: 'Handler',
+    });
+    source.metadataRecord('Rule', 'Open', { Field__c: 'Status__c', Label__c: 'Status__c' });
+    source.metadataRecord('Rule', 'Blank', {});
+    // A few sources name a record after its type with the suffix.
+    source.metadataRecord('Rule__mdt', 'Suffixed', { Field__c: 'Amount__c' });
+    source.apexClass('Handler', code('public class Handler {', '}'));
+  };
+
+  it('reads the texts that records of a custom metadata type hold, of the record the code names or of every one', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.apexClass(
+        'Reads',
+        code(
+          'public class Reads {',
+          '    Object one(Invoice__c inv) {',
+          "        return inv.get(Rule__mdt.getInstance('Late').Field__c);",
+          '    }',
+          '    void every(Invoice__c inv) {',
+          '        for (Rule__mdt rule : Rule__mdt.getAll().values()) inv.get(rule.Field__c);',
+          '    }',
+          '    void queried(Invoice__c inv) {',
+          '        for (Rule__mdt rule : [SELECT Field__c FROM Rule__mdt]) inv.get(rule.Field__c);',
+          '    }',
+          '    void mapped(Invoice__c inv, Boolean flag) {',
+          '        Map<String, Rule__mdt> rules = Rule__mdt.getAll();',
+          "        Rule__mdt rule = flag ? rules.get('Open') : Rule__mdt.getInstance('Late');",
+          '        inv.get(rule.Field__c);',
+          '    }',
+          '    void missing(Invoice__c inv) {',
+          "        inv.get(Rule__mdt.getInstance('Gone').Field__c);",
+          "        inv.get(Rule__mdt.getInstance('Blank').Field__c);",
+          "        inv.get(Rule__mdt.getInstance('Not a name').Field__c);",
+          '    }',
+          '    void notText(Invoice__c inv) {',
+          "        inv.get(String.valueOf(Rule__mdt.getInstance('Late').Count__c));",
+          "        Schema.getGlobalDescribe().get(Rule__mdt.getInstance('Late').Object__c);",
+          "        Type.forName(Rule__mdt.getInstance('Late').Note__c);",
+          '    }',
+          '    void setting(Invoice__c inv) {',
+          "        inv.get(Settings__c.getInstance('Late').Field__c);",
+          '    }',
+          '    void more(Invoice__c inv, Boolean flag, Rule__mdt any) {',
+          "        Rule__mdt open = Rule__mdt.getInstance('Open');",
+          '        inv.get(open.Field__c);',
+          "        Rule__mdt either = flag ? Rule__mdt.getInstance('Open') : any;",
+          '        inv.get(either.Field__c);',
+          "        Rule__mdt half = flag ? Rule__mdt.getInstance('Late') : Rule__mdt.getInstance('Gone');",
+          '        inv.get(half.Field__c);',
+          "        inv.get(Rule__mdt.getInstance('Late').Field__c.toLowerCase());",
+          '    }',
+          '    void chained(Invoice__c inv, Id id) {',
+          '        inv.get(Rule__mdt.getAll().values()[0].Field__c);',
+          "        inv.get(Rule__mdt.getInstance('Open').Label__c);",
+          "        inv.get(Rule__mdt.getInstance('Suffixed').Field__c);",
+          '        inv.get(Rule__mdt.getInstance(id).Field__c);',
+          "        Rule__mdt made = new Rule__mdt(Field__c = 'Amount__c');",
+          '        inv.get(made.Field__c);',
+          "        Rule__mdt mixed = id == null ? made : Rule__mdt.getInstance('Open');",
+          '        inv.get(mixed.Field__c);',
+          "        Rule__mdt late = Rule__mdt.getInstance('Late');",
+          "        late.Field__c = 'Status__c';",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // Of every record, of a list of `getAll()` and of an id. A long text and a text area hold names, and a record
+      // named after its type with the suffix is found.
+      'reads#method:chained(invoice__c,id) 39:48 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:chained(invoice__c,id) 39:48 reads CustomField:invoice__c.status__c probable',
+      'reads#method:chained(invoice__c,id) 40:40 references CustomMetadata:rule.open probable',
+      'reads#method:chained(invoice__c,id) 40:47 reads CustomField:invoice__c.status__c probable',
+      'reads#method:chained(invoice__c,id) 41:40 references CustomMetadata:rule__mdt.suffixed probable',
+      'reads#method:chained(invoice__c,id) 41:51 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:chained(invoice__c,id) 42:43 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:chained(invoice__c,id) 42:43 reads CustomField:invoice__c.status__c probable',
+      // A record the code makes holds what the code puts in it, which is not followed, also beside a named one. A
+      // field that is written reads nothing.
+      'reads#method:chained(invoice__c,id) 44:22 reads CustomObject:invoice__c possible',
+      'reads#method:chained(invoice__c,id) 45:70 references CustomMetadata:rule.open probable',
+      'reads#method:chained(invoice__c,id) 46:23 reads CustomField:invoice__c.status__c probable',
+      'reads#method:chained(invoice__c,id) 46:23 reads CustomObject:invoice__c possible',
+      'reads#method:chained(invoice__c,id) 47:49 references CustomMetadata:rule.late probable',
+      // Of every record, where the code reads them all, from `getAll()` or from a query. `Blank` gives no value.
+      'reads#method:every(invoice__c) 6:73 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:every(invoice__c) 6:73 reads CustomField:invoice__c.status__c probable',
+      // Of each record the code names, through a map of `getAll()` and a branch.
+      'reads#method:mapped(invoice__c,boolean) 13:44 references CustomMetadata:rule.open probable',
+      'reads#method:mapped(invoice__c,boolean) 13:76 references CustomMetadata:rule.late probable',
+      'reads#method:mapped(invoice__c,boolean) 14:22 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:mapped(invoice__c,boolean) 14:22 reads CustomField:invoice__c.status__c probable',
+      // A record the snapshot does not hold, and one that gives the field no value, hold a text that is not known. A
+      // text that is no name names no record, and the code gets none.
+      'reads#method:missing(invoice__c) 17:40 references null probable',
+      'reads#method:missing(invoice__c) 17:47 reads CustomObject:invoice__c possible',
+      'reads#method:missing(invoice__c) 18:40 references CustomMetadata:rule.blank probable',
+      'reads#method:missing(invoice__c) 18:48 reads CustomObject:invoice__c possible',
+      // A local keeps the record its value names. Of a branch, a record that is not named can be any, and a record
+      // the snapshot does not hold holds a text that is not known. A method of a text keeps the names it holds.
+      'reads#method:more(invoice__c,boolean,rule__mdt) 30:49 references CustomMetadata:rule.open probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 31:22 reads CustomField:invoice__c.status__c probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 32:58 references CustomMetadata:rule.open probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 33:24 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 33:24 reads CustomField:invoice__c.status__c probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 34:56 references CustomMetadata:rule.late probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 34:88 references null probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 35:22 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 35:22 reads CustomObject:invoice__c possible',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 36:40 references CustomMetadata:rule.late probable',
+      'reads#method:more(invoice__c,boolean,rule__mdt) 36:47 reads CustomField:invoice__c.amount__c probable',
+      // A number and a relationship to an object hold no name by the files of their fields. A long text does.
+      'reads#method:nottext(invoice__c) 22:55 references CustomMetadata:rule.late probable',
+      'reads#method:nottext(invoice__c) 22:62 reads CustomObject:invoice__c possible',
+      'reads#method:nottext(invoice__c) 23:63 references CustomMetadata:rule.late probable',
+      'reads#method:nottext(invoice__c) 24:45 references CustomMetadata:rule.late probable',
+      'reads#method:nottext(invoice__c) 24:52 uses-type ApexClass:handler probable',
+      // The record is named where its name stands, and what it holds stands where the code reads the field.
+      'reads#method:one(invoice__c) 3:47 references CustomMetadata:rule.late probable',
+      'reads#method:one(invoice__c) 3:54 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:queried(invoice__c) 9:78 reads CustomField:invoice__c.amount__c probable',
+      'reads#method:queried(invoice__c) 9:78 reads CustomField:invoice__c.status__c probable',
+      // A record of a custom setting is data, which the snapshot does not hold.
+      'reads#method:setting(invoice__c) 27:49 reads CustomObject:invoice__c possible',
+      'reads#method:nottext(invoice__c) PATH_NOT_FOLLOWED 23:70 []',
+    ]);
+    // A record the snapshot does not hold keeps its type.
+    const gone = (line: number): unknown[] => {
+      const one = analysis.components
+        .flatMap((component) => component.references)
+        .find((reference) => reference.toType === 'CustomMetadata' && reference.location?.line === line);
+      return [one?.toNameRaw, one?.to, one?.resolution, one?.attrs?.['object']];
+    };
+    expect(gone(17)).toEqual(['Gone', null, 'unresolved', 'Rule__mdt']);
+    expect(gone(34)).toEqual(['Late', 'CustomMetadata:rule.late', 'resolved', undefined]);
+  });
+
+  it('reads a record that a method is handed the name of at each call, and what a method gives of any record', () => {
+    const analysis = analysed((source) => {
+      rules(source);
+      source.fieldSet('Invoice__c', 'Summary', ['Amount__c']);
+      source.fieldSet('Invoice__c', 'Other', ['Status__c']);
+      source.apexClass(
+        'Lookup',
+        code(
+          'public class Lookup {',
+          '    static Rule__mdt rule(String name) { return Rule__mdt.getInstance(name); }',
+          '    static Schema.FieldSet fieldSet(String name) {',
+          '        return Schema.SObjectType.Invoice__c.fieldSets.getMap().get(name);',
+          '    }',
+          '    static String fieldOf(String name) { return Rule__mdt.getInstance(name).Field__c; }',
+          "    static Rule__mdt orLate(String name) { return Rule__mdt.getInstance(name != null ? name : 'Late'); }",
+          '    static Schema.FieldSet orSummary(String name) {',
+          "        return Schema.SObjectType.Invoice__c.fieldSets.getMap().get(name != null ? name : 'Summary');",
+          '    }',
+          "    static Rule__mdt prefixed(String name) { return Rule__mdt.getInstance('La' + name); }",
+          '    static Schema.FieldSet prefixedSet(String name) {',
+          "        return Schema.SObjectType.Invoice__c.fieldSets.getMap().get('Sum' + name);",
+          '    }',
+          '    static Schema.FieldSet mixed(Invoice__c inv, String name) {',
+          '        return Schema.SObjectType.Invoice__c.fieldSets.getMap().get(inv.Status__c + name);',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'LookupCaller',
+        code(
+          'public class LookupCaller {',
+          '    void m(Invoice__c inv) {',
+          "        Lookup.rule('Late');",
+          "        Lookup.fieldSet('Summary');",
+          "        inv.get(Lookup.fieldOf('Open'));",
+          "        Lookup.orLate('Open');",
+          "        Lookup.orSummary('Other');",
+          "        Lookup.prefixed('te');",
+          "        Lookup.prefixedSet('mary');",
+          "        Lookup.mixed(inv, 'Other');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(byMember(analysis)).toEqual([
+      // What a method names itself beside what a call hands it is the method's, once, and so is what it does not know
+      // itself in front of what a call hands it.
+      'lookup#method:mixed(invoice__c,string) 16:73 reads CustomObject:invoice__c possible',
+      'lookup#method:orlate(string) 7:96 references CustomMetadata:rule.late probable',
+      'lookup#method:orsummary(string) 9:92 reads CustomField:invoice__c.amount__c probable',
+      'lookup#method:orsummary(string) 9:92 references FieldSet:invoice__c.summary probable',
+      // The record and the field set a call names are the caller's, where the call names them.
+      'lookupcaller#method:m(invoice__c) 3:22 references CustomMetadata:rule.late probable',
+      'lookupcaller#method:m(invoice__c) 4:26 reads CustomField:invoice__c.amount__c probable',
+      'lookupcaller#method:m(invoice__c) 4:26 references FieldSet:invoice__c.summary probable',
+      // What a method gives back of a record it is handed the name of is what any record of the type holds.
+      'lookupcaller#method:m(invoice__c) 5:24 reads CustomField:invoice__c.amount__c probable',
+      'lookupcaller#method:m(invoice__c) 5:24 reads CustomField:invoice__c.status__c probable',
+      'lookupcaller#method:m(invoice__c) 5:33 references CustomMetadata:rule.open probable',
+      'lookupcaller#method:m(invoice__c) 6:24 references CustomMetadata:rule.open probable',
+      'lookupcaller#method:m(invoice__c) 7:27 reads CustomField:invoice__c.status__c probable',
+      'lookupcaller#method:m(invoice__c) 7:27 references FieldSet:invoice__c.other probable',
+      // A name that the characters of a call and of the method make is the caller's, where the call stands.
+      'lookupcaller#method:m(invoice__c) 8:16 references CustomMetadata:rule.late probable',
+      'lookupcaller#method:m(invoice__c) 9:16 reads CustomField:invoice__c.amount__c probable',
+      'lookupcaller#method:m(invoice__c) 9:16 references FieldSet:invoice__c.summary probable',
+    ]);
+  });
+
+  it('reads a field set that the code names, with the fields it holds, where the code names it', () => {
+    const analysis = analysed((source) => {
+      source.fieldSet('Invoice__c', 'Summary', ['Amount__c', 'Account__r.Name'], ['Status__c']);
+      source.apexClass(
+        'Sets',
+        code(
+          'public class Sets {',
+          '    void byName() {',
+          "        Schema.FieldSet one = Schema.SObjectType.Invoice__c.fieldSets.getMap().get('Summary');",
+          "        Schema.FieldSet two = Schema.SObjectType.Invoice__c.fieldSets.getMap().get('summary');",
+          '    }',
+          '    void byToken() {',
+          '        List<Schema.FieldSetMember> members = Schema.SObjectType.Invoice__c.FieldSets.Summary.getFields();',
+          '    }',
+          '    void described(String name) {',
+          '        Map<String, Schema.FieldSet> sets = Invoice__c.SObjectType.getDescribe().fieldSets.getMap();',
+          '        sets.get(name);',
+          "        sets.get('Gone');",
+          '    }',
+          '    void unknownObject(String objectName, String name) {',
+          "        Schema.getGlobalDescribe().get(objectName).getDescribe().fieldSets.getMap().get('Summary');",
+          '        Schema.getGlobalDescribe().get(objectName).getDescribe().fieldSets.getMap().get(name);',
+          '        Schema.FieldSet one = Schema.getGlobalDescribe().get(objectName).getDescribe().fieldSets.Summary;',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect([...said(analysis, new Set(['text', 'token'])), ...warned(analysis.issues)]).toEqual([
+      // The fields the field set holds, not those it offers, are read where the code names it, also through a
+      // relationship, whichever case its name has.
+      '3:50 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '3:85 reads CustomField:account.name [Name] text probable external',
+      '3:85 reads CustomField:invoice__c.account__c [Account__r] text probable resolved',
+      '3:85 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '3:85 references FieldSet:invoice__c.summary [Summary] text probable resolved',
+      '4:50 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '4:85 reads CustomField:account.name [Name] text probable external',
+      '4:85 reads CustomField:invoice__c.account__c [Account__r] text probable resolved',
+      '4:85 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '4:85 references FieldSet:invoice__c.summary [summary] text probable resolved',
+      // A field set named as a token is referred to as a token. What it holds are names in texts.
+      '7:66 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '7:87 reads CustomField:account.name [Name] text probable external',
+      '7:87 reads CustomField:invoice__c.account__c [Account__r] text probable resolved',
+      '7:87 reads CustomField:invoice__c.amount__c [Amount__c] text probable resolved',
+      '7:87 references FieldSet:invoice__c.summary [Summary] token confirmed resolved',
+      // A name that is not known, and a field set the snapshot does not hold, read fields of the object.
+      '10:45 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '11:18 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '12:19 reads CustomObject:invoice__c [Invoice__c] text possible resolved',
+      '12:19 references null [Gone] text probable unresolved of Invoice__c',
+      // Of an object nothing says, a field set is not followed: by a name in a text, by one that is not known, and by
+      // a token.
+      'PATH_NOT_FOLLOWED 15:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 15:90 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 16:40 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 16:89 {"notFollowed":[],"origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 17:62 {"notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      'PATH_NOT_FOLLOWED 17:98 {"notFollowed":[],"origin":"parser:apex"}',
     ]);
   });
 

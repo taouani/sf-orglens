@@ -407,8 +407,8 @@ export function tierInRepository(
 
 /**
  * Whether a reference of the key is a name that a record of custom metadata or a field set holds, which the code of
- * Apex reads by the name of the record or of the field set (step 2 of decision record 0012). A later part of work
- * package 5 reads them.
+ * Apex reads by the name of the record or of the field set (step 2 of decision record 0012, read as decision record
+ * 0092 says).
  */
 export const ofMetadata = (reference: Pick<KeyReference, 'file' | 'via' | 'match'>): boolean =>
   /\.(?:cls|trigger)$/.test(reference.file) &&

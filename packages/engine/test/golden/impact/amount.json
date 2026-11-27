@@ -223,6 +223,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicequeries#method:summaries()",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.summaries()",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:summaries()",
+        "to": "CustomField:invoice__c.amount__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 55,
+        "column": 89
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceselector#method:aboveamount(decimal)",
       "type": "ApexClass",
       "name": "InvoiceSelector.aboveAmount(Decimal)",
@@ -1059,6 +1079,26 @@
         "file": "force-app/main/default/classes/InvoiceQueries.cls",
         "line": 7,
         "column": 20
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicequeries#method:latefees()",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.lateFees()",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 2,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:latefees()",
+        "to": "CustomField:invoice__c.late_fee__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 50,
+        "column": 52
       },
       "package": null
     },

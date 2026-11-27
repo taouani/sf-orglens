@@ -39,7 +39,7 @@ import {
   type TypeUse,
 } from './apex.ts';
 import { buildApexResolver, type ApexUnitInput } from './apex-resolver.ts';
-import { buildApexSchema } from './apex-schema.ts';
+import { buildApexSchema, type MetadataRecord } from './apex-schema.ts';
 import type { ApexReader, Problem, Span, Unit } from './apex-syntax.ts';
 import { readRecord } from './custom-metadata.ts';
 import { readEmailTemplate } from './email-templates.ts';
@@ -739,9 +739,23 @@ export function analyseSource(
     ),
     inner: innerTypes,
   });
+  // What records of custom metadata types and field sets hold, which code can read as names (decision record 0092).
+  const records = new Map<string, MetadataRecord[]>();
+  const fieldSets = new Map<string, readonly string[]>();
+  for (const { type, name, readings } of entries) {
+    for (const { reading } of readings) {
+      if (type === 'CustomMetadata' && reading.values !== undefined) {
+        const of = foldName(typeOfRecord(name));
+        const all = records.get(of) ?? [];
+        all.push({ name: name.slice(name.indexOf('.') + 1), values: reading.values });
+        records.set(of, all);
+      }
+      if (type === 'FieldSet' && reading.members !== undefined) fieldSets.set(foldName(name), reading.members);
+    }
+  }
   const apexResolver = buildApexResolver(
     apexUnits,
-    buildApexSchema(model, options.descriptions),
+    buildApexSchema(model, options.descriptions, { records, fieldSets }),
     apexTypes,
     options.apex,
   );

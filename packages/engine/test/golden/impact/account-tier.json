@@ -103,6 +103,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicequeries#method:summaries()",
+      "type": "ApexClass",
+      "name": "InvoiceQueries.summaries()",
+      "file": "force-app/main/default/classes/InvoiceQueries.cls",
+      "depth": 1,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:invoicequeries#method:summaries()",
+        "to": "CustomField:account.tier__c",
+        "kind": "reads",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceQueries.cls",
+        "line": 55,
+        "column": 89
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:countbytier(string)",
       "type": "ApexClass",
       "name": "InvoiceService.countByTier(String)",
