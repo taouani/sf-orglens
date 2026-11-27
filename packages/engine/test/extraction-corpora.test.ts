@@ -127,23 +127,25 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  *
  * Since 27 November 2026 the resolver reads calls too (decision record 0089): `call` is a call of a method of the
  * snapshot, also a constructor that `this(...)` and `super(...)` call, and `new` is now also a `new` of a class, which
- * calls the constructor its arguments choose, or the class where it declares none (Apex Recipes 213, Nebula Logger 651,
- * NPSP 5,610, PMM 532, V4S 143, Outbound Funds 44, Coral Cloud 22, EDA 2,361). A call is `confirmed` to the method
- * that the declared type of what it is made on, its name and the types of its arguments choose. It is `probable` to the
- * method of the same signature that the class of the value has, where the code gave the variable an object of a class
- * that extends the one it declares, and to each method that overrides it in a class of the snapshot: Apex Recipes has
- * 75 of these, Nebula Logger 687, NPSP 2,009, PMM 26, V4S 2, Outbound Funds 15 and EDA 2,122. A call whose arguments
+ * calls the constructor its arguments choose, or the class where it declares none or where they choose one that every
+ * exception has (Apex Recipes 213, Nebula Logger 651, NPSP 5,613, PMM 532, V4S 143, Outbound Funds 44, Coral Cloud 22,
+ * EDA 2,361). A call is `confirmed` to the method that the declared type of what it is made on, its name and the types
+ * of its arguments choose. It is `probable` to the method of the same signature that the class of the value has, where
+ * the code gave the variable an object of a class that extends the one it declares, and to each method that a class of
+ * the snapshot that extends that class runs in its place, its own or one of a class it extends: Apex Recipes has 75 of
+ * these, Nebula Logger 687, NPSP 2,010, PMM 26, V4S 2, Outbound Funds 15 and EDA 2,122. A call whose arguments
  * do not tell the methods it can reach apart, most often because one is the value of a method of Salesforce or of a
  * field, whose types the resolver does not know, is `probable` to each: Nebula Logger has 58 such places, NPSP 55 and
  * PMM 7, with 118, 119 and 14 references. `field` is also a value of an enum that the code names (`Color.RED`, and
  * a value of a `when` of a `switch` on an enum): Apex Recipes 126, Nebula Logger 131, NPSP 2,562, PMM 113, V4S 26 and
  * EDA 648. EDA has 8 more of a property of an exception, which a `catch` names by its type. A constructor of NPSP hands
  * a child relationship to another with `this(...)`, which takes it as a list: the name it guessed as a relationship
- * before is a child relationship that is not followed now. `System.Database` and `System.EventBus` are read as `Database` and
- * `EventBus`: Nebula Logger has 19 more warnings of DML on records of no known object, all in the class through which
- * it does DML, and one more `dml`, a platform event that a test publishes. The other references are as before: a script
- * compared them one by one in every codebase. These counts were not checked by hand beyond 30 calls of NPSP drawn at
- * random and 10 of its `probable` calls: the fixture project and its key hold each case.
+ * before is a child relationship that is not followed now. `System.Database` and `System.EventBus` are read as
+ * `Database` and `EventBus`: Nebula Logger has 19 more warnings of DML on records of no known object, all in the
+ * class through which it does DML, and one more `dml`, a platform event that a test publishes. The other references
+ * are as before: a script compared them one by one in every codebase. These counts were not checked by hand beyond 30
+ * calls of NPSP drawn at random and 10 of its `probable` calls, and the 4 that the constructors of exceptions and the
+ * methods a class has from the class it extends added: the fixture project and its key hold each case.
  */
 interface Expected {
   readonly components: number;
@@ -213,7 +215,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 6,
       'action-override': 12,
       assignment: 19,
-      call: 35_617,
+      call: 35_618,
       'controlling-field': 5,
       declaration: 407,
       'display-field': 2,
@@ -224,7 +226,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'listed-field': 2241,
       lookup: 77,
       'merge-field': 8,
-      new: 9011,
+      new: 9014,
       object: 16,
       'record-of': 193,
       soql: 10_188,
