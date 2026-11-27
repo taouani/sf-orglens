@@ -118,7 +118,7 @@ packages/cli   the `orglens` binary                            imports only `@sf
   folded, without `System.` and an inner type of the class after the name of the class. A class extends and
   implements a class of the snapshot, a trigger is `triggers-on` its object with its events, and a member uses as a
   type a class of the snapshot or an object. A name of Salesforce that is no object gives nothing, and a `new` of a
-  class is a call, which is not read yet. A test class, its members and a test method carry `test` in their
+  class is a call, which the resolver reads. A test class, its members and a test method carry `test` in their
   attributes. A class whose code is `(hidden)`, or that has no file of code, is not analysed, with the warning
   `APEX_NO_CODE`.
 - What the code of a member reads and writes is read by the resolver of Apex (`extraction/apex-resolver.ts`,
@@ -134,7 +134,12 @@ packages/cli   the `orglens` binary                            imports only `@sf
   in brackets reads its object and every field it names, also in a subquery through a child relationship, which refers
   to the lookup field behind it, and a search reads the objects it returns and their fields (decision record 0088),
   with the `via` `soql` or `sosl`. A subquery through a child relationship of no known object, the fields after
-  `ELSE` of a `TYPEOF` and `FIELDS(ALL)` leave `PATH_NOT_FOLLOWED` too. Calls and names in texts are not read yet: the analysis does not
+  `ELSE` of a `TYPEOF` and `FIELDS(ALL)` leave `PATH_NOT_FOLLOWED` too. A call of a method of the snapshot `calls` the
+  method that the declared type of what it is made on, its name and the number and the types of its arguments choose,
+  and is `probable` to each override that the class of the value can reach and wherever the types do not tell the
+  methods apart. A `new` of a class calls the constructor its arguments choose, or the class where it declares none,
+  a call into a class whose code is not read refers to the class with `attrs.method`, and a value of an enum that the
+  code names reads the enum (decision record 0089). Names in texts are not read yet: the analysis does not
   list `ApexClass` and `ApexTrigger` among the types it read, so an answer names them as not analysed, and their rows
   of the Dependency API are not compared.
 - A formula is read with the reader of the engine, `extraction/formula.ts` (decision record 0042): the formula

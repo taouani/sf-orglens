@@ -101,6 +101,66 @@
         "column": 20
       },
       "package": null
+    },
+    {
+      "key": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+      "type": "ApexClass",
+      "name": "InvoiceTriggerHandler.afterUpdate(List<SObject>, Map<Id,SObject>)",
+      "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+        "to": "ApexClass:invoicetriggerhandler#method:refreshrisk(set<id>)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceTriggerHandler.cls",
+        "line": 37,
+        "column": 13
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:triggerhandler#method:run()",
+      "type": "ApexClass",
+      "name": "TriggerHandler.run()",
+      "file": "force-app/main/default/classes/TriggerHandler.cls",
+      "depth": 3,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:triggerhandler#method:run()",
+        "to": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/TriggerHandler.cls",
+        "line": 11,
+        "column": 13
+      },
+      "package": null
+    },
+    {
+      "key": "ApexTrigger:invoicetrigger",
+      "type": "ApexTrigger",
+      "name": "InvoiceTrigger",
+      "file": "force-app/main/default/triggers/InvoiceTrigger.trigger-meta.xml",
+      "depth": 4,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexTrigger:invoicetrigger",
+        "to": "ApexClass:triggerhandler#method:run()",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/triggers/InvoiceTrigger.trigger",
+        "line": 2,
+        "column": 33
+      },
+      "package": null
     }
   ],
   "packagesLeftOut": 0,

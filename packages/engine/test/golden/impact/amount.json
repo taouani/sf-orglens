@@ -983,6 +983,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.pricesTheLinesLessTheDiscount()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+        "to": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 20,
+        "column": 39
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
       "type": "ApexClass",
       "name": "InvoiceService.totalDue(List<Invoice__c>)",
@@ -999,6 +1019,26 @@
         "file": "force-app/main/default/classes/InvoiceService.cls",
         "line": 47,
         "column": 30
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:triggerhandler#method:run()",
+      "type": "ApexClass",
+      "name": "TriggerHandler.run()",
+      "file": "force-app/main/default/classes/TriggerHandler.cls",
+      "depth": 2,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:triggerhandler#method:run()",
+        "to": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/TriggerHandler.cls",
+        "line": 11,
+        "column": 13
       },
       "package": null
     },
@@ -1143,6 +1183,46 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicepagecontroller#method:total()",
+      "type": "ApexClass",
+      "name": "InvoicePageController.total()",
+      "file": "force-app/main/default/classes/InvoicePageController.cls",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepagecontroller#method:total()",
+        "to": "ApexClass:invoiceservice#method:totaldue(list<invoice__c>)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePageController.cls",
+        "line": 12,
+        "column": 31
+      },
+      "package": null
+    },
+    {
+      "key": "ApexTrigger:invoicetrigger",
+      "type": "ApexTrigger",
+      "name": "InvoiceTrigger",
+      "file": "force-app/main/default/triggers/InvoiceTrigger.trigger-meta.xml",
+      "depth": 3,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexTrigger:invoicetrigger",
+        "to": "ApexClass:triggerhandler#method:run()",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/triggers/InvoiceTrigger.trigger",
+        "line": 2,
+        "column": 33
+      },
+      "package": null
+    },
+    {
       "key": "Flow:invoice_after_save#element:send_overdue_alert",
       "type": "Flow",
       "name": "Invoice_After_Save.Send_Overdue_Alert",
@@ -1159,6 +1239,46 @@
         "file": "force-app/main/default/flows/Invoice_After_Save.flow-meta.xml",
         "line": 8,
         "column": 32
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicebatch#method:execute(database.batchablecontext,list<invoice__c>)",
+      "type": "ApexClass",
+      "name": "InvoiceBatch.execute(Database.BatchableContext, List<Invoice__c>)",
+      "file": "force-app/main/default/classes/InvoiceBatch.cls",
+      "depth": 4,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicebatch#method:execute(database.batchablecontext,list<invoice__c>)",
+        "to": "ApexClass:invoicebatch#inner:result/method:add(invoice__c)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceBatch.cls",
+        "line": 31,
+        "column": 20
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepageextension#method:getsummary()",
+      "type": "ApexClass",
+      "name": "InvoicePageExtension.getSummary()",
+      "file": "force-app/main/default/classes/InvoicePageExtension.cls",
+      "depth": 4,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepageextension#method:getsummary()",
+        "to": "ApexClass:invoicepagecontroller#method:total()",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePageExtension.cls",
+        "line": 19,
+        "column": 84
       },
       "package": null
     }

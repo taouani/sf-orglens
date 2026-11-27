@@ -2445,6 +2445,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicecontroller#method:pay(id)",
+      "type": "ApexClass",
+      "name": "InvoiceController.pay(Id)",
+      "file": "force-app/main/default/classes/InvoiceController.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicecontroller#method:pay(id)",
+        "to": "ApexClass:invoiceservice#method:markpaid(id)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoiceController.cls",
+        "line": 20,
+        "column": 28
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:invoicepagecontroller#method:total()",
       "type": "ApexClass",
       "name": "InvoicePageController.total()",
@@ -2461,6 +2481,66 @@
         "file": "force-app/main/default/classes/InvoicePageController.cls",
         "line": 12,
         "column": 40
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepaidaction#method:markpaid(list<id>)",
+      "type": "ApexClass",
+      "name": "InvoicePaidAction.markPaid(List<Id>)",
+      "file": "force-app/main/default/classes/InvoicePaidAction.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepaidaction#method:markpaid(list<id>)",
+        "to": "ApexClass:invoiceservice#method:markpaid(id)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePaidAction.cls",
+        "line": 8,
+        "column": 28
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.pricesTheLinesLessTheDiscount()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+        "to": "ApexClass:invoicepricing#method:price(invoice__c)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 20,
+        "column": 33
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:triggerhandler#method:run()",
+      "type": "ApexClass",
+      "name": "TriggerHandler.run()",
+      "file": "force-app/main/default/classes/TriggerHandler.cls",
+      "depth": 2,
+      "confidence": "probable",
+      "reference": {
+        "from": "ApexClass:triggerhandler#method:run()",
+        "to": "ApexClass:invoicetriggerhandler#method:afterupdate(list<sobject>,map<id,sobject>)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "probable",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/TriggerHandler.cls",
+        "line": 11,
+        "column": 13
       },
       "package": null
     },

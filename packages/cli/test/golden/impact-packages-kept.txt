@@ -1,28 +1,30 @@
 What refers to CustomField:account.credit_limit__c (Account.Credit_Limit__c), in snapshot #1 of "fixture".
 The answer is not complete: 7 types are not analysed yet. The details are below the answer.
 
-18 components refer to it, 10 of them directly.
+20 components refer to it, 10 of them directly.
 A flow is listed with the reference of one of its elements, which is listed after it.
 
-DEPTH  COMPONENT                                                     PACKAGE  CONFIDENCE  KIND        REFERS TO                              WHERE
-1      ApexClass:invoiceservice#method:createdraft(account,decimal)  none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/classes/InvoiceService.cls:36
-1      ApexClass:invoiceservicetest#method:setup()                   none     confirmed   writes      CustomField:account.credit_limit__c    force-app/main/default/classes/InvoiceServiceTest.cls:5
-1      ApexClass:parsertorture#method:typeof()                       none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/classes/ParserTorture.cls:60
-1      CustomField:account.is_key_account__c                         none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:6
-1      CustomMetadata:billing_rule.account_limit                     none     probable    references  CustomField:account.credit_limit__c    force-app/main/default/customMetadata/Billing_Rule.Account_Limit.md-meta.xml:7
-1      Flow:invoice_before_save                                      none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:65
-1      Flow:invoice_before_save#element:is_above_limit               none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:65
-1      Flow:invoice_recalculate                                      pkg      confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
-1      Flow:invoice_recalculate#element:compare_totals               pkg      confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
-1      ValidationRule:invoice__c.amount_within_credit_limit          none     confirmed   reads       CustomField:account.credit_limit__c    force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml:5
-2      ApexClass:invoicepricingtest#method:invoicewithlines()        none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/classes/InvoicePricingTest.cls:10
-2      ApexClass:standardpricing#method:discount(account)            none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/classes/StandardPricing.cls:15
-2      Flow:invoice_after_save                                       none     confirmed   calls       Flow:invoice_recalculate               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
-2      Flow:invoice_after_save#element:recalculate                   none     confirmed   calls       Flow:invoice_recalculate               force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
-2      Flow:invoice_sent_process                                     none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
-2      Flow:invoice_sent_process#element:formula_myrule_1            none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
-2      ValidationRule:account.key_account_needs_contact              none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
-2      WorkflowRule:invoice__c.stamp_code_when_paid                  none     confirmed   reads       CustomField:account.is_key_account__c  force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
+DEPTH  COMPONENT                                                            PACKAGE  CONFIDENCE  KIND        REFERS TO                                               WHERE
+1      ApexClass:invoiceservice#method:createdraft(account,decimal)         none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/classes/InvoiceService.cls:36
+1      ApexClass:invoiceservicetest#method:setup()                          none     confirmed   writes      CustomField:account.credit_limit__c                     force-app/main/default/classes/InvoiceServiceTest.cls:5
+1      ApexClass:parsertorture#method:typeof()                              none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/classes/ParserTorture.cls:60
+1      CustomField:account.is_key_account__c                                none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/objects/Account/fields/Is_Key_Account__c.field-meta.xml:6
+1      CustomMetadata:billing_rule.account_limit                            none     probable    references  CustomField:account.credit_limit__c                     force-app/main/default/customMetadata/Billing_Rule.Account_Limit.md-meta.xml:7
+1      Flow:invoice_before_save                                             none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:65
+1      Flow:invoice_before_save#element:is_above_limit                      none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/flows/Invoice_Before_Save.flow-meta.xml:65
+1      Flow:invoice_recalculate                                             pkg      confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
+1      Flow:invoice_recalculate#element:compare_totals                      pkg      confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/flows/Invoice_Recalculate.flow-meta.xml:110
+1      ValidationRule:invoice__c.amount_within_credit_limit                 none     confirmed   reads       CustomField:account.credit_limit__c                     force-app/main/default/objects/Invoice__c/validationRules/Amount_Within_Credit_Limit.validationRule-meta.xml:5
+2      ApexClass:invoicepricingtest#method:invoicewithlines()               none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/classes/InvoicePricingTest.cls:10
+2      ApexClass:standardpricing#method:discount(account)                   none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/classes/StandardPricing.cls:15
+2      Flow:invoice_after_save                                              none     confirmed   calls       Flow:invoice_recalculate                                force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
+2      Flow:invoice_after_save#element:recalculate                          none     confirmed   calls       Flow:invoice_recalculate                                force-app/main/default/flows/Invoice_After_Save.flow-meta.xml:251
+2      Flow:invoice_sent_process                                            none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
+2      Flow:invoice_sent_process#element:formula_myrule_1                   none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/flows/Invoice_Sent_Process.flow-meta.xml:42
+2      ValidationRule:account.key_account_needs_contact                     none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/objects/Account/validationRules/Key_Account_Needs_Contact.validationRule-meta.xml:6
+2      WorkflowRule:invoice__c.stamp_code_when_paid                         none     confirmed   reads       CustomField:account.is_key_account__c                   force-app/main/default/workflows/Invoice__c.workflow-meta.xml:114
+3      ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()  none     confirmed   calls       ApexClass:invoicepricingtest#method:invoicewithlines()  force-app/main/default/classes/InvoicePricingTest.cls:20
+3      ApexClass:standardpricing#method:price(invoice__c)                   none     confirmed   calls       ApexClass:standardpricing#method:discount(account)      force-app/main/default/classes/StandardPricing.cls:10
 
 Not analysed yet, or only in part. A component of these types may refer to it and not be in the answer:
 TYPE                      LISTED  RETRIEVED

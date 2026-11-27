@@ -642,13 +642,13 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
           : one;
       expect(folder.references.filter((one) => checked(one) !== one)).toHaveLength(20);
       expect(org.references.map(withoutPlace).sort()).toEqual(folder.references.map(checked).map(withoutPlace).sort());
-      expect(org.references).toHaveLength(760);
-      // The classes and triggers among them: 30 with 138 members, and the 426 references of them the answer key
+      expect(org.references).toHaveLength(799);
+      // The classes and triggers among them: 30 with 138 members, and the 465 references of them the answer key
       // holds. Six are tests, and the store keeps the mark: two test classes and their four methods.
       const ofApex = (one: { key?: string; from?: string }): boolean =>
         /^Apex(?:Class|Trigger):/.test(one.key ?? one.from ?? '');
       expect(org.components.filter(ofApex)).toHaveLength(168);
-      expect(org.references.filter(ofApex)).toHaveLength(426);
+      expect(org.references.filter(ofApex)).toHaveLength(465);
       const tests = (components: readonly StoredComponent[]): string[] =>
         components.filter((one) => one.attrs?.['test'] === true).map((one) => one.key);
       expect(tests(org.components)).toEqual([
@@ -706,15 +706,15 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       // of flows. One path of a flow is not followed.
       const formula = { components: 47, failedFiles: 0, references: 114, unresolved: 0, pathsNotFollowed: 0 };
       const flow = { components: 64, failedFiles: 0, references: 110, unresolved: 0, pathsNotFollowed: 1 };
-      // Of Apex, 137 references of declarations and types and 289 of fields, tokens, DML, queries and searches. One
-      // write by DML is not followed: its records are a list of `SObject`.
-      const apex = { components: 168, failedFiles: 0, references: 426, unresolved: 0, pathsNotFollowed: 1 };
+      // Of Apex, 137 references of declarations and types, 289 of fields, tokens, DML, queries and searches, and 39 of
+      // calls. One write by DML is not followed: its records are a list of `SObject`.
+      const apex = { components: 168, failedFiles: 0, references: 465, unresolved: 0, pathsNotFollowed: 1 };
       expect(ofReading(fromOrg)).toEqual([]);
       expect(fromOrg.analysis).toEqual({
         engineVersion: fromOrg.snapshot.engineVersion,
         analysedAt: expect.stringMatching(UTC) as string,
         components: 352,
-        references: 760,
+        references: 799,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 101, ...xml },
@@ -725,7 +725,7 @@ describe.each(DRIVERS.map((driver) => [driver.name, driver] as const))(
       });
       expect(fromFolder.analysis).toMatchObject({
         components: 345,
-        references: 760,
+        references: 799,
         complete: true,
         origins: [
           { origin: 'parser:xml', components: 99, ...xml },
