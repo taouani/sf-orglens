@@ -147,7 +147,8 @@ packages/cli   the `orglens` binary                            imports only `@sf
   reference to its object, or a `PATH_NOT_FOLLOWED` that says what is not known. What a method of the snapshot does
   with a text it is handed as a `String` is read again at each call of it, with the text the call gives, and the
   call reports the names its own characters make (decision record 0091). A method that only calls of the snapshot
-  reach, and no call on a value of no known class can reach, says nothing of such a parameter. The names that
+  reach, and no call on a value of no known class can reach, says nothing of such a parameter, but still of what it
+  does not know itself; a method that calls itself, also through others, keeps what it says. The names that
   records of custom metadata and field sets hold are not read yet. The analysis does not list `ApexClass` and
   `ApexTrigger` among the types it read until the answers take Apex in (work package 7 of the Phase 3 plan), so an
   answer names them as not analysed, and their rows of the Dependency API are not compared.

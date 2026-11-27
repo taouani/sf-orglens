@@ -85,14 +85,38 @@ export const argText = (of: HoleOf, arg: number): Text => [{ k: 'hole', at: unde
 export const holdsParam = (texts: Texts): boolean =>
   texts.some((text) => text.some((piece) => piece.k === 'hole' && piece.param !== undefined));
 
-/** The places where a parameter of the member that is read entered the texts (`argText`). */
-export function argPlaces(texts: Texts): Pos[] {
-  const places: Pos[] = [];
+/**
+ * The places where a parameter of the member that is read entered the texts (`argText`, `args`), and those where
+ * another part that is not known did (`others`). Two parts can stand at one place, as where a variable is a parameter
+ * on one way of a branch and not known on the other.
+ */
+export function holePlaces(texts: Texts): { readonly args: Pos[]; readonly others: Pos[] } {
+  const args: Pos[] = [];
+  const others: Pos[] = [];
   for (const text of texts) {
-    for (const piece of text)
-      if (piece.k === 'hole' && piece.arg !== undefined && piece.at !== undefined) places.push(piece.at);
+    for (const piece of text) {
+      if (piece.k === 'hole' && piece.at !== undefined) (piece.arg === undefined ? others : args).push(piece.at);
+    }
   }
-  return places;
+  return { args, others };
+}
+
+/**
+ * The place of the first part of a text that is not known, where it is a parameter of the member that is read and the
+ * text holds another part that is not known and is no parameter, other than at `at`: what is said about the text
+ * stands there, and the text is not known whatever a call gives.
+ */
+export function argBesideOther(text: Text, at?: Pos): Pos | undefined {
+  const first = text.find((piece) => piece.k === 'hole');
+  if (first?.k !== 'hole' || first.arg === undefined || first.at === undefined) return undefined;
+  const other = text.some(
+    (piece) =>
+      piece.k === 'hole' &&
+      piece.arg === undefined &&
+      piece.param === undefined &&
+      (at === undefined || piece.at?.line !== at.line || piece.at.column !== at.column),
+  );
+  return other ? first.at : undefined;
 }
 
 /** Whether a text holds characters that stand somewhere other than `at`. */

@@ -61,10 +61,11 @@ import {
   either as eitherText,
   escaped,
   formatted,
-  argPlaces,
+  argBesideOther,
   argText,
   charsBeside,
   holdsParam,
+  holePlaces,
   holeText,
   joined,
   known,
@@ -486,10 +487,17 @@ interface Context {
   /** Where a member is worked out for its callers: the methods its calls can run, and its calls of no known class. */
   readonly calls?: Set<MethodInfo>;
   readonly unknownCalls?: Set<string>;
+  /** Where a member is worked out for its callers: the uses it keeps, each once (`Resolver.keep`). */
+  readonly kept?: Set<string>;
   /** The method that is read and reported, whose parameters of the type `String` its calls give. */
   readonly method?: MethodInfo;
   /** The places where such a parameter enters a text. */
   readonly args?: Set<string>;
+  /**
+   * The places where something else that is not known enters a text too, and those of a parameter in a name that
+   * holds something else that is not known: what the method says there is its own (`Resolver.silent`).
+   */
+  readonly blocked?: Set<string>;
   /**
    * While a use of a text of a method that is called is read again at the call, at `at`: the names that stand there
    * are of the method, which reports them, unless `all` says that what the caller gives makes them its own.
@@ -590,6 +598,18 @@ class Resolver implements ApexResolver {
   private textBinds = true;
   /** What each member does, as its callers need it, once it was worked out (`work`). */
   private readonly works = new Map<ComponentKey, Worked | 'working'>();
+  /**
+   * The members that call each other, or themselves, as `work` finds them (decision record 0091): what they do with a
+   * text they are handed is not read at their calls, and they say what they do not know of it. Found by the algorithm
+   * of Tarjan: the members being worked out, the order `work` met each in and the earliest one it reaches, and those
+   * whose group is still open.
+   */
+  private readonly looping = new Set<ComponentKey>();
+  private readonly workPath: ComponentKey[] = [];
+  private readonly workOrder = new Map<ComponentKey, { readonly index: number; low: number }>();
+  private readonly workOpen: ComponentKey[] = [];
+  private readonly workOpenSet = new Set<ComponentKey>();
+  private readonly callsItself = new Set<ComponentKey>();
   /** The members whose code makes a call of a name, by the folded name: `<init>` for a constructor. */
   private callers: Map<string, ComponentKey[]> | undefined;
   /** Whether the calls of the snapshot give each method all it is given (`covered`). */
@@ -718,7 +738,7 @@ class Resolver implements ApexResolver {
   private read(
     key: ComponentKey,
     member: MemberInfo,
-    work: Required<Pick<Context, 'gives' | 'uses' | 'calls' | 'unknownCalls'>> | undefined,
+    work: Required<Pick<Context, 'gives' | 'uses' | 'calls' | 'unknownCalls' | 'kept'>> | undefined,
   ): void {
     const { part, holder } = member;
     const { syntax } = part;
@@ -734,7 +754,7 @@ class Resolver implements ApexResolver {
         returns: this.resolveType(returns, holder),
         scope: { vars: new Map(), parent: undefined },
         texts: new Map(),
-        ...(work ?? (method === undefined ? {} : { method, args: new Set<string>() })),
+        ...(work ?? (method === undefined ? {} : { method, args: new Set<string>(), blocked: new Set<string>() })),
       };
     };
     switch (syntax.kind) {
@@ -784,19 +804,68 @@ class Resolver implements ApexResolver {
   /**
    * What a member does, as its callers need it: the texts it gives back, what it does with a text that holds a
    * parameter, and the methods it calls. Worked out once, without reporting anything. `undefined` while it is worked
-   * out, for a member that calls itself on the way.
+   * out, for a member that calls itself on the way. Members that call each other are worked out again once `work`
+   * found them all, each without what the others do (`looping`), so that what they do does not depend on which of them
+   * was worked out first.
    */
   private work(key: ComponentKey): Worked | undefined {
     const known = this.works.get(key);
-    if (known !== undefined) return known === 'working' ? undefined : known;
+    const caller = this.workPath.at(-1);
+    if (known !== undefined) {
+      // A call of a member whose group is still open: the caller is in that group.
+      const order = this.workOrder.get(key);
+      if (caller !== undefined && order !== undefined && this.workOpenSet.has(key)) this.lower(caller, order.index);
+      if (known === 'working' && caller === key) this.callsItself.add(key);
+      return known === 'working' ? undefined : known;
+    }
     const member = this.members.get(key);
     if (member === undefined) return undefined;
     this.works.set(key, 'working');
+    const index = this.workOrder.size;
+    this.workOrder.set(key, { index, low: index });
+    this.workOpen.push(key);
+    this.workOpenSet.add(key);
+    this.workPath.push(key);
+    let worked: Worked;
+    try {
+      worked = this.workOut(key, member);
+    } catch (error) {
+      // A fault of the resolver: the member and its open group are taken as calling each other.
+      this.close(key, true);
+      throw error;
+    } finally {
+      this.workPath.pop();
+    }
+    this.works.set(key, worked);
+    const order = this.workOrder.get(key);
+    if (caller !== undefined && order !== undefined) this.lower(caller, order.low);
+    if (order !== undefined && order.low === order.index) {
+      const group = this.close(key, this.callsItself.has(key));
+      if (group.length > 1) {
+        for (const one of group) {
+          const again = this.members.get(one);
+          if (again === undefined) continue;
+          // Worked out again as the caller of what it calls, so that a call is put down to the member that makes it.
+          this.workPath.push(one);
+          try {
+            this.works.set(one, this.workOut(one, again));
+          } finally {
+            this.workPath.pop();
+          }
+        }
+      }
+    }
+    return this.works.get(key) as Worked;
+  }
+
+  /** Reads a member to work out what its callers need of it. */
+  private workOut(key: ComponentKey, member: MemberInfo): Worked {
     const working = {
       gives: { texts: [] as Text[], unknown: false },
       uses: [] as Use[],
       calls: new Set<MethodInfo>(),
       unknownCalls: new Set<string>(),
+      kept: new Set<string>(),
     };
     const outer = { ctx: this.ctx, named: this.named, holes: this.holes, met: this.met, binds: this.textBinds };
     this.named = 'field';
@@ -813,14 +882,31 @@ class Resolver implements ApexResolver {
       this.textBinds = outer.binds;
     }
     const { gives } = working;
-    const worked: Worked = {
+    return {
       gives: gives.unknown || gives.texts.length === 0 ? null : distinct(gives.texts),
       uses: working.uses,
       calls: working.calls,
       unknownCalls: working.unknownCalls,
     };
-    this.works.set(key, worked);
-    return worked;
+  }
+
+  /** The earliest member of an open group that a member being worked out reaches. */
+  private lower(key: ComponentKey, index: number): void {
+    const order = this.workOrder.get(key);
+    if (order !== undefined && index < order.low) order.low = index;
+  }
+
+  /**
+   * Closes the group of members that `key` starts, and gives it: they call each other where there are several, or
+   * `alone` says so.
+   */
+  private close(key: ComponentKey, alone: boolean): readonly ComponentKey[] {
+    const at = this.workOpen.lastIndexOf(key);
+    if (at < 0) return [];
+    const group = this.workOpen.splice(at);
+    for (const one of group) this.workOpenSet.delete(one);
+    if (group.length > 1 || alone) for (const one of group) this.looping.add(one);
+    return group;
   }
 
   /**
@@ -842,24 +928,52 @@ class Resolver implements ApexResolver {
   private covered(method: MethodInfo): boolean {
     const known = this.coverage.get(method);
     if (known !== undefined) return known;
-    const covered = !this.outside(method) && this.called(method);
+    this.work(method.key);
+    const covered = !this.looping.has(method.key) && !this.outside(method) && this.called(method);
     this.coverage.set(method, covered);
     return covered;
   }
 
   /**
    * Whether code outside the snapshot can call a method: one that is `global` or `webservice`, that an annotation
-   * offers to Lightning, a flow, Visualforce, REST or another namespace, of a class that is `global`, or of an object
-   * of a class that extends or implements a type the snapshot does not hold, through which Salesforce or another class
-   * can call it.
+   * offers to Lightning, a flow, Visualforce, REST or another namespace, or a public one of a class that is `global`.
+   * Never a private or protected one. Of a public method of an object: one of a class that extends or implements a
+   * type the snapshot does not hold, through which Salesforce or another class can call it, or of a class that a
+   * class extends which does so and leaves the method as it is; one that a `global` class or interface it extends or
+   * implements declares; and one that sets something (`setName(value)`), which a page of Visualforce calls.
    */
   private outside(method: MethodInfo): boolean {
     if (method.modifiers.some((one) => one === 'global' || one === 'webservice')) return true;
     if (method.annotations.some((one) => CALLED_FROM_OUTSIDE.has(one))) return true;
+    // A method that is private, as one without a modifier of access is, or protected, only its class can call.
+    if (method.owner.kind !== 'interface' && !method.modifiers.includes('public')) return false;
     for (let at: ClassInfo | undefined = method.owner; at !== undefined; at = at.outer) if (at.global) return true;
     if (method.static || method.name === '<init>') return false;
+    if (/^set./.test(method.name) && method.params.length === 1 && method.modifiers.includes('public')) return true;
     for (const at of this.ancestors(method.owner)) {
-      if (at.supertypes.some((ref) => this.supertypeOf(ref, at) === undefined)) return true;
+      if (this.offers(at) || (at.global && Resolver.declares(at, method))) return true;
+    }
+    return this.offeredBelow(method, method.owner, new Set());
+  }
+
+  /** Whether a class extends or implements a type the snapshot does not hold, which code outside can hold it as. */
+  private offers(cls: ClassInfo): boolean {
+    return cls.supertypes.some((ref) => this.supertypeOf(ref, cls) === undefined);
+  }
+
+  /** Whether a class declares a method of an object of the name and the number of parameters of `method`. */
+  private static declares(cls: ClassInfo, method: MethodInfo): boolean {
+    return (cls.methods.get(method.name) ?? []).some(
+      (one) => !one.static && one.params.length === method.params.length,
+    );
+  }
+
+  /** Whether a class that extends `cls`, and does not declare the method again, offers it to code outside. */
+  private offeredBelow(method: MethodInfo, cls: ClassInfo, seen: Set<ClassInfo>): boolean {
+    for (const sub of this.subtypesOf(cls)) {
+      if (seen.has(sub) || Resolver.declares(sub, method)) continue;
+      seen.add(sub);
+      if (this.offers(sub) || this.offeredBelow(method, sub, seen)) return true;
     }
     return false;
   }
@@ -910,8 +1024,15 @@ class Resolver implements ApexResolver {
    * reads what it is given there: the calls report what the text names, and the method nothing.
    */
   private silent(at: Pos): boolean {
-    const { args, method } = this.context;
-    return args !== undefined && method !== undefined && args.has(placeKey(at)) && this.covered(method);
+    const { args, blocked, method } = this.context;
+    const place = placeKey(at);
+    return (
+      args !== undefined &&
+      method !== undefined &&
+      args.has(place) &&
+      blocked?.has(place) !== true &&
+      this.covered(method)
+    );
   }
 
   private get context(): Context {
@@ -1486,9 +1607,14 @@ class Resolver implements ApexResolver {
     const at = Resolver.placeOf(expr);
     if (value.texts === undefined) return [holeText(at, Resolver.holeOf(value.type))];
     const texts = placed(value.texts, at);
-    // Where a parameter that the calls may give enters a text, the method says nothing that its calls say.
-    const { args } = this.context;
-    if (args !== undefined) for (const place of argPlaces(texts)) args.add(placeKey(place));
+    // Where a parameter that the calls may give enters a text, the method says nothing that its calls say, unless
+    // something else that is not known enters there too.
+    const { args, blocked } = this.context;
+    if (args !== undefined && blocked !== undefined) {
+      const places = holePlaces(texts);
+      for (const place of places.args) args.add(placeKey(place));
+      for (const place of places.others) blocked.add(placeKey(place));
+    }
     return texts;
   }
 
@@ -2876,6 +3002,7 @@ class Resolver implements ApexResolver {
     for (const text of texts) {
       this.own(text);
       const found = nameIn(text);
+      if ('unknown' in found && this.methodSays(found.unknown)) continue;
       if ('name' in found) {
         const name = Resolver.named(found.name, sink);
         if (object === undefined) this.fieldNotKnown(name, record);
@@ -2909,6 +3036,7 @@ class Resolver implements ApexResolver {
     for (const text of texts) {
       this.own(text);
       const one = nameIn(text);
+      if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
         if (object === undefined) this.fieldNotKnown(name, record);
@@ -2944,6 +3072,7 @@ class Resolver implements ApexResolver {
     for (const text of texts) {
       this.own(text);
       const one = nameIn(text);
+      if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
         if (object === undefined) this.fieldNotKnown(name);
@@ -2989,6 +3118,7 @@ class Resolver implements ApexResolver {
     for (const text of texts) {
       this.own(text);
       const one = nameIn(text);
+      if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
         this.add(name, 'references', this.schema.object(name.text), 'text');
@@ -3049,7 +3179,9 @@ class Resolver implements ApexResolver {
       const start = text[0]?.at;
       if (whole === undefined || !/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)?$/.test(whole)) {
         const unknown = nameIn(text);
-        this.nameNotKnown('unknown' in unknown ? unknown.unknown : start, sink, 'class');
+        if (!('unknown' in unknown && this.methodSays(unknown.unknown))) {
+          this.nameNotKnown('unknown' in unknown ? unknown.unknown : start, sink, 'class');
+        }
         continue;
       }
       for (const prefix of prefixes) {
@@ -3094,10 +3226,19 @@ class Resolver implements ApexResolver {
 
   /** Keeps what a member does with a text that holds a parameter, where the member is worked out for its callers. */
   private atSink(sink: Sink, name: Name, slots: readonly (Texts | undefined)[]): void {
-    const { uses } = this.context;
-    if (uses !== undefined && slots.some((slot) => slot !== undefined && holdsParam(slot))) {
-      uses.push({ sink, name, slots });
+    if (this.context.uses !== undefined && slots.some((slot) => slot !== undefined && holdsParam(slot))) {
+      this.keep({ sink, name, slots });
     }
+  }
+
+  /** Keeps a use of a member that is worked out for its callers, once: a use kept twice would be read twice. */
+  private keep(use: Use): void {
+    const { uses, kept } = this.context;
+    if (uses === undefined || kept === undefined) return;
+    const key = JSON.stringify([use.sink, use.name, use.slots]);
+    if (kept.has(key)) return;
+    kept.add(key);
+    uses.push(use);
   }
 
   /** What a use of a text does, read with the texts it is given. */
@@ -3151,20 +3292,29 @@ class Resolver implements ApexResolver {
         return type.k === 'prim' && type.name === 'string';
       });
       if (!strings.includes(true)) continue;
-      const uses = this.work(one.key)?.uses ?? [];
+      const worked = this.work(one.key);
+      // What a method of a group that calls each other does is worked out without what the others do, and a method
+      // that calls itself without what it does again: it says what it does not know of a text it is handed.
+      if (worked === undefined || (ctx.uses !== undefined && this.looping.has(one.key))) continue;
+      const { uses } = worked;
       if (uses.length === 0) continue;
       const given = values.map((value, index) => {
         const arg = args[index];
         return arg === undefined || strings[index] !== true ? undefined : this.textsOf(value, arg);
       });
+      // Uses that differ in the method can be the same at the call, where all its characters stand.
+      const read = new Set<string>();
       for (const use of uses) {
         const slots = use.slots.map((slot) => (slot === undefined ? undefined : usedAt(slot, at.at, given)));
         const sink = Resolver.movedSink(use.sink, at.at);
         const name: Name = { text: use.name.text, at: at.at };
         if (ctx.uses !== undefined) {
-          if (slots.some((slot) => slot !== undefined && holdsParam(slot))) ctx.uses.push({ sink, name, slots });
+          if (slots.some((slot) => slot !== undefined && holdsParam(slot))) this.keep({ sink, name, slots });
           continue;
         }
+        const key = JSON.stringify([sink, name, slots]);
+        if (read.has(key)) continue;
+        read.add(key);
         const before = ctx.replay;
         ctx.replay = { at: at.at, all: false };
         try {
@@ -3177,13 +3327,26 @@ class Resolver implements ApexResolver {
   }
 
   /**
+   * While a use is read again at a call: whether a part of a name that is not known stands at the call, where every
+   * character and every part of the method that is called stands. The method says itself what it does not know.
+   */
+  private methodSays(at: Pos | undefined): boolean {
+    const { replay } = this.context;
+    return replay !== undefined && at !== undefined && samePlace(at, replay.at);
+  }
+
+  /**
    * While a use is read again at a call: whether the names a text holds are of the caller, where it holds characters
    * that the call gives, or `also`. The names of the method that is called stand at the call, and the method reports
    * them.
    */
   private own(text: Text, also = false): void {
-    const { replay } = this.context;
+    const { replay, blocked } = this.context;
     if (replay !== undefined) replay.all = also || charsBeside(text, replay.at);
+    // A name that holds a parameter and something else that is not known is not known whatever a call gives. What
+    // stands at a call that reads a use again is of the method that is called, which says so itself.
+    const place = blocked === undefined ? undefined : argBesideOther(text, replay?.at);
+    if (place !== undefined) blocked?.add(placeKey(place));
   }
 
   /**

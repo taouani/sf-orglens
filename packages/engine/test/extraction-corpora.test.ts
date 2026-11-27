@@ -179,14 +179,15 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * Since 27 November 2026 the resolver also reads a text that a method of the snapshot is handed as a parameter
  * (decision record 0091): at each call, what the method does with the text is done again with the text of the
  * argument, and a name that the text of the call makes stands at the call. Apex Recipes has 11 more `text`, Nebula
- * Logger 4, NPSP 244, PMM 16 and EDA 41. Some of them stand where a `possible` reference to an object stood before
- * (Apex Recipes 1, Nebula Logger 1, NPSP 79, EDA 6). A method that only code of the snapshot calls, and only from
- * calls the resolver can tell apart, no longer warns about a text it is handed: the warning stands where a text that
- * is not known enters, at each call that hands it over. So warnings went and came: Apex Recipes 12 went and 11 came,
- * Nebula Logger 2 and 11, NPSP 89 and 107, PMM 6 and 44, V4S 21 and 25, EDA 60 and 79. Many of those that came are at
- * a call that hands over the name of a field with a record of which nothing says the object (Apex Recipes 3, NPSP 45,
- * PMM 6, V4S 24, EDA 61), and 24 of PMM at a name of an object that the code takes from its token or its describe,
- * which is not read. V4S, Outbound Funds and Coral Cloud have as many references as before. A script compared the
+ * Logger 4, NPSP 225, PMM 16 and EDA 41. Where a call names the field, the `possible` reference to the object that the
+ * method gave went (Apex Recipes 1, Nebula Logger 1, NPSP 94, EDA 6); some came at calls that hand over a text known
+ * only in part (Nebula Logger 2, NPSP 46, EDA 21). A method that only code of the snapshot calls, and only from calls
+ * the resolver can tell apart, no longer warns about a text it is handed: the warning stands where a text that is not
+ * known enters, at each call that hands it over. So warnings went and came: Apex Recipes 12 went and 11 came, Nebula
+ * Logger 2 and 11, NPSP 102 and 107, PMM 6 and 44, V4S 21 and 25, EDA 60 and 79. Many of those that came are at a call
+ * that hands over the name of a field with a record of which nothing says the object (Apex Recipes 3, NPSP 45, PMM 6,
+ * V4S 24, EDA 61), and 24 of PMM at a name of an object that the code takes from its token or its describe, which is
+ * not read. V4S, Outbound Funds and Coral Cloud have as many references as before. A script compared the
  * references and warnings one by one in every codebase.
  */
 interface Expected {
@@ -276,13 +277,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       sosl: 2,
       summary: 4,
       template: 2,
-      text: 1706,
+      text: 1687,
       token: 3811,
       type: 26_036,
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 1416, RELATIONSHIP_GUESSED: 290 },
+    issues: { PATH_NOT_FOLLOWED: 1403, RELATIONSHIP_GUESSED: 290 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
