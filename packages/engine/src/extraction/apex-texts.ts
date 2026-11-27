@@ -21,6 +21,8 @@ type Piece =
       readonly at: Pos | undefined;
       /** The column of each character, where they stand each at its own, on the line of `at`. */
       readonly columns?: readonly number[];
+      /** Characters that a field of a record of custom metadata holds (decision record 0093). */
+      readonly held?: true;
     }
   | {
       readonly k: 'hole';
@@ -82,7 +84,28 @@ export const holeText = (at: Pos | undefined, of: HoleOf, param?: number): Text 
  * A text that metadata of the snapshot holds, such as the value of a field of a record of a custom metadata type: all
  * its characters stand at `at`, where the code reads it (decision record 0092).
  */
-export const heldText = (text: string, at: Pos): Text => [{ k: 'chars', text, at }];
+export const heldText = (text: string, at: Pos): Text => [{ k: 'chars', text, at, held: true }];
+
+/**
+ * The characters of a text that metadata holds, by the place where they stand (decision record 0093). They stand all at
+ * one place, where the code reads the field that holds them or uses a constant or a method that gives them.
+ */
+export function heldPlaces(text: Text): ReadonlyMap<string, readonly string[]> {
+  const held = new Map<string, string[]>();
+  for (const piece of text) {
+    if (piece.k !== 'chars' || piece.held === undefined || piece.at === undefined) continue;
+    const key = `${String(piece.at.line)}:${String(piece.at.column)}`;
+    held.set(key, [...(held.get(key) ?? []), piece.text]);
+  }
+  return held;
+}
+
+/**
+ * Whether a text is one literal of the code of the member that is read, as the code writes it, each character at its
+ * own column (decision record 0093).
+ */
+export const isLiteral = (text: Text): boolean =>
+  text.length === 1 && text[0]?.k === 'chars' && text[0].columns !== undefined;
 
 /** The text of a parameter of the member that is read, which its calls may give: a part not known yet. */
 export const argText = (of: HoleOf, arg: number): Text => [{ k: 'hole', at: undefined, of, arg }];
@@ -188,7 +211,9 @@ export function usedAt(texts: Texts, at: Pos, args: readonly (Texts | undefined)
         made = joined(made, args[piece.param] ?? [holeText(at, piece.of)]);
       } else {
         const moved: Piece =
-          piece.k === 'chars' ? { k: 'chars', text: piece.text, at } : { k: 'hole', at, of: piece.of };
+          piece.k === 'chars'
+            ? { k: 'chars', text: piece.text, at, ...(piece.held === undefined ? {} : { held: piece.held }) }
+            : { k: 'hole', at, of: piece.of };
         made = made.map((start) => [...start, moved]);
       }
     }
@@ -210,7 +235,15 @@ function slice(piece: Extract<Piece, { k: 'chars' }>, start: number, end = piece
   if (end <= start) return [];
   const columns = piece.columns?.slice(start, end);
   const at = placeIn(piece, start);
-  return [{ k: 'chars', text: piece.text.slice(start, end), at, ...(columns === undefined ? {} : { columns }) }];
+  return [
+    {
+      k: 'chars',
+      text: piece.text.slice(start, end),
+      at,
+      ...(columns === undefined ? {} : { columns }),
+      ...(piece.held === undefined ? {} : { held: piece.held }),
+    },
+  ];
 }
 
 /** The text, with each piece of characters changed by `change`, which keeps its length. */

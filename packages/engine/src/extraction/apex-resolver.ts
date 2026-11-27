@@ -61,7 +61,9 @@ import {
   either as eitherText,
   escaped,
   formatted,
+  heldPlaces,
   heldText,
+  isLiteral,
   argBesideOther,
   argText,
   charsBeside,
@@ -257,7 +259,21 @@ type Type =
 interface Through {
   readonly name: Name;
   readonly object: string;
+  /** Where a text names the relationship: a path from it that is not followed is of a text (decision record 0093). */
+  readonly ofText?: true;
 }
+
+/**
+ * What gives the names of the text that is read their step of record 0012 (decision record 0093): `written` where the
+ * text is one literal of the member, `built` where the member builds it or is handed it, and the characters of it that
+ * metadata holds, by their place, whose names are `metadata`.
+ */
+interface TextRead {
+  readonly step: 'written' | 'built';
+  readonly held: ReadonlyMap<string, readonly string[]>;
+}
+
+const NO_TEXT_READ: TextRead = { step: 'built', held: new Map() };
 
 type Namespace =
   'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus' | 'label' | 'system' | 'search' | 'type';
@@ -615,6 +631,10 @@ class Resolver implements ApexResolver {
   private met = new Set<Pos>();
   /** While a text of a query is read: whether what it binds is read as code, which a map gives otherwise. */
   private textBinds = true;
+  /** What gives the names of the text that is read their step (decision record 0093). */
+  private textRead: TextRead = NO_TEXT_READ;
+  /** While the fields a field set shows are read: they are names that metadata holds. */
+  private ofMetadata = false;
   /** What each member does, as its callers need it, once it was worked out (`work`). */
   private readonly works = new Map<ComponentKey, Worked | 'working'>();
   /**
@@ -736,6 +756,7 @@ class Resolver implements ApexResolver {
     this.found = new Map();
     this.issues = [];
     this.issueIds = new Set();
+    this.textRead = NO_TEXT_READ;
     this.read(key, member, undefined);
     this.ctx = undefined;
     const references = [...this.found.values()].sort(
@@ -886,7 +907,10 @@ class Resolver implements ApexResolver {
       unknownCalls: new Set<string>(),
       kept: new Set<string>(),
     };
-    const outer = { ctx: this.ctx, named: this.named, holes: this.holes, met: this.met, binds: this.textBinds };
+    const outer = {
+      ...{ ctx: this.ctx, named: this.named, holes: this.holes, met: this.met },
+      ...{ binds: this.textBinds, textRead: this.textRead },
+    };
     this.named = 'field';
     this.holes = new Set();
     this.met = new Set();
@@ -899,6 +923,7 @@ class Resolver implements ApexResolver {
       this.holes = outer.holes;
       this.met = outer.met;
       this.textBinds = outer.binds;
+      this.textRead = outer.textRead;
     }
     const { gives } = working;
     return {
@@ -1373,6 +1398,7 @@ class Resolver implements ApexResolver {
         location: { file: ctx.unit.file, line: at.at.line, column: at.at.column },
         attrs: {
           via,
+          ...(via === 'text' ? { step: this.stepOf(at) } : {}),
           ...(more.op === undefined ? {} : { op: more.op }),
           ...(target.to === null && more.object !== undefined ? { object: more.object } : {}),
           ...(more.method === undefined ? {} : { method: more.method }),
@@ -1380,6 +1406,50 @@ class Resolver implements ApexResolver {
       }),
     );
     return id;
+  }
+
+  /**
+   * The step of a name of a text (decision record 0093): `metadata` where a field set holds it, or where characters of
+   * the text that a field of a record of custom metadata holds stand at its place and hold it whole, and that of the
+   * text otherwise.
+   */
+  private stepOf(name: Name): 'written' | 'metadata' | 'built' {
+    if (this.ofMetadata) return 'metadata';
+    const held = this.textRead.held.get(placeKey(name.at));
+    return held?.some((chars) => chars.includes(name.text)) === true ? 'metadata' : this.textRead.step;
+  }
+
+  /**
+   * The step that finds the names of a text that is read: `written` where it is one literal of the member, as the code
+   * writes it, and `built` otherwise, also where a call hands it, with the characters of it that metadata holds.
+   */
+  private reading(text: Text): void {
+    const step = this.context.replay === undefined && isLiteral(text) ? 'written' : 'built';
+    this.textRead = { step, held: heldPlaces(text) };
+  }
+
+  /**
+   * Reads code in the middle of a text, as what a query binds: the code can read texts of its own, and the names of
+   * the text that come after it keep their step.
+   */
+  private keepingText(read: () => void): void {
+    const outer = this.textRead;
+    try {
+      read();
+    } finally {
+      this.textRead = outer;
+    }
+  }
+
+  /** Reports what metadata holds: the fields of a field set (decision record 0093). */
+  private asMetadata(read: () => void): void {
+    const outer = this.ofMetadata;
+    this.ofMetadata = true;
+    try {
+      read();
+    } finally {
+      this.ofMetadata = outer;
+    }
   }
 
   /** Reports a read or a write of a variable or a property of a class. A member that names itself has none. */
@@ -1450,9 +1520,11 @@ class Resolver implements ApexResolver {
     const { replay } = ctx;
     if (replay !== undefined && !replay.all && samePlace(by ?? at.at, replay.at)) return false;
     if (this.silent(at.at)) return false;
+    // A path that a name of a text leads to says so (decision record 0093).
+    const said = code === 'PATH_NOT_FOLLOWED' && this.named === 'text' ? { ...details, via: 'text' } : details;
     const id = `${code}\n${String(at.at.line)}:${String(at.at.column)}`;
     if (this.issueIds.has(id)) {
-      if (code === 'PATH_NOT_FOLLOWED') this.widen(at, details);
+      if (code === 'PATH_NOT_FOLLOWED') this.widen(at, said);
       return false;
     }
     this.issueIds.add(id);
@@ -1462,7 +1534,7 @@ class Resolver implements ApexResolver {
       code,
       message: `${file}, line ${String(at.at.line)}: ${message}`,
       componentKey: ctx.from,
-      details: { path: file, line: at.at.line, column: at.at.column, ...details },
+      details: { path: file, line: at.at.line, column: at.at.column, ...said },
     });
     return true;
   }
@@ -1484,9 +1556,12 @@ class Resolver implements ApexResolver {
     const more = names(details['notFollowed']).filter((name) => !had.includes(name));
     const { endsAt, ...rest } = before.details;
     const ends = endsAt !== undefined && endsAt === details['endsAt'];
-    if (more.length === 0 && (ends || endsAt === undefined)) return;
+    // Where either is of a text, the warning is.
+    const text = details['via'] === 'text' && before.details['via'] !== 'text';
+    if (more.length === 0 && (ends || endsAt === undefined) && !text) return;
     const notFollowed = [...had, ...more].slice(0, MOST_NAMES_SHOWN);
-    this.issues[index] = { ...before, details: ends ? { ...before.details, notFollowed } : { ...rest, notFollowed } };
+    const widened = { ...(ends ? before.details : rest), notFollowed };
+    this.issues[index] = { ...before, details: text ? { ...widened, via: 'text' } : widened };
   }
 
   /**
@@ -1496,7 +1571,10 @@ class Resolver implements ApexResolver {
    */
   private notFollowed(through: Through, names: readonly string[], by: Pos): Type {
     const message = `it is not known which object "${cut(through.name.text, 80)}" of "${cut(through.object, 80)}" leads to, so "${cut(names.join('.'), 200)}" after it was not followed.`;
-    const details = { relationship: through.name.text, notFollowed: names, endsAt: 'field', origin: 'parser:apex' };
+    const details = {
+      ...{ relationship: through.name.text, notFollowed: names, endsAt: 'field', origin: 'parser:apex' },
+      ...(through.ofText === true ? { via: 'text' } : {}),
+    };
     if (names.length === 1) {
       const warned = this.warn(through.name, 'PATH_NOT_FOLLOWED', message, details, by);
       return warned ? { k: 'beyond', through, names } : OTHER;
@@ -2263,7 +2341,11 @@ class Resolver implements ApexResolver {
       }
       const record: Type =
         leadsTo === null
-          ? { k: 'record', object: undefined, through: { name, object } }
+          ? {
+              k: 'record',
+              object: undefined,
+              through: { name, object, ...(this.named === 'text' ? { ofText: true } : {}) },
+            }
           : { k: 'record', object: leadsTo };
       return guessed ? { type: record, maybeChild: { object, name, made } } : { type: record };
     }
@@ -2513,7 +2595,12 @@ class Resolver implements ApexResolver {
         }
         rest(0);
         // Every field set of the object, whose fields the code can read: they are not followed.
-        if (method === 'values' && type.object !== undefined) this.possible(expr.name.at, 'reads', type.object);
+        if (method === 'values' && type.object !== undefined) {
+          const { object } = type;
+          this.asMetadata(() => {
+            this.possible(expr.name.at, 'reads', object);
+          });
+        }
         return VALUE;
       case 'objectToken':
         rest(0);
@@ -3015,16 +3102,17 @@ class Resolver implements ApexResolver {
    */
   private fieldNotKnown(name: Name, record?: Extract<Type, { k: 'record' }>): void {
     if (foldName(name.text) === 'id') return;
-    if (record?.through !== undefined) {
-      this.notFollowed(record.through, [name.text], name.at);
-      return;
-    }
-    this.warn(
-      name,
-      'PATH_NOT_FOLLOWED',
-      `nothing says which object "${cut(name.text, 80)}" is a field of, so it was not followed.`,
-      { notFollowed: [name.text], endsAt: 'field', origin: 'parser:apex' },
-    );
+    this.naming('text', () => {
+      if (record?.through !== undefined) this.notFollowed(record.through, [name.text], name.at);
+      else {
+        this.warn(
+          name,
+          'PATH_NOT_FOLLOWED',
+          `nothing says which object "${cut(name.text, 80)}" is a field of, so it was not followed.`,
+          { notFollowed: [name.text], endsAt: 'field', origin: 'parser:apex' },
+        );
+      }
+    });
   }
 
   /**
@@ -3049,11 +3137,13 @@ class Resolver implements ApexResolver {
               : `the text of the ${what} is not known here, so what it reads was not followed.`;
     // Only an object can be named by a name of an object, and a field by any other.
     const ends = what === 'object' ? { endsAt: 'object' } : {};
-    this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
-      notFollowed: [],
-      ...ends,
-      origin: 'parser:apex',
-    });
+    this.naming('text', () =>
+      this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
+        notFollowed: [],
+        ...ends,
+        origin: 'parser:apex',
+      }),
+    );
   }
 
   /** The name of a whole text, at the place of its first character, or at `sink`. */
@@ -3079,6 +3169,7 @@ class Resolver implements ApexResolver {
     const { object } = record;
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const found = nameIn(text);
       if ('unknown' in found && this.methodSays(found.unknown)) continue;
       if ('name' in found) {
@@ -3113,6 +3204,7 @@ class Resolver implements ApexResolver {
     const found: Value[] = [];
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const one = nameIn(text);
       if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
@@ -3149,6 +3241,7 @@ class Resolver implements ApexResolver {
     const found: Value[] = [];
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const one = nameIn(text);
       if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
@@ -3184,6 +3277,7 @@ class Resolver implements ApexResolver {
     let any = false;
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const one = nameIn(text);
       if ('name' in one) {
         const name = Resolver.named(one.name, sink);
@@ -3217,6 +3311,7 @@ class Resolver implements ApexResolver {
   private namedFieldSet(texts: Texts, object: string | undefined, sink: Name): void {
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const one = nameIn(text);
       if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
@@ -3238,27 +3333,31 @@ class Resolver implements ApexResolver {
   private fieldSetOf(object: string, name: Name, via: 'text' | 'token'): void {
     const { checked, members } = this.schema.fieldSet(object, name.text);
     this.add(name, 'references', checked, via, { object });
-    if (members === undefined) {
-      this.possible(name.at, 'reads', object);
-      return;
-    }
-    this.naming('text', () => {
-      for (const path of members) {
-        this.fieldPath(
-          object,
-          path.split('.').map((text) => ({ text, at: { ...name.at } })),
-        );
+    this.asMetadata(() => {
+      if (members === undefined) this.possible(name.at, 'reads', object);
+      else {
+        this.naming('text', () => {
+          for (const path of members) {
+            this.fieldPath(
+              object,
+              path.split('.').map((text) => ({ text, at: { ...name.at } })),
+            );
+          }
+        });
       }
     });
   }
 
   /** The warning that nothing says which object the field set a name names is of. */
   private fieldSetNotKnown(name: Name): void {
-    this.warn(
-      name,
-      'PATH_NOT_FOLLOWED',
-      `nothing says which object the field set "${cut(name.text, 80)}" is of, so the fields it holds were not followed.`,
-      { notFollowed: [], origin: 'parser:apex' },
+    // The names a field set holds are names in a text (decision record 0093).
+    this.naming('text', () =>
+      this.warn(
+        name,
+        'PATH_NOT_FOLLOWED',
+        `nothing says which object the field set "${cut(name.text, 80)}" is of, so the fields it holds were not followed.`,
+        { notFollowed: [], origin: 'parser:apex' },
+      ),
     );
   }
 
@@ -3295,6 +3394,7 @@ class Resolver implements ApexResolver {
     const objects: string[] = [];
     for (const text of texts) {
       this.own(text);
+      this.reading(text);
       const one = nameIn(text);
       if ('unknown' in one && this.methodSays(one.unknown)) continue;
       if ('name' in one) {
@@ -3353,6 +3453,7 @@ class Resolver implements ApexResolver {
     const spaced = replay !== undefined && (spaces ?? []).some((text) => charsBeside(text, replay.at));
     for (const text of names) {
       this.own(text, spaced);
+      this.reading(text);
       const whole = known(text);
       const start = text[0]?.at;
       if (whole === undefined || !/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)?$/.test(whole)) {
@@ -3591,6 +3692,7 @@ class Resolver implements ApexResolver {
     // Read again at a call, a text that is not read as a query is the caller's where the call gives characters of
     // it, and what a query reads is the caller's where the caller names its object (`owning`).
     this.own(parsed.read === undefined ? text : []);
+    this.reading(text);
     if (parsed.read === undefined) {
       // A text that is not read as a query: the object after `FROM`, where it is known, is read with what is not
       // known of it (decision record 0012). A text that the code can only put together where it holds no query,
@@ -3651,10 +3753,12 @@ class Resolver implements ApexResolver {
     const message = partly
       ? `the text of the ${what} is known only in part here, and it could not be read as a ${what} as far as it is known, so what it reads was not followed.`
       : `the text of the ${what} could not be read as a ${what}, so what it reads was not followed.`;
-    this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
-      notFollowed: [],
-      origin: 'parser:apex',
-    });
+    this.naming('text', () =>
+      this.warn({ text: '', at: at ?? sink.at }, 'PATH_NOT_FOLLOWED', message, {
+        notFollowed: [],
+        origin: 'parser:apex',
+      }),
+    );
   }
 
   /**
@@ -3733,7 +3837,11 @@ class Resolver implements ApexResolver {
    * filter are read: the warning about its child relationship stands for the rest.
    */
   private queried(query: Query, object: string | undefined): void {
-    if (this.textBinds) for (const bind of query.binds) this.ev(bind);
+    if (this.textBinds) {
+      this.keepingText(() => {
+        for (const bind of query.binds) this.ev(bind);
+      });
+    }
     for (const nested of query.nested) this.soql(nested);
     if (object === undefined) {
       for (const child of query.children) this.queried(child, undefined);
@@ -3892,7 +4000,11 @@ class Resolver implements ApexResolver {
 
   /** A search reads each object it returns, with its fields. Gives lists of records of objects not known here. */
   private sosl(search: Search): Type {
-    if (this.textBinds) for (const bind of search.binds) this.ev(bind);
+    if (this.textBinds) {
+      this.keepingText(() => {
+        for (const bind of search.binds) this.ev(bind);
+      });
+    }
     for (const { object, fields } of search.returning) {
       this.owning(object, () => {
         if (this.isHole(object)) {

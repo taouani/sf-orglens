@@ -31,7 +31,12 @@ import { codes, HEAD, key, Source, told, valueOf, viaOf, xml, XMLNS } from './he
 const NO_FORMULA = { origin: 'parser:formula', components: 0, failedFiles: 0 };
 /** The work of the reader of flows on a source without a flow. */
 const NO_FLOW = { origin: 'parser:flow', components: 0, failedFiles: 0 };
-const NO_APEX = { origin: 'parser:apex', components: 0, failedFiles: 0 };
+const NO_APEX = {
+  origin: 'parser:apex',
+  components: 0,
+  failedFiles: 0,
+  texts: { written: 0, metadata: 0, built: 0, possible: 0, pathsNotFollowed: 0 },
+};
 
 const hex = (bytes: Uint8Array | undefined): string => Buffer.from(bytes ?? []).toString('hex');
 const sha = (content: Uint8Array | string): string => createHash('sha256').update(content).digest('hex');
@@ -197,7 +202,7 @@ describe('the analysis of the fixture project', () => {
       { origin: 'parser:xml', components: 99, failedFiles: 0 },
       { origin: 'parser:formula', components: 47, failedFiles: 0 },
       { origin: 'parser:flow', components: 64, failedFiles: 0 },
-      { origin: 'parser:apex', components: 0, failedFiles: 0 },
+      NO_APEX,
     ]);
     const withFormula = analysis.components.filter((one) =>
       one.references.some((reference) => reference.origin === 'parser:formula'),

@@ -562,7 +562,9 @@ export function resolveApex(
         confidence: tierOf(use, target, object),
         resolution: target.resolution,
         location: { file: owner.file, line: use.at.line, column: use.at.column },
-        attrs: { via: use.via, ...ofTrigger },
+        // A class that `Type.forName` is given as a literal is a name of a text as the code writes it (decision record
+        // 0093).
+        attrs: { via: use.via, ...(use.via === 'text' ? { step: 'written' } : {}), ...ofTrigger },
       }),
     );
   }

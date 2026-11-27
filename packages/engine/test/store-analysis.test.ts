@@ -1021,6 +1021,44 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     store.close();
   });
 
+  it('keeps the counts of the names in texts of an origin that gives them, and of no other', () => {
+    const store = open();
+    const id = snapshot(store);
+    const texts = { written: 15, metadata: 5, built: 26, possible: 7, pathsNotFollowed: 0 };
+    writeAnalysis(
+      store,
+      id,
+      analysisOf(project(), {
+        work: [
+          { origin: 'parser:formula', components: 2, failedFiles: 0 },
+          { origin: 'parser:apex', components: 4, failedFiles: 0, texts },
+          { origin: 'dependency-api', components: 5, failedFiles: 0 },
+        ],
+      }),
+    );
+    expect(readOriginCoverage(store, id).map((one) => [one.origin, one.texts])).toEqual([
+      ['parser:formula', undefined],
+      ['parser:apex', texts],
+      ['dependency-api', undefined],
+    ]);
+    // The five are written together or not at all, and none is below 0 (decision record 0093).
+    const apex = REFERENCE_CODES.origin['parser:apex'];
+    for (const column of ['texts_written', 'texts_metadata', 'texts_built', 'texts_possible', 'texts_not_followed']) {
+      expect(() =>
+        store.write(() => store.run(`UPDATE snapshot_origin_coverage SET ${column} = NULL WHERE origin = ?`, apex)),
+      ).toThrow(/CHECK constraint failed/);
+      expect(() =>
+        store.write(() => store.run(`UPDATE snapshot_origin_coverage SET ${column} = -1 WHERE origin = ?`, apex)),
+      ).toThrow(/CHECK constraint failed/);
+      const formula = REFERENCE_CODES.origin['parser:formula'];
+      expect(() =>
+        store.write(() => store.run(`UPDATE snapshot_origin_coverage SET ${column} = 1 WHERE origin = ?`, formula)),
+      ).toThrow(/CHECK constraint failed/);
+    }
+    expect(readOriginCoverage(store, id)[1]?.texts).toEqual(texts);
+    store.close();
+  });
+
   it('counts as not resolved only what is unresolved, not every target without a key', () => {
     const store = open();
     const id = snapshot(store);
@@ -1502,6 +1540,34 @@ describe.each(DRIVERS)('the analysis of a snapshot with $name', (driver) => {
     for (const codes of Object.values(REFERENCE_CODES)) {
       expect(Object.values(codes)).toEqual(Object.values(codes).map((_, index) => index + 1));
     }
+    store.close();
+  });
+
+  it('migrates a database of schema version 12: an analysis it holds counts no names in texts', () => {
+    const path = join(temp.next(), 'orglens.sqlite');
+    const old = openStore({ path, driver, migrations: MIGRATIONS.slice(0, 12) });
+    const id = snapshot(old);
+    old.write(() => {
+      old.run(
+        `INSERT INTO snapshot_analysis (snapshot_id, engine_version, analysed_at, components, refs, types, cross_check)
+         VALUES (?, '0.1.0', ?, 1, 0, '[]', NULL)`,
+        id,
+        T1,
+      );
+      old.run(
+        `INSERT INTO snapshot_origin_coverage (snapshot_id, origin, components, failed_files, refs, unresolved)
+         VALUES (?, ?, 1, 0, 0, 0)`,
+        id,
+        REFERENCE_CODES.origin['parser:apex'],
+      );
+    });
+    old.close();
+
+    const store = openStore({ path, driver });
+    expect(store.migrated).toEqual({ from: 12, to: MIGRATIONS.length });
+    expect(readOriginCoverage(store, id)).toEqual([
+      { origin: 'parser:apex', components: 1, failedFiles: 0, references: 0, unresolved: 0 },
+    ]);
     store.close();
   });
 
