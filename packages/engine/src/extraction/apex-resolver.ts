@@ -1,14 +1,15 @@
 /**
- * What the code of Apex refers to (decision records 0087 and 0088): the fields of records it reads and writes, also
- * through relationships, the variables and properties of classes, the tokens of objects and fields, the objects that
- * DML writes, and the objects and fields that queries and searches read.
+ * What the code of Apex refers to (decision records 0087, 0088 and 0089): the fields of records it reads and writes,
+ * also through relationships, the variables and properties of classes, the tokens of objects and fields, the objects
+ * that DML writes, the objects and fields that queries and searches read, the methods and constructors it calls and
+ * the enums whose values it names.
  *
  * It runs once every class and trigger was read (`apex.ts`), on the declarations the reader kept: an index of the
  * classes of the snapshot with the declared types of their variables, properties and methods, the classes they
- * extend and the classes around them. A member is read with its scopes: a name is a local variable or a parameter,
- * then a variable or a property of its class, of a class it extends or of a class around it, then a class, then an
- * object, then a namespace of Salesforce. The type of each expression is worked out as far as the declarations say,
- * and nothing is guessed beyond them.
+ * extend and implement and the classes around them. A member is read with its scopes: a name is a local variable or
+ * a parameter, then a variable or a property of its class, of a class it extends or of a class around it, then a
+ * class, then an object, then a namespace of Salesforce. The type of each expression is worked out as far as the
+ * declarations say, and nothing is guessed beyond them.
  *
  * A name of an object or a field is checked against the files and the descriptions of the snapshot
  * (`apex-schema.ts`). One that nothing checks is `probable`. What cannot be resolved has a warning, and nothing is
@@ -20,8 +21,14 @@
  * A query in brackets reads the object after `FROM` and every field it names, in any clause, from a record of that
  * object, also in a subquery through a child relationship, which refers to the lookup field behind the relationship.
  * What it binds is read as code. A search reads each object it returns and the fields named there. Each is named as
- * the query or the search names it (`via`). Calls and names in texts, such as a query in a string, are read by a
- * later part of work package 4 and by work package 5.
+ * the query or the search names it (`via`).
+ *
+ * A call of a method of the snapshot refers to the method that the type of what it is made on, its name, and the
+ * number and the types of its arguments choose, as Apex chooses it, and to each method that a class that extends the
+ * class of the value runs in its place. A `new` of a class calls the constructor its arguments choose, or the class
+ * where it declares none or where they choose one that every exception has. A call into a class whose code is not
+ * read refers to the class, with the name of the method. Where the types do not tell the methods apart, each is
+ * `probable`. Names in texts, such as a query in a string, are read by work package 5.
  */
 import { foldName, type ComponentKey } from '../core/keys.ts';
 import { validateReference, type ConfidenceTier, type Reference } from '../core/references.ts';
@@ -29,7 +36,8 @@ import { cut, type AnalysisIssue } from './analysed.ts';
 import { MOST_NAMES_SHOWN } from './raw-references.ts';
 import type { ApexPart, ApexTypes } from './apex.ts';
 import type { ApexSchema, Checked } from './apex-schema.ts';
-import type { Expr, FieldPath, Name, Param, Query, Search, Stmt, TypeOf, TypeRef } from './apex-syntax.ts';
+import type { Expr, FieldPath, Name, Param, Pos, Query, Search, Stmt, TypeOf, TypeRef } from './apex-syntax.ts';
+import type { Target } from './model.ts';
 
 /** A class or a trigger of the snapshot, with the parts of it that are components. */
 export interface ApexUnitInput {
@@ -64,6 +72,10 @@ interface ClassInfo {
   readonly unit: UnitInfo;
   readonly outer: ClassInfo | undefined;
   readonly extends: TypeRef | undefined;
+  /** The class a class extends and the interfaces it implements, or the interfaces an interface extends. */
+  readonly supertypes: readonly TypeRef[];
+  /** The values of an enum, folded. */
+  readonly values: ReadonlySet<string>;
   /** The variables and properties, by folded name. */
   readonly vars: Map<string, VarInfo>;
   /** The methods by folded name, and the constructors under the name `<init>`. */
@@ -71,6 +83,13 @@ interface ClassInfo {
   /** The classes, interfaces and enums it declares, by folded name. */
   readonly inner: Map<string, ClassInfo>;
 }
+
+/** A class of the snapshot whose code is not read, as `findClass` gives it: its key. */
+interface Opaque {
+  readonly opaque: Target;
+}
+
+const isOpaque = (found: ClassInfo | Opaque | undefined): found is Opaque => found !== undefined && 'opaque' in found;
 
 interface VarInfo {
   readonly key: ComponentKey;
@@ -83,9 +102,21 @@ interface VarInfo {
   value: Type | 'working' | undefined;
 }
 
+/** A method or a constructor of a class or a trigger. */
 interface MethodInfo {
+  readonly key: ComponentKey;
+  readonly owner: ClassInfo;
+  /** Its name, folded, and `<init>` for a constructor. */
+  readonly name: string;
+  /** The name and the signature its key ends in, which a method that overrides it has too: `price(invoice__c)`. */
+  readonly sub: string;
   readonly params: readonly Param[];
   readonly returns: TypeRef | undefined;
+  readonly static: boolean;
+  /** A class that extends its class can override it: it is virtual, abstract, an override or of an interface. */
+  readonly open: boolean;
+  /** A constructor that every exception has, which a call of refers to the class (`constructorsOf`). */
+  readonly builtin?: boolean;
 }
 
 /** A member of a class or a trigger that has a body to read, with what holds it. */
@@ -105,17 +136,35 @@ type Type =
       /** The relationship the record was reached through, where it leads to no known object. */
       readonly through?: Through;
     }
-  | { readonly k: 'list'; readonly of: Type }
+  /** A list, a set or an iterable. `coll` says which of a list and a set it is, where the code says so. */
+  | { readonly k: 'list'; readonly of: Type; readonly coll?: 'list' | 'set' }
   | { readonly k: 'map'; readonly key: Type; readonly value: Type }
+  /** A value of a primitive type of Apex, by its folded name: `integer`, `string`, `object`. */
+  | { readonly k: 'prim'; readonly name: string }
   /** A value of a class of the snapshot. */
   | { readonly k: 'instance'; readonly cls: ClassInfo }
   /** The class itself, as in `InvoiceConstants.AMOUNT`. */
   | { readonly k: 'static'; readonly cls: ClassInfo }
+  /**
+   * A class of the snapshot whose code is not read, such as a class of a managed package whose code is hidden, or a
+   * value of one. A call refers to the class, and names the method it calls.
+   */
+  | { readonly k: 'opaque'; readonly target: Target }
   /** The name of an object in an expression, as in `Invoice__c.Amount__c` and `Billing_Settings__c.getInstance()`. */
   | { readonly k: 'object'; readonly name: Name }
   | { readonly k: 'ns'; readonly name: Namespace }
   | { readonly k: 'objectToken'; readonly object: string | undefined }
-  | { readonly k: 'fieldToken'; readonly object: string | undefined; readonly field: string | undefined }
+  /**
+   * The token of a field (`described` false), or its describe (`described` true), which a method of Apex can take
+   * apart from the token. `fields.Amount__c` of a describe of an object is either, as the code uses it, and says
+   * neither.
+   */
+  | {
+      readonly k: 'fieldToken';
+      readonly object: string | undefined;
+      readonly field: string | undefined;
+      readonly described?: boolean;
+    }
   | { readonly k: 'describe'; readonly object: string | undefined }
   /** `fields` of a describe: the next name is a field of the object. */
   | { readonly k: 'fields'; readonly object: string | undefined }
@@ -138,11 +187,23 @@ interface Through {
   readonly object: string;
 }
 
-type Namespace = 'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus';
-const NAMESPACES: ReadonlySet<string> = new Set<Namespace>(['schema', 'trigger', 'database', 'eventbus']);
+type Namespace = 'schema' | 'sobjecttype' | 'trigger' | 'database' | 'eventbus' | 'label' | 'system';
+const NAMESPACES: ReadonlySet<string> = new Set<Namespace>([
+  'schema',
+  'trigger',
+  'database',
+  'eventbus',
+  'label',
+  'system',
+]);
 
 interface Value {
   readonly type: Type;
+  /**
+   * The type the code declares, where `type` is the more exact type of the value it was given (`SObject one = new
+   * Account()`, or a cast): an overload is chosen by it, as Apex chooses one.
+   */
+  readonly declared?: Type;
   /** The references a field token made, which `get` and `put` replace with a read and a write. */
   readonly made?: readonly string[];
   /**
@@ -154,6 +215,65 @@ interface Value {
 
 const OTHER: Type = { k: 'other' };
 const VALUE: Value = { type: OTHER };
+const prim = (name: string): Type => ({ k: 'prim', name });
+const BOOLEAN = prim('boolean');
+
+/** `null`, which fits every type. */
+const NULL = prim('null');
+const isNull = (type: Type): boolean => type.k === 'prim' && type.name === 'null';
+/** A type that says something of a value: neither `null` nor what is not known. */
+const says = (type: Type): boolean => type.k !== 'other' && !isNull(type);
+
+/** The type of a literal: a number, `true` and `false`, `null`, and a text of several lines. */
+function literalType(text: string): Type {
+  const folded = foldName(text);
+  if (folded === 'null') return NULL;
+  if (folded === 'true' || folded === 'false') return BOOLEAN;
+  if (/^\d+$/.test(folded)) return prim('integer');
+  if (/^\d+l$/.test(folded)) return prim('long');
+  if (/^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?d$/.test(folded)) return prim('double');
+  if (/^(?:\d+\.\d*|\.\d+)(?:e[+-]?\d+)?$/.test(folded)) return prim('decimal');
+  return text.startsWith("'") ? prim('string') : OTHER;
+}
+
+/** The numbers of Apex, from the narrowest: an operation on two numbers gives the wider of them. */
+const NUMBERS: readonly string[] = ['integer', 'long', 'double', 'decimal'];
+
+/**
+ * The primitive types a value of one is given to without a cast, as an argument. An `Id` is a text. A text is
+ * turned into an `Id` where it is one, which only the run can tell, so whether it fits is not known.
+ */
+const WIDER: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['integer', new Set(['long', 'double', 'decimal'])],
+  ['long', new Set(['double', 'decimal'])],
+  ['double', new Set(['decimal'])],
+  ['decimal', new Set(['double'])],
+  ['id', new Set(['string'])],
+  ['date', new Set(['datetime'])],
+]);
+
+/** The constructors every exception has, by the types of their parameters. */
+const EXCEPTION_CONSTRUCTORS: readonly (readonly string[])[] = [[], ['String'], ['Exception'], ['String', 'Exception']];
+
+/** The methods of `String` that give a text, beside `valueOf`, which every primitive type has. */
+const TEXT_METHODS: ReadonlySet<string> = new Set(['escapesinglequotes', 'format', 'join']);
+
+/** Whether a type is `Object`, which every value is of. */
+function isObjectType(type: Type): boolean {
+  return type.k === 'prim' && type.name === 'object';
+}
+
+/** The operators that give a Boolean. */
+const COMPARISONS: ReadonlySet<string> = new Set(['==', '!=', '===', '!==', '<', '>', '<=', '>=', '&&', '||']);
+
+/**
+ * How the value of an argument fits a parameter: as it is, as a wider type, not at all, or not known, where the type
+ * of either is not known here.
+ */
+type Fit = 'exact' | 'wider' | 'unknown' | 'no';
+const FITS: readonly Fit[] = ['exact', 'wider', 'unknown', 'no'];
+const worst = (fits: readonly Fit[]): Fit =>
+  fits.reduce<Fit>((one, other) => (FITS.indexOf(other) > FITS.indexOf(one) ? other : one), 'exact');
 
 type Access = 'read' | 'write' | 'both';
 
@@ -212,6 +332,13 @@ const DATABASE_QUERIES: ReadonlySet<string> = new Set(['query', 'querywithbinds'
 const RECORD_METHODS: ReadonlySet<string> = new Set(['getinstance', 'getorgdefaults', 'getvalues']);
 
 const wordsOf = (name: string): string[] => name.replace(/\s+/g, '').split('.');
+
+/** A dotted name without the namespace `System` in front. */
+function unsystem(name: string): string {
+  const words = wordsOf(name);
+  return (foldName(words[0] ?? '') === 'system' && words.length > 1 ? words.slice(1) : words).join('.');
+}
+
 const pathOf = (subs: ApexPart['subs']): string => subs.map((sub) => `${sub.kind}:${foldName(sub.name)}`).join('/');
 
 /** The word that stands for an expression, if one does: the last name of `InvoiceConstants.EXTERNAL_ID`. */
@@ -246,6 +373,7 @@ function assignments(bodies: readonly (Stmt | Expr | undefined)[]): Map<string, 
 
 interface Local {
   readonly type: Type;
+  readonly declared?: Type;
 }
 
 interface Scope {
@@ -270,6 +398,10 @@ interface Context {
 class Resolver implements ApexResolver {
   private readonly members = new Map<ComponentKey, MemberInfo>();
   private readonly classes = new Map<string, ClassInfo>();
+  /** Every class, interface, enum and trigger, also an inner one. */
+  private readonly all: ClassInfo[] = [];
+  /** The classes and interfaces that extend or implement each, worked out at the first call that needs them. */
+  private subtypes: Map<ClassInfo, ClassInfo[]> | undefined;
   private readonly schema: ApexSchema;
   private readonly types: ApexTypes;
   private ctx: Context | undefined;
@@ -299,21 +431,27 @@ class Resolver implements ApexResolver {
       if (syntax.kind === 'type' || syntax.kind === 'trigger') {
         const outer = part.subs.length === 0 ? undefined : byPath.get(pathOf(part.subs.slice(0, -1)));
         if (part.subs.length > 0 && outer === undefined) continue;
+        const decl = syntax.kind === 'type' ? syntax.decl : undefined;
         const info: ClassInfo = {
           key,
-          kind: syntax.kind === 'trigger' ? 'trigger' : syntax.decl.kind,
+          kind: decl === undefined ? 'trigger' : decl.kind,
           unit,
           outer,
-          extends: syntax.kind === 'type' && syntax.decl.kind === 'class' ? syntax.decl.extends[0] : undefined,
+          extends: decl?.kind === 'class' ? decl.extends[0] : undefined,
+          supertypes: decl === undefined ? [] : [...decl.extends, ...decl.implements],
+          values: new Set(decl?.values.map((value) => foldName(value.text))),
           vars: new Map(),
           methods: new Map(),
           inner: new Map(),
         };
         byPath.set(pathOf(part.subs), info);
+        this.all.push(info);
         if (syntax.kind === 'type') {
           if (outer === undefined) {
-            if (input.type === 'ApexClass' && !this.classes.has(foldName(syntax.decl.name.text))) {
-              this.classes.set(foldName(syntax.decl.name.text), info);
+            // A class is named as its code declares it, and as the snapshot holds it: `ns__Name` of a package.
+            const names = [syntax.decl.name.text, nameOfKey(input.key)].map((one) => foldName(one));
+            for (const name of input.type === 'ApexClass' ? names : []) {
+              if (!this.classes.has(name)) this.classes.set(name, info);
             }
           } else outer.inner.set(foldName(syntax.decl.name.text), info);
         }
@@ -346,9 +484,21 @@ class Resolver implements ApexResolver {
       } else if (syntax.kind === 'method') {
         const { member } = syntax;
         const name = member.ctor ? '<init>' : foldName(member.name.text);
+        const open =
+          holder.kind === 'interface' ||
+          member.modifiers.some((one) => one === 'virtual' || one === 'abstract' || one === 'override');
         holder.methods.set(name, [
           ...(holder.methods.get(name) ?? []),
-          { params: member.params, returns: member.returns },
+          {
+            key,
+            owner: holder,
+            name,
+            sub: nameOfKey(key),
+            params: member.params,
+            returns: member.returns,
+            static: member.static,
+            open: open && !member.static && !member.ctor,
+          },
         ]);
       }
     }
@@ -422,8 +572,12 @@ class Resolver implements ApexResolver {
 
   // -------------------------------------------------------------- classes and types
 
-  /** The class a dotted name stands for, seen from `from`: an inner class, a class around it, or a class. */
-  private findClass(words: readonly string[], from: ClassInfo | undefined): ClassInfo | 'opaque' | undefined {
+  /**
+   * The class a dotted name stands for, seen from `from`: an inner class, a class around it, or a class. A class of the
+   * snapshot whose code is not read is a class of which nothing is known but its key: by its name, or as code names
+   * a class of a managed package, by the prefix of its namespace and its name, `ns.Name` for the class `ns__Name`.
+   */
+  private findClass(words: readonly string[], from: ClassInfo | undefined): ClassInfo | Opaque | undefined {
     const [first, ...rest] = words.map(foldName);
     if (first === undefined) return undefined;
     let start: ClassInfo | undefined;
@@ -432,11 +586,14 @@ class Resolver implements ApexResolver {
     }
     start ??= this.classes.get(first);
     if (start === undefined) {
-      // A class of the snapshot whose code is not read: it is a class, and nothing is known of its members.
+      const [second] = rest;
+      const prefixed = rest.length === 1 && second !== undefined ? `${first}__${second}` : undefined;
+      const named = prefixed === undefined ? undefined : this.classes.get(prefixed);
+      if (named !== undefined) return named;
       const unit = from?.unit.key;
-      return unit !== undefined && words.length === 1 && this.types.find(words[0] ?? '', unit) !== undefined
-        ? 'opaque'
-        : undefined;
+      const name = words.length === 1 ? first : prefixed;
+      const target = unit === undefined || name === undefined ? undefined : this.types.find(name, unit);
+      return target === undefined ? undefined : { opaque: target };
     }
     for (const part of rest) {
       start = start.inner.get(part);
@@ -445,10 +602,47 @@ class Resolver implements ApexResolver {
     return start;
   }
 
+  /** The class or interface of the snapshot that `cls` names as a supertype, as `extends` and `implements` do. */
+  private supertypeOf(ref: TypeRef, cls: ClassInfo): ClassInfo | undefined {
+    const found = this.findClass(wordsOf(ref.name), cls.outer ?? cls);
+    return found === undefined || isOpaque(found) || found === cls ? undefined : found;
+  }
+
   private superOf(cls: ClassInfo): ClassInfo | undefined {
-    if (cls.extends === undefined) return undefined;
-    const found = this.findClass(wordsOf(cls.extends.name), cls.outer ?? cls);
-    return found === 'opaque' || found === cls ? undefined : found;
+    return cls.extends === undefined ? undefined : this.supertypeOf(cls.extends, cls);
+  }
+
+  /**
+   * A class or an interface, then the classes it extends, then the interfaces any of them implements or extends:
+   * the types whose methods a value of it has.
+   */
+  private *ancestors(cls: ClassInfo): Generator<ClassInfo> {
+    const queue: ClassInfo[] = [...this.supers(cls)];
+    const seen = new Set<ClassInfo>();
+    for (const at of queue) {
+      if (seen.has(at)) continue;
+      seen.add(at);
+      yield at;
+      for (const ref of at.supertypes) {
+        const found = this.supertypeOf(ref, at);
+        if (found !== undefined && !seen.has(found)) queue.push(found);
+      }
+    }
+  }
+
+  /** The classes and interfaces that extend or implement `cls` themselves. */
+  private subtypesOf(cls: ClassInfo): readonly ClassInfo[] {
+    if (this.subtypes === undefined) {
+      const subtypes = new Map<ClassInfo, ClassInfo[]>();
+      for (const one of this.all) {
+        for (const ref of one.supertypes) {
+          const base = this.supertypeOf(ref, one);
+          if (base !== undefined) subtypes.set(base, [...(subtypes.get(base) ?? []), one]);
+        }
+      }
+      this.subtypes = subtypes;
+    }
+    return this.subtypes.get(cls) ?? [];
   }
 
   /** A class, the classes it extends, then the classes around it and the classes they extend. */
@@ -481,13 +675,15 @@ class Resolver implements ApexResolver {
 
   private resolveType(ref: TypeRef | undefined, cls: ClassInfo): Type {
     if (ref === undefined || ref.name === '') return OTHER;
-    if (ref.array > 0) return { k: 'list', of: this.resolveType({ ...ref, array: ref.array - 1 }, cls) };
+    if (ref.array > 0) return { k: 'list', of: this.resolveType({ ...ref, array: ref.array - 1 }, cls), coll: 'list' };
     let words = wordsOf(ref.name);
     if (words.length > 1 && foldName(words[0] ?? '') === 'system') words = words.slice(1);
     const arg = (index: number): Type => this.resolveType(ref.args[index], cls);
     switch (words.map(foldName).join('.')) {
       case 'list':
+        return { k: 'list', of: arg(0), coll: 'list' };
       case 'set':
+        return { k: 'list', of: arg(0), coll: 'set' };
       case 'iterable':
         return { k: 'list', of: arg(0) };
       case 'map':
@@ -499,20 +695,27 @@ class Resolver implements ApexResolver {
         return { k: 'objectToken', object: undefined };
       case 'sobjectfield':
       case 'schema.sobjectfield':
+        return { k: 'fieldToken', object: undefined, field: undefined, described: false };
       case 'describefieldresult':
       case 'schema.describefieldresult':
-        return { k: 'fieldToken', object: undefined, field: undefined };
+        return { k: 'fieldToken', object: undefined, field: undefined, described: true };
       case 'describesobjectresult':
       case 'schema.describesobjectresult':
         return { k: 'describe', object: undefined };
       default:
     }
-    if (words.length === 1 && PRIMITIVES.has(foldName(words[0] ?? ''))) return OTHER;
+    const [only = ''] = words;
+    if (words.length === 1 && PRIMITIVES.has(foldName(only))) return prim(foldName(only));
     const found = this.findClass(words, cls);
-    if (found === 'opaque') return OTHER;
+    if (isOpaque(found)) return { k: 'opaque', target: found.opaque };
     if (found !== undefined) return { k: 'instance', cls: found };
-    const [first = '', second] = words;
-    const object = words.length === 1 ? first : words.length === 2 && foldName(first) === 'schema' ? second : undefined;
+    const [first = '', second = ''] = words;
+    // A name of two words that is no class, and does not start with one, is a type of a namespace of Salesforce, such
+    // as `Database.SaveResult`, or of a package, and never an object.
+    if (words.length === 2 && foldName(first) !== 'schema') {
+      return this.findClass([first], cls) === undefined ? { k: 'named', name: `${first}.${second}` } : OTHER;
+    }
+    const object = words.length === 1 ? first : words.length === 2 ? second : undefined;
     if (object === undefined) return OTHER;
     return this.schema.isObject(object) ? { k: 'record', object } : { k: 'named', name: object };
   }
@@ -525,24 +728,63 @@ class Resolver implements ApexResolver {
     if (declared.k === 'record' && actual.k === 'list' && actual.of.k === 'record') {
       return this.refine(declared, actual.of);
     }
-    if (declared.k === 'list' && actual.k === 'record') return { k: 'list', of: this.refine(declared.of, actual) };
-    if (declared.k === 'list' && actual.k === 'list') return { k: 'list', of: this.refine(declared.of, actual.of) };
+    if (declared.k === 'list' && actual.k === 'record') return { ...declared, of: this.refine(declared.of, actual) };
+    if (declared.k === 'list' && actual.k === 'list') return { ...declared, of: this.refine(declared.of, actual.of) };
     if (declared.k === 'map' && actual.k === 'map') {
       return { k: 'map', key: declared.key, value: this.refine(declared.value, actual.value) };
     }
     if ((declared.k === 'objectToken' || declared.k === 'describe') && actual.k === declared.k) {
       return declared.object === undefined ? actual : declared;
     }
+    // An object of a class is of that class at run time, or of one that extends it, whatever the variable declares:
+    // its methods are those of the class, and of a class that extends it.
+    if (actual.k === 'instance' && declared.k === 'instance') {
+      return declared.cls !== actual.cls && [...this.ancestors(actual.cls)].includes(declared.cls) ? actual : declared;
+    }
+    if (actual.k === 'instance' && (declared.k === 'named' || declared.k === 'other' || isObjectType(declared))) {
+      return actual;
+    }
     if (declared.k === 'fieldToken' && actual.k === 'fieldToken') {
-      return declared.field === undefined ? actual : declared;
+      if (declared.field !== undefined) return declared;
+      return declared.described === undefined ? actual : { ...actual, described: declared.described };
     }
     return declared;
+  }
+
+  /**
+   * The primitive type an operator gives, as far as the types of its operands say: a comparison a Boolean, `+` with a
+   * text a text, a number with a number the wider of them, and a date or a time with a number a date or a time.
+   */
+  private static operation(op: string, left: Type, right: Type): Type {
+    const operator = op.replace(/\s+/g, '');
+    if (COMPARISONS.has(operator)) return BOOLEAN;
+    const a = left.k === 'prim' ? left.name : undefined;
+    const b = right.k === 'prim' ? right.name : undefined;
+    if (operator === '+' && (a === 'string' || b === 'string')) return prim('string');
+    if (a === undefined || b === undefined) return OTHER;
+    if (a === 'boolean' && b === 'boolean' && ['&', '|', '^'].includes(operator)) return BOOLEAN;
+    const rank = Math.max(NUMBERS.indexOf(a), NUMBERS.indexOf(b));
+    if (NUMBERS.includes(a) && NUMBERS.includes(b)) return prim(NUMBERS[rank] ?? a);
+    if (['date', 'datetime', 'time'].includes(a) && NUMBERS.includes(b) && ['+', '-'].includes(operator)) return left;
+    return OTHER;
+  }
+
+  /** What the methods every enum has give: `name()`, `ordinal()`, `values()` and `valueOf(text)`. */
+  private static ofEnum(type: Extract<Type, { k: 'instance' | 'static' }>, method: string): Value {
+    const value: Type = { k: 'instance', cls: type.cls };
+    if (type.k === 'instance')
+      return method === 'name' ? { type: prim('string') } : method === 'ordinal' ? { type: prim('integer') } : VALUE;
+    return method === 'values'
+      ? { type: { k: 'list', of: value, coll: 'list' } }
+      : method === 'valueof'
+        ? { type: value }
+        : VALUE;
   }
 
   /** The object of the records that DML writes: of a record, or of a list of them. */
   private static objectOf(type: Type): string | undefined {
     if (type.k === 'record') return type.object;
-    if (type.k === 'named') return type.name;
+    if (type.k === 'named') return type.name.includes('.') ? undefined : type.name;
     if (type.k === 'list') return Resolver.objectOf(type.of);
     return undefined;
   }
@@ -557,12 +799,17 @@ class Resolver implements ApexResolver {
     return undefined;
   }
 
-  /** Declares a local variable. One that is never assigned again keeps the type of the value it starts with. */
-  private bind(name: Name, declared: Type, init?: Value): void {
+  /**
+   * Declares a local variable. One that is never assigned again keeps the type of the value it starts with, and the
+   * variable of a loop (`loop`) that its body does not assign that of the items it goes through.
+   */
+  private bind(name: Name, declared: Type, init?: Value, loop = false): void {
     const folded = foldName(name.text);
-    const once = (this.context.assigned.get(folded) ?? 0) === 0;
-    const type = init !== undefined && once ? this.refine(declared, init.type) : declared;
-    this.context.scope.vars.set(folded, { type });
+    const once = loop || (this.context.assigned.get(folded) ?? 0) === 0;
+    this.context.scope.vars.set(
+      folded,
+      init !== undefined && once ? { type: this.refine(declared, init.type), declared } : { type: declared },
+    );
   }
 
   private inScope(run: () => void): void {
@@ -598,6 +845,8 @@ class Resolver implements ApexResolver {
       readonly op?: string;
       readonly object?: string;
       readonly raw?: string;
+      /** The method a call names in a class whose code is not read. */
+      readonly method?: string;
     } = {},
   ): string | undefined {
     const ctx = this.context;
@@ -621,6 +870,7 @@ class Resolver implements ApexResolver {
           via,
           ...(more.op === undefined ? {} : { op: more.op }),
           ...(target.to === null && more.object !== undefined ? { object: more.object } : {}),
+          ...(more.method === undefined ? {} : { method: more.method }),
         },
       }),
     );
@@ -639,6 +889,38 @@ class Resolver implements ApexResolver {
     };
     if (access !== 'write') this.add(at, 'reads', target, this.named);
     if (access !== 'read') this.add(at, 'writes', target, this.named);
+  }
+
+  /**
+   * Reports a call of a method or a constructor, of a class that declares no constructor, or of a class whose code is
+   * not read, with the method it names. A member that calls itself has no reference to itself.
+   */
+  private addCall(
+    at: Name,
+    to: { readonly to: ComponentKey | null; readonly toType: string },
+    tier: ConfidenceTier,
+    via: 'call' | 'new',
+    method?: string,
+  ): void {
+    if (to.to === null || to.to === this.context.from) return;
+    const target: Checked = {
+      target: { to: to.to, toType: to.toType, resolution: 'resolved' },
+      checked: true,
+      known: true,
+      notDescribed: false,
+    };
+    this.add(at, 'calls', target, via, { tier, ...(method === undefined ? {} : { method }) });
+  }
+
+  /** Reports a value of an enum of the snapshot, which reads the enum: a value is no component. */
+  private addEnum(at: Name, cls: ClassInfo): void {
+    const target: Checked = {
+      target: { to: cls.key, toType: cls.unit.type, resolution: 'resolved' },
+      checked: true,
+      known: true,
+      notDescribed: false,
+    };
+    this.add(at, 'reads', target, this.named);
   }
 
   private retract(ids: readonly (string | undefined)[] | undefined): void {
@@ -739,6 +1021,42 @@ class Resolver implements ApexResolver {
     return { type: { k: 'list', of: { k: 'record', object: undefined } } };
   }
 
+  /**
+   * A part of a value, as an item of a list or a value of a map, with the part of the type the code declares:
+   * `recs[0]` of `List<SObject> recs = [SELECT Id FROM Account]` is an `Account`, which Apex takes for an `SObject`.
+   */
+  private static part(value: Value, of: (type: Type) => Type | undefined): Value {
+    const type = of(value.type);
+    if (type === undefined) return VALUE;
+    const declared = value.declared === undefined ? undefined : of(value.declared);
+    return declared === undefined ? { type } : { type, declared };
+  }
+
+  /** The value of a conditional or of `??`, which is one of two values, with the type the code declares of it. */
+  private either(a: Value, b: Value): Value {
+    const type = this.eitherType(a.type, b.type);
+    if (a.declared === undefined && b.declared === undefined) return { type };
+    return { type, declared: this.eitherType(a.declared ?? a.type, b.declared ?? b.type) };
+  }
+
+  /**
+   * The type of a value of one of two types: where one is `null`, the other. Of two objects of classes, the closest
+   * class or interface both are of, as `Shape` of `flag ? new Square() : new Circle()`. Of an object of a class and
+   * a value of another type, or of no known type, the class is not known. Otherwise the first type that says
+   * something.
+   */
+  private eitherType(a: Type, b: Type): Type {
+    if (isNull(a)) return b;
+    if (isNull(b)) return a;
+    if (a.k === 'instance' && b.k === 'instance') {
+      const of = new Set(this.ancestors(b.cls));
+      for (const at of this.ancestors(a.cls)) if (of.has(at)) return at === a.cls ? a : { k: 'instance', cls: at };
+      return OTHER;
+    }
+    if (a.k === 'instance' || b.k === 'instance') return OTHER;
+    return says(a) ? a : b;
+  }
+
   // -------------------------------------------------------------- statements
 
   private stmt(stmt: Stmt | undefined): void {
@@ -775,7 +1093,10 @@ class Resolver implements ApexResolver {
         const items = this.asList(this.ev(stmt.iterable)).type;
         const declared = this.resolveType(stmt.type, this.context.cls);
         this.inScope(() => {
-          this.bind(stmt.name, items.k === 'list' ? this.refine(declared, items.of) : declared);
+          // The variable of a loop is given each item, and keeps the type of the items where the loop does not
+          // assign it.
+          const again = assignments([stmt.body]).has(foldName(stmt.name.text));
+          this.bind(stmt.name, declared, items.k === 'list' ? { type: items.of } : undefined, !again);
           this.stmt(stmt.body);
         });
         return;
@@ -794,16 +1115,22 @@ class Resolver implements ApexResolver {
         this.stmt(stmt.block);
         for (const clause of stmt.catches) {
           this.inScope(() => {
-            this.bind(clause.name, OTHER);
+            this.bind(clause.name, this.resolveType(clause.type, this.context.cls));
             this.stmt(clause.block);
           });
         }
         this.stmt(stmt.finally);
         return;
-      case 'switch':
-        // The values of a `when` are read with the calls (part D): a value of a picklist is no reference.
-        this.ev(stmt.on);
+      case 'switch': {
+        // A value of a `when` is a literal, which names nothing, also where it is a value of a picklist, or a value
+        // of the enum that the switch is on, which is written alone.
+        const on = this.ev(stmt.on).type;
+        const enumeration = on.k === 'instance' && on.cls.kind === 'enum' ? on.cls : undefined;
         for (const when of stmt.whens) {
+          for (const value of when.values) {
+            if (value.kind !== 'name') this.ev(value);
+            else if (enumeration?.values.has(foldName(value.name.text)) === true) this.addEnum(value.name, enumeration);
+          }
           this.inScope(() => {
             if (when.binding !== undefined) {
               this.bind(when.binding.name, this.resolveType(when.binding.type, this.context.cls));
@@ -812,6 +1139,7 @@ class Resolver implements ApexResolver {
           });
         }
         return;
+      }
       case 'dml': {
         const values = stmt.targets.map((target) => this.ev(target));
         const at: Name = { text: stmt.op, at: stmt.at };
@@ -859,16 +1187,24 @@ class Resolver implements ApexResolver {
       case 'name':
         return this.name(expr.name, access);
       case 'string':
+        return { type: prim('string') };
       case 'literal':
+        return { type: literalType(expr.text) };
       case 'class':
-        return VALUE;
+        // `Invoice__c.class` is a `Type`.
+        return { type: { k: 'named', name: 'Type' } };
       case 'this':
         return this.context.cls.kind === 'trigger' ? VALUE : { type: { k: 'instance', cls: this.context.cls } };
       case 'super': {
         const base = this.superOf(this.context.cls);
-        return base === undefined ? VALUE : { type: { k: 'instance', cls: base } };
+        if (base !== undefined) return { type: { k: 'instance', cls: base } };
+        // `super.run()` of a class whose code is not read refers to the class.
+        const hidden = this.hiddenSuperOf(this.context.cls);
+        return hidden === undefined ? VALUE : { type: { k: 'opaque', target: hidden } };
       }
       case 'dot': {
+        const named = this.namespaced(expr);
+        if (named !== undefined) return named;
         const target = this.ev(expr.target, 'read', true);
         // `[SELECT Name FROM Account].Name` reads the field of the one record the query gives.
         const value = expr.target.kind === 'soql' && target.type.k === 'list' ? { type: target.type.of } : target;
@@ -890,8 +1226,8 @@ class Resolver implements ApexResolver {
         return { type };
       }
       case 'cast': {
-        const value = this.ev(expr.expr);
-        return { type: this.refine(this.resolveType(expr.type, this.context.cls), value.type) };
+        const declared = this.resolveType(expr.type, this.context.cls);
+        return { type: this.refine(declared, this.ev(expr.expr).type), declared };
       }
       case 'assign': {
         const right = this.ev(expr.right);
@@ -901,21 +1237,23 @@ class Resolver implements ApexResolver {
       case 'binary': {
         const left = this.ev(expr.left);
         const right = this.ev(expr.right);
-        if (expr.op !== '??') return VALUE;
-        return { type: left.type.k === 'other' ? right.type : left.type };
+        return expr.op === '??'
+          ? this.either(left, right)
+          : { type: Resolver.operation(expr.op, left.type, right.type) };
       }
-      case 'unary':
-        return this.ev(expr.operand, expr.op.includes('++') || expr.op.includes('--') ? 'both' : 'read');
+      case 'unary': {
+        const operand = this.ev(expr.operand, expr.op.includes('++') || expr.op.includes('--') ? 'both' : 'read');
+        return expr.op.trim() === '!' ? { type: BOOLEAN } : operand;
+      }
       case 'ternary': {
         this.ev(expr.cond);
         const then = this.ev(expr.then);
-        const otherwise = this.ev(expr.else);
-        return { type: then.type.k === 'other' ? otherwise.type : then.type };
+        return this.either(then, this.ev(expr.else));
       }
       case 'index': {
-        const target = this.asList(this.ev(expr.target)).type;
+        const target = this.asList(this.ev(expr.target));
         this.ev(expr.index);
-        return target.k === 'list' ? { type: target.of } : VALUE;
+        return Resolver.part(target, (type) => (type.k === 'list' ? type.of : undefined));
       }
       case 'instanceof':
         this.ev(expr.expr);
@@ -933,16 +1271,36 @@ class Resolver implements ApexResolver {
   private name(name: Name, access: Access): Value {
     const folded = foldName(name.text);
     const local = this.lookup(folded);
-    if (local !== undefined) return { type: local.type };
+    if (local !== undefined) return local;
     const { cls } = this.context;
     const member = this.findVar(cls, folded);
     if (member !== undefined) return this.member(member, name, access);
     const found = this.findClass([name.text], cls);
-    if (found === 'opaque') return VALUE;
+    if (isOpaque(found)) return { type: { k: 'opaque', target: found.opaque } };
     if (found !== undefined) return { type: { k: 'static', cls: found } };
     if (this.schema.isObject(name.text)) return { type: { k: 'object', name } };
     if (NAMESPACES.has(folded)) return { type: { k: 'ns', name: folded as Namespace } };
     return VALUE;
+  }
+
+  /**
+   * `ns.Name`, as code names a class of a managed package: `ns` stands for nothing in the code, and the snapshot has
+   * the class `ns__Name`.
+   */
+  private namespaced(expr: Extract<Expr, { kind: 'dot' }>): Value | undefined {
+    if (expr.target.kind !== 'name') return undefined;
+    const first = expr.target.name.text;
+    const folded = foldName(first);
+    const { cls } = this.context;
+    const standsFor =
+      this.lookup(folded) !== undefined ||
+      this.findVar(cls, folded) !== undefined ||
+      this.findClass([first], cls) !== undefined ||
+      this.schema.isObject(first) ||
+      NAMESPACES.has(folded);
+    const found = standsFor ? undefined : this.findClass([first, expr.name.text], cls);
+    if (found === undefined) return undefined;
+    return isOpaque(found) ? { type: { k: 'opaque', target: found.opaque } } : { type: { k: 'static', cls: found } };
   }
 
   /** A variable or a property of a class, read or written at `name`. A constant has the type of its value. */
@@ -969,7 +1327,7 @@ class Resolver implements ApexResolver {
       }
     }
     // A constant that is set from itself has no value that can be followed.
-    return { type: member.value === 'working' ? declared : member.value };
+    return member.value === 'working' ? { type: declared } : { type: member.value, declared };
   }
 
   private dot(target: Value, name: Name, access: Access, step: boolean): Value {
@@ -980,7 +1338,7 @@ class Resolver implements ApexResolver {
         if (type.object !== undefined) return this.field(type.object, name, access, step);
         // `task.What.Name`: the relationship can lead to records of several objects, or to one not known here.
         if (type.through !== undefined && folded !== 'id') return { type: this.notFollowed(type.through, [name.text]) };
-        return VALUE;
+        return folded === 'id' ? { type: prim('id') } : VALUE;
       case 'beyond':
         // `task.What.Owner.Name`: every name after the relationship is one that was not followed.
         if (type.names.length >= MOST_NAMES_SHOWN) return { type };
@@ -989,6 +1347,11 @@ class Resolver implements ApexResolver {
       case 'static': {
         const inner = type.k === 'static' ? type.cls.inner.get(folded) : undefined;
         if (inner !== undefined) return { type: { k: 'static', cls: inner } };
+        // `Mode.FAST`: a value of an enum.
+        if (type.k === 'static' && type.cls.kind === 'enum' && type.cls.values.has(folded)) {
+          this.addEnum(name, type.cls);
+          return { type: { k: 'instance', cls: type.cls } };
+        }
         const member = this.findVar(type.cls, folded, false);
         return member === undefined ? VALUE : this.member(member, name, access);
       }
@@ -1000,7 +1363,7 @@ class Resolver implements ApexResolver {
         if (folded === 'sobjecttype') return { type: { k: 'objectToken', object } };
         if (folded === 'fields') return { type: { k: 'fields', object } };
         if (folded === 'id' || /__p?r$/i.test(name.text)) return VALUE;
-        return this.fieldToken(object, name);
+        return this.fieldToken(object, name, false);
       }
       case 'ns':
         return this.inNamespace(type.name, name);
@@ -1017,12 +1380,13 @@ class Resolver implements ApexResolver {
     }
   }
 
-  /** The token of a field, which refers to the field. */
-  private fieldToken(object: string, name: Name): Value {
+  /** The token of a field, or its describe where `described` says which, which refers to the field. */
+  private fieldToken(object: string, name: Name, described?: boolean): Value {
     const checked = this.schema.field(object, name.text);
     const made = this.add(name, 'references', checked, 'token', { object });
     this.notDescribed(name, checked, object);
-    return { type: { k: 'fieldToken', object, field: name.text }, made: made === undefined ? [] : [made] };
+    const type: Type = { k: 'fieldToken', object, field: name.text, ...(described === undefined ? {} : { described }) };
+    return { type, made: made === undefined ? [] : [made] };
   }
 
   private inNamespace(namespace: Namespace, name: Name): Value {
@@ -1037,6 +1401,11 @@ class Resolver implements ApexResolver {
       this.add(name, 'references', this.schema.object(name.text), 'token');
       return { type: { k: 'describe', object: name.text } };
     }
+    // A custom label is a text. It is no reference here.
+    if (namespace === 'label') return { type: prim('string') };
+    // `System.Label.Name` and `System.Database.insert(...)`.
+    if (namespace === 'system')
+      return NAMESPACES.has(folded) ? { type: { k: 'ns', name: folded as Namespace } } : VALUE;
     if (namespace === 'trigger') {
       const record: Type = { k: 'record', object: this.context.unit.object };
       if (folded === 'new' || folded === 'old') return { type: { k: 'list', of: record } };
@@ -1049,7 +1418,7 @@ class Resolver implements ApexResolver {
   private field(object: string, name: Name, access: Access, step: boolean): Value {
     const folded = foldName(name.text);
     // The field `Id` cannot be changed or deleted: nothing refers to it in a way that matters.
-    if (folded === 'id') return VALUE;
+    if (folded === 'id') return { type: prim('id') };
     const child = this.schema.child(object, name.text);
     if (child !== null) {
       this.add(name, 'references', child.field, this.named, { object: child.object });
@@ -1102,7 +1471,7 @@ class Resolver implements ApexResolver {
     const object =
       type.k === 'record'
         ? type.object
-        : type.k === 'named' && expr.args.some((arg) => arg.kind === 'assign')
+        : type.k === 'named' && !type.name.includes('.') && expr.args.some((arg) => arg.kind === 'assign')
           ? type.name
           : undefined;
     if (object !== undefined) {
@@ -1117,10 +1486,17 @@ class Resolver implements ApexResolver {
     }
     // `new Map<Id, Contact>(account.Contacts)`: what a list, a set or a map is made of is a list.
     const ofList = type.k === 'list' || type.k === 'map';
-    for (const arg of expr.args) {
+    const values = expr.args.map((arg) => {
       const value = this.ev(arg);
-      if (ofList) this.asList(value);
-    }
+      return ofList ? this.asList(value) : value;
+    });
+    const at: Name = { text: expr.type.name.replace(/\s+/g, ''), at: expr.type.at };
+    if (type.k === 'opaque') this.addCall(at, type.target, 'confirmed', 'new');
+    if (type.k !== 'instance') return { type };
+    // A `new` of a class calls the constructor its arguments choose, or the class where it declares none.
+    const constructors = this.constructorsOf(type.cls);
+    if (constructors.length === 0) this.addCall(at, Resolver.targetOf(type.cls), 'confirmed', 'new');
+    else this.choose(at, constructors, values, undefined, 'new');
     return { type };
   }
 
@@ -1139,7 +1515,7 @@ class Resolver implements ApexResolver {
     const holds =
       this.lookup(folded) !== undefined ||
       this.findVar(cls, folded) !== undefined ||
-      (found !== undefined && found !== 'opaque');
+      (found !== undefined && !isOpaque(found));
     if (!holds) {
       const checked = this.schema.field(object, last.text);
       this.add(last, 'references', checked, 'dml', { object });
@@ -1190,7 +1566,7 @@ class Resolver implements ApexResolver {
     const rest = (from: number): void => {
       for (const arg of args.slice(from)) this.ev(arg);
     };
-    if (expr.target === undefined) return this.returned(this.context.cls, method, args, true);
+    if (expr.target === undefined) return this.implicit(expr);
     let target = this.ev(expr.target);
     const ofRecord = method === 'get' && args.length === 1 && args[0] !== undefined && this.textOrToken(args[0]);
     if ((LIST_METHODS.has(method) && !ofRecord) || OF_LISTS.has(method)) target = this.asList(target);
@@ -1206,28 +1582,52 @@ class Resolver implements ApexResolver {
         if ((method === 'get' || method === 'put') && args[0] !== undefined) {
           this.byToken(args[0], method === 'get' ? 'reads' : 'writes');
           rest(1);
-          return VALUE;
+          // `get` gives an `Object`, whichever field it reads.
+          return method === 'get' ? { type: prim('object') } : VALUE;
         }
         rest(0);
+        if (method === 'getsobjecttype') return { type: { k: 'objectToken', object: type.object } };
         return method === 'clone' ? { type } : VALUE;
       case 'list':
         // `lists.add(account.Contacts)`, on a list of lists: what is added is of the type of the items.
         if (method === 'add' && args.length === 1 && args[0] !== undefined) this.given(this.ev(args[0]), type.of);
         else rest(0);
-        if (method === 'get' || method === 'remove') return { type: type.of };
+        if (method === 'get' || method === 'remove') {
+          return Resolver.part(target, (one) => (one.k === 'list' ? one.of : undefined));
+        }
         return method === 'clone' || method === 'deepclone' ? { type } : VALUE;
       case 'map':
         if (method === 'put' && args.length === 2 && args[1] !== undefined) {
           this.ev(args[0] ?? args[1]);
           this.given(this.ev(args[1]), type.value);
         } else rest(0);
-        if (method === 'get' || method === 'remove') return { type: type.value };
-        if (method === 'values') return { type: { k: 'list', of: type.value } };
-        if (method === 'keyset') return { type: { k: 'list', of: type.key } };
+        if (method === 'get' || method === 'remove') {
+          return Resolver.part(target, (one) => (one.k === 'map' ? one.value : undefined));
+        }
+        if (method === 'values') {
+          return Resolver.part(target, (one) =>
+            one.k === 'map' ? { k: 'list', of: one.value, coll: 'list' } : undefined,
+          );
+        }
+        if (method === 'keyset') return { type: { k: 'list', of: type.key, coll: 'set' } };
         return method === 'clone' || method === 'deepclone' ? { type } : VALUE;
       case 'instance':
-      case 'static':
-        return this.returned(type.cls, method, args, false);
+      case 'static': {
+        // A method of a value can be overridden in a class that extends its class, unless `super` calls it.
+        // Apex chooses the method among those of the class the code declares, and the object runs it as its class
+        // has it, which can be the class of the value the variable was given, or one that extends it.
+        const values = args.map((arg) => this.ev(arg));
+        const declared = target.declared?.k === 'instance' ? target.declared.cls : type.cls;
+        const methods = this.methodsOf(declared, method);
+        if (methods.length === 0 && type.cls.kind === 'enum') return Resolver.ofEnum(type, method);
+        const on = type.k === 'instance' && expr.target.kind !== 'super' ? type.cls : undefined;
+        return this.choose(expr.name, methods, values, on, 'call');
+      }
+      case 'opaque':
+        // A class whose code is not read: the call refers to the class, and names the method.
+        rest(0);
+        this.addCall(expr.name, type.target, 'confirmed', 'call', expr.name.text);
+        return VALUE;
       case 'object': {
         // A method of a custom setting or of a custom metadata type: `Billing_Settings__c.getInstance()`.
         rest(0);
@@ -1235,6 +1635,7 @@ class Resolver implements ApexResolver {
         this.add(type.name, 'references', this.schema.object(object), 'token');
         const record: Type = { k: 'record', object };
         if (RECORD_METHODS.has(method)) return { type: record };
+        if (method === 'getsobjecttype') return { type: { k: 'objectToken', object } };
         return method === 'getall' ? { type: { k: 'map', key: OTHER, value: record } } : VALUE;
       }
       case 'objectToken':
@@ -1246,7 +1647,7 @@ class Resolver implements ApexResolver {
         return method === 'getsobjecttype' ? { type: { k: 'objectToken', object: type.object } } : VALUE;
       case 'fieldToken':
         rest(0);
-        return method === 'getdescribe' ? { type } : VALUE;
+        return method === 'getdescribe' ? { type: { ...type, described: true } } : VALUE;
       case 'ns':
         return this.system(type.name, expr);
       default:
@@ -1261,35 +1662,275 @@ class Resolver implements ApexResolver {
           return VALUE;
         }
         rest(0);
+        // `String.valueOf(flag)`, `Decimal.valueOf(text)`: a value of the primitive type named in front.
+        if (type.k === 'other' && expr.target.kind === 'name') {
+          const named = foldName(expr.target.name.text);
+          if (method === 'valueof' && PRIMITIVES.has(named) && named !== 'object') return { type: prim(named) };
+          if (named === 'string' && TEXT_METHODS.has(method)) return { type: prim('string') };
+        }
         return VALUE;
     }
   }
 
+  // -------------------------------------------------------------- calls
+
   /**
-   * What a method of a class of the snapshot gives back, where its name and the number of arguments decide it. An
-   * argument that each such method takes as a list is a list.
+   * A call without anything in front: a method of the class or of a class it extends, of the closest class around it
+   * that has one of the name. `this(...)` calls a constructor of the class, and `super(...)` one of the class it
+   * extends, or that class where it declares none.
    */
-  private returned(cls: ClassInfo, method: string, args: readonly Expr[], around: boolean): Value {
-    const values = args.map((arg) => this.ev(arg));
-    for (const at of around ? this.chain(cls) : this.supers(cls)) {
-      const matches = (at.methods.get(method) ?? []).filter((one) => one.params.length === args.length);
-      const [first] = matches;
-      if (first === undefined) continue;
-      values.forEach((value, index) => {
-        const lists = matches.every((one) => {
-          const param = one.params[index];
-          const type = param === undefined ? OTHER : this.resolveType(param.type, at);
-          return type.k === 'list' || type.k === 'map';
-        });
-        if (lists) this.asList(value);
-      });
-      // Overloads that give back different types are told apart by the types of the arguments (part D).
-      const spelled = (one: MethodInfo): string => (one.returns === undefined ? '' : typeText(one.returns));
-      return matches.every((one) => spelled(one) === spelled(first))
-        ? { type: this.resolveType(first.returns, at) }
-        : VALUE;
+  private implicit(expr: Extract<Expr, { kind: 'call' }>): Value {
+    const method = foldName(expr.name.text);
+    const values = expr.args.map((arg) => this.ev(arg));
+    const { cls } = this.context;
+    if (method === 'this' || method === 'super') {
+      const of = method === 'this' ? cls : this.superOf(cls);
+      if (of === undefined) {
+        // `super(...)` of a class whose code is not read refers to the class.
+        const hidden = method === 'super' ? this.hiddenSuperOf(cls) : undefined;
+        if (hidden !== undefined) this.addCall(expr.name, hidden, 'confirmed', 'call');
+        return VALUE;
+      }
+      const constructors = this.constructorsOf(of);
+      if (constructors.length === 0 && of !== cls) this.addCall(expr.name, Resolver.targetOf(of), 'confirmed', 'call');
+      else this.choose(expr.name, constructors, values, undefined, 'call');
+      return VALUE;
+    }
+    for (let at: ClassInfo | undefined = cls; at !== undefined; at = at.outer) {
+      const methods = this.methodsOf(at, method).filter((one) => one.params.length === values.length);
+      if (methods.length > 0) return this.choose(expr.name, methods, values, at, 'call');
     }
     return VALUE;
+  }
+
+  /**
+   * The methods of a name that a value of `cls` has: its own, and those of the classes and interfaces it extends or
+   * implements that it does not override.
+   */
+  private methodsOf(cls: ClassInfo, name: string): MethodInfo[] {
+    const bySub = new Map<string, MethodInfo>();
+    for (const at of this.ancestors(cls)) {
+      for (const one of at.methods.get(name) ?? []) if (!bySub.has(one.sub)) bySub.set(one.sub, one);
+    }
+    return [...bySub.values()];
+  }
+
+  /**
+   * The constructors of a class. An exception that declares one has those that every exception has too, without
+   * arguments, with a message, a cause, or both, which Apex calls where the arguments choose them, and which call the
+   * class. One that declares none is called as a class that declares none.
+   */
+  private constructorsOf(cls: ClassInfo): readonly MethodInfo[] {
+    const declared = cls.methods.get('<init>') ?? [];
+    if (declared.length === 0 || !this.isException(cls)) return declared;
+    const spelled = (types: readonly string[]): string => types.map((one) => foldName(one)).join(',');
+    const has = new Set(declared.map((one) => spelled(one.params.map((param) => unsystem(param.type.name)))));
+    const at: Pos = { line: 0, column: 0 };
+    const builtins = EXCEPTION_CONSTRUCTORS.filter((types) => !has.has(spelled(types))).map((types): MethodInfo => ({
+      key: cls.key,
+      owner: cls,
+      name: '<init>',
+      sub: `(${spelled(types)})`,
+      params: types.map((name) => ({ type: { name, args: [], array: 0, at }, name: { text: '', at } })),
+      returns: undefined,
+      static: false,
+      open: false,
+      builtin: true,
+    }));
+    return [...declared, ...builtins];
+  }
+
+  /** Whether a class is an exception: the class at the top of the classes it extends extends `Exception`. */
+  private isException(cls: ClassInfo): boolean {
+    let top = cls;
+    for (const at of this.supers(cls)) top = at;
+    return top.extends !== undefined && foldName(unsystem(top.extends.name)) === 'exception';
+  }
+
+  /** The class whose code is not read that a class extends. */
+  private hiddenSuperOf(cls: ClassInfo): Target | undefined {
+    if (cls.extends === undefined) return undefined;
+    const found = this.findClass(wordsOf(cls.extends.name), cls.outer ?? cls);
+    return isOpaque(found) ? found.opaque : undefined;
+  }
+
+  /**
+   * The methods other than `method` that a value of a class that extends or implements `on`, at any depth, runs for
+   * it: the method of the same signature the class declares, or has from a class it extends, as a class that
+   * implements an interface through a method of the class it extends.
+   */
+  private overrides(on: ClassInfo, method: MethodInfo): MethodInfo[] {
+    const found = new Set<MethodInfo>();
+    const seen = new Set<ClassInfo>([on]);
+    const queue = [...this.subtypesOf(on)];
+    for (const at of queue) {
+      if (seen.has(at)) continue;
+      seen.add(at);
+      const runs = this.methodsOf(at, method.name).find((one) => one.sub === method.sub);
+      if (runs !== undefined && runs !== method && !runs.static) found.add(runs);
+      queue.push(...this.subtypesOf(at));
+    }
+    return [...found];
+  }
+
+  /**
+   * Reports the call of one of `methods`, the methods and constructors of the name that the call can reach. They are
+   * told apart by the number of arguments, then by their types (`overload`). The method chosen is `confirmed`, and
+   * each of several that the types do not tell apart `probable`. Where the call is on a value of the class `on`,
+   * which can extend the class the code declares, the method of the same signature `on` has, where it is another,
+   * and each method that a class that extends or implements `on` runs for it (`overrides`) are `probable` too. Gives
+   * what the method gives back, where every method chosen gives back the same type, and makes an argument that every
+   * method chosen takes as a list a list.
+   */
+  private choose(
+    at: Name,
+    methods: readonly MethodInfo[],
+    values: readonly Value[],
+    on: ClassInfo | undefined,
+    via: 'call' | 'new',
+  ): Value {
+    const { chosen, sure } = this.overload(
+      methods.filter((one) => one.params.length === values.length),
+      values,
+    );
+    // The constructors every exception has are of the class, which each of them calls.
+    const builtin = chosen.every((one) => one.builtin === true);
+    for (const one of chosen) {
+      // `this(message)` of an exception calls a constructor of Salesforce.
+      if (one.builtin === true && via === 'call' && one.owner === this.context.cls) continue;
+      this.addCall(at, Resolver.targetOf(one), sure || builtin ? 'confirmed' : 'probable', via);
+      if (on === undefined || !one.open) continue;
+      const runs = this.methodsOf(on, one.name).find((each) => each.sub === one.sub);
+      if (runs !== undefined && runs !== one) this.addCall(at, Resolver.targetOf(runs), 'probable', via);
+      for (const override of this.overrides(on, runs ?? one)) {
+        this.addCall(at, Resolver.targetOf(override), 'probable', via);
+      }
+    }
+    values.forEach((value, index) => {
+      if (chosen.length === 0) return;
+      const lists = chosen.every((one) => {
+        const type = this.paramType(one, index);
+        return type.k === 'list' || type.k === 'map';
+      });
+      if (lists) this.asList(value);
+    });
+    const [first] = chosen;
+    if (first === undefined) return VALUE;
+    const spelled = (one: MethodInfo): string => (one.returns === undefined ? '' : typeText(one.returns));
+    return chosen.every((one) => spelled(one) === spelled(first))
+      ? { type: this.resolveType(first.returns, first.owner) }
+      : VALUE;
+  }
+
+  /**
+   * The methods of one name and number of parameters that the types of the arguments choose: the one they fit, or
+   * of several, the one they fit as they are, or the one whose parameters each fit the parameters of the others, as
+   * Apex chooses. `sure` is false where the types do not tell them apart, also where the type of an argument is not
+   * known here: then every method they can fit is chosen.
+   */
+  private overload(
+    methods: readonly MethodInfo[],
+    values: readonly Value[],
+  ): { chosen: readonly MethodInfo[]; sure: boolean } {
+    if (methods.length <= 1) return { chosen: methods, sure: true };
+    // A parameter of the same type in every method does not tell them apart.
+    const spelled = (one: MethodInfo, index: number): string => {
+      const type = one.params[index]?.type;
+      return type === undefined ? '' : typeText(type);
+    };
+    const differ = values.map((_, index) =>
+      methods.some((one) => spelled(one, index) !== spelled(methods[0] ?? one, index)),
+    );
+    const fitOf = (one: MethodInfo): Fit =>
+      worst(
+        values.map((value, index) =>
+          differ[index] === true ? this.fits(value.declared ?? value.type, this.paramType(one, index)) : 'exact',
+        ),
+      );
+    const scored = methods.map((one) => ({ one, fit: fitOf(one) }));
+    const fitting = scored.filter((each) => each.fit !== 'no');
+    const [only] = fitting;
+    if (fitting.length === 1 && only !== undefined) return { chosen: [only.one], sure: true };
+    if (fitting.length === 0) return { chosen: methods, sure: false };
+    // A method that takes each argument as the type it is of is more specific than any other that takes them, also
+    // where it is not known whether another takes them.
+    const exact = fitting.filter((each) => each.fit === 'exact');
+    const [one] = exact;
+    if (exact.length === 1 && one !== undefined) return { chosen: [one.one], sure: true };
+    const all = fitting.map((each) => each.one);
+    if (fitting.some((each) => each.fit === 'unknown')) return { chosen: all, sure: false };
+    // `null` fits every parameter alike, so the parameters it is given to do not make a method more specific.
+    const narrower = (a: MethodInfo, b: MethodInfo): boolean =>
+      a.params.every((_, index) => {
+        if (isNull(values[index]?.type ?? OTHER)) return true;
+        const fit = this.fits(this.paramType(a, index), this.paramType(b, index));
+        return fit === 'exact' || fit === 'wider';
+      });
+    const specific = all.filter((a) => all.every((b) => a === b || narrower(a, b)));
+    return specific.length === 1 ? { chosen: specific, sure: true } : { chosen: all, sure: false };
+  }
+
+  private paramType(method: MethodInfo, index: number): Type {
+    return this.resolveType(method.params[index]?.type, method.owner);
+  }
+
+  /**
+   * How a value of the type `from` fits a parameter of the type `to`. `null` fits every type, and every value fits
+   * `Object`. Where the type of either is not known here, such as a field of a record or a class whose code is not
+   * read, it is not known, as between two types of Salesforce, which can extend one another. A primitive value fits
+   * only a primitive type, and a value of a type of Salesforce no primitive type and no class of the snapshot.
+   */
+  private fits(from: Type, to: Type): Fit {
+    if (isNull(from)) return 'wider';
+    if (isObjectType(to)) return isObjectType(from) ? 'exact' : 'wider';
+    const vague = to.k === 'other' || to.k === 'named' || to.k === 'opaque';
+    switch (from.k) {
+      case 'prim':
+        if (to.k !== 'prim') return 'no';
+        if (from.name === to.name) return 'exact';
+        if (from.name === 'string' && to.name === 'id') return 'unknown';
+        return WIDER.get(from.name)?.has(to.name) === true ? 'wider' : 'no';
+      case 'named':
+        if (to.k === 'named') return foldName(from.name) === foldName(to.name) ? 'exact' : 'unknown';
+        // A type of Salesforce that is no object the analysis knows can be an object all the same.
+        return to.k === 'other' || to.k === 'opaque' || to.k === 'record' ? 'unknown' : 'no';
+      case 'record':
+        // A record is of no type of Salesforce but its object, `SObject` and `Object`, which an object the analysis
+        // does not know is not (`named`).
+        if (to.k !== 'record') return to.k === 'other' ? 'unknown' : 'no';
+        if (to.object === undefined) return from.object === undefined ? 'exact' : 'wider';
+        if (from.object === undefined) return 'unknown';
+        return foldName(from.object) === foldName(to.object) ? 'exact' : 'no';
+      case 'list': {
+        if (to.k !== 'list') return to.k === 'other' ? 'unknown' : 'no';
+        if (from.coll !== undefined && to.coll !== undefined && from.coll !== to.coll) return 'no';
+        const items = this.fits(from.of, to.of);
+        // An `Iterable` takes a list and a set.
+        return items === 'exact' && to.coll === undefined && from.coll !== undefined ? 'wider' : items;
+      }
+      case 'map':
+        if (to.k !== 'map') return to.k === 'other' ? 'unknown' : 'no';
+        return worst([this.fits(from.key, to.key), this.fits(from.value, to.value)]);
+      case 'instance':
+        if (to.k !== 'instance') return vague ? 'unknown' : 'no';
+        if (from.cls === to.cls) return 'exact';
+        return [...this.ancestors(from.cls)].includes(to.cls) ? 'wider' : 'no';
+      case 'fieldToken':
+        if (to.k !== 'fieldToken') return to.k === 'other' || to.k === 'opaque' ? 'unknown' : 'no';
+        if (from.described === undefined || to.described === undefined) return 'unknown';
+        return from.described === to.described ? 'exact' : 'no';
+      case 'objectToken':
+      case 'describe':
+        if (to.k === from.k) return 'exact';
+        return to.k === 'other' || to.k === 'opaque' ? 'unknown' : 'no';
+      default:
+        return 'unknown';
+    }
+  }
+
+  /** What a call of a method or a constructor, or of a class that declares none, refers to. */
+  private static targetOf(of: MethodInfo | ClassInfo): { to: ComponentKey; toType: string } {
+    return { to: of.key, toType: ('owner' in of ? of.owner : of).unit.type };
   }
 
   /** `record.get(token)` and `record.put(token, value)`: the token names the field it reads or writes. */

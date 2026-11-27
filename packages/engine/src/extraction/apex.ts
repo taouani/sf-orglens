@@ -10,7 +10,7 @@
  * members of one file, their places and the names of the types they use, and keeps nothing of the text. `resolveApex`
  * resolves those names once every file was read: a name is a class of the snapshot, a class, interface or enum one
  * declares inside it, or an object. A name of Salesforce that is no object, such as `Database.SaveResult`, gives no
- * reference. A `new` of a class is a call of its constructor, which this step does not read.
+ * reference. A `new` of a class is a call of its constructor, which the resolver of Apex reads (`apex-resolver.ts`).
  */
 import type { JsonValue } from '../core/errors.ts';
 import { apexSignature, buildKey, foldName, type ComponentKey, type SubComponent } from '../core/keys.ts';
@@ -443,7 +443,8 @@ export function readApexUnit(unit: Unit, name: string): ApexUnitReading {
 export interface ApexTypes {
   /**
    * The type that a name stands for in the class or trigger `unit`: an inner type of it, a class of the snapshot,
-   * or an inner type of one, written after the name of its class. `undefined` for any other name.
+   * or an inner type of one, written after the name of its class. `ns.Name` is also the class `ns__Name`, as code
+   * names a class of a managed package. `undefined` for any other name.
    */
   find(name: string, unit: ComponentKey): Target | undefined;
 }
@@ -485,8 +486,12 @@ export function buildApexTypes(input: ApexTypesInput): ApexTypes {
         const top = classes.get(first);
         return top === undefined ? undefined : ofClass(top);
       }
-      const top = words.length === 2 ? classes.get(first) : undefined;
-      return top === undefined || second === undefined ? undefined : innerOf.get(top)?.get(second);
+      if (words.length !== 2 || second === undefined) return undefined;
+      const top = classes.get(first);
+      if (top !== undefined) return innerOf.get(top)?.get(second);
+      // `ns.Name`, as code names a class of a managed package, which the snapshot holds as `ns__Name`.
+      const prefixed = classes.get(`${first}__${second}`);
+      return prefixed === undefined ? undefined : ofClass(prefixed);
     },
   };
 }

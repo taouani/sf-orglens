@@ -124,6 +124,28 @@ const manifest = parse(readFileSync(join(root, 'fixtures/corpora.toml'), 'utf8')
  * review of the pull request, `FIELDS(STANDARD)` gives a warning too, since it reads fields it does not name: Apex
  * Recipes has 3, of `Organization`. No query in brackets of the public codebases has a `TYPEOF`: the one of Nebula
  * Logger stands in a text, which is not read yet.
+ *
+ * Since 27 November 2026 the resolver reads calls too (decision record 0089): `call` is a call of a method of the
+ * snapshot, also a constructor that `this(...)` and `super(...)` call, and `new` is now also a `new` of a class, which
+ * calls the constructor its arguments choose, or the class where it declares none or where they choose one that every
+ * exception has (Apex Recipes 213, Nebula Logger 651, NPSP 5,613, PMM 532, V4S 143, Outbound Funds 44, Coral Cloud 22,
+ * EDA 2,361). A call is `confirmed` to the method that the declared type of what it is made on, its name and the types
+ * of its arguments choose. It is `probable` to the method of the same signature that the class of the value has, where
+ * the code gave the variable an object of a class that extends the one it declares, and to each method that a class of
+ * the snapshot that extends that class runs in its place, its own or one of a class it extends: Apex Recipes has 75 of
+ * these, Nebula Logger 687, NPSP 2,010, PMM 26, V4S 2, Outbound Funds 15 and EDA 2,122. A call whose arguments
+ * do not tell the methods it can reach apart, most often because one is the value of a method of Salesforce or of a
+ * field, whose types the resolver does not know, is `probable` to each: Nebula Logger has 58 such places, NPSP 55 and
+ * PMM 7, with 118, 119 and 14 references. `field` is also a value of an enum that the code names (`Color.RED`, and
+ * a value of a `when` of a `switch` on an enum): Apex Recipes 126, Nebula Logger 131, NPSP 2,562, PMM 113, V4S 26 and
+ * EDA 648. EDA has 8 more of a property of an exception, which a `catch` names by its type. A constructor of NPSP hands
+ * a child relationship to another with `this(...)`, which takes it as a list: the name it guessed as a relationship
+ * before is a child relationship that is not followed now. `System.Database` and `System.EventBus` are read as
+ * `Database` and `EventBus`: Nebula Logger has 19 more warnings of DML on records of no known object, all in the
+ * class through which it does DML, and one more `dml`, a platform event that a test publishes. The other references
+ * are as before: a script compared them one by one in every codebase. These counts were not checked by hand beyond 30
+ * calls of NPSP drawn at random and 10 of its `probable` calls, and the 4 that the constructors of exceptions and the
+ * methods a class has from the class it extends added: the fixture project and its key hold each case.
  */
 interface Expected {
   readonly components: number;
@@ -138,13 +160,14 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     analysed: 55,
     withFormula: 1,
     references: {
+      call: 920,
       'controlling-field': 1,
       declaration: 14,
       dml: 138,
-      field: 1013,
+      field: 1139,
       'listed-field': 19,
       lookup: 8,
-      new: 161,
+      new: 374,
       object: 1,
       'record-of': 11,
       soql: 414,
@@ -162,16 +185,17 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     references: {
       action: 1,
       'action-override': 10,
+      call: 13_771,
       'controlling-field': 3,
       declaration: 45,
       'display-field': 4,
-      dml: 145,
-      field: 11_353,
+      dml: 146,
+      field: 11_484,
       filter: 7,
       formula: 387,
       'listed-field': 153,
       lookup: 17,
-      new: 627,
+      new: 1278,
       'record-of': 55,
       soql: 1417,
       summary: 16,
@@ -181,7 +205,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 6,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 48 },
+    issues: { PATH_NOT_FOLLOWED: 67 },
   },
   npsp: {
     components: 29_761,
@@ -191,17 +215,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 6,
       'action-override': 12,
       assignment: 19,
+      call: 35_618,
       'controlling-field': 5,
       declaration: 407,
       'display-field': 2,
       dml: 3356,
-      field: 57_367,
+      field: 59_928,
       filter: 11,
       formula: 70,
       'listed-field': 2241,
       lookup: 77,
       'merge-field': 8,
-      new: 3401,
+      new: 9014,
       object: 16,
       'record-of': 193,
       soql: 10_188,
@@ -214,7 +239,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       value: 318,
       'value-set': 2,
     },
-    issues: { PATH_NOT_FOLLOWED: 450, RELATIONSHIP_GUESSED: 282 },
+    issues: { PATH_NOT_FOLLOWED: 451, RELATIONSHIP_GUESSED: 281 },
   },
   // Added on 17 November 2026, with the codebase.
   pmm: {
@@ -225,16 +250,17 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 4,
       'action-override': 3,
       assignment: 16,
+      call: 2679,
       'controlling-field': 1,
       declaration: 19,
       dml: 82,
-      field: 4074,
+      field: 4187,
       filter: 4,
       formula: 133,
       join: 1,
       'listed-field': 652,
       lookup: 26,
-      new: 187,
+      new: 719,
       object: 14,
       'record-of': 27,
       soql: 752,
@@ -254,17 +280,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 10,
       'action-override': 2,
       assignment: 2,
+      call: 1239,
       declaration: 9,
       'display-field': 7,
       dml: 306,
-      field: 3595,
+      field: 3621,
       filter: 11,
       formula: 43,
       join: 6,
       'listed-field': 766,
       lookup: 10,
       'merge-field': 404,
-      new: 241,
+      new: 384,
       object: 4,
       soql: 1217,
       summary: 24,
@@ -282,6 +309,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 1,
       'action-override': 3,
       assignment: 3,
+      call: 304,
       declaration: 3,
       dml: 15,
       field: 268,
@@ -290,7 +318,7 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       join: 4,
       'listed-field': 167,
       lookup: 15,
-      new: 25,
+      new: 69,
       object: 6,
       soql: 62,
       summary: 6,
@@ -308,12 +336,13 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       action: 1,
       'action-override': 5,
       assignment: 10,
+      call: 39,
       dml: 27,
       field: 228,
       filter: 11,
       formula: 42,
       lookup: 6,
-      new: 21,
+      new: 43,
       object: 12,
       output: 12,
       override: 1,
@@ -332,14 +361,15 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     withFormula: 90,
     references: {
       'action-override': 10,
+      call: 12_705,
       declaration: 380,
       'display-field': 2,
       dml: 2285,
-      field: 19_861,
+      field: 20_517,
       formula: 76,
       'listed-field': 32,
       lookup: 69,
-      new: 1720,
+      new: 4081,
       'record-of': 2,
       soql: 5678,
       text: 3,

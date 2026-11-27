@@ -606,9 +606,10 @@ it implements, the object of a trigger, and a class or an object that a member n
 0084). It reads what the code of a member reads and writes: the fields of records, also through relationships, the
 variables and properties of classes, the tokens of objects and fields, and the objects that DML writes (decision
 record 0087), and the object and the fields of every query and search in brackets, also in its subqueries, and what
-it binds (decision record 0088). A name that no file of the snapshot and no description of the org defines, and an
-object that not every org has, are `probable`. Calls and names in texts, such as a query in a string, are read in
-later versions. So an answer
+it binds (decision record 0088), and the methods and constructors it calls, with the overrides a call can reach,
+and the values of enums it names (decision record 0089). A name that no file of the snapshot and no description of
+the org defines, and an object that not every org has, are `probable`. Names in texts, such as a query in a string,
+are read in a later version. So an answer
 still names `ApexClass` and `ApexTrigger` among the types that are not analysed, also where it holds components of
 them.
 

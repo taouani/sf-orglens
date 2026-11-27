@@ -154,14 +154,17 @@ describe('the analysis of Apex', () => {
     analysis.components
       .filter((one) => isApex(one.key))
       .map((one) => `${one.key} ${one.name} ${JSON.stringify(one.attrs)}`);
+  /** The types the components use, and what they extend and implement: not the calls, which the resolver reads. */
   const usesOf = (analysis: SourceAnalysis): string[] =>
     analysis.components
       .filter((one) => isApex(one.key))
       .flatMap((one) =>
-        one.references.map(
-          (reference) =>
-            `${one.key} ${String(reference.location?.line)}:${String(reference.location?.column)} ${reference.kind} ${String(reference.to)} [${reference.toNameRaw}] ${viaOf(reference)} ${reference.confidence} ${reference.resolution}`,
-        ),
+        one.references
+          .filter((reference) => reference.kind !== 'calls')
+          .map(
+            (reference) =>
+              `${one.key} ${String(reference.location?.line)}:${String(reference.location?.column)} ${reference.kind} ${String(reference.to)} [${reference.toNameRaw}] ${viaOf(reference)} ${reference.confidence} ${reference.resolution}`,
+          ),
       );
 
   it('writes a type in a signature as written, without System, and an inner type with its class', () => {

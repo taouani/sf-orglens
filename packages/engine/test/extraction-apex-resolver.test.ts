@@ -19,7 +19,7 @@ import { FIXTURES_DIR, loadAnswerKey, tierInRepository as repositoryTier } from 
 import { ApexSource, viaOf } from './helpers/written-source.ts';
 
 /** The ways of naming a target that this part of the resolver reads. */
-const VIAS: ReadonlySet<string> = new Set(['field', 'token', 'dml', 'soql', 'sosl']);
+const VIAS: ReadonlySet<string> = new Set(['field', 'token', 'dml', 'soql', 'sosl', 'call', 'new']);
 const isApexFile = (file: string): boolean => /\.(?:cls|trigger)$/.test(file);
 const isApex = (key: string): boolean => key.startsWith('ApexClass:') || key.startsWith('ApexTrigger:');
 
@@ -53,8 +53,8 @@ describe('the code of the Apex of the fixture project', () => {
       .filter((one) => VIAS.has(viaOf(one)));
   });
 
-  it('gives every reference of the key of a field, a variable, a token and DML, at its place, and no other', () => {
-    expect(keyed).toHaveLength(289);
+  it('gives every reference of the key of a field, a variable, a token, DML, a query and a call, at its place, and no other', () => {
+    expect(keyed).toHaveLength(340);
     expect(keyed.filter((one) => one.stretch)).toEqual([]);
     const found = references.map(idOf).sort();
     expect(keyed.map(idOfKeyed).filter((id) => !found.includes(id))).toEqual([]);
@@ -134,7 +134,7 @@ describe('the resolver of Apex', () => {
     analysis.components
       .filter((one) => isApex(one.key))
       .flatMap((one) => one.references)
-      .filter((one) => VIAS.has(viaOf(one)))
+      .filter((one) => VIAS.has(viaOf(one)) && one.kind !== 'uses-type')
       .map((one) => {
         const op = one.attrs?.['op'];
         const object = one.attrs?.['object'];
@@ -247,6 +247,7 @@ describe('the resolver of Apex', () => {
       '12:27 reads null [Checked__r] field probable unresolved of Account',
       '13:9 reads ApexClass:children#var:rows [rows] field confirmed resolved',
       '15:9 writes ApexClass:children#var:rows [rows] field confirmed resolved',
+      '16:9 calls ApexClass:children#method:take(list<sobject>) [take] call confirmed resolved',
       '20:22 reads CustomField:task.whatid [What] field probable external',
       '21:13 reads null [Agent__r] field probable unresolved of Account',
       // `get` with a text and `clear` are methods of a record too: they say nothing of a list.
@@ -325,6 +326,9 @@ describe('the resolver of Apex', () => {
           '        insert two;',
           "        insert new Vendor__c(Name = 'x');",
           '        Database.upsert(invs, Invoice__c.fields.Id);',
+          '        System.Database.insert(inv);',
+          '        System.EventBus.publish(evt);',
+          '        Database.LeadConvert lc = null; insert lc;',
           '    }',
           '    static final Schema.SObjectField KEY = Invoice__c.External_Id__c;',
           '}',
@@ -369,8 +373,11 @@ describe('the resolver of Apex', () => {
       '28:30 writes null [Name] field probable unresolved of Vendor__c',
       '29:18 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved upsert',
       '29:31 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
-      '31:44 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
-      '31:55 references CustomField:invoice__c.external_id__c [External_Id__c] token confirmed resolved',
+      // `System.Database` and `System.EventBus` are `Database` and `EventBus`.
+      '30:25 writes CustomObject:invoice__c [Invoice__c] dml confirmed resolved insert',
+      '31:25 writes null [Invoice_Event__e] dml probable unresolved publish of Invoice_Event__e',
+      '34:44 references CustomObject:invoice__c [Invoice__c] token confirmed resolved',
+      '34:55 references CustomField:invoice__c.external_id__c [External_Id__c] token confirmed resolved',
     ]);
     // A list of `SObject`: the warning bears on an answer that holds an object (decision record 0074).
     expect(warned(analysis.issues)).toEqual([
@@ -378,6 +385,8 @@ describe('the resolver of Apex', () => {
       'PATH_NOT_FOLLOWED 13:18 {"op":"delete","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 18:18 {"op":"delete","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
       'PATH_NOT_FOLLOWED 27:9 {"op":"insert","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
+      // A type of Salesforce of a namespace is no object.
+      'PATH_NOT_FOLLOWED 32:41 {"op":"insert","notFollowed":[],"endsAt":"object","origin":"parser:apex"}',
     ]);
   });
 
@@ -504,6 +513,7 @@ describe('the resolver of Apex', () => {
       'ApexClass:child#method:m(invoice__c) 14:56 reads CustomField:account.name',
       'ApexClass:child#method:m(invoice__c) 15:21 reads ApexClass:child#prop:total',
       'ApexClass:child#method:m(invoice__c) 16:9 writes ApexClass:child#prop:total',
+      'ApexClass:child#method:m(invoice__c) 17:13 calls ApexClass:child',
       'ApexClass:child#method:m(invoice__c) 17:21 reads ApexClass:child#var:own',
       'ApexClass:child#method:m(invoice__c) 17:25 writes CustomField:invoice__c.status__c',
       'ApexClass:child#method:m(invoice__c) 18:26 reads ApexClass:base#var:current',
@@ -1028,5 +1038,755 @@ describe('the resolver of Apex', () => {
       'PATH_NOT_FOLLOWED 3:89 {"relationship":"Ghosts__r","notFollowed":[],"origin":"parser:apex"}',
       'FIELD_NOT_DESCRIBED 4:51 {"object":"Opportunity","name":"AccountId"}',
     ]);
+  });
+
+  /** The calls of the members: `from line:column target via tier`, and the method a call names in a class not read. */
+  const called = (analysis: SourceAnalysis): string[] =>
+    analysis.components
+      .filter((one) => isApex(one.key))
+      .flatMap((one) => one.references)
+      .filter((one) => one.kind === 'calls')
+      .map((one) => {
+        const method = one.attrs?.['method'];
+        const at = `${String(one.location?.line)}:${String(one.location?.column)}`;
+        return `${one.from} ${at} ${String(one.to)} ${viaOf(one)} ${one.confidence}${typeof method === 'string' ? ` ${method}` : ''}`;
+      });
+
+  it('calls the method that the name, the number and the types of the arguments choose', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Pricing',
+        code(
+          'public class Pricing {',
+          '    public Decimal round(Decimal amount) { return amount; }',
+          '    public Decimal round(Integer amount) { return amount; }',
+          '    public String label(Id id) { return null; }',
+          '    public String label(String text) { return text; }',
+          '    public void take(List<Id> ids) {}',
+          '    public void take(Set<Id> ids) {}',
+          '    public void take(Invoice__c one) {}',
+          '    public void two(Integer a, Decimal b) {}',
+          '    public void two(Decimal a, Integer b) {}',
+          '    public static void util() {}',
+          '    public void util(Integer n) {}',
+          '    void m(Invoice__c inv, Id id, Set<Id> ids, Pricing other) {',
+          '        Decimal d = 1.5;',
+          '        round(1); round(d); round(d * 2 - 1); round(2.5); round(10L);',
+          '        round(inv.Amount__c); round(null);',
+          "        label(id); label('text'); label(id + 'x');",
+          '        take(ids); take(new List<Id>{ id }); take(inv); take(ids.size() > 0 ? null : inv);',
+          '        two(1, 1); two(1, 1.5);',
+          '        this.round(1); other.label(id); Pricing.util(); util(); util(1);',
+          '        Decimal r = round(round(1));',
+          '        pick(null, 1); tok(Schema.SObjectType.Invoice__c.fields.Amount__c); tok(Invoice__c.Amount__c);',
+          '    }',
+          '    public void pick(String a, Integer n) {}',
+          '    public void pick(Invoice__c a, Invoice__c b) {}',
+          '    public void tok(Schema.SObjectField f) {}',
+          '    public void tok(String s) {}',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:pricing#method:m(invoice__c,id,set<id>,pricing)';
+    const to = (sub: string): string => `ApexClass:pricing#method:${sub}`;
+    expect(called(analysis)).toEqual([
+      `${from} 15:9 ${to('round(integer)')} call confirmed`,
+      `${from} 15:19 ${to('round(decimal)')} call confirmed`,
+      // A number with a number gives the wider of them.
+      `${from} 15:29 ${to('round(decimal)')} call confirmed`,
+      `${from} 15:47 ${to('round(decimal)')} call confirmed`,
+      // A Long fits a Decimal and no Integer.
+      `${from} 15:59 ${to('round(decimal)')} call confirmed`,
+      // The type of a field is not known here, and `null` fits both.
+      `${from} 16:9 ${to('round(decimal)')} call probable`,
+      `${from} 16:9 ${to('round(integer)')} call probable`,
+      `${from} 16:31 ${to('round(decimal)')} call probable`,
+      `${from} 16:31 ${to('round(integer)')} call probable`,
+      `${from} 17:9 ${to('label(id)')} call confirmed`,
+      `${from} 17:20 ${to('label(string)')} call confirmed`,
+      // An Id and a text give a text.
+      `${from} 17:35 ${to('label(string)')} call confirmed`,
+      `${from} 18:9 ${to('take(set<id>)')} call confirmed`,
+      `${from} 18:20 ${to('take(list<id>)')} call confirmed`,
+      `${from} 18:46 ${to('take(invoice__c)')} call confirmed`,
+      `${from} 18:57 ${to('take(invoice__c)')} call confirmed`,
+      // Neither fits the arguments as they are, and neither has parameters that fit those of the other.
+      `${from} 19:9 ${to('two(decimal,integer)')} call probable`,
+      `${from} 19:9 ${to('two(integer,decimal)')} call probable`,
+      `${from} 19:20 ${to('two(integer,decimal)')} call confirmed`,
+      `${from} 20:14 ${to('round(integer)')} call confirmed`,
+      `${from} 20:30 ${to('label(id)')} call confirmed`,
+      `${from} 20:49 ${to('util()')} call confirmed`,
+      `${from} 20:57 ${to('util()')} call confirmed`,
+      `${from} 20:65 ${to('util(integer)')} call confirmed`,
+      // What a method gives back chooses the method it is given to.
+      `${from} 21:21 ${to('round(decimal)')} call confirmed`,
+      `${from} 21:27 ${to('round(integer)')} call confirmed`,
+      // `null` fits both, and the other argument only one. The field of a describe is a token or its describe, as
+      // the code takes it, and no text.
+      `${from} 22:9 ${to('pick(string,integer)')} call confirmed`,
+      `${from} 22:24 ${to('tok(schema.sobjectfield)')} call confirmed`,
+      `${from} 22:77 ${to('tok(schema.sobjectfield)')} call confirmed`,
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('calls each override and implementation of a method that a value of a class or an interface calls', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Notifier', code('public interface Notifier {', '    void send(Invoice__c inv);', '}'));
+      source.apexClass(
+        'LoudNotifier',
+        code('public interface LoudNotifier extends Notifier {', '    void shout();', '}'),
+      );
+      source.apexClass(
+        'Base',
+        code(
+          'public virtual class Base implements Notifier {',
+          '    public virtual void send(Invoice__c inv) {}',
+          '    public void fixed() {}',
+          '    public static void tool() {}',
+          '    public virtual void run() { send(null); fixed(); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Child',
+        code(
+          'public class Child extends Base {',
+          '    public override void send(Invoice__c inv) { super.send(inv); }',
+          '    public void fixed(Integer n) {}',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Loud',
+        code(
+          'public class Loud implements LoudNotifier {',
+          '    public void send(Invoice__c inv) {}',
+          '    public void shout() {}',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Caller',
+        code(
+          'public class Caller {',
+          '    void m(Notifier n, Base b, Child c, LoudNotifier l, Invoice__c inv) {',
+          '        n.send(inv);',
+          '        b.send(inv);',
+          '        c.send(inv);',
+          '        b.fixed(); c.fixed(); c.fixed(1); Base.tool();',
+          '        l.send(inv); l.shout();',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(called(analysis)).toEqual([
+      'ApexClass:base#method:run() 5:33 ApexClass:base#method:send(invoice__c) call confirmed',
+      // A call without anything in front is a call on the value the method runs on.
+      'ApexClass:base#method:run() 5:33 ApexClass:child#method:send(invoice__c) call probable',
+      'ApexClass:base#method:run() 5:45 ApexClass:base#method:fixed() call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 3:11 ApexClass:base#method:send(invoice__c) call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 3:11 ApexClass:child#method:send(invoice__c) call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 3:11 ApexClass:loud#method:send(invoice__c) call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 3:11 ApexClass:notifier#method:send(invoice__c) call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 4:11 ApexClass:base#method:send(invoice__c) call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 4:11 ApexClass:child#method:send(invoice__c) call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 5:11 ApexClass:child#method:send(invoice__c) call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 6:11 ApexClass:base#method:fixed() call confirmed',
+      // A method that is not virtual is overridden by none, and one of a class it extends is called on the class.
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 6:22 ApexClass:base#method:fixed() call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 6:33 ApexClass:child#method:fixed(integer) call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 6:48 ApexClass:base#method:tool() call confirmed',
+      // A method of an interface that the interface extends.
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 7:11 ApexClass:loud#method:send(invoice__c) call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 7:11 ApexClass:notifier#method:send(invoice__c) call confirmed',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 7:24 ApexClass:loud#method:shout() call probable',
+      'ApexClass:caller#method:m(notifier,base,child,loudnotifier,invoice__c) 7:24 ApexClass:loudnotifier#method:shout() call confirmed',
+      // `super` calls the method of the class it extends, and no override.
+      'ApexClass:child#method:send(invoice__c) 2:55 ApexClass:base#method:send(invoice__c) call confirmed',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('chooses a method among those of the type the code declares, and runs it as the class of the value has it', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Shape', code('public interface Shape {', '    String area(Object o);', '}'));
+      source.apexClass(
+        'Square',
+        code(
+          'public virtual class Square implements Shape {',
+          '    public virtual String area(Object o) { return null; }',
+          '    public String area(String s) { return s; }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Tiny',
+        code('public class Tiny extends Square {', '    public override String area(Object o) { return null; }', '}'),
+      );
+      source.apexClass(
+        'Circle',
+        code('public class Circle implements Shape {', '    public String area(Object o) { return null; }', '}'),
+      );
+      source.apexClass(
+        'Draw',
+        code(
+          'public class Draw {',
+          '    void m() {',
+          "        Shape s = new Square(); s.area('x');",
+          '        Square q = new Tiny(); q.area(1);',
+          '        Shape again = new Circle(); again = new Square(); again.area(1);',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:draw#method:m()';
+    expect(called(analysis)).toEqual([
+      `${from} 3:23 ApexClass:square new confirmed`,
+      // `Shape` has one `area`, which a text fits as an `Object`: the object is a `Square`, or of a class that extends
+      // it, so its method runs, or the one of `Tiny`, and never that of `Circle`.
+      `${from} 3:35 ApexClass:shape#method:area(object) call confirmed`,
+      `${from} 3:35 ApexClass:square#method:area(object) call probable`,
+      `${from} 3:35 ApexClass:tiny#method:area(object) call probable`,
+      `${from} 4:24 ApexClass:tiny new confirmed`,
+      `${from} 4:34 ApexClass:square#method:area(object) call confirmed`,
+      `${from} 4:34 ApexClass:tiny#method:area(object) call probable`,
+      `${from} 5:27 ApexClass:circle new confirmed`,
+      `${from} 5:49 ApexClass:square new confirmed`,
+      // A variable that is given a value twice is of the type it declares.
+      `${from} 5:65 ApexClass:circle#method:area(object) call probable`,
+      `${from} 5:65 ApexClass:shape#method:area(object) call confirmed`,
+      `${from} 5:65 ApexClass:square#method:area(object) call probable`,
+      `${from} 5:65 ApexClass:tiny#method:area(object) call probable`,
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('runs a method that a class has from the class it extends, and keeps the declared type of a value it is given', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Shape', code('public interface Shape {', '    String area();', '}'));
+      source.apexClass(
+        'Square',
+        code(
+          'public virtual class Square implements Shape {',
+          '    public virtual String area() { return null; }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Tiny',
+        code(
+          'public virtual class Tiny extends Square {',
+          '    public override String area() { return super.area(); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Micro',
+        code('public class Micro extends Tiny {', '    public override String area() { return null; }', '}'),
+      );
+      source.apexClass(
+        'Circle',
+        code('public class Circle implements Shape {', '    public String area() { return null; }', '}'),
+      );
+      // Apex refuses a static method of the signature of one it would override, and none is taken for one.
+      source.apexClass(
+        'Odd',
+        code('public class Odd extends Square {', '    public static String area() { return null; }', '}'),
+      );
+      source.apexClass('Factory', '(hidden)');
+      source.apexClass('Selector', code('public interface Selector {', '    List<SObject> byId(Set<Id> ids);', '}'));
+      source.apexClass('AccountSelector', code('public interface AccountSelector extends Selector {', '}'));
+      source.apexClass(
+        'BaseSelector',
+        code(
+          'public abstract class BaseSelector implements Selector {',
+          '    public virtual List<SObject> byId(Set<Id> ids) { return null; }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Accounts',
+        code('public class Accounts extends BaseSelector implements AccountSelector {', '}'),
+      );
+      source.apexClass(
+        'Draw',
+        code(
+          'public class Draw {',
+          '    void desc(Shape x) {}',
+          '    void desc(Square x) {}',
+          '    void keep(SObject one) {}',
+          '    void keep(Account one) {}',
+          '    void m(Boolean flag, AccountSelector sel, Set<Id> ids, List<Square> squares, Square maybe, Shape any) {',
+          '        sel.byId(ids);',
+          '        Shape s = flag ? new Square() : new Circle(); s.area();',
+          '        Shape u = new Square(); desc(flag ? u : null); desc(u ?? null);',
+          '        List<SObject> recs = [SELECT Id FROM Account]; keep(recs[0]); keep(recs.get(0));',
+          '        Map<Id, SObject> byId = new Map<Id, Account>(); keep(byId.get(null)); keep(byId.values()[0]);',
+          '        for (Shape each : squares) { each = new Circle(); each.area(); }',
+          '        Shape w = flag ? new Square() : Factory.make(); w.area();',
+          '        Shape v = maybe ?? new Circle(); v.area();',
+          '        Square q = (Square) any; q.area();',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:draw#method:m(boolean,accountselector,set<id>,list<square>,square,shape)';
+    expect(called(analysis)).toEqual([
+      // The object of a class that implements the interface runs the method of the class it extends.
+      `${from} 7:13 ApexClass:baseselector#method:byid(set<id>) call probable`,
+      `${from} 7:13 ApexClass:selector#method:byid(set<id>) call confirmed`,
+      // A conditional is of the closest type both of its values are of.
+      `${from} 8:30 ApexClass:square new confirmed`,
+      `${from} 8:45 ApexClass:circle new confirmed`,
+      `${from} 8:57 ApexClass:circle#method:area() call probable`,
+      `${from} 8:57 ApexClass:micro#method:area() call probable`,
+      `${from} 8:57 ApexClass:shape#method:area() call confirmed`,
+      `${from} 8:57 ApexClass:square#method:area() call probable`,
+      `${from} 8:57 ApexClass:tiny#method:area() call probable`,
+      // Apex chooses by the type the code declares, also of a conditional, an item of a list and a value of a map.
+      `${from} 9:23 ApexClass:square new confirmed`,
+      `${from} 9:33 ApexClass:draw#method:desc(shape) call confirmed`,
+      `${from} 9:56 ApexClass:draw#method:desc(shape) call confirmed`,
+      `${from} 10:56 ApexClass:draw#method:keep(sobject) call confirmed`,
+      `${from} 10:71 ApexClass:draw#method:keep(sobject) call confirmed`,
+      `${from} 11:57 ApexClass:draw#method:keep(sobject) call confirmed`,
+      `${from} 11:79 ApexClass:draw#method:keep(sobject) call confirmed`,
+      // The variable of a loop that the loop assigns is of the type it declares.
+      `${from} 12:49 ApexClass:circle new confirmed`,
+      `${from} 12:64 ApexClass:circle#method:area() call probable`,
+      `${from} 12:64 ApexClass:micro#method:area() call probable`,
+      `${from} 12:64 ApexClass:shape#method:area() call confirmed`,
+      `${from} 12:64 ApexClass:square#method:area() call probable`,
+      `${from} 12:64 ApexClass:tiny#method:area() call probable`,
+      // A value of a class and one of no known type are of no known class, so the variable is of the type it declares.
+      `${from} 13:30 ApexClass:square new confirmed`,
+      `${from} 13:49 ApexClass:factory call confirmed make`,
+      `${from} 13:59 ApexClass:circle#method:area() call probable`,
+      `${from} 13:59 ApexClass:micro#method:area() call probable`,
+      `${from} 13:59 ApexClass:shape#method:area() call confirmed`,
+      `${from} 13:59 ApexClass:square#method:area() call probable`,
+      `${from} 13:59 ApexClass:tiny#method:area() call probable`,
+      `${from} 14:32 ApexClass:circle new confirmed`,
+      `${from} 14:44 ApexClass:circle#method:area() call probable`,
+      `${from} 14:44 ApexClass:micro#method:area() call probable`,
+      `${from} 14:44 ApexClass:shape#method:area() call confirmed`,
+      `${from} 14:44 ApexClass:square#method:area() call probable`,
+      `${from} 14:44 ApexClass:tiny#method:area() call probable`,
+      // A cast to a class keeps the class, not the type of what it casts.
+      `${from} 15:36 ApexClass:micro#method:area() call probable`,
+      `${from} 15:36 ApexClass:square#method:area() call confirmed`,
+      `${from} 15:36 ApexClass:tiny#method:area() call probable`,
+      // `super` calls the method of the class it extends, and none that overrides it below.
+      'ApexClass:tiny#method:area() 2:50 ApexClass:square#method:area() call confirmed',
+    ]);
+    expect(analysis.issues.map((one) => one.code)).toEqual(['APEX_NO_CODE']);
+  });
+
+  it('takes the types of Salesforce, a cast, a class literal, a field that get reads and the name of an enum value', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Level', code('public enum Level { LOW, HIGH }'));
+      source.apexClass(
+        'Log',
+        code(
+          'public class Log {',
+          '    public void add(Database.SaveResult r) {}',
+          '    public void add(Database.DeleteResult r) {}',
+          '    public void err(String m, Exception e) {}',
+          '    public void err(String m, Database.SaveResult r) {}',
+          '    public void put(List<SObject> rows) {}',
+          '    public void put(List<Invoice__c> rows) {}',
+          '    public void rec(Id id) {}',
+          '    public void rec(SObject one) {}',
+          '    public void kind(Type t) {}',
+          '    public void kind(List<Type> ts) {}',
+          '    public void text(Object o) {}',
+          '    public void text(String s) {}',
+          '    public void desc(Schema.SObjectType t) {}',
+          '    public void desc(String name) {}',
+          '    public void level(Level lv) {}',
+          '    public void level(String lv) {}',
+          '    public void note(Set<Id> ids, String m) {}',
+          '    public void note(Set<String> ids, String m) {}',
+          '    void m(System.Database.SaveResult saved, List<Invoice__c> rows, Map<String, Object> input, Invoice__c inv, Level lv) {',
+          '        add(saved);',
+          "        try { add(saved); } catch (System.Exception e) { err('x', e); }",
+          '        put((List<SObject>) rows); put(rows);',
+          "        rec((String) input.get('id'));",
+          '        kind(Invoice__c.class);',
+          "        text(inv.get('Status__c'));",
+          '        desc(inv.getSObjectType());',
+          '        level(lv.name()); level(lv); level(Level.values()[0]);',
+          '        note(new Set<Id>(), inv.Status__c); text(Label.Saved); text(System.Label.Saved);',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:log#method:m(database.saveresult,list<invoice__c>,map<string,object>,invoice__c,level)';
+    const to = (sub: string): string => `ApexClass:log#method:${sub}`;
+    expect(called(analysis)).toEqual([
+      // A type of Salesforce of a namespace fits itself, and the one that fits as it is is chosen over others, of
+      // which it is not known whether they take it.
+      `${from} 21:9 ${to('add(database.saveresult)')} call confirmed`,
+      `${from} 22:15 ${to('add(database.saveresult)')} call confirmed`,
+      `${from} 22:58 ${to('err(string,exception)')} call confirmed`,
+      // A cast says the type an overload is chosen by.
+      `${from} 23:9 ${to('put(list<sobject>)')} call confirmed`,
+      `${from} 23:36 ${to('put(list<invoice__c>)')} call confirmed`,
+      // A text can be an `Id`, and is no record.
+      `${from} 24:9 ${to('rec(id)')} call confirmed`,
+      `${from} 25:9 ${to('kind(type)')} call confirmed`,
+      // `get` of a record gives an `Object`.
+      `${from} 26:9 ${to('text(object)')} call confirmed`,
+      `${from} 27:9 ${to('desc(schema.sobjecttype)')} call confirmed`,
+      `${from} 28:9 ${to('level(string)')} call confirmed`,
+      `${from} 28:27 ${to('level(level)')} call confirmed`,
+      `${from} 28:38 ${to('level(level)')} call confirmed`,
+      // A parameter that both take as a text does not tell them apart, and a custom label is a text.
+      `${from} 29:9 ${to('note(set<id>,string)')} call confirmed`,
+      `${from} 29:45 ${to('text(string)')} call confirmed`,
+      `${from} 29:64 ${to('text(string)')} call confirmed`,
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('knows the types that choose an overload: of a class, an enum, a text, a date, a collection and an operation', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Level', code('public enum Level { LOW, HIGH }'));
+      source.apexClass('Base', code('public virtual class Base {', '}'));
+      source.apexClass('Child', code('public class Child extends Base {', '}'));
+      source.apexClass(
+        'Nightly',
+        code(
+          'public class Nightly implements Schedulable {',
+          '    public void execute(SchedulableContext ctx) {}',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Pick',
+        code(
+          'public class Pick {',
+          '    public void base(Base b) {}',
+          '    public void base(String s) {}',
+          '    public void num(Integer n) {}',
+          '    public void num(String s) {}',
+          '    public void lvl(Level l) {}',
+          '    public void lvl(String s) {}',
+          '    public void text(Object o) {}',
+          '    public void text(String s) {}',
+          '    public void at(Datetime t) {}',
+          '    public void at(String s) {}',
+          '    public void walk(Iterable<Invoice__c> rows) {}',
+          '    public void walk(List<Invoice__c> rows) {}',
+          '    public void keyed(Map<Id, Invoice__c> rows) {}',
+          '    public void keyed(Map<Id, Account> rows) {}',
+          '    public Integer pair(Integer n) { return n; }',
+          '    public String pair(Long n) { return null; }',
+          '    public void flag(Boolean b) {}',
+          '    public void flag(String s) {}',
+          '    public void tok(Schema.SObjectType t) {}',
+          '    public void tok(String s) {}',
+          '    void m(Level lv, Date d, List<Invoice__c> rows, Map<Id, Invoice__c> byId, Invoice__c inv, String s, List<String> names, PermissionSet ps) {',
+          '        base(new Child()); Schedulable job = new Nightly(); job.execute(null);',
+          "        num(lv.ordinal()); lvl(Level.valueOf('LOW'));",
+          "        text(String.format('{0}', names)); text(String.join(names, ','));",
+          '        at(d); at(d + 1);',
+          '        walk(rows); keyed(byId);',
+          '        num(pair(inv.Amount__c)); flag(!String.isBlank(s)); tok(Invoice__c.getSObjectType());',
+          '        obj(ps); two(null, s);',
+          '    }',
+          '    public void obj(SObject o) {}',
+          '    public void obj(String s) {}',
+          '    public void two(String a, String b) {}',
+          '    public void two(Id a, Id b) {}',
+          '}',
+        ),
+      );
+    });
+    const from =
+      'ApexClass:pick#method:m(level,date,list<invoice__c>,map<id,invoice__c>,invoice__c,string,list<string>,permissionset)';
+    const to = (sub: string): string => `ApexClass:pick#method:${sub}`;
+    expect(called(analysis)).toEqual([
+      // An object of a class fits a class it extends, and a variable of an interface of Salesforce runs the class of
+      // the object it is given.
+      `${from} 23:9 ${to('base(base)')} call confirmed`,
+      `${from} 23:18 ApexClass:child new confirmed`,
+      `${from} 23:50 ApexClass:nightly new confirmed`,
+      `${from} 23:65 ApexClass:nightly#method:execute(schedulablecontext) call confirmed`,
+      // `ordinal()` of an enum is a number, `valueOf` a value of the enum, and `format` and `join` of `String` texts.
+      `${from} 24:9 ${to('num(integer)')} call confirmed`,
+      `${from} 24:28 ${to('lvl(level)')} call confirmed`,
+      `${from} 25:9 ${to('text(string)')} call confirmed`,
+      `${from} 25:44 ${to('text(string)')} call confirmed`,
+      // A date fits a time, and a date with a number is a date.
+      `${from} 26:9 ${to('at(datetime)')} call confirmed`,
+      `${from} 26:16 ${to('at(datetime)')} call confirmed`,
+      // A list fits an `Iterable` as a wider type, and a map the map of its types.
+      `${from} 27:9 ${to('walk(list<invoice__c>)')} call confirmed`,
+      `${from} 27:21 ${to('keyed(map<id,invoice__c>)')} call confirmed`,
+      // Methods that give back types of their own give a value of no known type.
+      `${from} 28:9 ${to('num(integer)')} call probable`,
+      `${from} 28:9 ${to('num(string)')} call probable`,
+      `${from} 28:13 ${to('pair(integer)')} call probable`,
+      `${from} 28:13 ${to('pair(long)')} call probable`,
+      // `!` gives a Boolean, and `getSObjectType()` of an object its token.
+      `${from} 28:35 ${to('flag(boolean)')} call confirmed`,
+      `${from} 28:61 ${to('tok(schema.sobjecttype)')} call confirmed`,
+      // A type of Salesforce that is no object the analysis knows can be one, and no text. `null` makes no method
+      // more specific, so where a text may be an `Id` it is not known which is chosen.
+      `${from} 29:9 ${to('obj(sobject)')} call confirmed`,
+      `${from} 29:18 ${to('two(id,id)')} call probable`,
+      `${from} 29:18 ${to('two(string,string)')} call probable`,
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('calls the constructor that a new chooses, or the class where it declares none', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Made',
+        code(
+          'public class Made {',
+          '    public Made() {}',
+          '    public Made(String name) { this(); }',
+          "    public Made(Integer size) { this('x'); }",
+          '}',
+        ),
+      );
+      source.apexClass('Plain', code('public class Plain {', '}'));
+      source.apexClass('Parent', code('public virtual class Parent {', '    public Parent(Integer n) {}', '}'));
+      source.apexClass('Kid', code('public class Kid extends Parent {', '    public Kid() { super(1); }', '}'));
+      source.apexClass('Bare', code('public virtual class Bare {', '}'));
+      source.apexClass('OnBare', code('public class OnBare extends Bare {', '    public OnBare() { super(); }', '}'));
+      source.apexClass(
+        'Maker',
+        code(
+          'public class Maker {',
+          '    public class Inner {}',
+          '    Plain kept = new Plain();',
+          '    void m() {',
+          "        Made a = new Made(); Made b = new Made('n'); Made c = new Made(3);",
+          '        Inner i = new Inner(); Maker.Inner j = new Maker.Inner();',
+          '        List<Plain> l = new List<Plain>(); Http h = new Http(); Account acc = new Account();',
+          '        new Made().toString();',
+          '    }',
+          '}',
+        ),
+      );
+      source.apexTrigger(
+        'OnInvoice',
+        code(
+          'trigger OnInvoice on Invoice__c (before insert) {',
+          '    class Totals {}',
+          '    Totals t = new Totals();',
+          '}',
+        ),
+      );
+    });
+    expect(called(analysis)).toEqual([
+      'ApexClass:kid#ctor:() 2:20 ApexClass:parent#ctor:(integer) call confirmed',
+      'ApexClass:made#ctor:(integer) 4:33 ApexClass:made#ctor:(string) call confirmed',
+      'ApexClass:made#ctor:(string) 3:32 ApexClass:made#ctor:() call confirmed',
+      'ApexClass:maker#method:m() 5:22 ApexClass:made#ctor:() new confirmed',
+      'ApexClass:maker#method:m() 5:43 ApexClass:made#ctor:(string) new confirmed',
+      'ApexClass:maker#method:m() 5:67 ApexClass:made#ctor:(integer) new confirmed',
+      'ApexClass:maker#method:m() 6:23 ApexClass:maker#inner:inner new confirmed',
+      'ApexClass:maker#method:m() 6:52 ApexClass:maker#inner:inner new confirmed',
+      'ApexClass:maker#method:m() 8:13 ApexClass:made#ctor:() new confirmed',
+      'ApexClass:maker#var:kept 3:22 ApexClass:plain new confirmed',
+      // A class that declares no constructor is called itself, also by `super()`.
+      'ApexClass:onbare#ctor:() 2:23 ApexClass:bare call confirmed',
+      'ApexTrigger:oninvoice 3:20 ApexTrigger:oninvoice#inner:totals new confirmed',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('calls an exception for the constructors that every exception has, beside those it declares', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Failed',
+        code(
+          'public virtual class Failed extends Exception {',
+          '    public Failed(Integer code) { this(String.valueOf(code)); }',
+          '    public Failed(String m, Integer code) { this(m); }',
+          '}',
+        ),
+      );
+      source.apexClass(
+        'Worse',
+        code('public class Worse extends Failed {', "    public Worse(Boolean b) { super('x'); }", '}'),
+      );
+      source.apexClass(
+        'Coded',
+        code('public class Coded extends Exception {', '    public Coded(String m, Integer code) {}', '}'),
+      );
+      source.apexClass('Named', code('public class Named extends Exception {', '    public Named(String m) {}', '}'));
+      source.apexClass(
+        'Raises',
+        code(
+          'public class Raises {',
+          '    void m(Exception cause) {',
+          "        Exception a = new Failed('text'); Exception b = new Failed(1); Exception c = new Failed(cause);",
+          "        Exception d = new Failed('m', 2); Exception e = new Failed('m', cause); Exception f = new Worse('x');",
+          "        Exception g = new Coded(cause.getMessage()); Exception h = new Named('m');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:raises#method:m(exception)';
+    expect(called(analysis)).toEqual([
+      // A message, a cause, or both choose a constructor of Salesforce, which calls the class.
+      `${from} 3:27 ApexClass:failed new confirmed`,
+      `${from} 3:61 ApexClass:failed#ctor:(integer) new confirmed`,
+      `${from} 3:90 ApexClass:failed new confirmed`,
+      `${from} 4:27 ApexClass:failed#ctor:(string,integer) new confirmed`,
+      `${from} 4:61 ApexClass:failed new confirmed`,
+      `${from} 4:99 ApexClass:worse new confirmed`,
+      // `this(message)` of an exception calls a constructor of Salesforce, and `super(message)` the class it extends.
+      // Whichever constructor of Salesforce the arguments choose, it calls the class, and one the exception declares
+      // stands for the one of Salesforce of its signature.
+      `${from} 5:27 ApexClass:coded new confirmed`,
+      `${from} 5:72 ApexClass:named#ctor:(string) new confirmed`,
+      'ApexClass:worse#ctor:(boolean) 2:31 ApexClass:failed call confirmed',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('calls a class whose code is not there by its name, and names the method', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Hidden', '(hidden)');
+      source.apexClass('ns__Packaged', '(hidden)');
+      source.apexClass(
+        'OnHidden',
+        code(
+          'public class OnHidden extends Hidden {',
+          '    public OnHidden() { super(1); }',
+          '    void x() { super.go(); }',
+          '}',
+        ),
+      );
+      source.apexClass('Broken', code('public class Broken {', '    void x( {', '}'));
+      source.apexClass('ns__Open', code('public class Open {', '    public static void go() {}', '}'));
+      // A variable of the name of the prefix is a variable.
+      source.apexClass(
+        'KeepsNs',
+        code('public class KeepsNs {', '    Object ns;', '    void n() { ns.Packaged.start(); }', '}'),
+      );
+      source.apexClass(
+        'UsesHidden',
+        code(
+          'public class UsesHidden {',
+          '    void m() {',
+          '        Hidden.run(); Hidden h = new Hidden(); h.go(1);',
+          '        ns.Packaged.start(); ns.Packaged p = new ns.Packaged(); p.stop();',
+          '        Unknown.run(); other.Packaged.start();',
+          '        Broken.run(); ns.Open.go();',
+          '    }',
+          '    void n(Object ns) { ns.Packaged.start(); }',
+          '}',
+        ),
+      );
+    });
+    const from = 'ApexClass:useshidden#method:m()';
+    expect(called(analysis)).toEqual([
+      // `super` of a class whose code is not read calls the class.
+      'ApexClass:onhidden#ctor:() 2:25 ApexClass:hidden call confirmed',
+      'ApexClass:onhidden#method:x() 3:22 ApexClass:hidden call confirmed go',
+      `${from} 3:16 ApexClass:hidden call confirmed run`,
+      `${from} 3:38 ApexClass:hidden new confirmed`,
+      `${from} 3:50 ApexClass:hidden call confirmed go`,
+      `${from} 4:21 ApexClass:ns__packaged call confirmed start`,
+      `${from} 4:50 ApexClass:ns__packaged new confirmed`,
+      `${from} 4:67 ApexClass:ns__packaged call confirmed stop`,
+      // A class that the parser cannot read is called as one whose code is not there.
+      `${from} 6:16 ApexClass:broken call confirmed run`,
+      // A class of a package whose code is read is named so too.
+      `${from} 6:31 ApexClass:ns__open#method:go() call confirmed`,
+    ]);
+    // Code names a class of a managed package after the prefix of its namespace, as a type too.
+    const uses = analysis.components
+      .filter((one) => one.key === from)
+      .flatMap((one) => one.references)
+      .filter((one) => one.kind === 'uses-type')
+      .map((one) => `${String(one.location?.line)}:${String(one.location?.column)} ${String(one.to)}`);
+    expect(uses).toEqual(['3:23 ApexClass:hidden', '4:30 ApexClass:ns__packaged']);
+    expect(analysis.issues.map((one) => one.code).sort()).toEqual(['APEX_MALFORMED', 'APEX_NO_CODE', 'APEX_NO_CODE']);
+  });
+
+  it('reads an enum where code names a value of it, also in a switch on it', () => {
+    const analysis = analysed((source) => {
+      source.apexClass('Color', code('public enum Color {', '    RED, GREEN', '}'));
+      source.apexClass(
+        'Modes',
+        code(
+          'public class Modes {',
+          '    public enum Mode { FAST, SAFE }',
+          '    static Integer FAST = 1;',
+          '    void m(Mode mo, Color co) {',
+          '        Mode a = Mode.FAST; Color c = Color.RED; Integer n = Modes.FAST; Integer o = Mode.values().size();',
+          '        switch on mo {',
+          '            when FAST { }',
+          '            when SAFE { }',
+          '            when else { }',
+          '        }',
+          '        switch on co { when RED, GREEN { } }',
+          '        switch on Trigger.operationType { when BEFORE_INSERT { } }',
+          '        switch on n { when 1, 2 { } when null { } }',
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(said(analysis)).toEqual([
+      '5:23 reads ApexClass:modes#inner:mode [FAST] field confirmed resolved',
+      '5:45 reads ApexClass:color [RED] field confirmed resolved',
+      '5:68 reads ApexClass:modes#var:fast [FAST] field confirmed resolved',
+      // A value of an enum stands alone after `when`, also beside a variable of its name.
+      '7:18 reads ApexClass:modes#inner:mode [FAST] field confirmed resolved',
+      '8:18 reads ApexClass:modes#inner:mode [SAFE] field confirmed resolved',
+      '11:29 reads ApexClass:color [RED] field confirmed resolved',
+      '11:34 reads ApexClass:color [GREEN] field confirmed resolved',
+    ]);
+    expect(analysis.issues).toEqual([]);
+  });
+
+  it('calls in what a query binds, and not itself, a method of Salesforce or a value of no known class', () => {
+    const analysis = analysed((source) => {
+      source.apexClass(
+        'Misc',
+        code(
+          'public class Misc {',
+          '    public class Oops extends Exception {}',
+          '    static Set<Id> ids() { return null; }',
+          '    static Integer depth(Integer n) { return n == 0 ? 0 : depth(n - 1); }',
+          '    public class Inner {',
+          '        void m() { ids(); }',
+          '    }',
+          '    void m(Oops e, Object o) {',
+          '        List<Account> a = [SELECT Id FROM Account WHERE Id IN :ids()];',
+          '        String s = e.getMessage() + o.toString();',
+          '        new Http().send(null);',
+          "        throw new Oops('x');",
+          '    }',
+          '}',
+        ),
+      );
+    });
+    expect(called(analysis)).toEqual([
+      'ApexClass:misc#inner:inner/method:m() 6:20 ApexClass:misc#method:ids() call confirmed',
+      // A call that a query binds is a call.
+      'ApexClass:misc#method:m(misc.oops,object) 9:64 ApexClass:misc#method:ids() call confirmed',
+      // A class that declares no constructor is called itself, also where the class it extends has some.
+      'ApexClass:misc#method:m(misc.oops,object) 12:19 ApexClass:misc#inner:oops new confirmed',
+    ]);
+    expect(analysis.issues).toEqual([]);
   });
 });

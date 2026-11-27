@@ -363,6 +363,26 @@
       "package": null
     },
     {
+      "key": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+      "type": "ApexClass",
+      "name": "InvoicePricingTest.pricesTheLinesLessTheDiscount()",
+      "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+      "depth": 2,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:invoicepricingtest#method:pricesthelineslessthediscount()",
+        "to": "ApexClass:invoicepricingtest#method:invoicewithlines()",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/InvoicePricingTest.cls",
+        "line": 20,
+        "column": 39
+      },
+      "package": null
+    },
+    {
       "key": "ApexClass:standardpricing#method:discount(account)",
       "type": "ApexClass",
       "name": "StandardPricing.discount(Account)",
@@ -371,14 +391,14 @@
       "confidence": "confirmed",
       "reference": {
         "from": "ApexClass:standardpricing#method:discount(account)",
-        "to": "CustomField:account.is_key_account__c",
-        "kind": "reads",
+        "to": "ApexClass:invoicepricing#method:discount(account)",
+        "kind": "calls",
         "origin": "parser:apex",
         "confidence": "confirmed",
         "resolution": "resolved",
         "file": "force-app/main/default/classes/StandardPricing.cls",
-        "line": 15,
-        "column": 24
+        "line": 14,
+        "column": 30
       },
       "package": null
     },
@@ -459,6 +479,26 @@
         "file": "force-app/main/default/workflows/Invoice__c.workflow-meta.xml",
         "line": 114,
         "column": 14
+      },
+      "package": null
+    },
+    {
+      "key": "ApexClass:standardpricing#method:price(invoice__c)",
+      "type": "ApexClass",
+      "name": "StandardPricing.price(Invoice__c)",
+      "file": "force-app/main/default/classes/StandardPricing.cls",
+      "depth": 3,
+      "confidence": "confirmed",
+      "reference": {
+        "from": "ApexClass:standardpricing#method:price(invoice__c)",
+        "to": "ApexClass:standardpricing#method:discount(account)",
+        "kind": "calls",
+        "origin": "parser:apex",
+        "confidence": "confirmed",
+        "resolution": "resolved",
+        "file": "force-app/main/default/classes/StandardPricing.cls",
+        "line": 10,
+        "column": 38
       },
       "package": null
     }

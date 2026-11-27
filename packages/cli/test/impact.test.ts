@@ -186,7 +186,7 @@ describe('orglens impact', () => {
       'What refers to CustomField:account.tier__c (Account.Tier__c), in snapshot #1 of "fixture".',
       'The answer is not complete: 7 types are not analysed yet. The details are below the answer.',
       '',
-      '22 components refer to it, 16 of them directly.',
+      '24 components refer to it, 16 of them directly.',
       'A flow is listed with the reference of one of its elements, which is listed after it.',
       '',
     ]);
@@ -207,7 +207,7 @@ describe('orglens impact', () => {
     expect(lines[0]).toBe(
       'What refers to CustomField:invoice_line__c.quantity__c (Invoice_Line__c.Quantity__c), in snapshot #1 of "fixture", to a depth of 2.',
     );
-    expect(lines).toContain('23 components refer to it, 18 of them directly.');
+    expect(lines).toContain('26 components refer to it, 18 of them directly.');
     expect(lines).toContain(
       'The answer stops at depth 2, and references lead further. Ask again with a larger --depth, or without it.',
     );
@@ -367,9 +367,9 @@ describe('orglens impact', () => {
     expect(lines[1]).toBe(
       'The answer is not complete: 7 types are not analysed yet, and the analysis had 1 error, and 1 of its warnings bears on the answer. The details are below the answer.',
     );
-    // The 57 of the project without the field that could not be read, without the one that reads it, and without
-    // the 4 methods that read only those.
-    expect(lines).toContain('51 components refer to it, 46 of them directly.');
+    // The 63 of the project without the field that could not be read, without the one that reads it, without the 4
+    // methods that read only those and without the 3 that reach them only through calls of those methods.
+    expect(lines).toContain('54 components refer to it, 46 of them directly.');
     expect(lines.slice(-5)).toEqual([
       '',
       'The analysis had 1 error: something of an analysed type was not read. See: orglens coverage fixture --snapshot 1',
